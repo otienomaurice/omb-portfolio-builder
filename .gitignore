@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.vs/
+.env
+.env.*
+.dev.vars
+.wrangler/
+projects.local.json

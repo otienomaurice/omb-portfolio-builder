@@ -1,0 +1,77 @@
+{
+  "name": "omb-portfolio-builder",
+  "version": "0.2.1",
+  "private": false,
+  "author": "Maurice Otieno",
+  "description": "Standalone Windows desktop application for building and publishing portfolio websites.",
+  "main": "main.cjs",
+  "scripts": {
+    "dev": "electron .",
+    "pack": "electron-builder --win portable",
+    "installer": "electron-builder --win nsis",
+    "dist": "electron-builder --win"
+  },
+  "devDependencies": {
+    "electron": "^39.2.7",
+    "electron-builder": "^26.0.12"
+  },
+  "build": {
+    "appId": "com.mauriceotieno.portfoliobuilder",
+    "productName": "OMB Portfolio Builder",
+    "copyright": "Copyright (c) Maurice Otieno",
+    "asar": true,
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.cjs",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": ".",
+        "to": "site",
+        "filter": [
+          "assets/**",
+          "Backgrounds/**",
+          "docs/**",
+          "server.mjs",
+          "index.html",
+          "styles.css",
+          "script.js",
+          "electronics-search.js",
+          "builder-rich-future-sections.js",
+          "projects.json",
+          "project-templates.json",
+          "template-preview.html",
+          "template-preview.css",
+          "template-preview.js",
+          "README.md",
+          ".nojekyll",
+          "robots.txt",
+          "sitemap.xml",
+          "CNAME"
+        ]
+      }
+    ],
+    "win": {
+      "icon": "assets/omb-app-icon.ico",
+      "target": [
+        "portable",
+        "nsis"
+      ]
+    },
+    "portable": {
+      "artifactName": "OMB-Portfolio-Builder-Portable-${version}-${arch}.${ext}"
+    },
+    "nsis": {
+      "artifactName": "OMB-Portfolio-Builder-Setup-${version}-${arch}.${ext}",
+      "oneClick": false,
+      "perMachine": true,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "OMB Portfolio Builder"
+    }
+  }
+}
