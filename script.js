@@ -7,6 +7,21 @@ const funFactsCallout = document.querySelector("#fun-facts-callout");
 const heroEyebrow = document.querySelector(".hero-content .eyebrow");
 const heroTitle = document.querySelector("#hero-title");
 const heroCopy = document.querySelector(".hero-copy");
+const brandName = document.querySelector(".brand strong");
+const brandSubtitle = document.querySelector(".brand small");
+const brandIcon = document.querySelector(".brand-icon");
+const brandText = document.querySelector(".omb-engraving");
+const headerAvatar = document.querySelector(".header-avatar");
+const headerAvatarImage = document.querySelector(".header-avatar img");
+const heroImage = document.querySelector(".hero-image");
+const resumeSection = document.querySelector("#resume");
+const contactBand = document.querySelector("#contact");
+const profilePhoto = document.querySelector(".profile-photo");
+const contactTitle = document.querySelector("#contact-title");
+const contactIntro = document.querySelector(".contact-intro");
+const contactDetails = document.querySelector(".contact-details");
+const contactLinks = document.querySelector(".contact-links");
+const footerOwner = document.querySelector(".site-footer span");
 const searchWrap = searchInput?.closest(".search-wrap");
 const aiAssistantForm = document.querySelector("#ai-assistant-form");
 const aiAssistantPanel = document.querySelector("#ask-ai");
@@ -21,6 +36,7 @@ let siteSections = [];
 let funFacts = [];
 let funFactsRich = null;
 let siteContent = null;
+let profile = null;
 let activeFilter = "all";
 let activeSectionDialogDrag = null;
 let activeSectionDialogResize = null;
@@ -72,9 +88,25 @@ const legacyTemplateSkins = {
 };
 
 const defaultSiteContent = {
-  heroCopy: "I design and document systems across analog circuits, embedded firmware, digital hardware, and software.\nThis portfolio presents selected work, technical artifacts, and the engineering decisions behind each build.",
+  heroCopy: "Add your projects, documents, diagrams, source code, images, profile details, and links.\nSave drafts locally, preview the site, then publish when your target repository is ready.",
   heroEyebrow: "Engineering portfolio",
-  heroTitle: "Analog, embedded, and digital systems built with purpose."
+  heroTitle: "Build a portfolio that presents your work clearly."
+};
+
+const defaultProfile = {
+  brandImage: "",
+  brandText: "Portfolio",
+  contactIntro: "",
+  displayName: "",
+  email: "",
+  githubUrl: "",
+  heroImage: "",
+  linkedinUrl: "",
+  phone: "",
+  portfolioLabel: "Portfolio",
+  profileImage: "",
+  resumeUrl: "",
+  websiteUrl: ""
 };
 
 year.textContent = new Date().getFullYear();
@@ -317,11 +349,131 @@ function normalizeSiteContent(content = {}) {
   };
 }
 
+function normalizeProfile(profileValue = {}) {
+  return {
+    brandImage: String(profileValue.brandImage || "").trim(),
+    brandText: String(profileValue.brandText || "").trim() || String(profileValue.displayName || "").trim() || defaultProfile.brandText,
+    contactIntro: String(profileValue.contactIntro || "").trim(),
+    displayName: String(profileValue.displayName || "").trim(),
+    email: String(profileValue.email || "").trim(),
+    githubUrl: String(profileValue.githubUrl || "").trim(),
+    heroImage: String(profileValue.heroImage || "").trim(),
+    linkedinUrl: String(profileValue.linkedinUrl || "").trim(),
+    phone: String(profileValue.phone || "").trim(),
+    portfolioLabel: String(profileValue.portfolioLabel || "").trim() || defaultProfile.portfolioLabel,
+    profileImage: String(profileValue.profileImage || "").trim(),
+    resumeUrl: String(profileValue.resumeUrl || "").trim(),
+    websiteUrl: String(profileValue.websiteUrl || "").trim()
+  };
+}
+
+function mailComposeLink(email = "") {
+  const clean = String(email || "").trim();
+  return clean ? `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(clean)}` : "";
+}
+
+function phoneLink(phone = "") {
+  const clean = String(phone || "").trim();
+  return clean ? `tel:${clean.replace(/[^\d+]/g, "")}` : "";
+}
+
 function renderSiteContent() {
   const content = normalizeSiteContent(siteContent || {});
   if (heroEyebrow) heroEyebrow.textContent = content.heroEyebrow;
   if (heroTitle) heroTitle.innerHTML = renderPlainMultiline(content.heroTitle);
   if (heroCopy) heroCopy.innerHTML = renderPlainMultiline(content.heroCopy);
+}
+
+function renderProfile() {
+  const current = normalizeProfile(profile || {});
+  const displayName = current.displayName || "Portfolio";
+  const label = current.portfolioLabel || "Portfolio";
+  const emailLink = mailComposeLink(current.email);
+  const callLink = phoneLink(current.phone);
+  const links = [
+    current.email ? { label: "Email", url: emailLink, external: true } : null,
+    current.phone ? { label: "Call", url: callLink } : null,
+    current.githubUrl ? { label: "GitHub", url: normalizeLinkTarget(current.githubUrl, { assumeWeb: true }), external: true } : null,
+    current.linkedinUrl ? { label: "LinkedIn", url: normalizeLinkTarget(current.linkedinUrl, { assumeWeb: true }), external: true } : null,
+    current.websiteUrl ? { label: "Website", url: normalizeLinkTarget(current.websiteUrl, { assumeWeb: true }), external: true } : null,
+    current.resumeUrl ? { label: "Resume", url: current.resumeUrl, external: false } : null
+  ].filter(Boolean);
+
+  document.title = `${displayName} | ${label}`;
+  if (brandName) brandName.textContent = displayName;
+  if (brandSubtitle) brandSubtitle.textContent = label;
+  if (brandText) brandText.textContent = current.brandText || displayName.slice(0, 3).toUpperCase() || "PORT";
+  if (brandIcon) {
+    if (current.brandImage) {
+      brandIcon.src = current.brandImage;
+      brandIcon.hidden = false;
+    } else {
+      brandIcon.hidden = true;
+    }
+  }
+
+  if (headerAvatar && headerAvatarImage) {
+    headerAvatar.hidden = !current.profileImage;
+    if (current.profileImage) {
+      headerAvatarImage.src = current.profileImage;
+      headerAvatarImage.alt = displayName;
+      headerAvatar.setAttribute("aria-label", `Go to ${displayName} contact information`);
+    }
+  }
+
+  if (heroImage) {
+    if (current.heroImage) {
+      heroImage.hidden = false;
+      heroImage.src = current.heroImage;
+      heroImage.alt = `${displayName} portfolio background`;
+    } else {
+      heroImage.hidden = true;
+    }
+  }
+
+  document.querySelectorAll('a[href="#resume"]').forEach((link) => {
+    link.hidden = !current.resumeUrl;
+  });
+  const heroGithubLink = [...document.querySelectorAll(".hero-actions a")]
+    .find((link) => /github/i.test(link.textContent || ""));
+  if (heroGithubLink) {
+    heroGithubLink.hidden = !current.githubUrl;
+    if (current.githubUrl) heroGithubLink.href = normalizeLinkTarget(current.githubUrl, { assumeWeb: true });
+  }
+
+  if (resumeSection) {
+    resumeSection.hidden = !current.resumeUrl;
+    resumeSection.querySelectorAll("a").forEach((link) => {
+      link.href = current.resumeUrl || "#";
+    });
+    const resumeObject = resumeSection.querySelector("object");
+    if (resumeObject) resumeObject.data = current.resumeUrl || "";
+    const fallbackLink = resumeSection.querySelector("object a");
+    if (fallbackLink) fallbackLink.href = current.resumeUrl || "#";
+  }
+
+  if (profilePhoto) {
+    profilePhoto.hidden = !current.profileImage;
+    if (current.profileImage) {
+      profilePhoto.src = current.profileImage;
+      profilePhoto.alt = `Portrait of ${displayName}`;
+    }
+  }
+  if (contactTitle) contactTitle.textContent = displayName;
+  if (contactIntro) {
+    contactIntro.textContent = current.contactIntro || (current.displayName ? `${displayName}'s contact information and public links.` : "Add contact details in the builder.");
+  }
+  if (contactDetails) {
+    contactDetails.innerHTML = [
+      current.email ? `<a href="${emailLink}" target="_blank" rel="noreferrer">${current.email}</a>` : "",
+      current.phone ? `<a href="${callLink}">${current.phone}</a>` : ""
+    ].filter(Boolean).join("");
+  }
+  if (contactLinks) {
+    contactLinks.innerHTML = links.map((link) => `<a href="${link.url}"${link.external ? ' target="_blank" rel="noreferrer"' : ""}>${link.label}</a>`).join("");
+  }
+  if (footerOwner) footerOwner.innerHTML = `&copy; <span id="year">${new Date().getFullYear()}</span> ${displayName}`;
+  if (contactBand) contactBand.hidden = !links.length && !current.profileImage && !current.contactIntro && !current.displayName;
 }
 
 function textBlocksFromPlainText(text) {
@@ -883,13 +1035,17 @@ function addProjectSearchEntries(entries, project) {
 }
 
 function addSiteSectionSearchEntries(entries) {
-  [
+  const current = normalizeProfile(profile || {});
+  const pageSections = [
     { id: "top", title: heroTitle?.textContent || "Front page", type: "Page section", text: [heroEyebrow?.textContent, heroCopy?.textContent] },
     { id: "projects", title: "Engineering Projects", type: "Directory", text: "project directory categories files sections" },
-    { id: "resume", title: "Resume", type: "Page section", text: "resume professional profile document" },
     { id: "process", title: "Process", type: "Page section", text: "engineering process design testing documentation" },
-    { id: "contact", title: "Contact", type: "Page section", text: "email phone github contact" }
-  ].forEach((section) => addSearchEntry(entries, {
+    { id: "contact", title: "Contact", type: "Page section", text: [current.displayName, current.email, current.phone, current.githubUrl, current.linkedinUrl, current.websiteUrl, current.contactIntro] }
+  ];
+  if (current.resumeUrl) {
+    pageSections.splice(2, 0, { id: "resume", title: "Resume", type: "Page section", text: "resume professional profile document" });
+  }
+  pageSections.forEach((section) => addSearchEntry(entries, {
     domTarget: section.id,
     kind: "page",
     title: section.title,
@@ -897,15 +1053,17 @@ function addSiteSectionSearchEntries(entries) {
     text: section.text
   }));
 
-  const resumeTextEntry = addSearchEntry(entries, {
-    context: "Professional Profile / Resume",
-    kind: "file",
-    title: "Resume searchable text",
-    type: "Resume text",
-    url: "assets/resume.txt",
-    text: "Maurice Otieno resume skills education experience FPGA ASIC embedded STM32 analog mixed signal KiCad LTspice Vivado SystemVerilog"
-  });
-  if (resumeTextEntry) indexSearchableFileText(resumeTextEntry);
+  if (current.resumeUrl) {
+    const resumeTextEntry = addSearchEntry(entries, {
+      context: "Professional Profile / Resume",
+      kind: "file",
+      title: "Resume",
+      type: "Resume",
+      url: current.resumeUrl,
+      text: [current.displayName, current.portfolioLabel, current.contactIntro, current.resumeUrl]
+    });
+    if (resumeTextEntry) indexSearchableFileText(resumeTextEntry);
+  }
 
   (siteSections || []).filter(siteSectionRenderable).forEach((section) => {
     addSearchEntry(entries, {
@@ -1096,10 +1254,11 @@ function assistantPublicProfileLinks() {
     });
   };
 
-  add({ label: "Resume PDF", kind: "resume", url: "assets/resume.pdf" }, "Professional Profile");
-  add({ label: "Resume searchable text", kind: "resume_text", url: "assets/resume.txt" }, "Professional Profile");
-  add({ label: "GitHub", kind: "github", url: "https://github.com/otienomaurice" }, "Professional Profile");
-  add({ label: "LinkedIn", kind: "linkedin", url: "https://www.linkedin.com/in/maurice-otieno-037a55341" }, "Professional Profile");
+  const current = normalizeProfile(profile || {});
+  if (current.resumeUrl) add({ label: "Resume", kind: "resume", url: current.resumeUrl }, "Professional Profile");
+  if (current.githubUrl) add({ label: "GitHub", kind: "github", url: current.githubUrl }, "Professional Profile");
+  if (current.linkedinUrl) add({ label: "LinkedIn", kind: "linkedin", url: current.linkedinUrl }, "Professional Profile");
+  if (current.websiteUrl) add({ label: "Website", kind: "webpage", url: current.websiteUrl }, "Professional Profile");
 
   (siteSections || []).forEach((section) => {
     (section.links || []).forEach((link) => add(link, section.title || "Portfolio section"));
@@ -1322,6 +1481,7 @@ function assistantContextForQuestion(question = "", intent = assistantQuestionIn
   return {
     categories: categories.map((category) => ({ id: category.id, label: category.label })),
     intent,
+    profile: normalizeProfile(profile || {}),
     knowledgeManifest: {
       publicProfiles: includePortfolioLinkContext ? assistantPublicProfileLinks() : [],
       publicSourcePolicy: "Only public profile and project links shown in the portfolio are used. GitHub repository links can be expanded into repository metadata, README text, and selected public source files when the visitor asks for code.",
@@ -1333,8 +1493,8 @@ function assistantContextForQuestion(question = "", intent = assistantQuestionIn
       note: "Image records include filenames, captions, descriptions, and neighboring portfolio text. Use a vision-capable backend before claiming visual details not present in captions or text."
     },
     portfolioContextPolicy: intent !== "portfolio_specific"
-      ? "Answer from general knowledge first. Do not lead with Maurice's project context unless the visitor explicitly asks to connect the concept to the portfolio."
-      : "Answer from Maurice's portfolio context first. Do not invent project details outside the supplied context.",
+      ? "Answer from general knowledge first. Do not lead with the portfolio owner's project context unless the visitor explicitly asks to connect the concept to the portfolio."
+      : "Answer from the configured portfolio context first. Do not invent project details outside the supplied context.",
     projects: matchedProjects.map(assistantProjectSummary),
     question,
     results: directResults.map((result) => ({
@@ -1552,24 +1712,25 @@ function assistantGeneralEngineeringAnswer(question = "") {
 }
 
 function assistantLocalAnswer(question = "", results = [], intent = assistantQuestionIntent(question)) {
+  const ownerName = normalizeProfile(profile || {}).displayName || "the portfolio owner";
   if (intent === "general_conversation") {
     const clean = normalize(question);
     if (/^(hi|hello|hey|yo|sup)\b/.test(clean)) {
       return "Hi, what can I do for you?";
     }
     if (/^(what'?s|what\s+is|do\s+you\s+know)\s+my\s+name\??$/.test(clean) || /^who\s+am\s+i\??$/.test(clean)) {
-      return "I am an AI agent for Maurice Otieno's portfolio. I know the portfolio owner is Maurice Otieno, but I do not know a visitor's personal name unless they tell me.";
+      return `I am an AI agent for ${ownerName}'s portfolio. I know the portfolio owner is ${ownerName}, but I do not know a visitor's personal name unless they tell me.`;
     }
     if (/\b(who are you|what are you)\b/.test(clean)) {
-      return "I am an AI agent for Maurice Otieno's portfolio. I can help with his projects, resume, public links, and related engineering questions.";
+      return `I am an AI agent for ${ownerName}'s portfolio. I can help with projects, resume links, public links, files, and related engineering questions.`;
     }
     return [
-      "I am here with you. I can help explore Maurice Otieno's portfolio, explain projects, summarize files, open relevant sections, or answer related electronics and embedded-systems questions.",
+      `I am here with you. I can help explore ${ownerName}'s portfolio, explain projects, summarize files, open relevant sections, or answer related engineering questions.`,
       "",
       "You can ask things like:",
       "- What is embedded systems?",
-      "- Show me the VCO project.",
-      "- What tools did Maurice use?",
+      "- Show me a project.",
+      "- What tools were used?",
       "- Explain the difference between FPGA and ASIC design."
     ].join("\n");
   }
@@ -3049,8 +3210,10 @@ function loadProjectCatalog() {
     projects = window.__PORTFOLIO_CATALOG__.projects || [];
     siteSections = window.__PORTFOLIO_CATALOG__.siteSections || [];
     siteContent = normalizeSiteContent(window.__PORTFOLIO_CATALOG__.siteContent || {});
+    profile = normalizeProfile(window.__PORTFOLIO_CATALOG__.profile || {});
     funFacts = normalizeFunFacts(window.__PORTFOLIO_CATALOG__.funFacts || []);
     funFactsRich = window.__PORTFOLIO_CATALOG__.funFactsRich || null;
+    renderProfile();
     renderSiteContent();
     renderFunFacts();
     renderSiteSections();
@@ -3071,8 +3234,10 @@ function loadProjectCatalog() {
       projects = data.projects || [];
       siteSections = data.siteSections || [];
       siteContent = normalizeSiteContent(data.siteContent || {});
+      profile = normalizeProfile(data.profile || {});
       funFacts = normalizeFunFacts(data.funFacts || []);
       funFactsRich = data.funFactsRich || null;
+      renderProfile();
       renderSiteContent();
       renderFunFacts();
       renderSiteSections();

@@ -15,6 +15,20 @@ const siteHeroEyebrowInput = document.querySelector("#site-hero-eyebrow");
 const siteHeroTitleInput = document.querySelector("#site-hero-title");
 const siteHeroCopyInput = document.querySelector("#site-hero-copy");
 const saveSiteContentButton = document.querySelector("#save-site-content");
+const profileDisplayNameInput = document.querySelector("#profile-display-name");
+const profilePortfolioLabelInput = document.querySelector("#profile-portfolio-label");
+const profileContactIntroInput = document.querySelector("#profile-contact-intro");
+const profileEmailInput = document.querySelector("#profile-email");
+const profilePhoneInput = document.querySelector("#profile-phone");
+const profileGithubInput = document.querySelector("#profile-github");
+const profileLinkedinInput = document.querySelector("#profile-linkedin");
+const profileWebsiteInput = document.querySelector("#profile-website");
+const saveProfileContentButton = document.querySelector("#save-profile-content");
+const profileImageUploadButton = document.querySelector("#profile-image-upload");
+const profileHeroUploadButton = document.querySelector("#profile-hero-upload");
+const profileResumeUploadButton = document.querySelector("#profile-resume-upload");
+const profileBrandUploadButton = document.querySelector("#profile-brand-upload");
+const profileAssetStatus = document.querySelector("#profile-asset-status");
 const categoryDropdown = document.querySelector("#category-dropdown");
 const siteSectionList = document.querySelector("#site-section-list");
 const projectCreateDialog = document.querySelector("#project-create-dialog");
@@ -56,6 +70,7 @@ const publishTargetDialog = document.querySelector("#publish-target-dialog");
 const publishTargetForm = document.querySelector("#publish-target-form");
 const publishTargetClose = document.querySelector("#publish-target-close");
 const publishTargetCancel = document.querySelector("#publish-target-cancel");
+const publishTargetSync = document.querySelector("#publish-target-sync");
 const publishTargetCurrent = document.querySelector("#publish-target-current");
 const publishTargetRepository = document.querySelector("#publish-target-repository");
 const publishTargetDomain = document.querySelector("#publish-target-domain");
@@ -145,15 +160,28 @@ const standardSections = [
   { id: "simulation", label: "Simulation", folder: "simulations", analogOnly: true }
 ];
 
-const defaultFunFacts = [
-  "I built a builder to build this portfolio.",
-  "I love a good argument about soccer: the tactics, the culture, the refereeing, all of it."
-];
+const defaultFunFacts = [];
 
 const defaultSiteContent = {
   heroEyebrow: "Engineering portfolio",
-  heroTitle: "Analog, embedded, and digital systems built with purpose.",
-  heroCopy: "I design and document systems across analog circuits, embedded firmware, digital hardware, and software.\nThis portfolio presents selected work, technical artifacts, and the engineering decisions behind each build."
+  heroTitle: "Build a portfolio that presents your work clearly.",
+  heroCopy: "Add your projects, documents, diagrams, source code, images, profile details, and links.\nSave drafts locally, preview the site, then publish when your target repository is ready."
+};
+
+const defaultProfile = {
+  brandImage: "",
+  brandText: "Portfolio",
+  contactIntro: "",
+  displayName: "",
+  email: "",
+  githubUrl: "",
+  heroImage: "",
+  linkedinUrl: "",
+  phone: "",
+  portfolioLabel: "Portfolio",
+  profileImage: "",
+  resumeUrl: "",
+  websiteUrl: ""
 };
 
 const commonRichFonts = [
@@ -176,10 +204,7 @@ const defaultSiteSections = [
     description: "A focused profile section for resume links, technical identity, career direction, websites, and proof of work.",
     visible: false,
     backgroundImage: "",
-    links: [
-      { label: "Resume", url: "assets/resume.pdf", kind: "resume" },
-      { label: "GitHub", url: "https://github.com/otienomaurice", kind: "github" }
-    ],
+    links: [],
     assets: [],
     subsections: [
       {
@@ -260,11 +285,7 @@ const defaultSiteSections = [
     description: "A compact connection section for social media, email, phone, GitHub, LinkedIn, and other public profiles.",
     visible: false,
     backgroundImage: "",
-    links: [
-      { label: "Email", url: "https://mail.google.com/mail/?view=cm&fs=1&to=otienomaurice12340@gmail.com", kind: "email" },
-      { label: "Call", url: "tel:+14845451567", kind: "phone" },
-      { label: "GitHub", url: "https://github.com/otienomaurice", kind: "github" }
-    ],
+    links: [],
     assets: [],
     subsections: [
       {
@@ -932,6 +953,32 @@ async function savePublishTarget(event) {
   }
 }
 
+async function syncFromPublishTarget() {
+  if (!publishTargetDialog) return;
+  publishTargetCurrent.textContent = "Checking GitHub authorization and loading compatible portfolio files from the target repository...";
+  try {
+    const response = await fetch(`/api/sync-from-publish-target?t=${Date.now()}`, {
+      method: "POST",
+      cache: "no-store",
+      headers: { "Content-Type": "application/json" },
+      body: "{}"
+    });
+    const result = await response.json();
+    if (!response.ok || !result.ok) throw new Error(result.error || "Publishing target could not be imported.");
+    renderPublishTargetInfo(result.target || {});
+    publishTargetDialog.close();
+    await loadData();
+    draftSavedSinceChanges = true;
+    showBuilderError(
+      "Target content loaded",
+      "Compatible portfolio files were loaded from the authenticated publishing target into this local builder workspace.",
+      `Imported: ${(result.sync?.imported || []).join(", ")}`
+    );
+  } catch (error) {
+    publishTargetCurrent.textContent = error.message || "Publishing target could not be imported.";
+  }
+}
+
 function showPublishResult(result) {
   const publish = result.publish || {};
   const pushed = Boolean(publish.pushed);
@@ -1084,6 +1131,34 @@ function renderSiteContentEditor() {
   }
 }
 
+function renderProfileEditor() {
+  const profile = normalizeProfile(catalog.profile || {});
+  const fields = [
+    [profileDisplayNameInput, profile.displayName],
+    [profilePortfolioLabelInput, profile.portfolioLabel],
+    [profileContactIntroInput, profile.contactIntro],
+    [profileEmailInput, profile.email],
+    [profilePhoneInput, profile.phone],
+    [profileGithubInput, profile.githubUrl],
+    [profileLinkedinInput, profile.linkedinUrl],
+    [profileWebsiteInput, profile.websiteUrl]
+  ];
+  fields.forEach(([field, value]) => {
+    if (field && document.activeElement !== field) field.value = value;
+  });
+  if (profileAssetStatus) {
+    const assetLabels = [
+      profile.profileImage ? "profile photo" : "",
+      profile.heroImage ? "main background" : "",
+      profile.resumeUrl ? "resume" : "",
+      profile.brandImage ? "brand icon" : ""
+    ].filter(Boolean);
+    profileAssetStatus.textContent = assetLabels.length
+      ? `Added: ${assetLabels.join(", ")}.`
+      : "No profile photo, resume, brand icon, or main background added yet.";
+  }
+}
+
 function syncSiteContentFromInputs() {
   catalog.siteContent = normalizeSiteContent({
     heroCopy: siteHeroCopyInput?.value,
@@ -1091,6 +1166,21 @@ function syncSiteContentFromInputs() {
     heroTitle: siteHeroTitleInput?.value
   });
   return catalog.siteContent;
+}
+
+function syncProfileFromInputs() {
+  catalog.profile = normalizeProfile({
+    ...(catalog.profile || {}),
+    contactIntro: profileContactIntroInput?.value,
+    displayName: profileDisplayNameInput?.value,
+    email: profileEmailInput?.value,
+    githubUrl: profileGithubInput?.value,
+    linkedinUrl: profileLinkedinInput?.value,
+    phone: profilePhoneInput?.value,
+    portfolioLabel: profilePortfolioLabelInput?.value,
+    websiteUrl: profileWebsiteInput?.value
+  });
+  return catalog.profile;
 }
 
 function clone(value) {
@@ -1160,6 +1250,34 @@ function normalizeSiteContent(content = {}) {
     heroEyebrow: String(content.heroEyebrow || "").trim() || defaultSiteContent.heroEyebrow,
     heroTitle: String(content.heroTitle || "").trim() || defaultSiteContent.heroTitle
   };
+}
+
+function normalizeProfile(profile = {}) {
+  return {
+    brandImage: String(profile.brandImage || "").trim(),
+    brandText: String(profile.brandText || "").trim() || String(profile.displayName || "").trim() || defaultProfile.brandText,
+    contactIntro: String(profile.contactIntro || "").trim(),
+    displayName: String(profile.displayName || "").trim(),
+    email: String(profile.email || "").trim(),
+    githubUrl: String(profile.githubUrl || "").trim(),
+    heroImage: String(profile.heroImage || "").trim(),
+    linkedinUrl: String(profile.linkedinUrl || "").trim(),
+    phone: String(profile.phone || "").trim(),
+    portfolioLabel: String(profile.portfolioLabel || "").trim() || defaultProfile.portfolioLabel,
+    profileImage: String(profile.profileImage || "").trim(),
+    resumeUrl: String(profile.resumeUrl || "").trim(),
+    websiteUrl: String(profile.websiteUrl || "").trim()
+  };
+}
+
+function mailComposeLink(email = "") {
+  const clean = String(email || "").trim();
+  return clean ? `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(clean)}` : "";
+}
+
+function phoneLink(phone = "") {
+  const clean = String(phone || "").trim();
+  return clean ? `tel:${clean.replace(/[^\d+]/g, "")}` : "";
 }
 
 function textBlocksFromPlainText(text) {
@@ -3863,10 +3981,6 @@ function sectionOptions(project) {
 
 function ensureSiteSections() {
   catalog.siteSections = catalog.siteSections || [];
-  if (!catalog.siteSectionsSeeded && !catalog.siteSections.length) {
-    catalog.siteSections = clone(defaultSiteSections);
-    catalog.siteSectionsSeeded = true;
-  }
   savedPortfolioCatalog.siteSections = savedPortfolioCatalog.siteSections || clone(catalog.siteSections || []);
 }
 
@@ -4793,494 +4907,20 @@ function renderSectionContent(project) {
 }
 
 function fullPortfolioPreviewHtml() {
-  const yearValue = new Date().getFullYear();
-  const baseHref = `${window.location.origin}/`;
-  const siteContent = normalizeSiteContent(catalog.siteContent || savedPortfolioCatalog.siteContent || {});
-  const previewData = JSON.stringify({
-    categories: savedPortfolioCatalog.categories,
-    funFacts: normalizeFunFacts(catalog.funFacts || savedPortfolioCatalog.funFacts || []),
-    funFactsRich: catalog.funFactsRich || savedPortfolioCatalog.funFactsRich || null,
-    projects: savedPortfolioCatalog.projects,
-    siteContent,
-    siteSections: savedPortfolioCatalog.siteSections || []
-  }).replaceAll("</", "<\\/");
-  return `<!DOCTYPE html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <base href="${baseHref}" />
-    <title>Maurice Otieno | Hardware Engineering Portfolio</title>
-    <link rel="stylesheet" href="styles.css" />
-    <script src="electronics-search.js"></script>
-  </head>
-  <body>
-    <header class="site-header" id="top">
-      <a class="brand" href="#top" aria-label="Go to top">
-        <span class="brand-lockup" aria-hidden="true">
-          <img class="brand-icon" src="assets/omb-mark.png" alt="" />
-          <span class="omb-engraving">OMB</span>
-        </span>
-        <span>
-          <strong>Maurice Otieno</strong>
-          <small>Hardware Engineering Portfolio</small>
-        </span>
-      </a>
-
-      <div class="header-right">
-        <nav class="site-nav" aria-label="Primary navigation">
-          <a href="#ask-ai">Ask AI</a>
-          <a href="#projects">Projects</a>
-          <a href="#resume">Resume</a>
-          <a href="#process">Process</a>
-          <a href="#contact">Contact</a>
-        </nav>
-        <a class="header-avatar" href="#contact" aria-label="Go to Maurice Otieno contact information">
-          <img src="assets/maurice-otieno-profile.png" alt="Maurice Otieno" />
-        </a>
-      </div>
-    </header>
-
-    <main>
-      <section class="hero" aria-labelledby="hero-title">
-        <img
-          class="hero-image"
-          src="assets/hero-analog-lab.png"
-          alt="Light blue analog engineering bench with transistor-level op amp topology, AC-to-DC charger circuit, bench instruments, MCU, FPGA, ASIC, and EDA tool labels"
-        />
-        <div class="hero-shade" aria-hidden="true"></div>
-        <div class="hero-content">
-          <p class="eyebrow">${escapeHtml(siteContent.heroEyebrow)}</p>
-          <h1 id="hero-title">${renderPlainMultiline(siteContent.heroTitle)}</h1>
-          <p class="hero-copy">${renderPlainMultiline(siteContent.heroCopy)}</p>
-          <div class="hero-actions">
-            <a class="button primary" href="#projects">View projects</a>
-            <a class="button secondary" href="#resume">View resume</a>
-            <a class="button secondary" href="https://github.com/otienomaurice" target="_blank" rel="noreferrer">
-              GitHub profile
-            </a>
-            <a class="ai-jump-link" href="#ask-ai" aria-label="Jump to the portfolio AI assistant">
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M12 3v3m-5 7H4m16 0h-3M7.5 7.5 5.4 5.4m11.1 2.1 2.1-2.1M8 10h8v7a2 2 0 0 1-2 2h-4a2 2 0 0 1-2-2z" />
-                <path d="M10 13h.01M14 13h.01M10 16h4" />
-              </svg>
-              <span>Ask AI</span>
-            </a>
-          </div>
-        </div>
-      </section>
-
-      <section class="fun-facts-section" id="fun-facts-callout" aria-label="Fun facts" hidden></section>
-
-      <section class="summary-band" aria-label="Portfolio highlights">
-        <div class="metric">
-          <strong id="project-count">${savedPortfolioCatalog.projects.length}</strong>
-          <span>presented projects</span>
-        </div>
-        <div class="metric">
-          <strong>3 Tracks</strong>
-          <span>analog, digital, embedded</span>
-        </div>
-        <div class="metric">
-          <strong>Artifacts</strong>
-          <span>source, diagrams, and reports</span>
-        </div>
-      </section>
-
-      <section class="section" id="projects" aria-labelledby="projects-title">
-        <div class="section-heading">
-          <div>
-            <p class="eyebrow">Selected work</p>
-            <h2 id="projects-title">Engineering Projects</h2>
-          </div>
-          <label class="search-wrap" for="project-search">
-            <span>Search</span>
-            <input id="project-search" type="search" placeholder="LTspice, PCB, frequency response, Verilog..." />
-          </label>
-        </div>
-
-        <div class="filters" aria-label="Project filters">
-          <button class="filter-button active" type="button" data-filter="all">All</button>
-          <button class="filter-button" type="button" data-filter="analog-mixed-signal">Analog and Mixed Signal</button>
-          <button class="filter-button" type="button" data-filter="digital">Digital</button>
-          <button class="filter-button" type="button" data-filter="embedded">Embedded</button>
-        </div>
-
-        <div class="project-grid" id="project-grid" aria-live="polite">${renderedPublicProjects()}</div>
-      </section>
-
-      <section class="section resume-section" id="resume" aria-labelledby="resume-title">
-        <div class="section-heading">
-          <div>
-            <p class="eyebrow">Professional profile</p>
-            <h2 id="resume-title">Resume</h2>
-          </div>
-          <div class="resume-actions">
-            <a class="button primary" href="assets/resume.pdf" target="_blank" rel="noreferrer">Open PDF</a>
-            <a class="button secondary" href="assets/resume.pdf" download>Download</a>
-          </div>
-        </div>
-
-        <div class="resume-viewer">
-          <object data="assets/resume.pdf" type="application/pdf">
-            <p>
-              View Maurice Otieno's resume as a PDF:
-              <a href="assets/resume.pdf" target="_blank" rel="noreferrer">open resume</a>.
-            </p>
-          </object>
-        </div>
-      </section>
-
-      <div id="dynamic-sections"></div>
-
-      <section class="section process" id="process" aria-labelledby="process-title">
-        <div class="section-heading">
-          <div>
-            <p class="eyebrow">Engineering approach</p>
-            <h2 id="process-title">Built To Be Reviewed</h2>
-          </div>
-        </div>
-        <div class="process-grid">
-          <article>
-            <span class="step">01</span>
-            <h3>Problem and constraints</h3>
-            <p>Each project begins with the design objective, constraints, technical tradeoffs, and success criteria.</p>
-          </article>
-          <article>
-            <span class="step">02</span>
-            <h3>Build artifacts</h3>
-            <p>Repositories, schematics, diagrams, documents, test notes, and demonstrations are organized for review.</p>
-          </article>
-          <article>
-            <span class="step">03</span>
-            <h3>Results and reflection</h3>
-            <p>Results, lessons learned, and next design iterations show how each project developed technically.</p>
-          </article>
-        </div>
-      </section>
-
-      <section class="contact-band" id="contact" aria-labelledby="contact-title">
-        <img
-          class="profile-photo"
-          src="assets/maurice-otieno-profile.png"
-          alt="Portrait of Maurice Otieno"
-        />
-        <div class="contact-content">
-          <div>
-            <p class="eyebrow">Contact</p>
-            <h2 id="contact-title">Maurice Otieno</h2>
-            <p class="contact-intro">
-              Hardware and software engineer focused on analog design, mixed-signal systems, embedded platforms, and digital hardware.
-            </p>
-            <div class="contact-details">
-              <a
-                href="https://mail.google.com/mail/?view=cm&fs=1&to=otienomaurice12340@gmail.com"
-                target="_blank"
-                rel="noreferrer"
-              >
-                otienomaurice12340@gmail.com
-              </a>
-              <a href="tel:+14845451567">+1 (484) 545-1567</a>
-            </div>
-          </div>
-          <div class="contact-links">
-            <a
-              href="https://mail.google.com/mail/?view=cm&fs=1&to=otienomaurice12340@gmail.com"
-              target="_blank"
-              rel="noreferrer"
-            >
-              Email
-            </a>
-            <a href="tel:+14845451567">Call</a>
-            <a href="https://github.com/otienomaurice" target="_blank" rel="noreferrer">GitHub</a>
-            <a href="assets/resume.pdf" target="_blank" rel="noreferrer">Resume</a>
-          </div>
-        </div>
-        <div class="ai-assistant-panel" id="ask-ai" aria-labelledby="ai-assistant-title">
-          <div class="ai-assistant-console" aria-label="AI portfolio assistant">
-            <h2 id="ai-assistant-title">Ask My Portfolio</h2>
-            <div class="ai-assistant-status sr-only" id="ai-assistant-status" aria-live="polite"></div>
-            <div class="ai-assistant-log" id="ai-assistant-log" aria-live="polite" aria-label="AI chat messages"></div>
-            <form class="ai-assistant-form" id="ai-assistant-form">
-              <label class="sr-only" for="ai-assistant-input">Ask the portfolio assistant</label>
-              <input id="ai-assistant-input" type="text" autocomplete="off" placeholder="Ask about projects, tests, resume links, op amps, STM32..." />
-              <button type="submit">Ask</button>
-            </form>
-            <button class="ai-clear-chat" id="ai-clear-chat" type="button">Clear chat</button>
-          </div>
-        </div>
-      </section>
-    </main>
-
-    <footer class="site-footer">
-      <span>&copy; <span id="year">${yearValue}</span> Maurice Otieno</span>
-      <a href="#top">Back to top</a>
-    </footer>
-    <script type="application/json" id="draft-project-data">${previewData}</script>
-    <script>
-      (() => {
-        const data = JSON.parse(document.querySelector("#draft-project-data").textContent);
-        const categories = data.categories || [];
-        const projects = data.projects || [];
-        const grid = document.querySelector("#project-grid");
-        const searchInput = document.querySelector("#project-search");
-        const filterButtons = [...document.querySelectorAll(".filter-button")];
-        const projectCount = document.querySelector("#project-count");
-        const year = document.querySelector("#year");
-        let activeFilter = "all";
-
-        year.textContent = new Date().getFullYear();
-        projectCount.textContent = projects.length;
-
-        function normalize(value) {
-          return String(value || "").toLowerCase();
-        }
-
-        function slugLabel(value) {
-          const category = categories.find((item) => item.id === value);
-          return category ? category.label : value;
-        }
-
-        function flattenProject(project) {
-          const categoryLabel = slugLabel(project.category);
-          const electronicsKeywords = window.electronicsSearchKeywords
-            ? window.electronicsSearchKeywords(project, categoryLabel)
-            : [];
-          return [
-            project.id,
-            project.title,
-            categoryLabel,
-            project.status,
-            project.summary,
-            ...(project.focus || []),
-            ...(project.highlights || []),
-            ...(project.tools || []).map((item) => typeof item === "string" ? item : [item.name, item.title, item.label, item.description].filter(Boolean).join(" ")),
-            ...(project.languages || []),
-            ...(project.documents || []).flatMap((item) => [item.title, item.type, item.status, item.url]),
-            ...(project.tests || []).flatMap((item) => [item.name, item.method, item.status, item.result, item.artifact]),
-            ...(project.pcbs || []).flatMap((item) => [item.name, item.revision, item.status, item.artifact]),
-            ...(project.media || []).flatMap((item) => [item.title, item.caption, item.url]),
-            ...(project.sections || []).flatMap((section) => [
-              section.title,
-              section.description,
-              ...(section.items || []).flatMap((item) => [item.title, item.description, item.type, item.status, item.url])
-            ]),
-            ...(project.links || []).flatMap((item) => [item.label, item.url]),
-            ...electronicsKeywords
-          ].map(normalize).join(" ");
-        }
-
-        function looksLikeBareWebAddress(value) {
-          const clean = String(value || "").trim();
-          if (!clean || /\\s/.test(clean) || /^(\\.?\\.?\\/|#|mailto:|tel:)/i.test(clean)) return false;
-          if (/^[a-z][a-z0-9+.-]*:/i.test(clean)) return false;
-          const host = clean.split(/[/?#]/)[0].toLowerCase();
-          if (!/^[a-z0-9-]+(\\.[a-z0-9-]+)+$/.test(host)) return false;
-          return !/\\.(pdf|docx?|xlsx?|pptx?|zip|7z|rar|png|jpe?g|gif|svg|webp|txt|md|csv|json|xml|log|c|h|cpp|hpp|py|js|mjs|ts|v|sv|vhdl?|spice|cir|net|asc|sch|kicad_sch|kicad_pcb)$/i.test(host);
-        }
-
-        function normalizeLinkTarget(target, options = {}) {
-          const clean = String(target || "").trim();
-          if (!clean) return "";
-          if (/^\\/\\//.test(clean)) return "https:" + clean;
-          if (/^www\\./i.test(clean)) return "https://" + clean;
-          if (options.assumeWeb && looksLikeBareWebAddress(clean)) return "https://" + clean;
-          return clean;
-        }
-
-        function isWebsiteLinkItem(item = {}, target = "") {
-          const clean = String(target || "").trim();
-          if (/^(https?:)?\\/\\//i.test(clean) || /^www\\./i.test(clean)) return true;
-          const typeText = [item.kind, item.type, item.status, item.meta, item.label, item.title].filter(Boolean).join(" ").toLowerCase();
-          return /\\b(link|website|web link|url|external|github|linkedin|drive|social|profile)\\b/.test(typeText);
-        }
-
-        function linkAttributes(url, item = {}) {
-          const target = normalizeLinkTarget(url, { assumeWeb: isWebsiteLinkItem(item, url) });
-          return /^https?:\\/\\//i.test(target) ? ' target="_blank" rel="noreferrer"' : "";
-        }
-
-        function isLocalDownloadTarget(target = "") {
-          const value = normalizeLinkTarget(target, { assumeWeb: true });
-          return Boolean(value) && !/^(https?:)?\\/\\//i.test(value) && !/^(mailto:|tel:|#)/i.test(value);
-        }
-
-        function downloadAttribute(target = "", item = {}) {
-          const value = normalizeLinkTarget(target, { assumeWeb: isWebsiteLinkItem(item, target) });
-          return isLocalDownloadTarget(value) ? " download" : "";
-        }
-
-        function resourceLink(item, label = item.label || item.title || item.name) {
-          const rawTarget = item.url || item.artifact || item.href || item.file || item.path || item.src || "";
-          const target = normalizeLinkTarget(rawTarget, { assumeWeb: isWebsiteLinkItem(item, rawTarget) });
-          if (!target || item.status === "planned") {
-            return '<span class="resource-link muted">' + label + '</span>';
-          }
-          return '<a class="resource-link" href="' + target + '"' + linkAttributes(target, item) + downloadAttribute(target, item) + '>' + label + '</a>';
-        }
-
-        function pillList(items, className = "") {
-          return (items || []).map((item) => {
-            const label = typeof item === "string" ? item : item.name || item.title || item.label || "";
-            return '<span class="tag ' + className + '">' + label + '</span>';
-          }).join("");
-        }
-
-        function evidenceList(items, renderItem, emptyMessage) {
-          if (!items || !items.length) return '<p class="evidence-empty">' + emptyMessage + '</p>';
-          return '<ul>' + items.map(renderItem).join("") + '</ul>';
-        }
-
-        function detailBlock(title, className, content) {
-          return '<details class="' + className + '"><summary>' + title + '</summary>' + content + '</details>';
-        }
-
-        function mediaGrid(items) {
-          if (!items || !items.length) return '<p class="evidence-empty">No project images have been added yet.</p>';
-          return '<div class="media-grid">' + items.map((item) => (
-            '<figure><a href="' + normalizeLinkTarget(item.url, { assumeWeb: isWebsiteLinkItem(item, item.url) }) + '"' + linkAttributes(item.url, item) + '><img src="' + normalizeLinkTarget(item.url, { assumeWeb: isWebsiteLinkItem(item, item.url) }) + '" alt="' + item.title + '"></a><figcaption><strong>' + item.title + '</strong><span>' + (item.caption || "") + '</span></figcaption></figure>'
-          )).join("") + '</div>';
-        }
-
-        function customSectionBlocks(project) {
-          return (project.sections || []).map((section) => detailBlock(section.title, "evidence-block evidence-wide",
-            (section.description ? '<p class="evidence-empty">' + section.description + '</p>' : "") +
-            evidenceList(section.items || [], (item) => '<li>' +
-              (item.url ? resourceLink(item, item.title) : '<strong>' + item.title + '</strong>') +
-              '<span>' + (item.type || "Section item") + ' &middot; ' + (item.status || "tracked") + '</span>' +
-              (item.description ? '<p>' + item.description + '</p>' : "") +
-            '</li>', "No content has been added yet.")
-          )).join("");
-        }
-
-        function projectCard(project) {
-          if (project.portfolioView) return parsedProjectCard(project);
-          const category = categories.find((item) => item.id === project.category) || {};
-          const accent = category.accent || "#117c7a";
-          return '<article class="project-card catalog-card" id="' + project.id + '" style="--accent: ' + accent + '">' +
-            '<div class="project-body">' +
-            '<h3>' + project.title + '</h3><p>' + (project.summary || "") + '</p>' +
-            ((project.highlights && project.highlights.length) ? detailBlock("Project highlights", "project-drawer", '<ul class="highlight-list">' + project.highlights.map((item) => '<li>' + (typeof item === "string" ? item : item.title || item.name || item.label || "") + '</li>').join("") + '</ul>') : "") +
-            '<div class="evidence-grid" aria-label="' + project.title + ' evidence blocks">' +
-            detailBlock("Documents", "evidence-block", evidenceList(project.documents, (item) => '<li>' + resourceLink(item, item.title) + '<span>' + (item.type || "Document") + ' &middot; ' + (item.status || "tracked") + '</span></li>', "No document artifact has been added yet.")) +
-            detailBlock("Tests and results", "evidence-block", evidenceList(project.tests, (item) => '<li>' + resourceLink({ url: item.artifact, status: item.status }, item.name) + '<span>' + (item.method || "Validation") + ' &middot; ' + (item.status || "tracked") + '</span>' + (item.result ? '<p>' + item.result + '</p>' : "") + '</li>', "No test artifact has been added yet.")) +
-            detailBlock("PCBs built", "evidence-block", evidenceList(project.pcbs, (item) => '<li>' + resourceLink({ url: item.artifact, status: item.status }, item.name) + '<span>' + (item.revision || "Revision") + ' &middot; ' + (item.status || "tracked") + '</span></li>', "No PCB build has been added yet.")) +
-            detailBlock("Images", "evidence-block evidence-wide", mediaGrid(project.media)) + customSectionBlocks(project) + '</div>' +
-            detailBlock("Tools and implementation files", "project-drawer", '<div class="project-tooling"><div><h4>Tools Used</h4><div class="project-meta">' + pillList(project.tools, "tool-tag") + '</div></div><div><h4>Languages</h4><div class="project-meta">' + pillList(project.languages, "language-tag") + '</div></div></div>') +
-            '<div class="resource-list">' + (project.links || []).map((item) => resourceLink(item)).join("") + '</div></div></article>';
-        }
-
-        function parsedProjectResource(item) {
-          if (item.kind === "image" && item.url) {
-            return '<figure><a href="' + normalizeLinkTarget(item.url, { assumeWeb: isWebsiteLinkItem(item, item.url) }) + '"' + linkAttributes(item.url, item) + '><img src="' + normalizeLinkTarget(item.url, { assumeWeb: isWebsiteLinkItem(item, item.url) }) + '" alt="' + item.title + '"></a><figcaption><strong>' + item.title + '</strong>' + (item.description ? '<span>' + item.description + '</span>' : "") + '</figcaption></figure>';
-          }
-          return '<li>' +
-            (item.url ? resourceLink({ url: item.url, status: "uploaded" }, item.title) : '<strong>' + item.title + '</strong>') +
-            (item.meta ? '<span>' + item.meta + '</span>' : "") +
-            (item.description ? '<p>' + item.description + '</p>' : "") +
-          '</li>';
-        }
-
-        function parsedBriefBlock(section, fallbackSummary) {
-          const briefItem = section && section.items ? section.items[0] || {} : {};
-          const briefText = briefItem.description || fallbackSummary || "";
-          return '<div class="project-brief-default"><h4>Overview</h4>' +
-            (briefText ? '<p>' + briefText + '</p>' : '<p class="evidence-empty">No project overview has been added yet.</p>') +
-            '</div>';
-        }
-
-        function parsedProjectSection(section) {
-          const hasImages = (section.items || []).some((item) => item.kind === "image");
-          const content = (section.description ? '<p class="evidence-empty">' + section.description + '</p>' : "") +
-            ((section.items || []).length
-              ? (hasImages
-                ? '<div class="media-grid">' + section.items.map(parsedProjectResource).join("") + '</div>'
-                : '<ul>' + section.items.map(parsedProjectResource).join("") + '</ul>')
-              : '<p class="evidence-empty">No content has been added yet.</p>');
-          return detailBlock(section.title, 'evidence-block ' + (hasImages ? 'evidence-wide' : ''), content);
-        }
-
-        function parsedProjectCard(project) {
-          const category = categories.find((item) => item.id === project.category) || {};
-          const accent = category.accent || "#117c7a";
-          const view = project.portfolioView || {};
-          const sections = view.sections || [];
-          const briefSection = sections.find((section) => section.id === "brief");
-          const otherSections = sections.filter((section) => section.id !== "brief");
-          return '<article class="project-card catalog-card" id="' + project.id + '" style="--accent: ' + accent + '">' +
-            '<div class="project-body">' +
-            '<h3>' + (view.title || project.title) + '</h3>' + parsedBriefBlock(briefSection, project.summary || "") +
-            '<div class="evidence-grid" aria-label="' + project.title + ' parsed project content">' +
-            otherSections.map(parsedProjectSection).join("") +
-            '</div></div></article>';
-        }
-
-        function categorySection(category, visibleProjects) {
-          return '<section class="category-section ' + (visibleProjects.length ? "" : "empty-category-section") + '" aria-labelledby="' + category.id + '-title">' +
-            '<div class="category-heading"><div><h3 id="' + category.id + '-title">' + category.label + '</h3></div>' +
-            (visibleProjects.length ? '<span>' + visibleProjects.length + ' project' + (visibleProjects.length === 1 ? "" : "s") + '</span>' : "") + '</div>' +
-            (visibleProjects.length ? '<p class="category-description">' + category.description + '</p>' : "") +
-            '<div class="category-projects">' + visibleProjects.map(projectCard).join("") + '</div></section>';
-        }
-
-        function renderProjects() {
-          const query = normalize(searchInput.value).trim();
-          if (!projects.length) {
-            grid.innerHTML = '<div class="empty-state"><h3>No parsed projects saved yet.</h3><p>Open a project, edit it, then click Save to build it into this portfolio preview.</p></div>';
-            return;
-          }
-          const visible = projects.filter((project) => {
-            const categoryMatch = activeFilter === "all" || project.category === activeFilter;
-            return categoryMatch && (!query || flattenProject(project).includes(query));
-          });
-          if (!visible.length) {
-            grid.innerHTML = '<div class="empty-state"><h3>No projects match that view.</h3><p>Search covers categories, project names, documents, tests, PCB builds, tools, languages, and links.</p></div>';
-            return;
-          }
-          grid.innerHTML = categories.map((category) => {
-            const visibleProjects = visible.filter((project) => project.category === category.id);
-            const shouldShowEmptyCategory = !query && (activeFilter === "all" || activeFilter === category.id);
-            return visibleProjects.length || shouldShowEmptyCategory ? categorySection(category, visibleProjects) : "";
-          }).join("");
-        }
-
-        filterButtons.forEach((button) => {
-          button.addEventListener("click", () => {
-            activeFilter = button.dataset.filter;
-            filterButtons.forEach((item) => item.classList.toggle("active", item === button));
-            renderProjects();
-          });
-        });
-
-        searchInput.addEventListener("input", renderProjects);
-
-        document.addEventListener("click", (event) => {
-          const link = event.target.closest('a[href^="#"]');
-          if (!link) return;
-          const target = document.querySelector(link.getAttribute("href"));
-          if (!target) return;
-          event.preventDefault();
-          target.scrollIntoView({ behavior: "smooth", block: "start" });
-          try {
-            history.replaceState(null, "", link.getAttribute("href"));
-          } catch {
-            // The iframe may be sandboxed by some browsers; scrolling is the important behavior.
-          }
-        });
-      })();
-    </script>
-  </body>
-</html>`;
+  return fullPortfolioPreviewHtmlExact();
 }
 
 function fullPortfolioPreviewHtmlExact() {
-  const yearValue = new Date().getFullYear();
   const baseHref = `${window.location.origin}/`;
   const siteContent = normalizeSiteContent(catalog.siteContent || savedPortfolioCatalog.siteContent || {});
+  const profile = normalizeProfile(catalog.profile || savedPortfolioCatalog.profile || {});
+  const ownerName = profile.displayName || "Portfolio";
+  const portfolioLabel = profile.portfolioLabel || "Portfolio";
   const previewData = JSON.stringify({
     categories: savedPortfolioCatalog.categories || [],
     funFacts: normalizeFunFacts(catalog.funFacts || savedPortfolioCatalog.funFacts || []),
     funFactsRich: catalog.funFactsRich || savedPortfolioCatalog.funFactsRich || null,
+    profile,
     projects: savedPortfolioCatalog.projects || [],
     siteContent,
     siteSections: savedPortfolioCatalog.siteSections || []
@@ -5292,22 +4932,22 @@ function fullPortfolioPreviewHtmlExact() {
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <base href="${baseHref}" />
-    <meta name="description" content="Maurice Otieno's hardware engineering portfolio featuring analog and mixed-signal design, digital hardware, embedded systems, ASIC work, schematics, tests, PCBs, tools, and source code." />
+    <meta name="description" content="A portfolio website built with OMB Portfolio Builder for projects, documents, diagrams, source code, tests, links, and profile information." />
     <meta name="robots" content="index, follow" />
-    <meta name="author" content="Maurice Otieno" />
-    <title>Maurice Otieno | Hardware Engineering Portfolio</title>
+    <meta name="author" content="${escapeHtml(ownerName)}" />
+    <title>${escapeHtml(ownerName)} | ${escapeHtml(portfolioLabel)}</title>
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
     <header class="site-header" id="top">
       <a class="brand" href="#top" aria-label="Go to top">
         <span class="brand-lockup" aria-hidden="true">
-          <img class="brand-icon" src="assets/omb-mark.png" alt="" />
-          <span class="omb-engraving">OMB</span>
+          <img class="brand-icon" alt="" hidden />
+          <span class="omb-engraving">${escapeHtml(profile.brandText || "Portfolio")}</span>
         </span>
         <span>
-          <strong>Maurice Otieno</strong>
-          <small>Hardware Engineering Portfolio</small>
+          <strong>${escapeHtml(ownerName)}</strong>
+          <small>${escapeHtml(portfolioLabel)}</small>
         </span>
       </a>
 
@@ -5319,15 +4959,15 @@ function fullPortfolioPreviewHtmlExact() {
           <a href="#process">Process</a>
           <a href="#contact">Contact</a>
         </nav>
-        <a class="header-avatar" href="#contact" aria-label="Go to Maurice Otieno contact information">
-          <img src="assets/maurice-otieno-profile.png" alt="Maurice Otieno" />
+        <a class="header-avatar" href="#contact" aria-label="Go to contact information" hidden>
+          <img alt="" />
         </a>
       </div>
     </header>
 
     <main>
       <section class="hero" aria-labelledby="hero-title">
-        <img class="hero-image" src="assets/hero-analog-lab.png" alt="Light blue analog engineering bench with transistor-level op amp topology, AC-to-DC charger circuit, bench instruments, MCU, FPGA, ASIC, and EDA tool labels" />
+        <img class="hero-image" alt="" hidden />
         <div class="hero-shade" aria-hidden="true"></div>
         <div class="hero-content">
           <p class="eyebrow">${escapeHtml(siteContent.heroEyebrow)}</p>
@@ -5335,8 +4975,8 @@ function fullPortfolioPreviewHtmlExact() {
           <p class="hero-copy">${renderPlainMultiline(siteContent.heroCopy)}</p>
           <div class="hero-actions">
             <a class="button primary" href="#projects">View projects</a>
-            <a class="button secondary" href="#resume">View resume</a>
-            <a class="button secondary" href="https://github.com/otienomaurice" target="_blank" rel="noreferrer">GitHub profile</a>
+            <a class="button secondary" href="#resume" hidden>View resume</a>
+            <a class="button secondary" href="#" target="_blank" rel="noreferrer" hidden>GitHub profile</a>
             <a class="ai-jump-link" href="#ask-ai" aria-label="Jump to the portfolio AI assistant">
               <svg viewBox="0 0 24 24" aria-hidden="true">
                 <path d="M12 3v3m-5 7H4m16 0h-3M7.5 7.5 5.4 5.4m11.1 2.1 2.1-2.1M8 10h8v7a2 2 0 0 1-2 2h-4a2 2 0 0 1-2-2z" />
@@ -5387,23 +5027,23 @@ function fullPortfolioPreviewHtmlExact() {
         <div class="project-grid" id="project-grid" aria-live="polite"></div>
       </section>
 
-      <section class="section resume-section" id="resume" aria-labelledby="resume-title">
+      <section class="section resume-section" id="resume" aria-labelledby="resume-title" hidden>
         <div class="section-heading">
           <div>
             <p class="eyebrow">Professional profile</p>
             <h2 id="resume-title">Resume</h2>
           </div>
           <div class="resume-actions">
-            <a class="button primary" href="assets/resume.pdf" target="_blank" rel="noreferrer">Open PDF</a>
-            <a class="button secondary" href="assets/resume.pdf" download>Download</a>
+            <a class="button primary" href="#" target="_blank" rel="noreferrer">Open PDF</a>
+            <a class="button secondary" href="#" download>Download</a>
           </div>
         </div>
 
         <div class="resume-viewer">
-          <object data="assets/resume.pdf" type="application/pdf">
+          <object data="" type="application/pdf">
             <p>
-              View Maurice Otieno's resume as a PDF:
-              <a href="assets/resume.pdf" target="_blank" rel="noreferrer">open resume</a>.
+              View the resume as a PDF:
+              <a href="#" target="_blank" rel="noreferrer">open resume</a>.
             </p>
           </object>
         </div>
@@ -5437,26 +5077,16 @@ function fullPortfolioPreviewHtmlExact() {
         </div>
       </section>
 
-      <section class="contact-band" id="contact" aria-labelledby="contact-title">
-        <img class="profile-photo" src="assets/maurice-otieno-profile.png" alt="Portrait of Maurice Otieno" />
+      <section class="contact-band" id="contact" aria-labelledby="contact-title" hidden>
+        <img class="profile-photo" alt="" hidden />
         <div class="contact-content">
           <div>
             <p class="eyebrow">Contact</p>
-            <h2 id="contact-title">Maurice Otieno</h2>
-            <p class="contact-intro">
-              Hardware and software engineer focused on analog design, mixed-signal systems, embedded platforms, and digital hardware.
-            </p>
-            <div class="contact-details">
-              <a href="https://mail.google.com/mail/?view=cm&fs=1&to=otienomaurice12340@gmail.com" target="_blank" rel="noreferrer">otienomaurice12340@gmail.com</a>
-              <a href="tel:+14845451567">+1 (484) 545-1567</a>
-            </div>
+            <h2 id="contact-title">${escapeHtml(ownerName)}</h2>
+            <p class="contact-intro">Add contact details in the builder.</p>
+            <div class="contact-details"></div>
           </div>
-          <div class="contact-links">
-            <a href="https://mail.google.com/mail/?view=cm&fs=1&to=otienomaurice12340@gmail.com" target="_blank" rel="noreferrer">Email</a>
-            <a href="tel:+14845451567">Call</a>
-            <a href="https://github.com/otienomaurice" target="_blank" rel="noreferrer">GitHub</a>
-            <a href="assets/resume.pdf" target="_blank" rel="noreferrer">Resume</a>
-          </div>
+          <div class="contact-links"></div>
         </div>
         <div class="ai-assistant-panel" id="ask-ai" aria-labelledby="ai-assistant-title">
           <div class="ai-assistant-console" aria-label="AI portfolio assistant">
@@ -5465,7 +5095,7 @@ function fullPortfolioPreviewHtmlExact() {
             <div class="ai-assistant-log" id="ai-assistant-log" aria-live="polite" aria-label="AI chat messages"></div>
             <form class="ai-assistant-form" id="ai-assistant-form">
               <label class="sr-only" for="ai-assistant-input">Ask the portfolio assistant</label>
-              <input id="ai-assistant-input" type="text" autocomplete="off" placeholder="Ask about projects, tests, resume links, op amps, STM32..." />
+              <input id="ai-assistant-input" type="text" autocomplete="off" placeholder="Ask about projects, files, links, tools, or engineering concepts..." />
               <button type="submit">Ask</button>
             </form>
             <button class="ai-clear-chat" id="ai-clear-chat" type="button">Clear chat</button>
@@ -5475,7 +5105,7 @@ function fullPortfolioPreviewHtmlExact() {
     </main>
 
     <footer class="site-footer">
-      <span>&copy; <span id="year">${yearValue}</span> Maurice Otieno</span>
+      <span>&copy; <span id="year">${new Date().getFullYear()}</span> ${escapeHtml(ownerName)}</span>
       <a href="#top">Back to top</a>
     </footer>
 
@@ -5506,6 +5136,7 @@ function renderAll() {
   }
   renderFunFactsEditor();
   renderSiteContentEditor();
+  renderProfileEditor();
   renderSiteSectionList();
   renderTree();
   renderFields(project);
@@ -5711,6 +5342,52 @@ function readFileAsDataUrl(file) {
     reader.onerror = reject;
     reader.readAsDataURL(file);
   });
+}
+
+async function uploadProfileAsset(kind) {
+  const profile = syncProfileFromInputs();
+  const file = await chooseFile();
+  if (!file) return;
+
+  const imageKinds = new Set(["profileImage", "heroImage", "brandImage"]);
+  if (imageKinds.has(kind) && !file.type.startsWith("image/")) {
+    setStatus("Choose an image file for this profile asset.");
+    return;
+  }
+
+  if (kind === "resumeUrl") {
+    const allowedResume = [".pdf", ".doc", ".docx"].includes(extensionFor(file.name).toLowerCase());
+    if (!allowedResume) {
+      setStatus("Choose a PDF, DOC, or DOCX resume file.");
+      return;
+    }
+  }
+
+  const data = await readFileAsDataUrl(file);
+  const response = await fetch(`/api/upload?t=${Date.now()}`, {
+    method: "POST",
+    cache: "no-store",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      projectId: "_site-profile",
+      section: kind,
+      fileName: file.name,
+      data
+    })
+  });
+  const result = await response.json();
+  if (!response.ok) {
+    setStatus(result.error || "Profile asset upload failed.");
+    return;
+  }
+
+  profile[kind] = result.url;
+  catalog.profile = normalizeProfile(profile);
+  markDraftNeedsSave();
+  setStatus("Profile asset saved locally. Click Save draft before applying to site.");
+  scheduleAutosave();
+  schedulePreviewRender();
+  renderProfileEditor();
 }
 
 function extensionFor(fileName) {
@@ -6045,11 +5722,13 @@ function editCustomItem(sectionId, index) {
 function catalogForSave(endpoint) {
   if (funFactsInput) syncFunFactsFromInput();
   if (siteHeroTitleInput || siteHeroCopyInput || siteHeroEyebrowInput) syncSiteContentFromInputs();
+  if (profileDisplayNameInput || profileEmailInput || profilePhoneInput) syncProfileFromInputs();
   if (endpoint === "/api/apply-catalog") {
     return {
       ...savedPortfolioCatalog,
       funFacts: normalizeFunFacts(catalog.funFacts || savedPortfolioCatalog.funFacts || []),
       funFactsRich: clone(catalog.funFactsRich || savedPortfolioCatalog.funFactsRich || null),
+      profile: clone(normalizeProfile(catalog.profile || savedPortfolioCatalog.profile || {})),
       siteContent: clone(normalizeSiteContent(catalog.siteContent || savedPortfolioCatalog.siteContent || {})),
       siteSections: (catalog.siteSections || []).filter(siteSectionRenderable).map(clone)
     };
@@ -6126,6 +5805,7 @@ async function loadData() {
     ? normalizeFunFacts(catalog.funFacts)
     : clone(defaultFunFacts);
   catalog.funFactsRich = catalog.funFactsRich || null;
+  catalog.profile = normalizeProfile(catalog.profile || {});
   catalog.siteContent = normalizeSiteContent(catalog.siteContent || {});
   catalog.siteSections = catalog.siteSections || [];
   catalog.projects = (catalog.projects || []).filter((project) => !starterProjectIds.has(project.id));
@@ -6136,6 +5816,7 @@ async function loadData() {
     categories: clone(catalog.categories || []),
     funFacts: clone(catalog.funFacts || []),
     funFactsRich: clone(catalog.funFactsRich || null),
+    profile: clone(normalizeProfile(catalog.profile || {})),
     siteContent: clone(catalog.siteContent || defaultSiteContent),
     projects: [],
     siteSections: clone(catalog.siteSections || [])
@@ -6249,6 +5930,7 @@ publishTargetCancel?.addEventListener("click", () => {
   publishTargetDialog.close();
 });
 publishTargetForm?.addEventListener("submit", savePublishTarget);
+publishTargetSync?.addEventListener("click", syncFromPublishTarget);
 publishTargetRepository?.addEventListener("input", () => {
   const loadedRepository = publishTargetRepository.dataset.loadedValue || currentPublishTarget?.remote || "";
   if (publishTargetRepository.value.trim() !== loadedRepository.trim() && publishTargetDomain?.dataset.autofilled === "true") {
@@ -6306,6 +5988,36 @@ saveSiteContentButton?.addEventListener("click", () => {
   scheduleAutosave(100);
   schedulePreviewRender();
 });
+
+[
+  profileDisplayNameInput,
+  profilePortfolioLabelInput,
+  profileContactIntroInput,
+  profileEmailInput,
+  profilePhoneInput,
+  profileGithubInput,
+  profileLinkedinInput,
+  profileWebsiteInput
+].filter(Boolean).forEach((input) => {
+  input.addEventListener("input", () => {
+    syncProfileFromInputs();
+    setStatus("Profile and contact details updated locally. Click Save draft before applying to site.");
+    scheduleAutosave();
+    schedulePreviewRender();
+  });
+});
+
+saveProfileContentButton?.addEventListener("click", () => {
+  syncProfileFromInputs();
+  setStatus("Profile and contact details saved locally. Click Save draft before applying to site.");
+  scheduleAutosave(100);
+  schedulePreviewRender();
+});
+
+profileImageUploadButton?.addEventListener("click", () => uploadProfileAsset("profileImage"));
+profileHeroUploadButton?.addEventListener("click", () => uploadProfileAsset("heroImage"));
+profileResumeUploadButton?.addEventListener("click", () => uploadProfileAsset("resumeUrl"));
+profileBrandUploadButton?.addEventListener("click", () => uploadProfileAsset("brandImage"));
 
 siteSectionList.addEventListener("click", (event) => {
   const toggleButton = event.target.closest("[data-site-section-toggle]");

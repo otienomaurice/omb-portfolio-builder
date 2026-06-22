@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="robots" content="noindex, nofollow" />
-    <title>Local Portfolio Builder | Maurice Otieno</title>
+    <title>Local Portfolio Builder</title>
     <link rel="icon" type="image/png" sizes="16x16" href="assets/favicon-16.png" />
     <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon-32.png" />
     <link rel="icon" type="image/png" sizes="192x192" href="assets/favicon-192.png" />
@@ -62,6 +62,54 @@
                           <textarea id="site-hero-copy" rows="4" placeholder="Short opening statement shown on the front page."></textarea>
                       </label>
                   </div>
+              </div>
+
+              <div class="builder-panel site-section-panel">
+                  <div class="panel-title-row">
+                      <h2>Profile and contact</h2>
+                      <button class="button secondary compact-button" id="save-profile-content" type="button">Save</button>
+                  </div>
+                  <div class="front-page-text-fields profile-setup-fields">
+                      <label>
+                          <span>Name or brand</span>
+                          <input id="profile-display-name" type="text" placeholder="Your name" />
+                      </label>
+                      <label>
+                          <span>Portfolio label</span>
+                          <input id="profile-portfolio-label" type="text" placeholder="Engineering Portfolio" />
+                      </label>
+                      <label>
+                          <span>Contact intro</span>
+                          <textarea id="profile-contact-intro" rows="3" placeholder="Short professional contact description."></textarea>
+                      </label>
+                      <label>
+                          <span>Email</span>
+                          <input id="profile-email" type="email" placeholder="name@example.com" />
+                      </label>
+                      <label>
+                          <span>Phone</span>
+                          <input id="profile-phone" type="tel" placeholder="+1..." />
+                      </label>
+                      <label>
+                          <span>GitHub URL</span>
+                          <input id="profile-github" type="text" placeholder="https://github.com/username" />
+                      </label>
+                      <label>
+                          <span>LinkedIn URL</span>
+                          <input id="profile-linkedin" type="text" placeholder="https://linkedin.com/in/username" />
+                      </label>
+                      <label>
+                          <span>Website URL</span>
+                          <input id="profile-website" type="text" placeholder="https://example.com" />
+                      </label>
+                  </div>
+                  <div class="profile-asset-actions">
+                      <button class="button secondary compact-button" id="profile-image-upload" type="button">Profile photo</button>
+                      <button class="button secondary compact-button" id="profile-hero-upload" type="button">Main background</button>
+                      <button class="button secondary compact-button" id="profile-resume-upload" type="button">Resume</button>
+                      <button class="button secondary compact-button" id="profile-brand-upload" type="button">Brand icon</button>
+                  </div>
+                  <div class="profile-asset-status" id="profile-asset-status"></div>
               </div>
 
               <div class="builder-panel site-section-panel">
@@ -335,10 +383,11 @@
                   <input id="publish-target-password" type="password" autocomplete="off" placeholder="GitHub personal access token or credential password" />
               </label>
               <p class="publish-target-note">
-                  The app can publish to Maurice Otieno's website only when the signed-in GitHub account has write access. Other users may connect their own compatible GitHub Pages repository and publish there after GitHub authorization succeeds. GitHub account passwords are usually rejected for Git pushes; use a personal access token or Git Credential Manager password/token when needed.
+                  The app can publish to a live website only when the signed-in GitHub account has write access to the selected repository. You may connect a compatible GitHub Pages repository, optionally add a custom domain, and publish after GitHub authorization succeeds. GitHub account passwords are usually rejected for Git pushes; use a personal access token or Git Credential Manager password/token when needed.
               </p>
               <div class="dialog-actions">
                   <button class="button primary" type="submit">Save target</button>
+                  <button class="button secondary" id="publish-target-sync" type="button">Load from target</button>
                   <button class="button secondary" id="publish-target-cancel" type="button">Cancel</button>
               </div>
           </form>

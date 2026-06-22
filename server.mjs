@@ -1,6 +1,6 @@
 import { createServer } from "node:http";
 import { execFile, spawn } from "node:child_process";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
@@ -32,11 +32,11 @@ const types = {
 
 const draftPath = path.join(root, "projects.local.json");
 const catalogPath = path.join(root, "projects.json");
-const defaultSiteRepository = process.env.OMB_BUILDER_REPOSITORY || "https://github.com/otienomaurice/otienomaurice.github.io.git";
+const defaultSiteRepository = process.env.OMB_BUILDER_REPOSITORY || "";
 const publishAuthorizationHelp = [
   "Publishing was blocked before live website files were applied.",
   "Sign in to GitHub with an account that has write access to the selected Pages repository, then try Apply to site again.",
-  "If this is not Maurice Otieno's website, associate the builder workspace with your own GitHub Pages repository or compatible static website repository.",
+  "Associate the builder workspace with your GitHub Pages repository or compatible static website repository.",
   "For a custom domain, add or update the repository CNAME file after the repository is associated.",
   "Until a compatible writable website repository is associated, the builder remains local-only."
 ].join(" ");
@@ -50,25 +50,25 @@ const gitCandidates = [
 ].filter(Boolean);
 
 const portfolioAiInstructions = [
-  "You are the AI assistant for Maurice Otieno's electrical and computer engineering portfolio.",
-  "Behave like a careful senior electrical and computer engineering mentor who can also navigate Maurice's portfolio.",
+  "You are the AI assistant for the portfolio website described by the supplied portfolio context.",
+  "Behave like a careful senior electrical and computer engineering mentor who can also navigate the saved portfolio.",
   "Answer the visitor's question first in a concise ChatGPT-like format, then add portfolio links or context only when they help.",
   "Use the supplied question intent to decide whether this is a general engineering question or a portfolio-specific question.",
   "For general_conversation intent, respond naturally and briefly. Use the recent conversation instead of a fixed template. If the visitor says hi, a good answer is a short greeting such as: Hi, what can I do for you?",
-  "If the visitor asks 'what is my name?' or 'who am I?' and they have not identified themselves, do not pretend to know the visitor. Say you are an AI agent for Maurice Otieno's portfolio and that the portfolio owner is Maurice Otieno.",
-  "For general_knowledge intent, answer the question directly using broad general knowledge. Do not force portfolio context unless the visitor asks to connect the answer to Maurice's work.",
-  "For general_engineering intent, begin with the general electronics or engineering explanation. Do not lead with Maurice's project context unless the visitor asks to connect it.",
-  "For portfolio_specific intent, answer from Maurice's portfolio context first, then explain related engineering concepts only when useful.",
+  "If the visitor asks 'what is my name?' or 'who am I?' and they have not identified themselves, do not pretend to know the visitor. Say you are an AI agent for this portfolio and identify the portfolio owner only if the supplied profile context includes a name.",
+  "For general_knowledge intent, answer the question directly using broad general knowledge. Do not force portfolio context unless the visitor asks to connect the answer to the portfolio owner's work.",
+  "For general_engineering intent, begin with the general electronics or engineering explanation. Do not lead with project context unless the visitor asks to connect it.",
+  "For portfolio_specific intent, answer from the portfolio context first, then explain related engineering concepts only when useful.",
   "Use recent conversation history for follow-up questions, pronouns, comparisons, and corrections.",
-  "Use the supplied portfolio context as the trusted source for Maurice's projects, links, files, resume, and contact information.",
+  "Use the supplied portfolio context as the trusted source for the portfolio owner's projects, links, files, resume, and contact information.",
   "Use sourceExcerpts when present as higher-detail evidence from uploaded text files, extracted resume text, same-site files, GitHub pages, or other safe public sources.",
   "Use knowledgeManifest to understand project files, image evidence, public profiles, resumes, and project areas. Treat filenames, captions, surrounding text, and descriptions as evidence.",
   "Do not claim to visually inspect an image unless actual image analysis is provided. If only image metadata is supplied, say what the caption/path/context suggests.",
   "For GitHub, LinkedIn, resume, or uploaded-file questions, cite what is present in the supplied context or fetched excerpts and then point to the link when useful. Access public pages and fetched excerpts when the website allows it.",
   "When a visitor asks for source code, use public GitHub source excerpts when provided. Show concise relevant snippets with file paths, and explain what the code is doing. Do not imply private repository access.",
   "If sourceExcerpts include lines labeled Source file, include at least one fenced code block with the file path immediately before it, unless the visitor explicitly asks for links only.",
-  "Never invent, infer, or write hypothetical code for Maurice's repositories. Every fenced code block about Maurice's work must be copied from a fetched Source file excerpt. If no source file excerpt is available, say that the code was not available in the fetched public sources and give the repository link instead.",
-  "For questions about Maurice's public GitHub repositories, prefer fetched public GitHub source excerpts over portfolio summaries or project descriptions. You may fetch and display concise code from public GitHub URLs supplied in the portfolio context or safe source fetches, but never imply access to private repositories.",
+  "Never invent, infer, or write hypothetical code for the portfolio owner's repositories. Every fenced code block about repository work must be copied from a fetched Source file excerpt. If no source file excerpt is available, say that the code was not available in the fetched public sources and give the repository link instead.",
+  "For questions about public GitHub repositories, prefer fetched public GitHub source excerpts over portfolio summaries or project descriptions. You may fetch and display concise code from public GitHub URLs supplied in the portfolio context or safe source fetches, but never imply access to private repositories.",
   "You may answer related electronics, hardware, analog, mixed-signal, digital, embedded, FPGA, ASIC, PCB, and firmware questions even when the answer is broader than the saved portfolio.",
   "Do not invent portfolio projects, credentials, employers, files, or test results that are not in the context.",
   "If context is missing, say what is missing and answer generally only for the engineering concept.",
@@ -120,8 +120,6 @@ function sourceUrlAllowed(url) {
     return [
       "localhost",
       "127.0.0.1",
-      "mauriceotieno.com",
-      "www.mauriceotieno.com",
       "github.com",
       "api.github.com",
       "raw.githubusercontent.com",
@@ -140,7 +138,7 @@ const githubSkipFilePattern = /\.(png|jpe?g|gif|webp|svg|pdf|zip|7z|rar|exe|dll|
 function gitHubHeaders(accept = "application/vnd.github+json") {
   return {
     "Accept": accept,
-    "User-Agent": "Maurice-Otieno-Portfolio-AI"
+    "User-Agent": "OMB-Portfolio-Builder-AI"
   };
 }
 
@@ -381,7 +379,7 @@ async function readLocalSourceText(url) {
   } catch {
     return "";
   }
-  const localHosts = new Set(["localhost", "127.0.0.1", "mauriceotieno.com", "www.mauriceotieno.com"]);
+  const localHosts = new Set(["localhost", "127.0.0.1"]);
   if (!localHosts.has(parsed.hostname.toLowerCase())) return "";
   const pathname = decodeURIComponent(parsed.pathname.replace(/^\/+/, ""));
   if (!pathname || pathname.includes("..")) return "";
@@ -475,14 +473,14 @@ function extractOpenAiText(data) {
 function ruleBasedConversationAnswer(question = "") {
   const clean = String(question || "").toLowerCase();
   if (/\b(thanks|thank you|appreciate it)\b/.test(clean)) {
-    return "You're welcome. I can keep helping with Maurice's portfolio, project evidence, resume links, or related electronics and embedded-systems questions.";
+    return "You're welcome. I can keep helping with this portfolio, project evidence, resume links, or related electronics and embedded-systems questions.";
   }
 
   if (/\b(who are you|what are you)\b/.test(clean)) {
-    return "I am Maurice Otieno's portfolio assistant. I can help visitors explore his engineering work, explain project details, summarize portfolio evidence, and answer related electronics, embedded, analog, digital, FPGA, ASIC, PCB, and firmware questions.";
+    return "I am this portfolio's assistant. I can help visitors explore the saved engineering work, explain project details, summarize portfolio evidence, and answer related electronics, embedded, analog, digital, FPGA, ASIC, PCB, and firmware questions.";
   }
 
-  return "Hi. I can help you explore Maurice Otieno's portfolio, explain his projects, summarize project evidence, open relevant sections, or answer related electronics and embedded-systems questions. You can ask about a specific project, a tool like KiCad or STM32CubeIDE, or a general topic such as embedded systems, op amps, FPGA design, ASICs, or PCB testing.";
+  return "Hi. I can help you explore this portfolio, explain projects, summarize project evidence, open relevant sections, or answer related electronics and embedded-systems questions. You can ask about a specific project, a tool like KiCad or STM32CubeIDE, or a general topic such as embedded systems, op amps, FPGA design, ASICs, or PCB testing.";
 }
 
 function isLocalRequest(request) {
@@ -674,6 +672,30 @@ async function runGit(args) {
     }
   }
   throw lastError || new Error("Git executable was not found.");
+}
+
+async function publishPathIsStageable(relativePath) {
+  try {
+    await access(resolveInsideRoot(relativePath));
+    return true;
+  } catch {
+    // Missing files can still be stageable if Git already tracks them and they were deleted.
+  }
+
+  try {
+    await runGit(["ls-files", "--error-unmatch", "--", relativePath]);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function stageablePublishPaths(pathsToCheck) {
+  const stageable = [];
+  for (const relativePath of pathsToCheck) {
+    if (await publishPathIsStageable(relativePath)) stageable.push(relativePath);
+  }
+  return stageable;
 }
 
 async function runGitWithInput(args, input) {
@@ -884,6 +906,47 @@ async function assertPublishAccess() {
   };
 }
 
+async function syncFromPublishTarget() {
+  const access = await assertPublishAccess();
+  const branch = access.branch || "main";
+  await runGit(["fetch", "origin", branch]);
+  const sourceRef = `origin/${branch}`;
+  const importPaths = [
+    "projects.json",
+    "assets",
+    "docs",
+    "Backgrounds",
+    "CNAME",
+    ".nojekyll",
+    "robots.txt",
+    "sitemap.xml"
+  ];
+  const availablePaths = [];
+
+  for (const importPath of importPaths) {
+    try {
+      await runGit(["cat-file", "-e", `${sourceRef}:${importPath}`]);
+      availablePaths.push(importPath);
+    } catch {
+      // Optional path is absent in the selected site repository.
+    }
+  }
+
+  if (!availablePaths.includes("projects.json")) {
+    throw publishAccessError(
+      "The selected repository does not contain a projects.json portfolio catalog.",
+      "The target repository must contain a compatible OMB Portfolio Builder catalog before it can be imported.",
+      access
+    );
+  }
+
+  await runGit(["checkout", sourceRef, "--", ...availablePaths]);
+  return {
+    ...access,
+    imported: availablePaths
+  };
+}
+
 async function publishSiteChanges(publishAccess = null) {
   const access = publishAccess || await assertPublishAccess();
   const publishPaths = [
@@ -893,11 +956,20 @@ async function publishSiteChanges(publishAccess = null) {
     "index.html",
     "styles.css",
     "script.js",
-    "electronics-search.js"
+    "electronics-search.js",
+    "Backgrounds",
+    ".nojekyll",
+    "robots.txt",
+    "CNAME"
   ];
 
-  await runGit(["add", "--", ...publishPaths]);
-  const status = await runGit(["status", "--porcelain", "--", ...publishPaths]);
+  const stageablePaths = await stageablePublishPaths(publishPaths);
+  if (!stageablePaths.length) {
+    throw new Error("No compatible site files were available to publish.");
+  }
+
+  await runGit(["add", "-A", "--", ...stageablePaths]);
+  const status = await runGit(["status", "--porcelain", "--", ...stageablePaths]);
   const hasChanges = status.stdout.trim().length > 0;
 
   let commit = null;
@@ -1056,6 +1128,21 @@ async function handleApi(request, response, url) {
       sendJson(response, 200, { ok: true, target });
     } catch (error) {
       sendJson(response, 400, { ok: false, error: error.message || "Publishing target could not be updated." });
+    }
+    return true;
+  }
+
+  if (url.pathname === "/api/sync-from-publish-target") {
+    try {
+      const sync = await syncFromPublishTarget();
+      sendJson(response, 200, { ok: true, sync, target: await getPublishTargetInfo() });
+    } catch (error) {
+      sendJson(response, 400, {
+        ok: false,
+        error: error.message || "Publishing target could not be imported.",
+        details: error.details || publishAuthorizationHelp,
+        publishAccess: error.publishAccess || null
+      });
     }
     return true;
   }

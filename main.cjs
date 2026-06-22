@@ -10,7 +10,7 @@ const { promisify } = require("node:util");
 let mainWindow = null;
 let builderOrigin = "";
 const execFileAsync = promisify(execFile);
-const defaultRepositoryUrl = process.env.OMB_BUILDER_REPOSITORY || "https://github.com/otienomaurice/otienomaurice.github.io.git";
+const defaultRepositoryUrl = process.env.OMB_BUILDER_REPOSITORY || "";
 
 const rootFilesToRefresh = [
   "server.mjs",
@@ -29,9 +29,7 @@ const rootFilesToSeed = [
   "project-templates.json",
   "README.md",
   ".nojekyll",
-  "robots.txt",
-  "sitemap.xml",
-  "CNAME"
+  "robots.txt"
 ];
 
 const directorySeeds = ["assets", "Backgrounds", "docs"];
@@ -124,6 +122,7 @@ function findRepositoryNearExecutable() {
 }
 
 async function cloneWorkspaceIfPossible(workspaceRoot) {
+  if (!defaultRepositoryUrl) return false;
   if (workspaceIsGitBacked(workspaceRoot)) return true;
   await fsp.mkdir(workspaceRoot, { recursive: true });
   if (!(await directoryIsEmpty(workspaceRoot))) return false;

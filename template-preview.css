@@ -275,6 +275,28 @@
   line-height: 1.55;
 }
 
+.profile-setup-fields {
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+}
+
+.profile-setup-fields label:has(textarea),
+.profile-setup-fields label:first-child {
+  grid-column: 1 / -1;
+}
+
+.profile-asset-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.profile-asset-status {
+  min-height: 18px;
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
 .portfolio-preview-button {
   display: inline-flex;
   align-items: center;
