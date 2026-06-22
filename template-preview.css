@@ -268,6 +268,40 @@
   overflow-wrap: anywhere;
 }
 
+.publish-target-readiness {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8fcff;
+  padding: 12px;
+}
+
+.publish-target-readiness strong {
+  display: block;
+  margin-bottom: 8px;
+}
+
+.publish-target-readiness ul {
+  margin: 0 0 10px;
+  padding-left: 18px;
+  color: var(--muted);
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+
+.publish-target-readiness li.ready {
+  color: #0f766e;
+}
+
+.publish-target-readiness li.blocked {
+  color: #b42318;
+}
+
+.publish-target-tool-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .publish-target-note {
   margin: 0;
   color: var(--muted);
@@ -295,6 +329,37 @@
   color: var(--muted);
   font-size: 0.82rem;
   line-height: 1.45;
+}
+
+.app-update-toast {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 80;
+  width: min(380px, calc(100vw - 36px));
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #ffffff;
+  box-shadow: 0 18px 40px rgba(17, 36, 56, 0.22);
+  padding: 14px;
+}
+
+.app-update-toast h3 {
+  margin: 0 0 6px;
+  font-size: 1rem;
+}
+
+.app-update-toast p {
+  margin: 0 0 12px;
+  color: var(--muted);
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+
+.app-update-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
 }
 
 .portfolio-preview-button {

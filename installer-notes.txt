@@ -1,0 +1,15 @@
+OMB Portfolio Builder installation notes
+
+This installer includes the desktop application, the local portfolio builder, the local preview server, the website template files, and the Electron runtime needed to run the app.
+
+The app does not require the user to install Node.js or pnpm. Those are development/build tools only.
+
+The installer creates a desktop shortcut by default. Untick the shortcut option during setup if you do not want one.
+
+Publishing to GitHub Pages requires Git for Windows with Git Credential Manager. During setup, the installer can check publishing tools and install Git for Windows if Git or Git Credential Manager is missing. If compatible tools already exist, setup skips them. Existing shared tools are not silently removed.
+
+For GitHub authentication, open Publishing target inside the app, enter the target repository, then click Authenticate with GitHub. A GitHub/Git Credential Manager sign-in flow may open in the browser. After signing in, return to the app and click Load from target or Apply to site.
+
+Successful publishing authorization is cached locally for about one day for the selected repository and branch.
+
+Fresh installs start blank. No personal projects, resumes, profile photos, custom domains, or portfolio sections are included until the user adds them or authenticates to load a compatible publishing target.

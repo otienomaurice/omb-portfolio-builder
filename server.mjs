@@ -9,6 +9,7 @@ const root = path.dirname(fileURLToPath(import.meta.url));
 const port = Number(process.env.PORT || 8080);
 const host = process.env.HOST || "0.0.0.0";
 const execFileAsync = promisify(execFile);
+const packageJson = JSON.parse(await readFile(path.join(root, "package.json"), "utf8").catch(() => "{}"));
 
 const types = {
   ".css": "text/css",
@@ -32,11 +33,13 @@ const types = {
 
 const draftPath = path.join(root, "projects.local.json");
 const catalogPath = path.join(root, "projects.json");
+const publishAuthCachePath = path.join(root, ".omb-publish-session.json");
 const defaultSiteRepository = process.env.OMB_BUILDER_REPOSITORY || "";
 const publishAuthorizationHelp = [
   "Publishing was blocked before live website files were applied.",
-  "Sign in to GitHub with an account that has write access to the selected Pages repository, then try Apply to site again.",
-  "Associate the builder workspace with your GitHub Pages repository or compatible static website repository.",
+  "Open Publishing target, enter the repository URL, click Save target, then click Authenticate with GitHub.",
+  "A GitHub/Git Credential Manager browser sign-in may open. Sign in with an account that has write access to the selected Pages repository.",
+  "After authentication succeeds, click Load from target or Apply to site again.",
   "For a custom domain, add or update the repository CNAME file after the repository is associated.",
   "Until a compatible writable website repository is associated, the builder remains local-only."
 ].join(" ");
@@ -46,7 +49,9 @@ const gitCandidates = [
   "C:\\Program Files\\Git\\cmd\\git.exe",
   "C:\\Program Files\\Git\\bin\\git.exe",
   "C:\\Program Files (x86)\\Git\\cmd\\git.exe",
-  "C:\\Program Files (x86)\\Git\\bin\\git.exe"
+  "C:\\Program Files (x86)\\Git\\bin\\git.exe",
+  process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, "Programs", "Git", "cmd", "git.exe") : "",
+  process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, "Programs", "Git", "bin", "git.exe") : ""
 ].filter(Boolean);
 
 const portfolioAiInstructions = [
@@ -602,6 +607,34 @@ function validateCustomDomain(value = "") {
   return domain;
 }
 
+function compareVersions(left = "", right = "") {
+  const leftParts = String(left || "0").split(/[.-]/).map((part) => Number.parseInt(part, 10) || 0);
+  const rightParts = String(right || "0").split(/[.-]/).map((part) => Number.parseInt(part, 10) || 0);
+  const length = Math.max(leftParts.length, rightParts.length);
+  for (let index = 0; index < length; index += 1) {
+    const delta = (leftParts[index] || 0) - (rightParts[index] || 0);
+    if (delta !== 0) return delta;
+  }
+  return 0;
+}
+
+async function bumpPublishedAssetVersions() {
+  let html = "";
+  try {
+    html = await readFile(resolveInsideRoot("index.html"), "utf8");
+  } catch {
+    return false;
+  }
+  const version = Date.now().toString();
+  const next = html
+    .replace(/(href="styles\.css)(?:\?v=[^"]*)?"/g, `$1?v=${version}"`)
+    .replace(/(src="script\.js)(?:\?v=[^"]*)?"/g, `$1?v=${version}"`)
+    .replace(/(src="electronics-search\.js)(?:\?v=[^"]*)?"/g, `$1?v=${version}"`);
+  if (next === html) return false;
+  await writeFile(resolveInsideRoot("index.html"), next, "utf8");
+  return true;
+}
+
 async function workspaceHasCompatibleSiteFiles() {
   for (const fileName of ["index.html", "styles.css", "script.js"]) {
     try {
@@ -655,14 +688,15 @@ async function getPublishTargetInfo() {
   return info;
 }
 
-async function runGit(args) {
+async function runGit(args, options = {}) {
   let lastError = null;
   for (const candidate of gitCandidates) {
     try {
       const result = await execFileAsync(candidate, args, {
-        cwd: root,
-        maxBuffer: 10 * 1024 * 1024,
-        windowsHide: true
+        cwd: options.cwd || root,
+        maxBuffer: options.maxBuffer || 10 * 1024 * 1024,
+        timeout: options.timeout || 0,
+        windowsHide: options.windowsHide !== false
       });
       return { ...result, git: candidate };
     } catch (error) {
@@ -672,6 +706,74 @@ async function runGit(args) {
     }
   }
   throw lastError || new Error("Git executable was not found.");
+}
+
+async function runOptionalCommand(command, args = [], options = {}) {
+  try {
+    const result = await execFileAsync(command, args, {
+      cwd: options.cwd || root,
+      maxBuffer: options.maxBuffer || 2 * 1024 * 1024,
+      timeout: options.timeout || 15000,
+      windowsHide: options.windowsHide !== false
+    });
+    return { ok: true, stdout: result.stdout || "", stderr: result.stderr || "" };
+  } catch (error) {
+    return {
+      ok: false,
+      stdout: error.stdout || "",
+      stderr: error.stderr || "",
+      error: error.message || String(error)
+    };
+  }
+}
+
+async function getGitStatus() {
+  let git = { ok: false, stdout: "", stderr: "", error: "Git for Windows was not found." };
+  try {
+    const gitResult = await runGit(["--version"]);
+    git = { ok: true, stdout: gitResult.stdout || "", stderr: gitResult.stderr || "" };
+  } catch (error) {
+    git = { ok: false, stdout: error.stdout || "", stderr: error.stderr || "", error: error.message || "Git for Windows was not found." };
+  }
+  let credentialManager = { ok: false, version: "", error: "Git Credential Manager was not found." };
+  if (git.ok) {
+    let gcm = { ok: false, stdout: "", stderr: "", error: "Git Credential Manager was not found." };
+    try {
+      const gcmResult = await runGit(["credential-manager", "--version"]);
+      gcm = { ok: true, stdout: gcmResult.stdout || "", stderr: gcmResult.stderr || "" };
+    } catch (error) {
+      gcm = { ok: false, stdout: error.stdout || "", stderr: error.stderr || "", error: error.message || "Git Credential Manager was not found." };
+    }
+    credentialManager = {
+      ok: gcm.ok,
+      version: (gcm.stdout || gcm.stderr || "").trim(),
+      error: gcm.ok ? "" : (gcm.stderr || gcm.error || "Git Credential Manager was not found.")
+    };
+  }
+
+  return {
+    git: {
+      ok: git.ok,
+      version: (git.stdout || git.stderr || "").trim(),
+      error: git.ok ? "" : (git.stderr || git.error || "Git for Windows was not found.")
+    },
+    credentialManager,
+    nodeRuntime: {
+      ok: true,
+      version: process.versions.node,
+      bundled: true,
+      note: "Bundled inside the desktop app. No manual Node.js install is required."
+    },
+    pnpm: {
+      ok: true,
+      required: false,
+      note: "pnpm is only needed by developers building the installer from source."
+    },
+    app: {
+      version: process.env.OMB_APP_VERSION || packageJson.version || "0.0.0",
+      desktopApp: process.env.OMB_DESKTOP_APP === "1"
+    }
+  };
 }
 
 async function publishPathIsStageable(relativePath) {
@@ -836,7 +938,34 @@ async function configurePublishTarget(options = {}) {
   };
 }
 
-async function assertPublishAccess() {
+async function readPublishAuthCache() {
+  try {
+    return JSON.parse(await readFile(publishAuthCachePath, "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+async function writePublishAuthCache(access = {}) {
+  const cache = {
+    branch: access.branch || "",
+    checkedAt: new Date().toISOString(),
+    remote: access.remote || "",
+    repository: access.repository || ""
+  };
+  await writeFile(publishAuthCachePath, `${JSON.stringify(cache, null, 2)}\n`, "utf8");
+  return cache;
+}
+
+function publishAuthCacheIsFresh(cache, access) {
+  if (!cache || !access) return false;
+  if (cache.remote !== access.remote || cache.branch !== access.branch || cache.repository !== access.repository) return false;
+  const checkedAt = Date.parse(cache.checkedAt || "");
+  if (!Number.isFinite(checkedAt)) return false;
+  return Date.now() - checkedAt < 24 * 60 * 60 * 1000;
+}
+
+async function assertPublishAccess(options = {}) {
   let insideWorkTree = "";
   try {
     insideWorkTree = (await runGit(["rev-parse", "--is-inside-work-tree"])).stdout.trim();
@@ -888,6 +1017,23 @@ async function assertPublishAccess() {
   const parsedRemote = parseGitHubRemote(remote);
   const repository = parsedRemote ? `${parsedRemote.owner}/${parsedRemote.repo}` : remoteUrlForDisplay(remote);
 
+  const access = {
+    branch,
+    remote: remoteUrlForDisplay(remote),
+    repository,
+    authorizationChecked: false
+  };
+
+  const cached = await readPublishAuthCache();
+  if (!options.force && publishAuthCacheIsFresh(cached, access)) {
+    return {
+      ...access,
+      authorizationCached: true,
+      authorizationChecked: true,
+      checkedAt: cached.checkedAt
+    };
+  }
+
   try {
     await runGit(["push", "--dry-run", "origin", branch]);
   } catch (error) {
@@ -898,11 +1044,12 @@ async function assertPublishAccess() {
     );
   }
 
+  const authCache = await writePublishAuthCache(access);
   return {
-    branch,
-    remote: remoteUrlForDisplay(remote),
-    repository,
-    authorizationChecked: true
+    ...access,
+    authorizationChecked: true,
+    authorizationCached: false,
+    checkedAt: authCache.checkedAt
   };
 }
 
@@ -945,6 +1092,102 @@ async function syncFromPublishTarget() {
     ...access,
     imported: availablePaths
   };
+}
+
+async function authenticateGitHubForTarget(options = {}) {
+  const configuredTarget = await configurePublishTarget(options);
+  if (!configuredTarget.remote) {
+    throw publishAccessError(
+      "A GitHub repository URL is required before authentication.",
+      "Enter the GitHub Pages or compatible static-site repository URL, click Save target, then authenticate.",
+      configuredTarget
+    );
+  }
+
+  const status = await getGitStatus();
+  if (!status.git.ok) {
+    throw publishAccessError(
+      "Git for Windows is required for publishing.",
+      "Install Git for Windows, then reopen the builder and authenticate again.",
+      { ...configuredTarget, system: status }
+    );
+  }
+  if (!status.credentialManager.ok) {
+    throw publishAccessError(
+      "Git Credential Manager is required for guided GitHub sign-in.",
+      "Install or repair Git for Windows with Git Credential Manager enabled, then authenticate again.",
+      { ...configuredTarget, system: status }
+    );
+  }
+
+  await runGit(["credential-manager", "github", "login"], {
+    timeout: 5 * 60 * 1000,
+    windowsHide: false
+  });
+
+  const access = await assertPublishAccess({ force: true });
+  return {
+    ...access,
+    system: await getGitStatus()
+  };
+}
+
+async function installGitForWindows() {
+  const winget = await runOptionalCommand("winget", ["--version"]);
+  const downloadUrl = "https://git-scm.com/download/win";
+  if (!winget.ok) {
+    return {
+      launched: false,
+      downloadUrl,
+      message: "winget was not found. Open the Git for Windows download page and install Git with Git Credential Manager enabled."
+    };
+  }
+
+  const child = spawn("winget", ["install", "--id", "Git.Git", "-e", "--source", "winget"], {
+    detached: true,
+    shell: true,
+    stdio: "ignore",
+    windowsHide: false
+  });
+  child.unref();
+  return {
+    launched: true,
+    downloadUrl,
+    message: "The Git for Windows installer was launched through winget. Follow the installer prompts, then reopen the builder."
+  };
+}
+
+async function getUpdateInfo() {
+  const currentVersion = process.env.OMB_APP_VERSION || packageJson.version || "0.0.0";
+  const owner = "otienomaurice";
+  const repo = "omb-portfolio-builder";
+  try {
+    const response = await fetch(`https://api.github.com/repos/${owner}/${repo}/releases/latest`, {
+      headers: { "Accept": "application/vnd.github+json", "User-Agent": "OMB-Portfolio-Builder" }
+    });
+    if (!response.ok) throw new Error(`GitHub returned ${response.status}.`);
+    const release = await response.json();
+    const latestVersion = String(release.tag_name || "").replace(/^builder-v/i, "");
+    const installer = (release.assets || []).find((asset) => /Setup-.*\.exe$/i.test(asset.name));
+    const portable = (release.assets || []).find((asset) => /Portable-.*\.exe$/i.test(asset.name));
+    return {
+      ok: true,
+      currentVersion,
+      latestVersion,
+      updateAvailable: compareVersions(latestVersion, currentVersion) > 0,
+      releaseUrl: release.html_url || "",
+      installerUrl: installer?.browser_download_url || "",
+      portableUrl: portable?.browser_download_url || ""
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      currentVersion,
+      latestVersion: currentVersion,
+      updateAvailable: false,
+      error: error.message || "Could not check for updates."
+    };
+  }
 }
 
 async function publishSiteChanges(publishAccess = null) {
@@ -1109,6 +1352,16 @@ async function handleApi(request, response, url) {
     return true;
   }
 
+  if (request.method === "GET" && url.pathname === "/api/system-check") {
+    sendJson(response, 200, { ok: true, system: await getGitStatus(), target: await getPublishTargetInfo() });
+    return true;
+  }
+
+  if (request.method === "GET" && url.pathname === "/api/app-update") {
+    sendJson(response, 200, await getUpdateInfo());
+    return true;
+  }
+
   if (request.method !== "POST") return false;
 
   if (!isLocalRequest(request)) {
@@ -1128,6 +1381,37 @@ async function handleApi(request, response, url) {
       sendJson(response, 200, { ok: true, target });
     } catch (error) {
       sendJson(response, 400, { ok: false, error: error.message || "Publishing target could not be updated." });
+    }
+    return true;
+  }
+
+  if (url.pathname === "/api/install-git") {
+    try {
+      const install = await installGitForWindows();
+      sendJson(response, 200, { ok: true, install, system: await getGitStatus() });
+    } catch (error) {
+      sendJson(response, 400, {
+        ok: false,
+        error: error.message || "Git for Windows installer could not be started.",
+        downloadUrl: "https://git-scm.com/download/win"
+      });
+    }
+    return true;
+  }
+
+  if (url.pathname === "/api/github-authenticate") {
+    try {
+      const body = await readRequestJson(request);
+      const auth = await authenticateGitHubForTarget(body || {});
+      sendJson(response, 200, { ok: true, auth, target: await getPublishTargetInfo() });
+    } catch (error) {
+      sendJson(response, 400, {
+        ok: false,
+        error: error.message || "GitHub authentication did not complete.",
+        details: error.details || publishAuthorizationHelp,
+        publishAccess: error.publishAccess || null,
+        system: await getGitStatus()
+      });
     }
     return true;
   }
@@ -1181,6 +1465,7 @@ async function handleApi(request, response, url) {
     await writeFile(target, `${JSON.stringify(catalog, null, 2)}\n`, "utf8");
     if (applyingToSite) {
       try {
+        await bumpPublishedAssetVersions();
         const publish = await publishSiteChanges(publishAccess);
         sendJson(response, 200, { ok: true, file: path.relative(root, target), publish });
       } catch (error) {

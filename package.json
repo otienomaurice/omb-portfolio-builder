@@ -1,6 +1,6 @@
 {
   "name": "omb-portfolio-builder",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "private": false,
   "author": "Maurice Otieno",
   "description": "Standalone Windows desktop application for building and publishing portfolio websites.",
@@ -46,6 +46,7 @@
           "template-preview.html",
           "template-preview.css",
           "template-preview.js",
+          "installer-notes.txt",
           "README.md",
           ".nojekyll",
           "robots.txt"
@@ -67,8 +68,12 @@
       "oneClick": false,
       "perMachine": true,
       "allowToChangeInstallationDirectory": true,
-      "createDesktopShortcut": true,
+      "include": "build/installer.nsh",
+      "createDesktopShortcut": "always",
       "createStartMenuShortcut": true,
+      "deleteAppDataOnUninstall": true,
+      "runAfterFinish": true,
+      "license": "installer-notes.txt",
       "shortcutName": "OMB Portfolio Builder"
     }
   }

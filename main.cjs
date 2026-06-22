@@ -182,6 +182,7 @@ async function startBuilderServer(workspaceRoot) {
   process.env.OMB_DESKTOP_APP = "1";
   process.env.OMB_BUILDER_WORKSPACE = workspaceRoot;
   process.env.OMB_BUILDER_REPOSITORY = defaultRepositoryUrl;
+  process.env.OMB_APP_VERSION = app.getVersion();
 
   const serverPath = path.join(workspaceRoot, "server.mjs");
   await import(`${pathToFileURL(serverPath).href}?desktop=${Date.now()}`);

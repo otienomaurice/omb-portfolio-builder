@@ -6,3 +6,4 @@ dist/
 .dev.vars
 .wrangler/
 projects.local.json
+.omb-publish-session.json

@@ -366,6 +366,17 @@
               <div class="publish-target-current" id="publish-target-current">
                   Current target is loading.
               </div>
+              <div class="publish-target-readiness" id="publish-target-readiness">
+                  <strong>Publishing setup</strong>
+                  <ul id="publish-target-readiness-list">
+                      <li>Checking local publishing tools...</li>
+                  </ul>
+                  <div class="publish-target-tool-actions">
+                      <button class="button secondary compact-button" id="publish-target-check" type="button">Check tools</button>
+                      <button class="button secondary compact-button" id="publish-target-install-git" type="button">Install Git</button>
+                      <button class="button primary compact-button" id="publish-target-auth" type="button">Authenticate with GitHub</button>
+                  </div>
+              </div>
               <label>
                   <span>GitHub Pages repository URL</span>
                   <input id="publish-target-repository" type="text" placeholder="https://github.com/USERNAME/USERNAME.github.io.git" />
@@ -383,7 +394,7 @@
                   <input id="publish-target-password" type="password" autocomplete="off" placeholder="GitHub personal access token or credential password" />
               </label>
               <p class="publish-target-note">
-                  The app can publish to a live website only when the signed-in GitHub account has write access to the selected repository. You may connect a compatible GitHub Pages repository, optionally add a custom domain, and publish after GitHub authorization succeeds. GitHub account passwords are usually rejected for Git pushes; use a personal access token or Git Credential Manager password/token when needed.
+                  Publishing uses Git for Windows and Git Credential Manager. Enter a repository, click Save target, then click Authenticate with GitHub. A browser or GitHub sign-in window may open; sign in with an account that can write to that repository, then return here and click Load from target or Apply to site.
               </p>
               <div class="dialog-actions">
                   <button class="button primary" type="submit">Save target</button>

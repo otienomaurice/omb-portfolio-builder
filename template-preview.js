@@ -72,6 +72,10 @@ const publishTargetClose = document.querySelector("#publish-target-close");
 const publishTargetCancel = document.querySelector("#publish-target-cancel");
 const publishTargetSync = document.querySelector("#publish-target-sync");
 const publishTargetCurrent = document.querySelector("#publish-target-current");
+const publishTargetReadinessList = document.querySelector("#publish-target-readiness-list");
+const publishTargetCheck = document.querySelector("#publish-target-check");
+const publishTargetInstallGit = document.querySelector("#publish-target-install-git");
+const publishTargetAuth = document.querySelector("#publish-target-auth");
 const publishTargetRepository = document.querySelector("#publish-target-repository");
 const publishTargetDomain = document.querySelector("#publish-target-domain");
 const publishTargetUsername = document.querySelector("#publish-target-username");
@@ -880,6 +884,41 @@ function showBuilderError(title, message, details = "") {
   publishResultDialog.showModal();
 }
 
+function showUpdateToast(update = {}) {
+  const dismissedVersion = localStorage.getItem("omb-dismissed-update-version") || "";
+  if (!update.updateAvailable || !update.latestVersion || dismissedVersion === update.latestVersion) return;
+  document.querySelector(".app-update-toast")?.remove();
+  const toast = document.createElement("div");
+  toast.className = "app-update-toast";
+  toast.innerHTML = `
+    <h3>Update available</h3>
+    <p>OMB Portfolio Builder ${escapeHtml(update.latestVersion)} is available. Current version: ${escapeHtml(update.currentVersion || "unknown")}.</p>
+    <div class="app-update-actions">
+      <button class="button secondary compact-button" type="button" data-update-later>Later</button>
+      <button class="button primary compact-button" type="button" data-update-apply>Download update</button>
+    </div>
+  `;
+  toast.querySelector("[data-update-later]")?.addEventListener("click", () => {
+    localStorage.setItem("omb-dismissed-update-version", update.latestVersion);
+    toast.remove();
+  });
+  toast.querySelector("[data-update-apply]")?.addEventListener("click", () => {
+    window.open(update.installerUrl || update.releaseUrl, "_blank", "noreferrer");
+    toast.remove();
+  });
+  document.body.appendChild(toast);
+}
+
+async function checkForAppUpdates() {
+  try {
+    const response = await fetch(`/api/app-update?t=${Date.now()}`, { cache: "no-store" });
+    const update = await response.json();
+    if (response.ok && update.ok !== false) showUpdateToast(update);
+  } catch {
+    // Update checks should never interrupt builder work.
+  }
+}
+
 function renderPublishTargetInfo(target = {}) {
   if (!publishTargetCurrent) return;
   currentPublishTarget = target;
@@ -904,6 +943,54 @@ function renderPublishTargetInfo(target = {}) {
   }
 }
 
+function renderSystemReadiness(system = {}, target = {}) {
+  if (!publishTargetReadinessList) return;
+  const rows = [
+    {
+      ok: true,
+      text: `Electron/Node runtime: bundled with the app${system.nodeRuntime?.version ? ` (${system.nodeRuntime.version})` : ""}.`
+    },
+    {
+      ok: system.pnpm?.required === false,
+      text: "pnpm: not required for installed users."
+    },
+    {
+      ok: Boolean(system.git?.ok),
+      text: system.git?.ok
+        ? `Git for Windows: ${system.git.version || "installed"}.`
+        : "Git for Windows: missing. Install it before loading or publishing a target."
+    },
+    {
+      ok: Boolean(system.credentialManager?.ok),
+      text: system.credentialManager?.ok
+        ? `Git Credential Manager: ${system.credentialManager.version || "installed"}.`
+        : "Git Credential Manager: missing. Install Git for Windows with Git Credential Manager enabled."
+    },
+    {
+      ok: Boolean(target?.remote),
+      text: target?.remote
+        ? `Publishing target: ${target.repository || target.remote}.`
+        : "Publishing target: enter a repository URL and click Save target."
+    }
+  ];
+  publishTargetReadinessList.innerHTML = rows
+    .map((row) => `<li class="${row.ok ? "ready" : "blocked"}">${escapeHtml(row.ok ? `OK - ${row.text}` : `Needs action - ${row.text}`)}</li>`)
+    .join("");
+}
+
+async function loadSystemReadiness() {
+  if (!publishTargetReadinessList) return;
+  publishTargetReadinessList.innerHTML = "<li>Checking local publishing tools...</li>";
+  try {
+    const response = await fetch(`/api/system-check?t=${Date.now()}`, { cache: "no-store" });
+    const result = await response.json();
+    if (!response.ok || !result.ok) throw new Error(result.error || "System check failed.");
+    renderSystemReadiness(result.system || {}, result.target || currentPublishTarget || {});
+  } catch (error) {
+    publishTargetReadinessList.innerHTML = `<li class="blocked">${escapeHtml(error.message || "System check failed.")}</li>`;
+  }
+}
+
 async function loadPublishTargetInfo() {
   if (!publishTargetDialog) return;
   publishTargetCurrent.textContent = "Current target is loading.";
@@ -919,6 +1006,7 @@ async function loadPublishTargetInfo() {
 
 async function openPublishTargetDialog() {
   await loadPublishTargetInfo();
+  await loadSystemReadiness();
   publishTargetDialog.showModal();
 }
 
@@ -939,6 +1027,7 @@ async function savePublishTarget(event) {
     const result = await response.json();
     if (!response.ok || !result.ok) throw new Error(result.error || "Publishing target could not be saved.");
     renderPublishTargetInfo(result.target || {});
+    await loadSystemReadiness();
     if (publishTargetPassword) publishTargetPassword.value = "";
     publishTargetDialog.close();
     showBuilderError(
@@ -953,6 +1042,67 @@ async function savePublishTarget(event) {
   }
 }
 
+function currentPublishTargetPayload() {
+  return {
+    repositoryUrl: publishTargetRepository?.value || "",
+    customDomain: publishTargetDomain?.value || "",
+    authUsername: publishTargetUsername?.value || "",
+    authPassword: publishTargetPassword?.value || ""
+  };
+}
+
+async function installGitForPublishing() {
+  publishTargetCurrent.textContent = "Starting Git for Windows setup...";
+  try {
+    const response = await fetch(`/api/install-git?t=${Date.now()}`, {
+      method: "POST",
+      cache: "no-store",
+      headers: { "Content-Type": "application/json" },
+      body: "{}"
+    });
+    const result = await response.json();
+    if (!response.ok || !result.ok) throw new Error(result.error || "Git installer could not be started.");
+    if (!result.install?.launched && result.install?.downloadUrl) {
+      window.open(result.install.downloadUrl, "_blank", "noreferrer");
+    }
+    await loadSystemReadiness();
+    showBuilderError(
+      result.install?.launched ? "Git setup started" : "Open Git download",
+      result.install?.message || "Install Git for Windows with Git Credential Manager enabled, then reopen the builder.",
+      result.install?.downloadUrl || ""
+    );
+  } catch (error) {
+    publishTargetCurrent.textContent = error.message || "Git installer could not be started.";
+  }
+}
+
+async function authenticatePublishTarget() {
+  publishTargetCurrent.textContent = "Starting GitHub authentication. If a browser sign-in window opens, sign in and approve Git Credential Manager, then return here.";
+  try {
+    const response = await fetch(`/api/github-authenticate?t=${Date.now()}`, {
+      method: "POST",
+      cache: "no-store",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(currentPublishTargetPayload())
+    });
+    const result = await response.json();
+    if (!response.ok || !result.ok) {
+      const message = result.error || "GitHub authentication did not complete.";
+      throw new Error([message, result.details].filter(Boolean).join("\n\n"));
+    }
+    renderPublishTargetInfo(result.target || {});
+    renderSystemReadiness(result.auth?.system || {}, result.target || {});
+    if (publishTargetPassword) publishTargetPassword.value = "";
+    showBuilderError(
+      "GitHub authentication complete",
+      "This builder can now load from or apply to the selected target. Authorization will be reused for this target for about one day.",
+      `Repository: ${result.auth?.repository || result.target?.repository || "selected target"}\nBranch: ${result.auth?.branch || result.target?.branch || "current branch"}`
+    );
+  } catch (error) {
+    publishTargetCurrent.textContent = error.message || "GitHub authentication did not complete.";
+  }
+}
+
 async function syncFromPublishTarget() {
   if (!publishTargetDialog) return;
   publishTargetCurrent.textContent = "Checking GitHub authorization and loading compatible portfolio files from the target repository...";
@@ -964,7 +1114,12 @@ async function syncFromPublishTarget() {
       body: "{}"
     });
     const result = await response.json();
-    if (!response.ok || !result.ok) throw new Error(result.error || "Publishing target could not be imported.");
+    if (!response.ok || !result.ok) {
+      throw new Error([
+        result.error || "Publishing target could not be imported.",
+        result.details || "Click Authenticate with GitHub, complete the browser sign-in, then try Load from target again."
+      ].filter(Boolean).join("\n\n"));
+    }
     renderPublishTargetInfo(result.target || {});
     publishTargetDialog.close();
     await loadData();
@@ -992,7 +1147,7 @@ function showPublishResult(result) {
   publishResultMessage.textContent = pushed
     ? `Your portfolio changes were committed and pushed to ${publish.branch || "GitHub"}.`
     : authorizationRequired
-      ? "No live website files were applied. Sign in with a GitHub account that has write access to this website repository, or associate the builder with your own compatible website repository."
+      ? "No live website files were applied. Open Publishing target, click Authenticate with GitHub, complete the browser sign-in, then try Apply to site again."
       : "The site was applied locally, but Git push did not complete.";
 
   const output = [
@@ -4990,6 +5145,16 @@ function fullPortfolioPreviewHtmlExact() {
 
       <section class="fun-facts-section" id="fun-facts-callout" aria-label="Fun facts" hidden></section>
 
+      <section class="builder-download-section" aria-label="Download portfolio builder">
+        <a class="builder-download-link" href="https://github.com/otienomaurice/omb-portfolio-builder/releases/download/builder-v0.2.3/OMB-Portfolio-Builder-Setup-0.2.3-x64.exe" download>
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 3v11m0 0 4-4m-4 4-4-4" />
+            <path d="M5 17v2h14v-2" />
+          </svg>
+          <span>Download builder application</span>
+        </a>
+      </section>
+
       <section class="summary-band" aria-label="Portfolio highlights">
         <div class="metric">
           <strong id="project-count">0</strong>
@@ -5931,6 +6096,9 @@ publishTargetCancel?.addEventListener("click", () => {
 });
 publishTargetForm?.addEventListener("submit", savePublishTarget);
 publishTargetSync?.addEventListener("click", syncFromPublishTarget);
+publishTargetCheck?.addEventListener("click", loadSystemReadiness);
+publishTargetInstallGit?.addEventListener("click", installGitForPublishing);
+publishTargetAuth?.addEventListener("click", authenticatePublishTarget);
 publishTargetRepository?.addEventListener("input", () => {
   const loadedRepository = publishTargetRepository.dataset.loadedValue || currentPublishTarget?.remote || "";
   if (publishTargetRepository.value.trim() !== loadedRepository.trim() && publishTargetDomain?.dataset.autofilled === "true") {
@@ -7033,3 +7201,4 @@ document.addEventListener("builder-disabled-click", () => {
 loadData().catch((error) => {
   setStatus(error.message || "Builder failed to load.");
 });
+checkForAppUpdates();
