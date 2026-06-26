@@ -7,3 +7,4 @@ dist/
 .wrangler/
 projects.local.json
 .omb-publish-session.json
+.omb-backups/

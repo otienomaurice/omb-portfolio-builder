@@ -12,8 +12,8 @@ https://github.com/otienomaurice/omb-portfolio-builder/releases/latest
 
 Use:
 
-- `OMB-Portfolio-Builder-Setup-0.2.3-x64.exe` for the Windows installer.
-- `OMB-Portfolio-Builder-Portable-0.2.3-x64.exe` when you want to run without installing.
+- `OMB-Portfolio-Builder-Setup-0.2.4-x64.exe` for the Windows installer.
+- `OMB-Portfolio-Builder-Portable-0.2.4-x64.exe` when you want to run without installing.
 
 The installer defaults to:
 
@@ -27,6 +27,14 @@ It lets you choose a different installation folder, creates a Windows uninstall 
 Installed users do **not** need to install Node.js or pnpm. The desktop app includes its runtime. Git for Windows with Git Credential Manager is needed only for GitHub publishing. The installer checks for publishing tools and can install Git for Windows if Git/Git Credential Manager is missing. If a compatible tool is already present, setup skips it. Existing shared tools are not silently uninstalled.
 
 The public portfolio website also exposes a direct **Download builder application** link near the top of the page, just below Fun Facts.
+
+If OMB Portfolio Builder is already installed, the installer tells the user which version it found, asks for approval to remove it, runs that existing uninstaller, and then continues installing the selected version. This prevents multiple installed copies of the app on the same machine.
+
+GitHub keeps older releases. To download a previous version, open:
+
+```text
+https://github.com/otienomaurice/omb-portfolio-builder/releases
+```
 
 ## Clone And Build
 
@@ -92,7 +100,7 @@ https://github.com/YOUR-USERNAME/YOUR-USERNAME.github.io.git
 4. Click **Check tools**. If Git is missing, click **Install Git**; the app starts the Git for Windows installer path for you.
 5. Click **Save target**.
 6. Click **Authenticate with GitHub**. A GitHub/Git Credential Manager browser sign-in may open.
-7. If the repository already contains a compatible portfolio and you own access to it, click **Load from target**.
+7. If the repository already contains a compatible portfolio and you own access to it, click **Load from target**. The builder imports through a temporary clone, backs up replaced local portfolio files under `.omb-backups`, and updates the local draft to match the target catalog.
 8. Click **Save draft** before **Apply to site**.
 
 Successful publishing authorization is cached locally for about one day per repository and branch, so Apply to site does not re-check GitHub authorization on every push.
@@ -101,7 +109,7 @@ Successful publishing authorization is cached locally for about one day per repo
 
 The installed builder checks the latest GitHub release and shows an in-app bottom-right update notice when a newer installer is available. Choose **Download update** to open the latest installer, or **Later** to dismiss that version.
 
-Updates are installed through the same Windows installer flow. The update does not require users to manually run shell scripts.
+Updates are installed through the same Windows installer flow. The update does not require users to manually run shell scripts. If the app is already installed, setup asks to remove the existing copy before installing the selected version.
 
 ## Uninstalling
 
@@ -120,8 +128,8 @@ This repository includes `.github/workflows/build-windows-builder.yml`.
 Use the workflow manually from GitHub Actions, or push a tag:
 
 ```powershell
-git tag builder-v0.2.3
-git push origin builder-v0.2.3
+git tag builder-v0.2.4
+git push origin builder-v0.2.4
 ```
 
 Tags beginning with `builder-v` create a GitHub Release containing the installer and portable executable.

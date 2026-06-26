@@ -896,6 +896,7 @@ function showUpdateToast(update = {}) {
     <div class="app-update-actions">
       <button class="button secondary compact-button" type="button" data-update-later>Later</button>
       <button class="button primary compact-button" type="button" data-update-apply>Download update</button>
+      <small>Uninstall the current version before running the downloaded installer.</small>
     </div>
   `;
   toast.querySelector("[data-update-later]")?.addEventListener("click", () => {
@@ -1126,8 +1127,11 @@ async function syncFromPublishTarget() {
     draftSavedSinceChanges = true;
     showBuilderError(
       "Target content loaded",
-      "Compatible portfolio files were loaded from the authenticated publishing target into this local builder workspace.",
-      `Imported: ${(result.sync?.imported || []).join(", ")}`
+      "Compatible portfolio files were loaded from the authenticated publishing target into this local builder workspace. The local draft now matches the imported target catalog.",
+      [
+        `Imported: ${(result.sync?.imported || []).join(", ")}`,
+        result.sync?.backup ? `Backup: ${result.sync.backup}` : ""
+      ].filter(Boolean).join("\n")
     );
   } catch (error) {
     publishTargetCurrent.textContent = error.message || "Publishing target could not be imported.";
@@ -5146,7 +5150,7 @@ function fullPortfolioPreviewHtmlExact() {
       <section class="fun-facts-section" id="fun-facts-callout" aria-label="Fun facts" hidden></section>
 
       <section class="builder-download-section" aria-label="Download portfolio builder">
-        <a class="builder-download-link" href="https://github.com/otienomaurice/omb-portfolio-builder/releases/download/builder-v0.2.3/OMB-Portfolio-Builder-Setup-0.2.3-x64.exe" download>
+        <a class="builder-download-link" href="https://github.com/otienomaurice/omb-portfolio-builder/releases/download/builder-v0.2.4/OMB-Portfolio-Builder-Setup-0.2.4-x64.exe" download>
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <path d="M12 3v11m0 0 4-4m-4 4-4-4" />
             <path d="M5 17v2h14v-2" />

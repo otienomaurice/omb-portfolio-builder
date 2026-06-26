@@ -356,6 +356,14 @@
   line-height: 1.45;
 }
 
+.app-update-toast small {
+  display: block;
+  margin: -4px 0 12px;
+  color: #4b6475;
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
 .app-update-actions {
   display: flex;
   gap: 8px;

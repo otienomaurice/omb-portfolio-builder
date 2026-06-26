@@ -1,6 +1,7 @@
 import { createServer } from "node:http";
 import { execFile, spawn } from "node:child_process";
-import { access, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { access, cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
@@ -1056,8 +1057,9 @@ async function assertPublishAccess(options = {}) {
 async function syncFromPublishTarget() {
   const access = await assertPublishAccess();
   const branch = access.branch || "main";
-  await runGit(["fetch", "origin", branch]);
-  const sourceRef = `origin/${branch}`;
+  const remote = (await runGit(["remote", "get-url", "origin"])).stdout.trim();
+  const importRoot = await mkdtemp(path.join(os.tmpdir(), "omb-publish-target-"));
+  const cloneRoot = path.join(importRoot, "target");
   const importPaths = [
     "projects.json",
     "assets",
@@ -1068,30 +1070,62 @@ async function syncFromPublishTarget() {
     "robots.txt",
     "sitemap.xml"
   ];
-  const availablePaths = [];
 
-  for (const importPath of importPaths) {
-    try {
-      await runGit(["cat-file", "-e", `${sourceRef}:${importPath}`]);
-      availablePaths.push(importPath);
-    } catch {
-      // Optional path is absent in the selected site repository.
+  try {
+    await runGit(["clone", "--depth", "1", "--branch", branch, remote, cloneRoot], {
+      cwd: importRoot,
+      timeout: 3 * 60 * 1000
+    });
+
+    const availablePaths = [];
+    for (const importPath of importPaths) {
+      try {
+        await access(path.join(cloneRoot, importPath));
+        availablePaths.push(importPath);
+      } catch {
+        // Optional path is absent in the selected site repository.
+      }
     }
-  }
 
-  if (!availablePaths.includes("projects.json")) {
-    throw publishAccessError(
-      "The selected repository does not contain a projects.json portfolio catalog.",
-      "The target repository must contain a compatible OMB Portfolio Builder catalog before it can be imported.",
-      access
+    if (!availablePaths.includes("projects.json")) {
+      throw publishAccessError(
+        "The selected repository does not contain a projects.json portfolio catalog.",
+        "The target repository must contain a compatible OMB Portfolio Builder catalog before it can be imported.",
+        access
+      );
+    }
+
+    const backupRoot = resolveInsideRoot(
+      ".omb-backups",
+      `load-target-${new Date().toISOString().replace(/[:.]/g, "-")}`
     );
-  }
+    await mkdir(backupRoot, { recursive: true });
 
-  await runGit(["checkout", sourceRef, "--", ...availablePaths]);
-  return {
-    ...access,
-    imported: availablePaths
-  };
+    for (const importPath of availablePaths) {
+      const sourcePath = path.join(cloneRoot, importPath);
+      const targetPath = resolveInsideRoot(importPath);
+      try {
+        await access(targetPath);
+        await cp(targetPath, path.join(backupRoot, importPath), { recursive: true, force: true });
+        await rm(targetPath, { recursive: true, force: true });
+      } catch {
+        // Nothing local to back up for this path.
+      }
+      await cp(sourcePath, targetPath, { recursive: true, force: true });
+    }
+
+    const importedCatalog = await readFile(path.join(cloneRoot, "projects.json"), "utf8");
+    await writeFile(draftPath, importedCatalog, "utf8");
+
+    return {
+      ...access,
+      imported: availablePaths,
+      backup: path.relative(root, backupRoot),
+      draftUpdated: true
+    };
+  } finally {
+    await rm(importRoot, { recursive: true, force: true });
+  }
 }
 
 async function authenticateGitHubForTarget(options = {}) {

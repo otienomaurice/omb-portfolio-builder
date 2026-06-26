@@ -114,7 +114,51 @@ Function OMBInstallGitIfNeeded
   ${EndIf}
 FunctionEnd
 
+Function OMBUninstallExistingInstallIfPresent
+  StrCpy $R7 ""
+  StrCpy $R6 ""
+  StrCpy $R5 ""
+
+  ReadRegStr $R7 HKLM "Software\${APP_GUID}" InstallLocation
+  ReadRegStr $R6 HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${UNINSTALL_APP_KEY}" DisplayVersion
+  ReadRegStr $R5 HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${UNINSTALL_APP_KEY}" QuietUninstallString
+  ${If} $R5 == ""
+    ReadRegStr $R5 HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${UNINSTALL_APP_KEY}" UninstallString
+  ${EndIf}
+
+  ${If} $R7 == ""
+    ReadRegStr $R7 HKCU "Software\${APP_GUID}" InstallLocation
+    ReadRegStr $R6 HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${UNINSTALL_APP_KEY}" DisplayVersion
+    ReadRegStr $R5 HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${UNINSTALL_APP_KEY}" QuietUninstallString
+    ${If} $R5 == ""
+      ReadRegStr $R5 HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${UNINSTALL_APP_KEY}" UninstallString
+    ${EndIf}
+  ${EndIf}
+
+  ${If} $R7 != ""
+    ${If} $R6 == ""
+      StrCpy $R6 "an existing version"
+    ${EndIf}
+    MessageBox MB_OKCANCEL|MB_ICONEXCLAMATION "OMB Portfolio Builder $R6 is already installed on this machine.$\r$\n$\r$\nInstalled location:$\r$\n$R7$\r$\n$\r$\nSetup will uninstall that copy first, then continue installing this version.$\r$\n$\r$\nClick OK to uninstall the existing copy, or Cancel to stop setup." IDOK omb_existing_install_confirmed
+    Quit
+
+    omb_existing_install_confirmed:
+    ${If} $R5 == ""
+      MessageBox MB_OK|MB_ICONSTOP "Setup could not find the existing uninstaller. Remove OMB Portfolio Builder from Windows Installed apps or Apps & features, then run this installer again."
+      Quit
+    ${EndIf}
+
+    DetailPrint "Uninstalling existing OMB Portfolio Builder $R6 before installing this version."
+    ExecWait '$R5' $R4
+    ${If} $R4 != 0
+      MessageBox MB_OK|MB_ICONSTOP "The existing OMB Portfolio Builder uninstall did not complete. Windows returned code $R4.$\r$\n$\r$\nRemove the existing version from Windows Installed apps or Apps & features, then run this installer again."
+      Quit
+    ${EndIf}
+  ${EndIf}
+FunctionEnd
+
 !macro customInit
+  Call OMBUninstallExistingInstallIfPresent
   StrCpy $OMB_CreateDesktopShortcutState ${BST_CHECKED}
   StrCpy $OMB_InstallPublishingToolsState ${BST_CHECKED}
 !macroend
