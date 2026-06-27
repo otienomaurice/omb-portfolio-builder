@@ -62,6 +62,8 @@ pnpm run installer
 pnpm run dist
 ```
 
+For repository development, use the branch model in [BRANCHING.md](BRANCHING.md): feature branches merge into `development`, and `main` stays release-ready for consumers.
+
 ## Publishing Security
 
 The app can be public, but publishing a live website is controlled by GitHub repository write access.
