@@ -19,8 +19,9 @@ git pull origin development
 git checkout -b feature/my-change
 ```
 
-3. Make and test the change.
-4. Commit and push the feature branch:
+3. Update the branch register in `README.md` with the new branch name, purpose, source branch, merge target, and status.
+4. Make and test the change.
+5. Commit and push the feature branch:
 
 ```powershell
 git add .
@@ -28,10 +29,15 @@ git commit -m "Describe the change"
 git push -u origin feature/my-change
 ```
 
-5. Merge or pull-request the feature branch into `development`.
-6. Test `development`.
-7. Merge `development` into `main` only when the app is ready for consumers.
-8. Create release tags from `main`, for example `builder-v0.2.6`.
+6. Merge or pull-request the feature branch into `development`.
+7. Update the branch register status when the branch is merged, closed, or released.
+8. Test `development`.
+9. Merge `development` into `main` only when the app is ready for consumers.
+10. Create release tags from `main`, for example `builder-v0.2.6`.
+
+## Branch Register Rule
+
+The README is the human-facing branch register. Every new branch should have a row in `README.md` before the branch is pushed. This keeps local users, GitHub visitors, and future Codex sessions aligned on what each branch is for.
 
 ## Release Rule
 
