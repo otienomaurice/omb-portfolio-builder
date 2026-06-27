@@ -114,6 +114,28 @@ Function OMBInstallGitIfNeeded
   ${EndIf}
 FunctionEnd
 
+Function OMBCheckKnownBuilderWorkspace
+  IfFileExists "$DOCUMENTS\OMB\desktop-builder\package.json" 0 +3
+    MessageBox MB_OK|MB_ICONSTOP "Setup found an existing local OMB Portfolio Builder workspace:$\r$\n$\r$\n$DOCUMENTS\OMB\desktop-builder$\r$\n$\r$\nRemove, uninstall, or rename that copy before installing this release. This prevents an older working builder from staying on the machine beside the installed app."
+    Quit
+
+  IfFileExists "$PROFILE\OneDrive\Documents\OMB\desktop-builder\package.json" 0 +3
+    MessageBox MB_OK|MB_ICONSTOP "Setup found an existing local OMB Portfolio Builder workspace:$\r$\n$\r$\n$PROFILE\OneDrive\Documents\OMB\desktop-builder$\r$\n$\r$\nRemove, uninstall, or rename that copy before installing this release. This prevents an older working builder from staying on the machine beside the installed app."
+    Quit
+
+  IfFileExists "$PROFILE\Documents\OMB\desktop-builder\package.json" 0 +3
+    MessageBox MB_OK|MB_ICONSTOP "Setup found an existing local OMB Portfolio Builder workspace:$\r$\n$\r$\n$PROFILE\Documents\OMB\desktop-builder$\r$\n$\r$\nRemove, uninstall, or rename that copy before installing this release. This prevents an older working builder from staying on the machine beside the installed app."
+    Quit
+
+  IfFileExists "$DOCUMENTS\omb-portfolio-builder\package.json" 0 +3
+    MessageBox MB_OK|MB_ICONSTOP "Setup found an existing OMB Portfolio Builder development copy:$\r$\n$\r$\n$DOCUMENTS\omb-portfolio-builder$\r$\n$\r$\nRemove, uninstall, or rename that copy before installing this release."
+    Quit
+
+  IfFileExists "$PROFILE\OneDrive\Documents\omb-portfolio-builder\package.json" 0 +3
+    MessageBox MB_OK|MB_ICONSTOP "Setup found an existing OMB Portfolio Builder development copy:$\r$\n$\r$\n$PROFILE\OneDrive\Documents\omb-portfolio-builder$\r$\n$\r$\nRemove, uninstall, or rename that copy before installing this release."
+    Quit
+FunctionEnd
+
 Function OMBWriteDuplicateScanScript
   InitPluginsDir
   FileOpen $0 "$PLUGINSDIR\omb-duplicate-scan.ps1" w
@@ -242,6 +264,7 @@ FunctionEnd
 
 !macro customInit
   Call OMBUninstallExistingInstallIfPresent
+  Call OMBCheckKnownBuilderWorkspace
   Call OMBScanForDuplicateBuilderCopies
   StrCpy $OMB_CreateDesktopShortcutState ${BST_CHECKED}
   StrCpy $OMB_InstallPublishingToolsState ${BST_CHECKED}

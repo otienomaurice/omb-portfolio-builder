@@ -75,6 +75,7 @@ For repository development, use the branch model in [BRANCHING.md](BRANCHING.md)
 | `codex/update-builder-guide` | Refreshes the consumer-facing Builder Guide with current rich text, image, file, link, save, and publishing behavior. | `development` | `development` | Merged into `development` |
 | `codex/update-release-popup` | Adds the released-app update popup and main-branch release workflow so installed users are prompted when a newer builder is published. | `development` | `development` | Merged into `development` |
 | `codex/manual-update-categories-preview` | Adds manual update checks, custom project categories, link-safe rich paste handling, project-only website previews, broad duplicate-install detection, and a main release workflow fix. | `development` | `development` | Active |
+| `codex/fix-publish-target-auth` | Makes publishing target setup authenticate before saving, resolves the target default branch before access checks, and blocks known local builder workspaces during installation. | `development` | `development` | Active |
 
 ## Publishing Security
 
@@ -82,7 +83,7 @@ The app can be public, but publishing a live website is controlled by GitHub rep
 
 - Maurice Otieno's live website can be changed only by a GitHub identity that can push to `otienomaurice/otienomaurice.github.io`.
 - Fresh installs do not automatically clone or preload Maurice Otieno's website.
-- If Maurice installs the builder on another machine, open **Publishing target** and authenticate with a GitHub identity that has write access to `otienomaurice/otienomaurice.github.io`. After authentication succeeds, the builder automatically imports the current portfolio catalog, docs, images, resume, custom domain, and site files into that local builder workspace. **Load from target** can still be used later to refresh from the repository.
+- If Maurice installs the builder on another machine, open **Publishing target**, enter `otienomaurice/otienomaurice.github.io`, then click **Save target and authenticate** with a GitHub identity that has write access. The target is kept only after GitHub authorization succeeds. **Load from target** then becomes available to import the current portfolio catalog, docs, images, resume, custom domain, and site files into that local builder workspace.
 - Other users can use this same builder for their own website by opening **Publishing target** and entering their own GitHub Pages/static-site repository URL.
 - If the selected repository is missing, incompatible, or GitHub rejects the signed-in identity, **Apply to site** is blocked and the builder remains local-only.
 - The app does not embed Maurice's password or private credentials.
@@ -112,9 +113,9 @@ https://github.com/YOUR-USERNAME/YOUR-USERNAME.github.io.git
 
 3. Optionally enter a custom domain such as `example.com`; the builder writes it to `CNAME`.
 4. Click **Check tools**. If Git is missing, click **Install Git**; the app starts the Git for Windows installer path for you.
-5. Click **Save target**.
-6. Click **Authenticate with GitHub**. A GitHub/Git Credential Manager browser sign-in may open.
-7. After authentication succeeds, the builder automatically loads a compatible portfolio through a temporary clone, backs up replaced local portfolio files under `.omb-backups`, and updates the local draft to match the target catalog. Use **Load from target** later if you want to refresh from the repository again.
+5. Click **Save target and authenticate**. A GitHub/Git Credential Manager browser sign-in may open.
+6. The builder detects the repository default branch, verifies write access, and keeps the new target only after GitHub authorization succeeds.
+7. Click **Load from target** to load a compatible portfolio through a temporary clone. The builder backs up replaced local portfolio files under `.omb-backups` and updates the local draft to match the target catalog.
 8. Click **Save draft** before **Apply to site**.
 
 Successful publishing authorization is cached locally for about one day per repository and branch, so Apply to site does not re-check GitHub authorization on every push.

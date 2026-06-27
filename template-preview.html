@@ -242,7 +242,7 @@
                   </li>
                   <li>
                       <strong>Connect a publishing target before going live.</strong>
-                      <p>Use Publishing target to choose the website repository and custom domain, then authenticate with an account that can publish there. If no compatible target is connected, the builder keeps everything local.</p>
+                      <p>Use Publishing target to choose the website repository and custom domain. Click Save target and authenticate so GitHub verifies write access before the target is kept. Load from target becomes available only after authentication succeeds; if authentication fails, the previous target remains in place and the builder stays local.</p>
                   </li>
                   <li>
                       <strong>Apply to site publishes when ready.</strong>
@@ -415,7 +415,7 @@
                   <div class="publish-target-tool-actions">
                       <button class="button secondary compact-button" id="publish-target-check" type="button">Check tools</button>
                       <button class="button secondary compact-button" id="publish-target-install-git" type="button">Install Git</button>
-                      <button class="button primary compact-button" id="publish-target-auth" type="button">Authenticate with GitHub</button>
+                      <button class="button primary compact-button" id="publish-target-auth" type="button">Authenticate current target</button>
                   </div>
               </div>
               <label>
@@ -435,11 +435,11 @@
                   <input id="publish-target-password" type="password" autocomplete="off" placeholder="GitHub personal access token or credential password" />
               </label>
               <p class="publish-target-note">
-                  Publishing uses Git for Windows and Git Credential Manager. Enter a repository, click Save target, then click Authenticate with GitHub. A browser or GitHub sign-in window may open; sign in with an account that can write to that repository. After authentication succeeds, the builder automatically loads compatible portfolio files from the target. Use Load from target later when you want to refresh from the repository again.
+                  Publishing uses Git for Windows and Git Credential Manager. Enter a repository, then click Save target and authenticate. A browser or GitHub sign-in window may open. The builder keeps the previous target until GitHub confirms write access to the new target. Load from target becomes available only after authentication is complete.
               </p>
               <div class="dialog-actions">
-                  <button class="button primary" type="submit">Save target</button>
-                  <button class="button secondary" id="publish-target-sync" type="button">Load from target</button>
+                  <button class="button primary" type="submit">Save target and authenticate</button>
+                  <button class="button secondary" id="publish-target-sync" type="button" disabled>Load from target</button>
                   <button class="button secondary" id="publish-target-cancel" type="button">Cancel</button>
               </div>
           </form>
