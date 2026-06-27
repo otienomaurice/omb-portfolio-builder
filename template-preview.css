@@ -756,6 +756,14 @@
   background: #ffffff;
 }
 
+.asset-detected-note {
+  min-height: 18px;
+  margin-top: -4px;
+  color: #526d82;
+  font-size: 0.78rem;
+  font-weight: 750;
+}
+
 .builder-panel textarea,
 .project-fields textarea,
 .custom-section-fields textarea {
@@ -1258,6 +1266,12 @@
   overflow-wrap: inherit;
 }
 
+.rich-summary-editor a {
+  color: #0b67c2;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
 .rich-text-block:focus {
   box-shadow: none;
   outline: none;
@@ -1270,6 +1284,12 @@
 
 .rich-block.is-dragging {
   opacity: 0.35;
+}
+
+body.rich-image-dragging,
+body.rich-image-dragging * {
+  cursor: grabbing !important;
+  user-select: none !important;
 }
 
 .rich-text-small,
@@ -1346,6 +1366,24 @@
   padding-top: 36px;
 }
 
+.rich-image-block[draggable="true"] {
+  cursor: grab;
+}
+
+.rich-image-block[draggable="true"] .rich-image-viewport,
+.rich-image-block[draggable="true"] img,
+.rich-image-block[draggable="true"] figcaption {
+  cursor: grab;
+}
+
+.rich-image-block[draggable="true"]:active,
+.rich-image-block.is-dragging,
+.rich-image-block.is-dragging .rich-image-viewport,
+.rich-image-block.is-dragging img,
+.rich-image-block.is-dragging figcaption {
+  cursor: grabbing;
+}
+
 .rich-image img,
 .rich-image-block img {
   display: block;
@@ -1354,6 +1392,7 @@
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #ffffff;
+  user-select: none;
 }
 
 .rich-image-viewport {

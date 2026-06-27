@@ -12,8 +12,8 @@ https://github.com/otienomaurice/omb-portfolio-builder/releases/latest
 
 Use:
 
-- `OMB-Portfolio-Builder-Setup-0.2.4-x64.exe` for the Windows installer.
-- `OMB-Portfolio-Builder-Portable-0.2.4-x64.exe` when you want to run without installing.
+- `OMB-Portfolio-Builder-Setup-0.2.5-x64.exe` for the Windows installer.
+- `OMB-Portfolio-Builder-Portable-0.2.5-x64.exe` when you want to run without installing.
 
 The installer defaults to:
 
@@ -128,8 +128,8 @@ This repository includes `.github/workflows/build-windows-builder.yml`.
 Use the workflow manually from GitHub Actions, or push a tag:
 
 ```powershell
-git tag builder-v0.2.4
-git push origin builder-v0.2.4
+git tag builder-v0.2.5
+git push origin builder-v0.2.5
 ```
 
 Tags beginning with `builder-v` create a GitHub Release containing the installer and portable executable.

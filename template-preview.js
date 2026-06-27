@@ -106,6 +106,7 @@ const assetTitle = document.querySelector("#asset-title");
 const assetCaption = document.querySelector("#asset-caption");
 const captionSource = document.querySelector("#caption-source");
 const captionFile = document.querySelector("#caption-file");
+const assetDetectedNote = document.querySelector("#asset-detected-note");
 const assetCancel = document.querySelector("#asset-cancel");
 const sectionDialog = document.querySelector("#section-dialog");
 const sectionForm = document.querySelector("#section-form");
@@ -122,7 +123,9 @@ const siteLinkUrl = document.querySelector("#site-link-url");
 const siteLinkCancel = document.querySelector("#site-link-cancel");
 const summaryImageDialog = document.querySelector("#summary-image-dialog");
 const summaryImageForm = document.querySelector("#summary-image-form");
+const summaryImageSource = document.querySelector("#summary-image-source");
 const summaryImageFile = document.querySelector("#summary-image-file");
+const summaryImageUrl = document.querySelector("#summary-image-url");
 const summaryImageTitle = document.querySelector("#summary-image-title");
 const summaryImageCaption = document.querySelector("#summary-image-caption");
 const summaryImageAlign = document.querySelector("#summary-image-align");
@@ -371,6 +374,7 @@ let selectionGestureFinishTimer = 0;
 let selectionInspectorInputTimer = 0;
 let activeRichDragBlock = null;
 let activeImageCropDrag = null;
+let activeRichImageMoveDrag = null;
 let originalTitleDraft = "";
 let titleClickTimer = 0;
 let autosaveTimer = 0;
@@ -1232,6 +1236,12 @@ function updateAssetDialogVisibility() {
   document.querySelector(".asset-url-field").hidden = isLocal;
   document.querySelector(".caption-text-field").hidden = isCaptionFile;
   document.querySelector(".caption-file-field").hidden = !isCaptionFile;
+  const url = assetUrl?.value?.trim() || "";
+  if (assetDetectedNote) {
+    assetDetectedNote.textContent = isLocal || !url
+      ? ""
+      : `Detected: ${labelForUrlAssetKind(inferUrlAssetKind(url, assetSource.value))}.`;
+  }
 }
 
 function slugify(value) {
@@ -1531,6 +1541,132 @@ function isWebsiteLinkItem(item = {}, target = "") {
   return /\b(link|website|web link|url|external|github|linkedin|drive|social|profile)\b/.test(typeText);
 }
 
+function extensionFromUrl(value = "") {
+  const clean = String(value || "").split(/[?#]/)[0];
+  const match = clean.match(/(\.[a-z0-9_]+)$/i);
+  return match ? match[1].toLowerCase() : "";
+}
+
+function urlLooksLikeDirectImage(value = "") {
+  const clean = normalizeLinkTarget(value, { assumeWeb: true });
+  return /^(data:image\/|blob:)/i.test(clean) ||
+    /\.(png|jpe?g|webp|gif|svg|bmp|avif)([?#].*)?$/i.test(clean);
+}
+
+function inferUrlAssetKind(value = "", source = "web") {
+  const clean = normalizeLinkTarget(value, { assumeWeb: true });
+  const extension = extensionFromUrl(clean);
+  if (source === "drive" || /(^https?:\/\/)?(drive|docs)\.google\.com\//i.test(clean)) return "google-drive";
+  if (/github\.com|raw\.githubusercontent\.com/i.test(clean)) return "github";
+  if (/linkedin\.com/i.test(clean)) return "linkedin";
+  if (urlLooksLikeDirectImage(clean)) return "image";
+  if ([".pdf"].includes(extension)) return "pdf";
+  if ([".doc", ".docx", ".ppt", ".pptx", ".xls", ".xlsx", ".csv", ".txt", ".md"].includes(extension)) return "document";
+  if ([".zip", ".7z", ".rar"].includes(extension)) return "archive";
+  if ([".c", ".h", ".cpp", ".hpp", ".py", ".js", ".mjs", ".ts", ".v", ".sv", ".vhd", ".vhdl", ".spice", ".cir", ".net", ".asc", ".sch", ".kicad_sch", ".kicad_pcb"].includes(extension)) return "engineering-file";
+  if (/^https?:\/\//i.test(clean) || /^www\./i.test(value) || looksLikeBareWebAddress(value)) return "webpage";
+  return extension ? "file" : "link";
+}
+
+function labelForUrlAssetKind(kind = "link") {
+  return {
+    archive: "Archive link",
+    document: "Document link",
+    "engineering-file": "Engineering file link",
+    file: "File link",
+    github: "GitHub link",
+    "google-drive": "Google Drive link",
+    image: "Image URL",
+    linkedin: "LinkedIn link",
+    link: "Link",
+    pdf: "PDF link",
+    webpage: "Website link"
+  }[kind] || "Link";
+}
+
+function displayNameFromUrl(value = "", fallback = "Linked asset") {
+  const clean = normalizeLinkTarget(value, { assumeWeb: true });
+  try {
+    const parsed = new URL(clean);
+    const lastPath = parsed.pathname.split("/").filter(Boolean).pop();
+    return decodeURIComponent(lastPath || parsed.hostname.replace(/^www\./, "")) || fallback;
+  } catch {
+    return String(value || "").split("/").filter(Boolean).pop() || fallback;
+  }
+}
+
+function linkifyRichTextNodes(root) {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+    acceptNode(node) {
+      if (!node.textContent || !/(https?:\/\/|www\.)/i.test(node.textContent)) return NodeFilter.FILTER_REJECT;
+      return node.parentElement?.closest("a") ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT;
+    }
+  });
+  const nodes = [];
+  let node = walker.nextNode();
+  while (node) {
+    nodes.push(node);
+    node = walker.nextNode();
+  }
+
+  nodes.forEach((textNode) => {
+    const text = textNode.textContent || "";
+    const fragment = document.createDocumentFragment();
+    let cursor = 0;
+    text.replace(/\b(https?:\/\/[^\s<]+|www\.[^\s<]+)/gi, (match, _url, offset) => {
+      if (offset > cursor) fragment.append(document.createTextNode(text.slice(cursor, offset)));
+      const trailing = match.match(/[),.;:!?]+$/)?.[0] || "";
+      const clean = trailing ? match.slice(0, -trailing.length) : match;
+      const link = document.createElement("a");
+      link.href = normalizeLinkTarget(clean, { assumeWeb: true });
+      link.target = "_blank";
+      link.rel = "noreferrer";
+      link.textContent = clean;
+      fragment.append(link);
+      if (trailing) fragment.append(document.createTextNode(trailing));
+      cursor = offset + match.length;
+      return match;
+    });
+    if (cursor < text.length) fragment.append(document.createTextNode(text.slice(cursor)));
+    textNode.replaceWith(fragment);
+  });
+}
+
+function inlineStyleSignature(element) {
+  const style = element?.style;
+  if (!style) return "";
+  return [
+    style.fontFamily || "",
+    style.fontSize || "",
+    style.color || "",
+    style.fontWeight || "",
+    style.fontStyle || "",
+    style.textDecoration || ""
+  ].join("|");
+}
+
+function normalizeInlineStyleSpans(root) {
+  if (!root) return;
+  root.querySelectorAll("span.rich-inline-style, span[style]").forEach((span) => {
+    span.style.display = "inline";
+    if (!span.textContent) {
+      span.remove();
+      return;
+    }
+    if (!span.getAttribute("style")) span.replaceWith(...span.childNodes);
+  });
+  root.normalize();
+  root.querySelectorAll("span.rich-inline-style, span[style]").forEach((span) => {
+    let next = span.nextSibling;
+    while (next?.nodeType === Node.ELEMENT_NODE && next.matches("span.rich-inline-style, span[style]") && inlineStyleSignature(next) === inlineStyleSignature(span)) {
+      span.append(...next.childNodes);
+      const remove = next;
+      next = next.nextSibling;
+      remove.remove();
+    }
+  });
+}
+
 function sanitizeRichInlineHtml(value = "") {
   const template = document.createElement("template");
   template.innerHTML = String(value || "");
@@ -1572,6 +1708,8 @@ function sanitizeRichInlineHtml(value = "") {
     if (textDecoration) node.style.textDecoration = textDecoration;
   });
 
+  linkifyRichTextNodes(template.content);
+  normalizeInlineStyleSpans(template.content);
   return template.innerHTML;
 }
 
@@ -1681,10 +1819,11 @@ function renderRichContent(rich, fallbackText = "") {
         if (block.type === "image") {
           if (block.display === "download") return richImageDownloadLink(block);
           const title = cleanRichImageTitle(block);
+          const imageSrc = normalizeLinkTarget(block.url, { assumeWeb: true });
           return `
             <figure class="rich-image justify-${align}">
               <span class="rich-image-viewport crop-${normalizeCropAspect(block.cropAspect) === "original" ? "original" : "active"}"${richImageCropStyle(block)}>
-                <img src="${escapeHtml(block.url)}" alt="${escapeHtml(title || "Overview image")}">
+                <img src="${escapeHtml(imageSrc)}" alt="${escapeHtml(title || "Overview image")}">
               </span>
               ${(title || block.caption) ? `<figcaption>${title ? `<strong>${escapeHtml(title)}</strong>` : ""}${block.caption ? `<span>${escapeHtml(block.caption)}</span>` : ""}</figcaption>` : ""}
             </figure>
@@ -3033,17 +3172,20 @@ function createRichImageBlock(blockData) {
   figure.dataset.caption = blockData.caption || "";
   figure.dataset.align = align;
   figure.dataset.display = blockData.display === "download" ? "download" : "show";
+  figure.dataset.source = blockData.source || "local";
   figure.dataset.cropAspect = normalizeCropAspect(blockData.cropAspect);
   figure.dataset.cropZoom = String(normalizeCropZoom(blockData.cropZoom));
   figure.dataset.cropX = String(normalizeCropPosition(blockData.cropX));
   figure.dataset.cropY = String(normalizeCropPosition(blockData.cropY));
   figure.contentEditable = "false";
+  figure.draggable = true;
+  figure.title = "Drag image to move it between text.";
   figure.innerHTML = `
     <button class="rich-image-caret rich-image-caret-before" type="button" data-rich-caret="before">Type before</button>
     ${richBlockActions("overview image", { movable: true })}
     ${figure.dataset.display === "download" ? `<span class="rich-download-badge">Download only</span>` : ""}
     <span class="rich-image-viewport crop-${figure.dataset.cropAspect === "original" ? "original" : "active"}"${richImageCropStyle(blockData)}>
-      <img src="${escapeHtml(blockData.url)}" alt="${escapeHtml(title || "Overview image")}">
+      <img src="${escapeHtml(normalizeLinkTarget(blockData.url, { assumeWeb: true }))}" alt="${escapeHtml(title || "Overview image")}" draggable="true" data-rich-image-drag="true">
     </span>
     ${(title || blockData.caption) ? `<figcaption>${title ? `<strong>${escapeHtml(title)}</strong>` : ""}${blockData.caption ? `<span>${escapeHtml(blockData.caption)}</span>` : ""}</figcaption>` : ""}
     <button class="rich-image-caret rich-image-caret-after" type="button" data-rich-caret="after">Type after</button>
@@ -3073,10 +3215,13 @@ function refreshRichImageBlock(block, blockData) {
   block.dataset.caption = blockData.caption || "";
   block.dataset.align = align;
   block.dataset.display = blockData.display === "download" ? "download" : "show";
+  block.dataset.source = blockData.source || block.dataset.source || "local";
   block.dataset.cropAspect = normalizeCropAspect(blockData.cropAspect || block.dataset.cropAspect);
   block.dataset.cropZoom = String(normalizeCropZoom(blockData.cropZoom || block.dataset.cropZoom));
   block.dataset.cropX = String(normalizeCropPosition(blockData.cropX ?? block.dataset.cropX));
   block.dataset.cropY = String(normalizeCropPosition(blockData.cropY ?? block.dataset.cropY));
+  block.draggable = true;
+  block.title = "Drag image to move it between text.";
   block.classList.remove("justify-left", "justify-center", "justify-right");
   block.classList.add(`justify-${align}`);
   const title = cleanRichImageTitle({ title: block.dataset.title });
@@ -3090,7 +3235,7 @@ function refreshRichImageBlock(block, blockData) {
       cropX: block.dataset.cropX,
       cropY: block.dataset.cropY
     })}>
-      <img src="${escapeHtml(block.dataset.url)}" alt="${escapeHtml(title || "Overview image")}">
+      <img src="${escapeHtml(normalizeLinkTarget(block.dataset.url, { assumeWeb: true }))}" alt="${escapeHtml(title || "Overview image")}" draggable="true" data-rich-image-drag="true">
     </span>
     ${(title || block.dataset.caption) ? `<figcaption>${title ? `<strong>${escapeHtml(title)}</strong>` : ""}${block.dataset.caption ? `<span>${escapeHtml(block.dataset.caption)}</span>` : ""}</figcaption>` : ""}
     <button class="rich-image-caret rich-image-caret-after" type="button" data-rich-caret="after">Type after</button>
@@ -3527,6 +3672,12 @@ function applyStyleToRichSelection(editor, range, command, value = "") {
   const makeBold = command === "bold"
     ? !nodes.every((node) => Number.parseInt(getComputedStyle(node.parentElement || editor).fontWeight, 10) >= 600)
     : false;
+  const makeItalic = command === "italic"
+    ? !nodes.every((node) => getComputedStyle(node.parentElement || editor).fontStyle === "italic")
+    : false;
+  const makeUnderline = command === "underline"
+    ? !nodes.every((node) => getComputedStyle(node.parentElement || editor).textDecorationLine.includes("underline"))
+    : false;
   const formattedNodes = [];
 
   nodes.forEach((node) => {
@@ -3546,12 +3697,15 @@ function applyStyleToRichSelection(editor, range, command, value = "") {
     if (command === "foreColor") wrapper.style.color = normalizeTextColor(value);
     if (command === "fontSize") wrapper.style.fontSize = `${normalizeFontPx(value)}px`;
     if (command === "bold") wrapper.style.fontWeight = makeBold ? "700" : "400";
+    if (command === "italic") wrapper.style.fontStyle = makeItalic ? "italic" : "normal";
+    if (command === "underline") wrapper.style.textDecoration = makeUnderline ? "underline" : "none";
     selectedNode.replaceWith(wrapper);
     wrapper.append(selectedNode);
     formattedNodes.push(selectedNode);
   });
 
   if (!formattedNodes.length) return null;
+  normalizeInlineStyleSpans(editor);
   const nextRange = document.createRange();
   const firstNode = formattedNodes[0];
   const lastNode = formattedNodes[formattedNodes.length - 1];
@@ -3562,7 +3716,10 @@ function applyStyleToRichSelection(editor, range, command, value = "") {
 
 function applyRichInlineCommand(editor, command, value = "") {
   if (!editor) return;
-  const savedRange = rangeBelongsToEditor(activeTextSelectionRange, editor)
+  const liveRange = selectionRangeInsideEditor(editor);
+  const savedRange = liveRange && !liveRange.collapsed
+    ? liveRange.cloneRange()
+    : rangeBelongsToEditor(activeTextSelectionRange, editor)
     ? activeTextSelectionRange.cloneRange()
     : rangeBelongsToEditor(activeRichSelectionRange, editor)
       ? activeRichSelectionRange.cloneRange()
@@ -3575,17 +3732,11 @@ function applyRichInlineCommand(editor, command, value = "") {
     activeTextSelectionRange = nextRange.cloneRange();
     showPersistentTextSelection(nextRange);
   } else {
-    const updates = {};
-    if (command === "fontName") updates.fontFamily = value;
-    if (command === "foreColor") updates.color = value;
-    if (command === "fontSize") updates.fontPx = value;
-    if (command === "bold") {
-      const block = selectedRichBlock(editor);
-      updates.bold = block?.dataset.bold !== "true";
-    }
-    updateCurrentTextBlock(editor, updates);
+    setStatus("Highlight the text you want to format first.");
+    return;
   }
 
+  saveRichEditorToProject(editor);
   setStatus("Unsaved local changes. Click the section save button to keep this formatting.");
 }
 
@@ -3744,6 +3895,20 @@ function insertRichBlockAfterCursor(editor, blockElement) {
   insertRichBlockAtCursor(editor, blockElement);
 }
 
+function cleanupEmptyRichTextBlocks(editor) {
+  if (!editor) return;
+  [...editor.querySelectorAll(":scope > .rich-text-block")].forEach((block) => {
+    const hasVisibleText = richElementPlainText(block);
+    if (hasVisibleText) return;
+    const previous = block.previousElementSibling;
+    const next = block.nextElementSibling;
+    const keepTypingBlockAfterImage = previous?.dataset.type === "image" && !next;
+    const isOnlyBlock = editor.children.length <= 1;
+    if (!isOnlyBlock && !keepTypingBlockAfterImage) block.remove();
+  });
+  if (!editor.querySelector(":scope > .rich-block")) editor.append(createRichTextBlock(""));
+}
+
 function normalizeRichEditorStructure(editor) {
   if (!editor) return;
   [...editor.childNodes].forEach((node) => {
@@ -3820,6 +3985,7 @@ function updateCurrentTextBlock(editor, updates) {
 
 function extractRichSummary(editor) {
   normalizeRichEditorStructure(editor);
+  normalizeInlineStyleSpans(editor);
   const blocks = [...editor.querySelectorAll(".rich-block")].map((element) => {
     const align = element.dataset.align || "left";
     if (element.dataset.type === "image") {
@@ -3831,6 +3997,7 @@ function extractRichSummary(editor) {
         cropY: normalizeCropPosition(element.dataset.cropY),
         cropZoom: normalizeCropZoom(element.dataset.cropZoom),
         display: element.dataset.display === "download" ? "download" : "show",
+        source: element.dataset.source || "local",
         title: element.dataset.title || "",
         type: "image",
         url: element.dataset.url || ""
@@ -3898,10 +4065,18 @@ async function uploadSummaryImageFile(file, options = {}) {
     cropY: normalizeCropPosition(options.cropY),
     cropZoom: normalizeCropZoom(options.cropZoom),
     display: options.display === "download" ? "download" : "show",
+    source: "local",
     title: displayTitle || "",
     type: "image",
     url: result.url
   };
+}
+
+function updateSummaryImageDialogVisibility() {
+  const source = summaryImageSource?.value || "local";
+  const isLocal = source === "local";
+  document.querySelector(".summary-image-local-field").hidden = !isLocal;
+  document.querySelector(".summary-image-url-field").hidden = isLocal;
 }
 
 async function openSummaryImageDialog(existingBlock = null, options = {}) {
@@ -3909,16 +4084,49 @@ async function openSummaryImageDialog(existingBlock = null, options = {}) {
   const submitButton = summaryImageDialog.querySelector("button[type='submit']");
   if (heading) heading.textContent = existingBlock ? "Edit image" : "Add image to overview";
   if (submitButton) submitButton.textContent = existingBlock ? "Save image" : "Add image";
+  summaryImageSource.value = existingBlock?.dataset.source || "local";
   summaryImageFile.value = "";
+  summaryImageUrl.value = existingBlock?.dataset.source && existingBlock.dataset.source !== "local" ? existingBlock.dataset.url || "" : "";
   summaryImageTitle.value = existingBlock?.dataset.title || "";
   summaryImageCaption.value = existingBlock?.dataset.caption || "";
   summaryImageAlign.value = existingBlock?.dataset.align || "center";
   summaryImageDisplay.value = existingBlock?.dataset.display || "show";
   summaryImageCrop.value = normalizeCropAspect(existingBlock?.dataset.cropAspect);
   summaryImageZoom.value = String(normalizeCropZoom(existingBlock?.dataset.cropZoom));
+  updateSummaryImageDialogVisibility();
   const saved = await dialogValue(summaryImageDialog);
   if (!saved) return null;
   const file = summaryImageFile.files[0];
+  const source = summaryImageSource.value || "local";
+  const url = normalizeLinkTarget(summaryImageUrl.value.trim(), { assumeWeb: true });
+
+  if (source !== "local") {
+    const existingUrl = existingBlock?.dataset.url || "";
+    const nextUrl = url || existingUrl;
+    if (!nextUrl) {
+      setStatus("Paste an image URL or share link first.");
+      return null;
+    }
+    const display = summaryImageDisplay.value === "download" ? "download" : "show";
+    if (display === "show" && !urlLooksLikeDirectImage(nextUrl)) {
+      setStatus("Use a direct image URL for visible images, or choose Downloadable file only for share links and non-image URLs.");
+      return null;
+    }
+    return {
+      align: summaryImageAlign.value,
+      caption: summaryImageCaption.value.trim(),
+      cropAspect: summaryImageCrop.value,
+      cropX: normalizeCropPosition(existingBlock?.dataset.cropX),
+      cropY: normalizeCropPosition(existingBlock?.dataset.cropY),
+      cropZoom: normalizeCropZoom(summaryImageZoom.value),
+      display,
+      source,
+      title: summaryImageTitle.value.trim() || displayNameFromUrl(nextUrl, source === "drive" ? "Google Drive image" : "Web image"),
+      type: "image",
+      url: nextUrl
+    };
+  }
+
   if (!file && !existingBlock) {
     setStatus("Choose an image first.");
     return null;
@@ -3932,6 +4140,7 @@ async function openSummaryImageDialog(existingBlock = null, options = {}) {
       cropY: normalizeCropPosition(existingBlock.dataset.cropY),
       cropZoom: normalizeCropZoom(summaryImageZoom.value),
       display: summaryImageDisplay.value === "download" ? "download" : "show",
+      source: existingBlock.dataset.source || "local",
       title: summaryImageTitle.value.trim() || existingBlock.dataset.title || "",
       type: "image",
       url: existingBlock.dataset.url || ""
@@ -3973,6 +4182,12 @@ async function handleRichAction(action, editor) {
   activeSummaryEditor = editor;
   if (action === "toggle-bold") {
     applyRichInlineCommand(editor, "bold");
+  }
+  if (action === "toggle-italic") {
+    applyRichInlineCommand(editor, "italic");
+  }
+  if (action === "toggle-underline") {
+    applyRichInlineCommand(editor, "underline");
   }
   if (action === "align-left") updateCurrentTextBlock(editor, { align: "left" });
   if (action === "align-center") updateCurrentTextBlock(editor, { align: "center" });
@@ -5150,7 +5365,7 @@ function fullPortfolioPreviewHtmlExact() {
       <section class="fun-facts-section" id="fun-facts-callout" aria-label="Fun facts" hidden></section>
 
       <section class="builder-download-section" aria-label="Download portfolio builder">
-        <a class="builder-download-link" href="https://github.com/otienomaurice/omb-portfolio-builder/releases/download/builder-v0.2.4/OMB-Portfolio-Builder-Setup-0.2.4-x64.exe" download>
+        <a class="builder-download-link" href="https://github.com/otienomaurice/omb-portfolio-builder/releases/download/builder-v0.2.5/OMB-Portfolio-Builder-Setup-0.2.5-x64.exe" download>
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <path d="M12 3v11m0 0 4-4m-4 4-4-4" />
             <path d="M5 17v2h14v-2" />
@@ -5628,10 +5843,15 @@ function validateAssetForSection(key, asset) {
   if (asset.source === "local") {
     return isAllowedUpload(key, asset.fileName || asset.file?.name || "", asset.file?.type || "");
   }
-  if (!extensionFor(asset.url || asset.title || "")) {
+  const url = normalizeLinkTarget(asset.url || "", { assumeWeb: true });
+  const kind = inferUrlAssetKind(url, asset.source);
+  if (key === "media" && !["image", "google-drive"].includes(kind)) {
+    return { ok: false, message: "Image areas need an image file or direct image URL. Add PDFs, websites, and documents under Documents, Tests, Links, or a custom section." };
+  }
+  if (!extensionFromUrl(url) && !extensionFor(asset.title || "")) {
     return { ok: true, message: "" };
   }
-  return isAllowedUpload(key, asset.url || asset.title || "", "");
+  return isAllowedUpload(key, url || asset.title || "", "");
 }
 
 function dialogValue(dialog) {
@@ -5684,7 +5904,8 @@ async function openAssetDialog(key) {
       setStatus("Paste a web or Google Drive link first.");
       return null;
     }
-    title = title || url.split("/").filter(Boolean).pop() || "Linked asset";
+    url = normalizeLinkTarget(url, { assumeWeb: true });
+    title = title || displayNameFromUrl(url, "Linked asset");
     const validation = validateAssetForSection(key, { source: assetSource.value, url, title });
     if (!validation.ok) {
       setStatus(validation.message);
@@ -5701,6 +5922,7 @@ async function openAssetDialog(key) {
     caption,
     file,
     fileName,
+    kind: file ? "file" : inferUrlAssetKind(url, assetSource.value),
     source: assetSource.value,
     title,
     url
@@ -5722,7 +5944,7 @@ async function uploadToSection(key, folder, customSectionId = "", customItemInde
 
   const sectionFolder = customSectionId || folder || key;
   let url = asset.url;
-  let type = asset.source === "drive" ? "Google Drive" : "Web link";
+  let type = asset.source === "local" ? "File" : labelForUrlAssetKind(asset.kind);
 
   if (asset.file) {
     const data = await readFileAsDataUrl(asset.file);
@@ -5783,7 +6005,7 @@ async function uploadToDesignSection(pathValue, folder, kind = "document") {
   }
 
   let url = asset.url;
-  let type = asset.source === "drive" ? "Google Drive" : "Web link";
+  let type = asset.source === "local" ? "File" : labelForUrlAssetKind(asset.kind);
   if (asset.file) {
     const data = await readFileAsDataUrl(asset.file);
     const response = await fetch("/api/upload", {
@@ -6393,6 +6615,14 @@ async function handleRichEditorPaste(event) {
         return;
     }
 
+    const pastedHtml = event.clipboardData?.getData("text/html") || "";
+    if (pastedHtml) {
+      event.preventDefault();
+      insertHtmlIntoRichEditor(editor, pastedHtml);
+      saveRichEditorToProject(editor);
+      return;
+    }
+
     const pastedText = event.clipboardData?.getData("text/plain") || "";
     if (!pastedText) return;
 
@@ -6413,23 +6643,20 @@ document.addEventListener("paste", (event) => {
     event.preventDefault();
     setStatus("Images can only be pasted into overview editors, not title or name fields.");
 }, true);
-function insertPlainTextIntoRichEditor(editor, pastedText) {
-    const textToInsert = String(pastedText || "").replace(/\r\n?/g, "\n");
-    if (!textToInsert) return;
-
+function restoreRichInsertionPoint(editor) {
     if (!restoreRichSelection(editor)) focusTextBlock(selectedRichBlock(editor) || editor.querySelector(".rich-text-block"));
     editor.focus({ preventScroll: true });
 
     const range = selectionRangeInsideEditor(editor);
-    if (!range) return;
+    if (!range) return null;
 
     range.deleteContents();
+    return range;
+}
 
-    const fragment = document.createDocumentFragment();
-    textToInsert.split("\n").forEach((line, index) => {
-        if (index > 0) fragment.append(document.createElement("br"));
-        if (line) fragment.append(document.createTextNode(line));
-    });
+function insertFragmentIntoRichEditor(editor, fragment) {
+    const range = restoreRichInsertionPoint(editor);
+    if (!range || !fragment) return;
 
     const lastInsertedNode = fragment.lastChild;
     range.insertNode(fragment);
@@ -6445,6 +6672,28 @@ function insertPlainTextIntoRichEditor(editor, pastedText) {
     captureRichSelection(editor);
 }
 
+function insertPlainTextIntoRichEditor(editor, pastedText) {
+    const textToInsert = String(pastedText || "").replace(/\r\n?/g, "\n");
+    if (!textToInsert) return;
+
+    const fragment = document.createDocumentFragment();
+    textToInsert.split("\n").forEach((line, index) => {
+        if (index > 0) fragment.append(document.createElement("br"));
+        if (line) fragment.append(document.createTextNode(line));
+    });
+    insertFragmentIntoRichEditor(editor, fragment);
+}
+
+function insertHtmlIntoRichEditor(editor, pastedHtml) {
+    const normalizedHtml = String(pastedHtml || "")
+      .replace(/<\/(?:p|div|li|h[1-6]|tr)>/gi, "<br>")
+      .replace(/<(?:p|div|li|h[1-6]|tr|td|th)[^>]*>/gi, "")
+      .replace(/<br\s*\/?>\s*(<br\s*\/?>\s*){2,}/gi, "<br><br>");
+    const template = document.createElement("template");
+    template.innerHTML = sanitizeRichInlineHtml(normalizedHtml);
+    insertFragmentIntoRichEditor(editor, template.content.cloneNode(true));
+}
+
 projectFields.addEventListener("paste", handleRichEditorPaste);
 sectionContent.addEventListener("paste", handleRichEditorPaste);
 funFactsInput?.addEventListener("paste", handleRichEditorPaste);
@@ -6452,7 +6701,20 @@ sectionDescription?.addEventListener("paste", handleRichEditorPaste);
 
 function handleRichEditorKeydown(event) {
     const editor = event.target.closest("[data-rich-editor]");
-    if (!editor || event.key !== "Enter") return;
+    if (!editor) return;
+
+    if ((event.ctrlKey || event.metaKey) && ["b", "i", "u"].includes(event.key.toLowerCase())) {
+      event.preventDefault();
+      const command = event.key.toLowerCase() === "b"
+        ? "bold"
+        : event.key.toLowerCase() === "i"
+          ? "italic"
+          : "underline";
+      applyRichInlineCommand(editor, command);
+      return;
+    }
+
+    if (event.key !== "Enter") return;
 
     const block = event.target.closest(".rich-text-block");
     if (!block) return;
@@ -6503,7 +6765,17 @@ function handleRichEditorInput(event) {
   setStatus("Unsaved local changes.");
 }
 
+function handleRichEditorBeforeInput(event) {
+  const editor = event.target.closest("[data-rich-editor]");
+  if (!editor) return;
+  const inputType = event.inputType || "";
+  if (!/insertFromPaste|insertFromDrop/i.test(inputType) && /^(insert|delete|history)/i.test(inputType)) {
+    clearPersistentTextSelection(true);
+  }
+}
+
 [projectFields, sectionContent, funFactsInput, sectionDescription].filter(Boolean).forEach((root) => {
+  root.addEventListener("beforeinput", handleRichEditorBeforeInput);
   root.addEventListener("focusin", handleRichEditorFocus);
   root.addEventListener("input", handleRichEditorInput);
 });
@@ -6568,14 +6840,18 @@ function finishTextSelectionGesture(event) {
     if (node?.nodeType === Node.TEXT_NODE) node = node.parentElement;
     const editor = node?.closest?.("[data-rich-editor]");
     const range = editor ? selectionRangeInsideEditor(editor) : null;
-    if (editor && range && !range.collapsed) {
+  if (editor && range && !range.collapsed) {
       activeSummaryEditor = editor;
       activeRichSelectionRange = range.cloneRange();
       activeTextSelectionRange = range.cloneRange();
       selectionGestureProducedRange = true;
       showPersistentTextSelection(range);
     } else if (!selectionGestureProducedRange) {
-      clearPersistentTextSelection(true);
+      if (editor && rangeBelongsToEditor(activeTextSelectionRange, editor)) {
+        showPersistentTextSelection(activeTextSelectionRange);
+      } else {
+        clearPersistentTextSelection(true);
+      }
     }
     refreshTextSelectionInspector();
   }, 40);
@@ -6719,12 +6995,22 @@ function handleRichCaretClick(event) {
 
 function handleRichDragStart(event) {
   const handle = event.target.closest("[data-rich-drag-handle]");
-  if (!handle) return;
-  activeRichDragBlock = handle.closest(".rich-block");
+  const imageBlock = event.target.closest(".rich-image-block");
+  const isControl = event.target.closest("button, input, select, textarea, a, .rich-block-actions, [data-rich-caret]");
+  const block = handle?.closest(".rich-block") || (!isControl ? imageBlock : null);
+  if (!block) {
+    if (imageBlock) event.preventDefault();
+    return;
+  }
+  activeRichDragBlock = block;
+  selectRichBlock(activeRichDragBlock);
   activeRichDragBlock.classList.add("is-dragging");
   if (event.dataTransfer) {
+    event.dataTransfer.clearData();
     event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.dropEffect = "move";
     event.dataTransfer.setData("text/x-rich-block", "move");
+    event.dataTransfer.setData("text/plain", activeRichDragBlock.dataset.title || activeRichDragBlock.dataset.type || "image");
   }
 }
 
@@ -6733,6 +7019,55 @@ function handleRichDragOver(event) {
   const editor = event.target.closest("[data-rich-editor]");
   if (!editor || editor !== activeRichDragBlock.closest("[data-rich-editor]")) return;
   event.preventDefault();
+  if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
+}
+
+function richRangeFromPoint(x, y) {
+  if (document.caretRangeFromPoint) return document.caretRangeFromPoint(x, y);
+  if (document.caretPositionFromPoint) {
+    const position = document.caretPositionFromPoint(x, y);
+    if (position) {
+      const range = document.createRange();
+      range.setStart(position.offsetNode, position.offset);
+      range.collapse(true);
+      return range;
+    }
+  }
+  return null;
+}
+
+function validDropRangeForEditor(editor, movingBlock, range) {
+  const rangeNode = range?.startContainer?.nodeType === Node.TEXT_NODE
+    ? range.startContainer.parentElement
+    : range?.startContainer;
+  if (!range || !rangeNode || !editor.contains(rangeNode)) return null;
+  if (movingBlock?.contains(rangeNode)) return null;
+  if (rangeNode.closest("[contenteditable='false']")) return null;
+  return range;
+}
+
+function moveRichBlockToPoint(editor, movingBlock, x, y, eventTarget = null) {
+  if (!editor || !movingBlock) return;
+  let dropRange = validDropRangeForEditor(editor, movingBlock, richRangeFromPoint(x, y));
+  const pointTarget = eventTarget || document.elementFromPoint(x, y);
+  const target = pointTarget?.closest?.(".rich-block");
+
+  movingBlock.classList.remove("is-dragging");
+  if (target === movingBlock) return;
+
+  if (dropRange) {
+    insertRichBlockAtCursor(editor, movingBlock, dropRange);
+  } else if (!target || !editor.contains(target)) {
+    editor.append(movingBlock);
+  } else if (y < target.getBoundingClientRect().top + target.getBoundingClientRect().height / 2) {
+    target.before(movingBlock);
+  } else {
+    target.after(movingBlock);
+  }
+
+  cleanupEmptyRichTextBlocks(editor);
+  saveRichEditorToProject(editor);
+  selectRichBlock(movingBlock);
 }
 
 function handleRichDrop(event) {
@@ -6740,45 +7075,58 @@ function handleRichDrop(event) {
   const editor = event.target.closest("[data-rich-editor]");
   if (!editor || editor !== activeRichDragBlock.closest("[data-rich-editor]")) return;
   event.preventDefault();
-  const target = event.target.closest(".rich-block");
-  if (target === activeRichDragBlock) {
-    activeRichDragBlock.classList.remove("is-dragging");
-    activeRichDragBlock = null;
-    return;
-  }
+  moveRichBlockToPoint(editor, activeRichDragBlock, event.clientX, event.clientY, event.target);
+  activeRichDragBlock = null;
+}
 
-  let dropRange = null;
-  if (document.caretRangeFromPoint) {
-    dropRange = document.caretRangeFromPoint(event.clientX, event.clientY);
-  } else if (document.caretPositionFromPoint) {
-    const position = document.caretPositionFromPoint(event.clientX, event.clientY);
-    if (position) {
-      dropRange = document.createRange();
-      dropRange.setStart(position.offsetNode, position.offset);
-      dropRange.collapse(true);
-    }
-  }
+function imageMoveDragControl(target) {
+  return target.closest("button, input, select, textarea, a, .rich-block-actions, [data-rich-caret]");
+}
 
-  const rangeNode = dropRange?.startContainer?.nodeType === Node.TEXT_NODE
-    ? dropRange.startContainer.parentElement
-    : dropRange?.startContainer;
-  if (!dropRange || !rangeNode || !editor.contains(rangeNode) || rangeNode.closest("[contenteditable='false']")) {
-    dropRange = null;
-  }
+function beginRichImageMoveDrag(event) {
+  if (event.button !== 0) return;
+  const block = event.target.closest(".rich-image-block");
+  if (!block || imageMoveDragControl(event.target)) return;
+  if (event.target.closest(".rich-image-viewport.crop-active")) return;
+  const editor = block.closest("[data-rich-editor]");
+  if (!editor) return;
+  activeRichImageMoveDrag = {
+    block,
+    editor,
+    moved: false,
+    pointerId: event.pointerId,
+    startX: event.clientX,
+    startY: event.clientY
+  };
+  block.setPointerCapture?.(event.pointerId);
+}
 
-  const movingBlock = activeRichDragBlock;
-  movingBlock.classList.remove("is-dragging");
-  if (dropRange) {
-    insertRichBlockAtCursor(editor, movingBlock, dropRange);
-  } else if (!target) {
-    editor.append(movingBlock);
-  } else if (event.clientY < target.getBoundingClientRect().top + target.getBoundingClientRect().height / 2) {
-    target.before(movingBlock);
-  } else {
-    target.after(movingBlock);
+function moveRichImageMoveDrag(event) {
+  if (!activeRichImageMoveDrag) return;
+  const drag = activeRichImageMoveDrag;
+  const distance = Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY);
+  if (!drag.moved && distance < 6) return;
+  if (!drag.moved) {
+    drag.moved = true;
+    activeRichDragBlock = drag.block;
+    selectRichBlock(drag.block);
+    drag.block.classList.add("is-dragging");
+    document.body.classList.add("rich-image-dragging");
   }
-  saveRichEditorToProject(editor);
-  selectRichBlock(movingBlock);
+  event.preventDefault();
+}
+
+function endRichImageMoveDrag(event) {
+  if (!activeRichImageMoveDrag) return;
+  const drag = activeRichImageMoveDrag;
+  drag.block.releasePointerCapture?.(drag.pointerId);
+  if (drag.moved) {
+    moveRichBlockToPoint(drag.editor, drag.block, event.clientX, event.clientY);
+    event.preventDefault();
+  }
+  drag.block.classList.remove("is-dragging");
+  document.body.classList.remove("rich-image-dragging");
+  activeRichImageMoveDrag = null;
   activeRichDragBlock = null;
 }
 
@@ -6825,11 +7173,15 @@ function endImageCropDrag() {
     activeRichDragBlock?.classList.remove("is-dragging");
     activeRichDragBlock = null;
   });
+  root.addEventListener("pointerdown", beginRichImageMoveDrag);
   root.addEventListener("pointerdown", beginImageCropDrag);
 });
 document.addEventListener("pointermove", moveImageCropDrag);
+document.addEventListener("pointermove", moveRichImageMoveDrag);
 document.addEventListener("pointerup", endImageCropDrag);
+document.addEventListener("pointerup", endRichImageMoveDrag);
 document.addEventListener("pointercancel", endImageCropDrag);
+document.addEventListener("pointercancel", endRichImageMoveDrag);
 
 summaryContextMenu.addEventListener("click", async (event) => {
   const actionButton = event.target.closest("[data-rich-action]");
@@ -7123,6 +7475,7 @@ deleteConfirmDialog.addEventListener("click", (event) => {
 });
 
 assetSource.addEventListener("change", updateAssetDialogVisibility);
+assetUrl.addEventListener("input", updateAssetDialogVisibility);
 captionSource.addEventListener("change", updateAssetDialogVisibility);
 assetFile.addEventListener("change", () => {
   if (!assetTitle.value && assetFile.files[0]) assetTitle.value = assetFile.files[0].name;
@@ -7150,6 +7503,15 @@ siteLinkForm.addEventListener("submit", (event) => {
 });
 summaryImageCancel.addEventListener("click", () => {
   summaryImageDialog.close("cancel");
+});
+summaryImageSource?.addEventListener("change", updateSummaryImageDialogVisibility);
+summaryImageUrl?.addEventListener("input", () => {
+  if (!summaryImageTitle.value && summaryImageUrl.value.trim()) {
+    summaryImageTitle.value = displayNameFromUrl(summaryImageUrl.value.trim(), "Web image");
+  }
+});
+summaryImageFile?.addEventListener("change", () => {
+  if (!summaryImageTitle.value && summaryImageFile.files[0]) summaryImageTitle.value = summaryImageFile.files[0].name;
 });
 summaryImageForm.addEventListener("submit", (event) => {
   event.preventDefault();

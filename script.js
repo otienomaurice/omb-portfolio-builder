@@ -544,6 +544,43 @@ function isWebsiteLinkItem(item = {}, target = "") {
   return /\b(link|website|web link|url|external|github|linkedin|drive|social|profile)\b/.test(typeText);
 }
 
+function linkifyRichTextNodes(root) {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+    acceptNode(node) {
+      if (!node.textContent || !/(https?:\/\/|www\.)/i.test(node.textContent)) return NodeFilter.FILTER_REJECT;
+      return node.parentElement?.closest("a") ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT;
+    }
+  });
+  const nodes = [];
+  let node = walker.nextNode();
+  while (node) {
+    nodes.push(node);
+    node = walker.nextNode();
+  }
+
+  nodes.forEach((textNode) => {
+    const text = textNode.textContent || "";
+    const fragment = document.createDocumentFragment();
+    let cursor = 0;
+    text.replace(/\b(https?:\/\/[^\s<]+|www\.[^\s<]+)/gi, (match, _url, offset) => {
+      if (offset > cursor) fragment.append(document.createTextNode(text.slice(cursor, offset)));
+      const trailing = match.match(/[),.;:!?]+$/)?.[0] || "";
+      const clean = trailing ? match.slice(0, -trailing.length) : match;
+      const link = document.createElement("a");
+      link.href = normalizeLinkTarget(clean, { assumeWeb: true });
+      link.target = "_blank";
+      link.rel = "noreferrer";
+      link.textContent = clean;
+      fragment.append(link);
+      if (trailing) fragment.append(document.createTextNode(trailing));
+      cursor = offset + match.length;
+      return match;
+    });
+    if (cursor < text.length) fragment.append(document.createTextNode(text.slice(cursor)));
+    textNode.replaceWith(fragment);
+  });
+}
+
 function sanitizeRichInlineHtml(value = "") {
   const template = document.createElement("template");
   template.innerHTML = String(value || "");
@@ -585,6 +622,7 @@ function sanitizeRichInlineHtml(value = "") {
     if (textDecoration) node.style.textDecoration = textDecoration;
   });
 
+  linkifyRichTextNodes(template.content);
   return template.innerHTML;
 }
 
@@ -693,14 +731,15 @@ function renderRichContent(rich, fallbackText = "") {
         if (block.type === "image") {
           if (block.display === "download") return richImageDownloadLink(block);
           const title = cleanRichImageTitle(block);
+          const imageSrc = normalizeLinkTarget(block.url, { assumeWeb: true });
             return `
               <figure class="rich-image justify-${align}">
                 <span class="rich-image-viewport crop-${normalizeCropAspect(block.cropAspect) === "original" ? "original" : "active"}"${richImageCropStyle(block)}>
-                  <img src="${escapeHtml(block.url)}" alt="${escapeHtml(title || "Overview image")}">
+                  <img src="${escapeHtml(imageSrc)}" alt="${escapeHtml(title || "Overview image")}">
                 </span>
                 ${(title || block.caption) ? `<figcaption>${title ? `<strong>${escapeHtml(title)}</strong>` : ""}${block.caption ? `<span>${escapeHtml(block.caption)}</span>` : ""}</figcaption>` : ""}
-            </figure>
-          `;
+              </figure>
+            `;
         }
         if (block.type === "formula") {
           return `<div class="rich-formula justify-${align}">${escapeHtml(unwrapFormula(block.formula))}</div>`;

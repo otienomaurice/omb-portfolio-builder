@@ -460,8 +460,9 @@
 
               <label class="asset-url-field" hidden>
                   <span>URL or share link</span>
-                  <input id="asset-url" type="url" placeholder="https://..." />
+                  <input id="asset-url" type="text" placeholder="https://... or www.example.com" />
               </label>
+              <div class="asset-detected-note" id="asset-detected-note" aria-live="polite"></div>
 
               <label>
                   <span>Rename file or display title</span>
@@ -555,8 +556,20 @@
                   <h2>Add image to overview</h2>
               </div>
               <label>
+                  <span>Source</span>
+                  <select id="summary-image-source">
+                      <option value="local">Local machine</option>
+                      <option value="web">Direct image URL</option>
+                      <option value="drive">Google Drive link</option>
+                  </select>
+              </label>
+              <label class="summary-image-local-field">
                   <span>Choose image</span>
                   <input id="summary-image-file" type="file" accept=".png,.jpg,.jpeg,.webp,image/*" />
+              </label>
+              <label class="summary-image-url-field" hidden>
+                  <span>Image or share URL</span>
+                  <input id="summary-image-url" type="text" placeholder="https://... or www.example.com/image.png" />
               </label>
               <label>
                   <span>Display title</span>
@@ -653,6 +666,8 @@
           <button type="button" data-rich-action="copy-text">Copy text</button>
           <button type="button" data-rich-action="paste-text">Paste text</button>
           <button type="button" data-rich-action="toggle-bold" data-rich-bold>Bold</button>
+          <button type="button" data-rich-action="toggle-italic">Italic</button>
+          <button type="button" data-rich-action="toggle-underline">Underline</button>
 
           <label class="rich-menu-field">
               <span>Text color</span>
