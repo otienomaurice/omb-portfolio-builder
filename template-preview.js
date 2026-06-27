@@ -931,14 +931,14 @@ function showUpdateDialog(update = {}, options = {}) {
   const force = Boolean(options.force);
   if (!appUpdateDialog || (!force && !shouldShowUpdateDialog(update))) return;
   pendingAppUpdate = update;
-  const downloadUrl = update.installerUrl || update.releaseUrl || update.portableUrl || "";
+  const hasInstaller = Boolean(update.installerUrl);
   const hasUpdate = Boolean(update.updateAvailable && update.latestVersion);
   appUpdateTitle.textContent = hasUpdate ? "Update available" : "Builder is up to date";
   appUpdateMessage.textContent = hasUpdate
     ? `OMB Portfolio Builder ${update.latestVersion} is available. You are running ${update.currentVersion || "an older version"}.`
     : `You are running OMB Portfolio Builder ${update.currentVersion || "the current installed version"}.`;
   appUpdateDetails.textContent = hasUpdate
-    ? "Choose Download update to open the latest installer, Remind me later to postpone the prompt, or Skip this version if you do not want this release."
+    ? "Choose Update to download the latest installer, close this app, and install the new version automatically. Remind me later postpones the prompt; Skip this version ignores this release."
     : "No newer released builder was found on GitHub Releases.";
   appUpdateReleaseMeta.innerHTML = hasUpdate
     ? [
@@ -953,13 +953,48 @@ function showUpdateDialog(update = {}, options = {}) {
   appUpdateLater.textContent = hasUpdate ? "Remind me later" : "Close";
   appUpdateSkip.hidden = !hasUpdate;
   appUpdateApply.hidden = !hasUpdate;
-  appUpdateApply.disabled = hasUpdate && !downloadUrl;
-  appUpdateApply.textContent = downloadUrl ? "Download update" : "Open release page";
+  appUpdateApply.disabled = hasUpdate && !hasInstaller;
+  appUpdateApply.textContent = hasInstaller ? "Update" : "Open release page";
   if (appUpdateDialog.open) return;
   try {
     appUpdateDialog.showModal();
   } catch {
     appUpdateDialog.show();
+  }
+}
+
+async function startAppUpdateInstall() {
+  const update = pendingAppUpdate || {};
+  appUpdateApply.disabled = true;
+  appUpdateLater.disabled = true;
+  appUpdateSkip.disabled = true;
+  appUpdateApply.textContent = "Updating...";
+  appUpdateDetails.textContent = "Downloading the installer. The builder will close automatically, then the installer will update the app.";
+  try {
+    const response = await fetch(`/api/app-update/install?t=${Date.now()}`, {
+      method: "POST",
+      cache: "no-store",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ latestVersion: update.latestVersion || "" })
+    });
+    const result = await response.json();
+    if (!response.ok || !result.ok) throw new Error(result.error || "The update could not be started.");
+    appUpdateMessage.textContent = "Update started";
+    appUpdateDetails.textContent = "The installer is ready. This window will close so the new version can be installed.";
+  } catch (error) {
+    appUpdateApply.disabled = false;
+    appUpdateLater.disabled = false;
+    appUpdateSkip.disabled = false;
+    appUpdateApply.textContent = "Update";
+    appUpdateDetails.textContent = error.message || "The update could not be started.";
+    const fallback = update.releaseUrl || update.installerUrl || update.portableUrl || "";
+    if (fallback) {
+      showBuilderError(
+        "Automatic update could not start",
+        "The app could not run the installer automatically. The release page can still be opened manually.",
+        fallback
+      );
+    }
   }
 }
 
@@ -5689,7 +5724,7 @@ function fullPortfolioPreviewHtmlExact(dataOverride = null) {
       <section class="fun-facts-section" id="fun-facts-callout" aria-label="Fun facts" hidden></section>
 
       <section class="builder-download-section" aria-label="Download portfolio builder">
-        <a class="builder-download-link" href="https://github.com/otienomaurice/omb-portfolio-builder/releases/download/builder-v0.2.6/OMB-Portfolio-Builder-Setup-0.2.6-x64.exe" download>
+        <a class="builder-download-link" href="https://github.com/otienomaurice/omb-portfolio-builder/releases/latest/download/OMB-Portfolio-Builder-Setup-latest-x64.exe" download>
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <path d="M12 3v11m0 0 4-4m-4 4-4-4" />
             <path d="M5 17v2h14v-2" />
@@ -6718,10 +6753,7 @@ appUpdateSkip?.addEventListener("click", () => {
 });
 
 appUpdateApply?.addEventListener("click", () => {
-  const update = pendingAppUpdate || {};
-  const target = update.installerUrl || update.releaseUrl || update.portableUrl || "";
-  if (target) window.open(target, "_blank", "noreferrer");
-  closeDialogElement(appUpdateDialog, "download");
+  startAppUpdateInstall();
 });
 
 appUpdateCheckButton?.addEventListener("click", () => {

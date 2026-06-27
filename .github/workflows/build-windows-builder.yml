@@ -36,6 +36,20 @@ jobs:
       - name: Build Windows artifacts
         run: pnpm run dist
 
+      - name: Create stable latest download names
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem dist -Filter "OMB-Portfolio-Builder-Setup-*-x64.exe" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          if (-not $setup) {
+            throw "Windows setup installer was not found."
+          }
+          Copy-Item $setup.FullName "dist/OMB-Portfolio-Builder-Setup-latest-x64.exe" -Force
+
+          $portable = Get-ChildItem dist -Filter "OMB-Portfolio-Builder-Portable-*-x64.exe" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          if ($portable) {
+            Copy-Item $portable.FullName "dist/OMB-Portfolio-Builder-Portable-latest-x64.exe" -Force
+          }
+
       - name: Resolve release version
         id: release_meta
         shell: pwsh
