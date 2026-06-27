@@ -1019,11 +1019,15 @@ function scheduleAppUpdateChecks() {
 function renderPublishTargetInfo(target = {}) {
   if (!publishTargetCurrent) return;
   currentPublishTarget = target;
+  const authorizationStatus = target.authorizationChecked
+    ? `Verified${target.checkedAt ? ` at ${new Date(target.checkedAt).toLocaleString()}` : ""}`
+    : "Not verified for this repository and branch";
   const rows = [
     ["Workspace", target.workspace || "Not available"],
     ["Repository", target.repository || target.remote || "No repository connected"],
     ["Branch", target.branch || "No branch selected"],
     ["Custom domain", target.customDomain || "None"],
+    ["GitHub authorization", authorizationStatus],
     ["Compatible site", target.compatible ? "Yes" : "No"],
     ["Git-backed", target.gitBacked ? "Yes" : "No"]
   ];
@@ -1038,6 +1042,7 @@ function renderPublishTargetInfo(target = {}) {
     publishTargetDomain.value = target.customDomain || "";
     publishTargetDomain.dataset.autofilled = "true";
   }
+  if (publishTargetSync) publishTargetSync.disabled = !target.authorizationChecked;
 }
 
 function renderSystemReadiness(system = {}, target = {}) {
@@ -1068,11 +1073,28 @@ function renderSystemReadiness(system = {}, target = {}) {
       text: target?.remote
         ? `Publishing target: ${target.repository || target.remote}.`
         : "Publishing target: enter a repository URL and click Save target."
+    },
+    {
+      ok: Boolean(target?.authorizationChecked),
+      text: target?.authorizationChecked
+        ? `GitHub authorization: verified for ${target.branch || "the selected branch"}.`
+        : "GitHub authorization: required before Load from target or Apply to site."
     }
   ];
   publishTargetReadinessList.innerHTML = rows
     .map((row) => `<li class="${row.ok ? "ready" : "blocked"}">${escapeHtml(row.ok ? `OK - ${row.text}` : `Needs action - ${row.text}`)}</li>`)
     .join("");
+}
+
+function markPublishTargetNeedsAuthentication() {
+  if (publishTargetSync) publishTargetSync.disabled = true;
+  if (currentPublishTarget) {
+    currentPublishTarget = {
+      ...currentPublishTarget,
+      authorizationChecked: false,
+      authorizationCached: false
+    };
+  }
 }
 
 async function loadSystemReadiness() {
@@ -1086,6 +1108,14 @@ async function loadSystemReadiness() {
   } catch (error) {
     publishTargetReadinessList.innerHTML = `<li class="blocked">${escapeHtml(error.message || "System check failed.")}</li>`;
   }
+}
+
+function setPublishTargetProgress(title, steps = []) {
+  if (!publishTargetCurrent) return;
+  publishTargetCurrent.innerHTML = `
+    <div><strong>${escapeHtml(title)}</strong><span>${escapeHtml(new Date().toLocaleTimeString())}</span></div>
+    ${steps.map((step) => `<div><strong>${escapeHtml(step.label)}</strong><span>${escapeHtml(step.value)}</span></div>`).join("")}
+  `;
 }
 
 async function loadPublishTargetInfo() {
@@ -1109,34 +1139,7 @@ async function openPublishTargetDialog() {
 
 async function savePublishTarget(event) {
   event.preventDefault();
-  try {
-    const response = await fetch(`/api/publish-target?t=${Date.now()}`, {
-      method: "POST",
-      cache: "no-store",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        repositoryUrl: publishTargetRepository?.value || "",
-        customDomain: publishTargetDomain?.value || "",
-        authUsername: publishTargetUsername?.value || "",
-        authPassword: publishTargetPassword?.value || ""
-      })
-    });
-    const result = await response.json();
-    if (!response.ok || !result.ok) throw new Error(result.error || "Publishing target could not be saved.");
-    renderPublishTargetInfo(result.target || {});
-    await loadSystemReadiness();
-    if (publishTargetPassword) publishTargetPassword.value = "";
-    closeDialogElement(publishTargetDialog);
-    showBuilderError(
-      "Publishing target saved",
-      result.target?.credentialsStored
-        ? `The builder saved this target and handed credentials for ${result.target.credentialUsername || "the selected GitHub user"} to Git on this computer.`
-        : "The builder will use this associated website repository the next time Apply to site is clicked.",
-      "GitHub will still verify write permission before any live website files are applied."
-    );
-  } catch (error) {
-    publishTargetCurrent.textContent = error.message || "Publishing target could not be saved.";
-  }
+  await authenticatePublishTarget({ fromSave: true });
 }
 
 function currentPublishTargetPayload() {
@@ -1173,8 +1176,18 @@ async function installGitForPublishing() {
   }
 }
 
-async function authenticatePublishTarget() {
-  publishTargetCurrent.textContent = "Starting GitHub authentication. If a browser sign-in window opens, sign in and approve Git Credential Manager, then return here.";
+async function authenticatePublishTarget(options = {}) {
+  const fromSave = Boolean(options.fromSave);
+  if (publishTargetSync) publishTargetSync.disabled = true;
+  setPublishTargetProgress(
+    fromSave ? "Saving target requires GitHub verification" : "Starting GitHub authentication",
+    [
+      { label: "Step 1", value: "Validating the repository URL and local Git tools." },
+      { label: "Step 2", value: "Opening GitHub/Git Credential Manager if sign-in is needed." },
+      { label: "Step 3", value: "Finding the target repository default branch." },
+      { label: "Step 4", value: "Verifying write access before saving this target." }
+    ]
+  );
   try {
     const response = await fetch(`/api/github-authenticate?t=${Date.now()}`, {
       method: "POST",
@@ -1190,10 +1203,38 @@ async function authenticatePublishTarget() {
     renderPublishTargetInfo(result.target || {});
     renderSystemReadiness(result.auth?.system || {}, result.target || {});
     if (publishTargetPassword) publishTargetPassword.value = "";
-    publishTargetCurrent.textContent = "GitHub authentication complete. Loading compatible portfolio files from the target repository...";
-    await syncFromPublishTarget({ afterAuth: true });
+    setPublishTargetProgress(
+      "Target saved and GitHub authorization verified",
+      [
+        { label: "Repository", value: result.target?.repository || result.auth?.repository || "Selected target" },
+        { label: "Branch", value: result.target?.branch || result.auth?.branch || "Detected target branch" },
+        { label: "Next step", value: "Click Load from target to pull the compatible portfolio files into this builder." }
+      ]
+    );
+    if (publishTargetSync) publishTargetSync.disabled = false;
+    showBuilderError(
+      "Target saved and authenticated",
+      "GitHub accepted write access, so this publishing target is now saved. Load from target is now available.",
+      [
+        `Repository: ${result.target?.repository || result.auth?.repository || "selected target"}`,
+        `Branch: ${result.target?.branch || result.auth?.branch || "detected branch"}`,
+        result.auth?.credentialsStored ? `Credentials: stored for ${result.auth.credentialUsername || "the selected user"}` : "Credentials: Git Credential Manager session verified"
+      ].filter(Boolean).join("\n")
+    );
   } catch (error) {
-    publishTargetCurrent.textContent = error.message || "GitHub authentication did not complete.";
+    if (publishTargetSync) publishTargetSync.disabled = true;
+    setPublishTargetProgress(
+      "Target was not saved",
+      [
+        { label: "Reason", value: error.message || "GitHub authentication did not complete." },
+        { label: "Status", value: "The previous publishing target was kept. Fix the repository or sign-in, then try Save target and authenticate again." }
+      ]
+    );
+    showBuilderError(
+      "Target authentication failed",
+      "The builder did not save this publishing target because GitHub write access was not verified.",
+      error.message || "GitHub authentication did not complete."
+    );
   }
 }
 
@@ -6632,14 +6673,18 @@ publishTargetCheck?.addEventListener("click", loadSystemReadiness);
 publishTargetInstallGit?.addEventListener("click", installGitForPublishing);
 publishTargetAuth?.addEventListener("click", authenticatePublishTarget);
 publishTargetRepository?.addEventListener("input", () => {
+  markPublishTargetNeedsAuthentication();
   const loadedRepository = publishTargetRepository.dataset.loadedValue || currentPublishTarget?.remote || "";
   if (publishTargetRepository.value.trim() !== loadedRepository.trim() && publishTargetDomain?.dataset.autofilled === "true") {
     publishTargetDomain.value = "";
   }
 });
 publishTargetDomain?.addEventListener("input", () => {
+  markPublishTargetNeedsAuthentication();
   publishTargetDomain.dataset.autofilled = "false";
 });
+publishTargetUsername?.addEventListener("input", markPublishTargetNeedsAuthentication);
+publishTargetPassword?.addEventListener("input", markPublishTargetNeedsAuthentication);
 publishResultClose.addEventListener("click", () => {
   closeDialogElement(publishResultDialog);
 });

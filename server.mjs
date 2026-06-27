@@ -686,6 +686,22 @@ async function getPublishTargetInfo() {
     info.customDomain = "";
   }
 
+  const accessShape = {
+    branch: info.branch,
+    remote: info.remote,
+    repository: info.repository
+  };
+  const cached = await readPublishAuthCache();
+  if (publishAuthCacheIsFresh(cached, accessShape)) {
+    info.authorizationChecked = true;
+    info.authorizationCached = true;
+    info.checkedAt = cached.checkedAt;
+  } else {
+    info.authorizationChecked = false;
+    info.authorizationCached = false;
+    info.checkedAt = "";
+  }
+
   return info;
 }
 
@@ -887,6 +903,129 @@ function validateCredentialPair(username, password) {
   return { cleanUsername, cleanPassword };
 }
 
+function normalizeGitBranchName(value = "") {
+  const branch = String(value || "").trim();
+  if (
+    !branch ||
+    branch.length > 180 ||
+    branch.includes("..") ||
+    branch.endsWith(".") ||
+    branch.includes("@{") ||
+    /[\\:\s~^?*\[\]\x00-\x1f]/.test(branch) ||
+    branch.startsWith("/") ||
+    branch.endsWith("/") ||
+    branch.includes("//")
+  ) {
+    return "";
+  }
+  return branch;
+}
+
+async function detectRemoteDefaultBranch(remoteUrl = "") {
+  if (!remoteUrl) return "";
+  try {
+    const result = await runGit(["ls-remote", "--symref", remoteUrl, "HEAD"], { timeout: 45000 });
+    const match = String(result.stdout || "").match(/^ref:\s+refs\/heads\/(.+?)\s+HEAD$/m);
+    return normalizeGitBranchName(match?.[1] || "");
+  } catch {
+    return "";
+  }
+}
+
+async function originRemoteExists() {
+  try {
+    await runGit(["remote", "get-url", "origin"]);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function setOriginRemote(remoteUrl) {
+  if (await originRemoteExists()) {
+    await runGit(["remote", "set-url", "origin", remoteUrl]);
+  } else {
+    await runGit(["remote", "add", "origin", remoteUrl]);
+  }
+}
+
+async function checkoutPublishBranch(branch) {
+  const cleanBranch = normalizeGitBranchName(branch) || "main";
+  const current = (await runGit(["branch", "--show-current"])).stdout.trim();
+  if (current === cleanBranch) return cleanBranch;
+  try {
+    await runGit(["checkout", cleanBranch]);
+  } catch {
+    await runGit(["checkout", "-B", cleanBranch]);
+  }
+  return cleanBranch;
+}
+
+async function capturePublishTargetState() {
+  const snapshot = {
+    branch: "",
+    customDomainExists: false,
+    customDomainText: "",
+    remote: "",
+    remoteExists: false
+  };
+  try {
+    snapshot.remote = (await runGit(["remote", "get-url", "origin"])).stdout.trim();
+    snapshot.remoteExists = true;
+  } catch {
+    snapshot.remote = "";
+    snapshot.remoteExists = false;
+  }
+  try {
+    snapshot.branch = (await runGit(["branch", "--show-current"])).stdout.trim();
+  } catch {
+    snapshot.branch = "";
+  }
+  try {
+    snapshot.customDomainText = await readFile(resolveInsideRoot("CNAME"), "utf8");
+    snapshot.customDomainExists = true;
+  } catch {
+    snapshot.customDomainText = "";
+    snapshot.customDomainExists = false;
+  }
+  return snapshot;
+}
+
+async function restorePublishTargetState(snapshot = {}) {
+  try {
+    if (snapshot.remoteExists && snapshot.remote) {
+      await setOriginRemote(snapshot.remote);
+    } else if (await originRemoteExists()) {
+      await runGit(["remote", "remove", "origin"]);
+    }
+  } catch {
+    // Best-effort rollback; preserve the original error for the caller.
+  }
+  try {
+    if (snapshot.branch) await checkoutPublishBranch(snapshot.branch);
+  } catch {
+    // Best-effort rollback; preserve the original error for the caller.
+  }
+  try {
+    if (snapshot.customDomainExists) {
+      await writeFile(resolveInsideRoot("CNAME"), snapshot.customDomainText, "utf8");
+    } else {
+      await rm(resolveInsideRoot("CNAME"), { force: true });
+    }
+  } catch {
+    // Best-effort rollback; preserve the original error for the caller.
+  }
+  await rm(publishAuthCachePath, { force: true }).catch(() => {});
+}
+
+async function writeTargetCustomDomain(domain, customDomainProvided) {
+  if (customDomainProvided && domain) {
+    await writeFile(resolveInsideRoot("CNAME"), `${domain}\n`, "utf8");
+  } else if (customDomainProvided && !domain) {
+    await rm(resolveInsideRoot("CNAME"), { force: true });
+  }
+}
+
 async function ensureGitRepository() {
   try {
     const insideWorkTree = (await runGit(["rev-parse", "--is-inside-work-tree"])).stdout.trim();
@@ -916,18 +1055,12 @@ async function configurePublishTarget(options = {}) {
   await ensureGitRepository();
 
   if (remoteUrl) {
-    try {
-      await runGit(["remote", "set-url", "origin", remoteUrl]);
-    } catch {
-      await runGit(["remote", "add", "origin", remoteUrl]);
-    }
+    await setOriginRemote(remoteUrl);
+    const defaultBranch = await detectRemoteDefaultBranch(remoteUrl);
+    if (defaultBranch) await checkoutPublishBranch(defaultBranch);
   }
 
-  if (customDomainProvided && domain) {
-    await writeFile(resolveInsideRoot("CNAME"), `${domain}\n`, "utf8");
-  } else if (customDomainProvided && !domain) {
-    await rm(resolveInsideRoot("CNAME"), { force: true });
-  }
+  await writeTargetCustomDomain(domain, customDomainProvided);
 
   const currentRemote = remoteUrl || (await getPublishTargetInfo()).remote;
   const credentials = await storeGitCredentials(currentRemote, authUsername, authPassword);
@@ -1129,41 +1262,72 @@ async function syncFromPublishTarget() {
 }
 
 async function authenticateGitHubForTarget(options = {}) {
-  const configuredTarget = await configurePublishTarget(options);
-  if (!configuredTarget.remote) {
+  const {
+    repositoryUrl = "",
+    customDomain = "",
+    authUsername = "",
+    authPassword = ""
+  } = options;
+  const customDomainProvided = Object.prototype.hasOwnProperty.call(options, "customDomain");
+  const remoteUrl = validatePublishRemoteUrl(repositoryUrl);
+  const domain = validateCustomDomain(customDomain);
+  const credentials = validateCredentialPair(authUsername, authPassword);
+  if (!remoteUrl) {
     throw publishAccessError(
       "A GitHub repository URL is required before authentication.",
-      "Enter the GitHub Pages or compatible static-site repository URL, click Save target, then authenticate.",
-      configuredTarget
+      "Enter the GitHub Pages or compatible static-site repository URL, then use Save target and authenticate.",
+      await getPublishTargetInfo()
     );
   }
 
-  const status = await getGitStatus();
-  if (!status.git.ok) {
-    throw publishAccessError(
-      "Git for Windows is required for publishing.",
-      "Install Git for Windows, then reopen the builder and authenticate again.",
-      { ...configuredTarget, system: status }
-    );
-  }
-  if (!status.credentialManager.ok) {
-    throw publishAccessError(
-      "Git Credential Manager is required for guided GitHub sign-in.",
-      "Install or repair Git for Windows with Git Credential Manager enabled, then authenticate again.",
-      { ...configuredTarget, system: status }
-    );
-  }
+  await ensureGitRepository();
+  const snapshot = await capturePublishTargetState();
 
-  await runGit(["credential-manager", "github", "login"], {
-    timeout: 5 * 60 * 1000,
-    windowsHide: false
-  });
+  try {
+    await setOriginRemote(remoteUrl);
+    const status = await getGitStatus();
+    const preliminaryTarget = await getPublishTargetInfo();
+    if (!status.git.ok) {
+      throw publishAccessError(
+        "Git for Windows is required for publishing.",
+        "Install Git for Windows, then reopen the builder and authenticate again.",
+        { ...preliminaryTarget, system: status }
+      );
+    }
+    if (!status.credentialManager.ok && !credentials.cleanUsername) {
+      throw publishAccessError(
+        "Git Credential Manager is required for guided GitHub sign-in.",
+        "Install or repair Git for Windows with Git Credential Manager enabled, or provide a GitHub username and personal access token.",
+        { ...preliminaryTarget, system: status }
+      );
+    }
 
-  const access = await assertPublishAccess({ force: true });
-  return {
-    ...access,
-    system: await getGitStatus()
-  };
+    const storedCredentials = await storeGitCredentials(remoteUrl, authUsername, authPassword);
+    if (!storedCredentials.stored) {
+      await runGit(["credential-manager", "github", "login"], {
+        timeout: 5 * 60 * 1000,
+        windowsHide: false
+      });
+    }
+
+    const targetBranch = await detectRemoteDefaultBranch(remoteUrl) || "main";
+    await checkoutPublishBranch(targetBranch);
+
+    const access = await assertPublishAccess({ force: true });
+    await writeTargetCustomDomain(domain, customDomainProvided);
+    const target = await getPublishTargetInfo();
+    return {
+      ...access,
+      branch: target.branch || access.branch,
+      credentialsStored: storedCredentials.stored,
+      credentialUsername: storedCredentials.username || "",
+      system: await getGitStatus(),
+      target
+    };
+  } catch (error) {
+    await restorePublishTargetState(snapshot);
+    throw error;
+  }
 }
 
 async function installGitForWindows() {
@@ -1409,13 +1573,12 @@ async function handleApi(request, response, url) {
   }
 
   if (url.pathname === "/api/publish-target") {
-    try {
-      const body = await readRequestJson(request);
-      const target = await configurePublishTarget(body || {});
-      sendJson(response, 200, { ok: true, target });
-    } catch (error) {
-      sendJson(response, 400, { ok: false, error: error.message || "Publishing target could not be updated." });
-    }
+    await readRequestJson(request).catch(() => ({}));
+    sendJson(response, 400, {
+      ok: false,
+      error: "Publishing target setup now requires GitHub authentication.",
+      details: "Use Save target and authenticate. The builder keeps the previous target until GitHub write access is verified."
+    });
     return true;
   }
 
