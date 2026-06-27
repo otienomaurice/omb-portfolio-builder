@@ -62,7 +62,16 @@ pnpm run installer
 pnpm run dist
 ```
 
-For repository development, use the branch model in [BRANCHING.md](BRANCHING.md): feature branches merge into `development`, and `main` stays release-ready for consumers.
+For repository development, use the branch model in [BRANCHING.md](BRANCHING.md): feature branches merge into `development`, and `main` stays release-ready for consumers. When a branch is created, update the branch register below in the same feature branch.
+
+## Branch Register
+
+| Branch | Purpose | Created From | Merge Target | Status |
+| --- | --- | --- | --- | --- |
+| `main` | Consumer/release branch for finished installer and public app code. | Initial repository branch | None | Release-ready only |
+| `development` | Integration branch that collects finished feature work before release. | `main` | `main` when tested | Active |
+| `feature/branching-workflow` | Added the initial branch policy and workflow documentation. | `development` | `development` | Merged into `development` |
+| `feature/update-branch-guide` | Updates the branch register rule and the consumer-facing in-app quick guide. | `development` | `development` | Merged into `development` |
 
 ## Publishing Security
 
