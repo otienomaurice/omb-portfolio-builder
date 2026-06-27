@@ -72,6 +72,7 @@ For repository development, use the branch model in [BRANCHING.md](BRANCHING.md)
 | `development` | Integration branch that collects finished feature work before release. | `main` | `main` when tested | Active |
 | `feature/branching-workflow` | Added the initial branch policy and workflow documentation. | `development` | `development` | Merged into `development` |
 | `feature/update-branch-guide` | Updates the branch register rule and the consumer-facing in-app quick guide. | `development` | `development` | Merged into `development` |
+| `codex/update-builder-guide` | Refreshes the consumer-facing Builder Guide with current rich text, image, file, link, save, and publishing behavior. | `development` | `development` | Merged into `development` |
 
 ## Publishing Security
 
