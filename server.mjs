@@ -35,6 +35,10 @@ const types = {
 const draftPath = path.join(root, "projects.local.json");
 const catalogPath = path.join(root, "projects.json");
 const publishAuthCachePath = path.join(root, ".omb-publish-session.json");
+const publishAuthCacheTtlMs = 24 * 60 * 60 * 1000;
+const publishAuthExtendedTtlMs = 30 * 24 * 60 * 60 * 1000;
+const publishAuthHistoryWindowMs = 7 * 24 * 60 * 60 * 1000;
+const publishAuthExtendedThreshold = 3;
 const defaultSiteRepository = process.env.OMB_BUILDER_REPOSITORY || "";
 const publishAuthorizationHelp = [
   "Publishing was blocked before live website files were applied.",
@@ -696,10 +700,18 @@ async function getPublishTargetInfo() {
     info.authorizationChecked = true;
     info.authorizationCached = true;
     info.checkedAt = cached.checkedAt;
+    info.expiresAt = publishAuthCacheExpiresAt(cached);
+    info.extendedTrust = Boolean(cached.extendedTrust);
+    info.successCountLastWeek = cached.successCountLastWeek || 0;
+    info.trustDays = cached.trustDays || (cached.extendedTrust ? 30 : 1);
   } else {
     info.authorizationChecked = false;
     info.authorizationCached = false;
     info.checkedAt = "";
+    info.expiresAt = "";
+    info.extendedTrust = false;
+    info.successCountLastWeek = cached?.successCountLastWeek || 0;
+    info.trustDays = 0;
   }
 
   return info;
@@ -1081,22 +1093,65 @@ async function readPublishAuthCache() {
 }
 
 async function writePublishAuthCache(access = {}) {
+  const previousCache = await readPublishAuthCache();
+  const checkedAt = new Date();
+  const checkedAtMs = checkedAt.getTime();
+  const sameTarget = previousCache
+    && previousCache.remote === access.remote
+    && previousCache.branch === access.branch
+    && previousCache.repository === access.repository;
+  const previousHistory = sameTarget && Array.isArray(previousCache.successHistory)
+    ? previousCache.successHistory
+    : [];
+  const successTimestamps = [
+    ...previousHistory
+      .map((entry) => parsePublishAuthTimestamp(entry))
+      .filter((timestamp) => Number.isFinite(timestamp))
+      .filter((timestamp) => checkedAtMs - timestamp < publishAuthExtendedTtlMs),
+    checkedAtMs
+  ];
+  const successHistory = successTimestamps.map((timestamp) => new Date(timestamp).toISOString());
+  const successCountLastWeek = successTimestamps
+    .filter((timestamp) => checkedAtMs - timestamp < publishAuthHistoryWindowMs)
+    .length;
+  const extendedTrust = successCountLastWeek > publishAuthExtendedThreshold;
+  const ttlMs = extendedTrust ? publishAuthExtendedTtlMs : publishAuthCacheTtlMs;
   const cache = {
     branch: access.branch || "",
-    checkedAt: new Date().toISOString(),
+    checkedAt: checkedAt.toISOString(),
+    expiresAt: new Date(checkedAtMs + ttlMs).toISOString(),
+    extendedTrust,
     remote: access.remote || "",
-    repository: access.repository || ""
+    repository: access.repository || "",
+    successCountLastWeek,
+    successHistory,
+    trustDays: extendedTrust ? 30 : 1
   };
   await writeFile(publishAuthCachePath, `${JSON.stringify(cache, null, 2)}\n`, "utf8");
   return cache;
 }
 
+function parsePublishAuthTimestamp(value = "") {
+  const direct = Date.parse(String(value || ""));
+  if (Number.isFinite(direct)) return direct;
+  const normalized = String(value || "").replace(/(\.\d{3})\d+(Z|[+-]\d{2}:?\d{2})$/i, "$1$2");
+  return Date.parse(normalized);
+}
+
+function publishAuthCacheExpiresAt(cache) {
+  const explicitExpiresAt = parsePublishAuthTimestamp(cache?.expiresAt || "");
+  if (Number.isFinite(explicitExpiresAt)) return new Date(explicitExpiresAt).toISOString();
+  const checkedAt = parsePublishAuthTimestamp(cache?.checkedAt || "");
+  if (!Number.isFinite(checkedAt)) return "";
+  return new Date(checkedAt + publishAuthCacheTtlMs).toISOString();
+}
+
 function publishAuthCacheIsFresh(cache, access) {
   if (!cache || !access) return false;
   if (cache.remote !== access.remote || cache.branch !== access.branch || cache.repository !== access.repository) return false;
-  const checkedAt = Date.parse(cache.checkedAt || "");
-  if (!Number.isFinite(checkedAt)) return false;
-  return Date.now() - checkedAt < 24 * 60 * 60 * 1000;
+  const expiresAt = Date.parse(publishAuthCacheExpiresAt(cache));
+  if (!Number.isFinite(expiresAt)) return false;
+  return Date.now() < expiresAt;
 }
 
 async function assertPublishAccess(options = {}) {
@@ -1164,7 +1219,11 @@ async function assertPublishAccess(options = {}) {
       ...access,
       authorizationCached: true,
       authorizationChecked: true,
-      checkedAt: cached.checkedAt
+      checkedAt: cached.checkedAt,
+      expiresAt: publishAuthCacheExpiresAt(cached),
+      extendedTrust: Boolean(cached.extendedTrust),
+      successCountLastWeek: cached.successCountLastWeek || 0,
+      trustDays: cached.trustDays || (cached.extendedTrust ? 30 : 1)
     };
   }
 
@@ -1183,7 +1242,11 @@ async function assertPublishAccess(options = {}) {
     ...access,
     authorizationChecked: true,
     authorizationCached: false,
-    checkedAt: authCache.checkedAt
+    checkedAt: authCache.checkedAt,
+    expiresAt: authCache.expiresAt,
+    extendedTrust: Boolean(authCache.extendedTrust),
+    successCountLastWeek: authCache.successCountLastWeek || 0,
+    trustDays: authCache.trustDays || 1
   };
 }
 
@@ -1294,11 +1357,42 @@ async function authenticateGitHubForTarget(options = {}) {
         { ...preliminaryTarget, system: status }
       );
     }
+
+    const targetBranch = await detectRemoteDefaultBranch(remoteUrl) || "main";
+    await checkoutPublishBranch(targetBranch);
+
+    const targetBeforeAuth = await getPublishTargetInfo();
+    const cached = await readPublishAuthCache();
+    const cachedAccess = {
+      branch: targetBeforeAuth.branch,
+      remote: targetBeforeAuth.remote,
+      repository: targetBeforeAuth.repository
+    };
+    if (!credentials.cleanUsername && publishAuthCacheIsFresh(cached, cachedAccess)) {
+      await writeTargetCustomDomain(domain, customDomainProvided);
+      const target = await getPublishTargetInfo();
+      return {
+        ...cachedAccess,
+        branch: target.branch || cachedAccess.branch,
+        authorizationCached: true,
+        authorizationChecked: true,
+        checkedAt: cached.checkedAt,
+        expiresAt: publishAuthCacheExpiresAt(cached),
+        extendedTrust: Boolean(cached.extendedTrust),
+        successCountLastWeek: cached.successCountLastWeek || 0,
+        trustDays: cached.trustDays || (cached.extendedTrust ? 30 : 1),
+        credentialsStored: false,
+        credentialUsername: "",
+        system: status,
+        target
+      };
+    }
+
     if (!status.credentialManager.ok && !credentials.cleanUsername) {
       throw publishAccessError(
         "Git Credential Manager is required for guided GitHub sign-in.",
         "Install or repair Git for Windows with Git Credential Manager enabled, or provide a GitHub username and personal access token.",
-        { ...preliminaryTarget, system: status }
+        { ...targetBeforeAuth, system: status }
       );
     }
 
@@ -1309,9 +1403,6 @@ async function authenticateGitHubForTarget(options = {}) {
         windowsHide: false
       });
     }
-
-    const targetBranch = await detectRemoteDefaultBranch(remoteUrl) || "main";
-    await checkoutPublishBranch(targetBranch);
 
     const access = await assertPublishAccess({ force: true });
     await writeTargetCustomDomain(domain, customDomainProvided);

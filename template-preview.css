@@ -241,6 +241,12 @@
   gap: 7px;
 }
 
+.publish-target-field-note {
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
 .publish-target-form input {
   min-height: 42px;
   border: 1px solid var(--line);
