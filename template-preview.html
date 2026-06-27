@@ -244,6 +244,10 @@
                       <strong>Apply to site publishes when ready.</strong>
                       <p>Apply to site writes the website data, commits the site changes, and pushes to GitHub automatically without a prompt. After the push finishes, a result window shows whether it succeeded and displays the Git output.</p>
                   </li>
+                  <li>
+                      <strong>Install builder updates when prompted.</strong>
+                      <p>When a newer released builder is available, the app opens an update window. Choose Download update to install the latest release, Remind me later to postpone it, or Skip this version if you do not want that release.</p>
+                  </li>
               </ol>
           </div>
       </dialog>
@@ -424,6 +428,28 @@
               <div class="publish-result-box">
                   <p id="publish-result-message"></p>
                   <pre id="publish-result-output"></pre>
+              </div>
+          </div>
+      </dialog>
+
+      <dialog class="asset-dialog app-update-dialog" id="app-update-dialog" aria-labelledby="app-update-title">
+          <div class="builder-guide-dialog-content app-update-content">
+              <div class="project-preview-heading">
+                  <div>
+                      <p class="eyebrow">Builder update</p>
+                      <h2 id="app-update-title">Update available</h2>
+                  </div>
+                  <button class="project-window-close" id="app-update-close" type="button" aria-label="Close update dialog">&times;</button>
+              </div>
+              <div class="app-update-body">
+                  <p id="app-update-message"></p>
+                  <p id="app-update-details"></p>
+                  <div class="app-update-release-meta" id="app-update-release-meta"></div>
+              </div>
+              <div class="dialog-actions app-update-dialog-actions">
+                  <button class="button secondary" id="app-update-later" type="button">Remind me later</button>
+                  <button class="button secondary" id="app-update-skip" type="button">Skip this version</button>
+                  <button class="button primary" id="app-update-apply" type="button">Download update</button>
               </div>
           </div>
       </dialog>

@@ -3,6 +3,8 @@ name: Build Windows Portfolio Builder
 on:
   workflow_dispatch:
   push:
+    branches:
+      - main
     tags:
       - "builder-v*"
 
@@ -34,6 +36,33 @@ jobs:
       - name: Build Windows artifacts
         run: pnpm run dist
 
+      - name: Resolve release version
+        id: release_meta
+        shell: pwsh
+        run: |
+          $package = Get-Content package.json -Raw | ConvertFrom-Json
+          $version = [string]$package.version
+          if (-not $version) {
+            throw "package.json version is required before publishing a release."
+          }
+          if ($env:GITHUB_REF -like "refs/tags/*") {
+            $tag = $env:GITHUB_REF_NAME
+          } else {
+            $tag = "builder-v$version"
+          }
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "release_tag=$tag" >> $env:GITHUB_OUTPUT
+
+      - name: Require a new version for main releases
+        if: github.ref == 'refs/heads/main'
+        shell: pwsh
+        run: |
+          git fetch --tags --force
+          $tag = "${{ steps.release_meta.outputs.release_tag }}"
+          if (git rev-parse -q --verify "refs/tags/$tag") {
+            throw "Release tag $tag already exists. Bump package.json version before merging development into main so installed apps can detect a newer release."
+          }
+
       - name: Upload workflow artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -43,9 +72,12 @@ jobs:
           if-no-files-found: error
 
       - name: Publish GitHub release
-        if: startsWith(github.ref, 'refs/tags/builder-v')
+        if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/builder-v')
         uses: softprops/action-gh-release@v2
         with:
-          name: OMB Portfolio Builder ${{ github.ref_name }}
+          tag_name: ${{ steps.release_meta.outputs.release_tag }}
+          target_commitish: ${{ github.sha }}
+          name: OMB Portfolio Builder ${{ steps.release_meta.outputs.release_tag }}
+          make_latest: true
           files: |
             dist/OMB-Portfolio-Builder-*.exe

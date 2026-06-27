@@ -32,8 +32,9 @@ git push -u origin feature/my-change
 6. Merge or pull-request the feature branch into `development`.
 7. Update the branch register status when the branch is merged, closed, or released.
 8. Test `development`.
-9. Merge `development` into `main` only when the app is ready for consumers.
-10. Create release tags from `main`, for example `builder-v0.2.6`.
+9. Before merging `development` into `main`, bump `package.json` to the next release version.
+10. Merge `development` into `main` only when the app is ready for consumers.
+11. Push `main` to build and publish the `builder-v<version>` release automatically, or create a release tag from `main`, for example `builder-v0.2.6`.
 
 ## Branch Register Rule
 
@@ -42,6 +43,8 @@ The README is the human-facing branch register. Every new branch should have a r
 ## Release Rule
 
 Do not make app changes directly on `main`. `main` should move only after `development` has collected and verified the changes.
+
+Installed apps detect updates by comparing their current app version with the latest GitHub Release version. A `main` push must therefore carry a new `package.json` version. The release workflow rejects a `main` push if the matching `builder-v<version>` tag already exists.
 
 ## Current Practice
 
