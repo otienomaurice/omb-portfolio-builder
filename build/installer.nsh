@@ -114,6 +114,89 @@ Function OMBInstallGitIfNeeded
   ${EndIf}
 FunctionEnd
 
+Function OMBWriteDuplicateScanScript
+  InitPluginsDir
+  FileOpen $0 "$PLUGINSDIR\omb-duplicate-scan.ps1" w
+  FileWrite $0 "$$ErrorActionPreference = 'SilentlyContinue'$\r$\n"
+  FileWrite $0 "$$hits = New-Object System.Collections.Generic.List[string]$\r$\n"
+  FileWrite $0 "function Add-Hit([string]$$Kind, [string]$$Candidate) {$\r$\n"
+  FileWrite $0 "  if ([string]::IsNullOrWhiteSpace($$Candidate)) { return }$\r$\n"
+  FileWrite $0 "  try { $$resolved = (Resolve-Path -LiteralPath $$Candidate -ErrorAction Stop).Path } catch { $$resolved = $$Candidate }$\r$\n"
+  FileWrite $0 "  if ($$resolved -match '\\\\OMB-Portfolio-Builder-Setup-[^\\\\]+\.exe$$') { return }$\r$\n"
+  FileWrite $0 "  $$line = $$Kind + ' - ' + $$resolved$\r$\n"
+  FileWrite $0 "  if (-not $$hits.Contains($$line)) { [void]$$hits.Add($$line) }$\r$\n"
+  FileWrite $0 "}$\r$\n"
+  FileWrite $0 "function Test-DesktopBuilder([string]$$Directory) {$\r$\n"
+  FileWrite $0 "  if (-not (Test-Path -LiteralPath (Join-Path $$Directory 'package.json'))) { return $$false }$\r$\n"
+  FileWrite $0 "  if (-not (Test-Path -LiteralPath (Join-Path $$Directory 'main.cjs'))) { return $$false }$\r$\n"
+  FileWrite $0 "  if (-not (Test-Path -LiteralPath (Join-Path $$Directory 'builder-site'))) { return $$false }$\r$\n"
+  FileWrite $0 "  try { $$packageText = Get-Content -LiteralPath (Join-Path $$Directory 'package.json') -Raw -ErrorAction Stop } catch { return $$false }$\r$\n"
+  FileWrite $0 "  return $$packageText -match 'OMB Portfolio Builder|omb-portfolio-builder|portfoliobuilder'$\r$\n"
+  FileWrite $0 "}$\r$\n"
+  FileWrite $0 "function Should-SkipDirectory([string]$$Directory) {$\r$\n"
+  FileWrite $0 "  $$name = Split-Path -Leaf $$Directory$\r$\n"
+  FileWrite $0 "  if ($$name -in @('node_modules','.git','dist','.vs','$$Recycle.Bin','System Volume Information','WinSxS')) { return $$true }$\r$\n"
+  FileWrite $0 "  if ($$Directory -match '\\\\Windows(\\\\|$$)') { return $$true }$\r$\n"
+  FileWrite $0 "  return $$false$\r$\n"
+  FileWrite $0 "}$\r$\n"
+  FileWrite $0 "function Scan-Tree([string]$$Root) {$\r$\n"
+  FileWrite $0 "  if (-not (Test-Path -LiteralPath $$Root)) { return }$\r$\n"
+  FileWrite $0 "  $$stack = New-Object System.Collections.Generic.Stack[string]$\r$\n"
+  FileWrite $0 "  $$stack.Push($$Root)$\r$\n"
+  FileWrite $0 "  while ($$stack.Count -gt 0) {$\r$\n"
+  FileWrite $0 "    $$dir = $$stack.Pop()$\r$\n"
+  FileWrite $0 "    if (Should-SkipDirectory $$dir) { continue }$\r$\n"
+  FileWrite $0 "    if ((Split-Path -Leaf $$dir) -ieq 'desktop-builder' -and (Test-DesktopBuilder $$dir)) { Add-Hit 'Local desktop-builder workspace' $$dir }$\r$\n"
+  FileWrite $0 "    try { $$children = Get-ChildItem -LiteralPath $$dir -Force -ErrorAction Stop } catch { continue }$\r$\n"
+  FileWrite $0 "    foreach ($$child in $$children) {$\r$\n"
+  FileWrite $0 "      if ($$child.PSIsContainer) {$\r$\n"
+  FileWrite $0 "        if (-not (Should-SkipDirectory $$child.FullName)) { $$stack.Push($$child.FullName) }$\r$\n"
+  FileWrite $0 "      } else {$\r$\n"
+  FileWrite $0 "        if ($$child.Name -ieq 'OMB Portfolio Builder.exe') { Add-Hit 'Installed app executable' $$child.FullName }$\r$\n"
+  FileWrite $0 "        if ($$child.Name -like 'OMB-Portfolio-Builder-Portable-*.exe') { Add-Hit 'Portable app executable' $$child.FullName }$\r$\n"
+  FileWrite $0 "      }$\r$\n"
+  FileWrite $0 "    }$\r$\n"
+  FileWrite $0 "  }$\r$\n"
+  FileWrite $0 "}$\r$\n"
+  FileWrite $0 "$$registryKeys = @('HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*','HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*')$\r$\n"
+  FileWrite $0 "foreach ($$key in $$registryKeys) {$\r$\n"
+  FileWrite $0 "  Get-ItemProperty $$key -ErrorAction SilentlyContinue | Where-Object { $$_.DisplayName -like 'OMB Portfolio Builder*' } | ForEach-Object {$\r$\n"
+  FileWrite $0 "    if ($$_.InstallLocation) { Add-Hit 'Registered Windows installation' $$_.InstallLocation }$\r$\n"
+  FileWrite $0 "    elseif ($$_.DisplayIcon) { Add-Hit 'Registered Windows installation' $$_.DisplayIcon }$\r$\n"
+  FileWrite $0 "  }$\r$\n"
+  FileWrite $0 "}$\r$\n"
+  FileWrite $0 "$$roots = New-Object System.Collections.Generic.List[string]$\r$\n"
+  FileWrite $0 "Get-CimInstance Win32_LogicalDisk -Filter 'DriveType=3' -ErrorAction SilentlyContinue | ForEach-Object { [void]$$roots.Add(($$_.DeviceID + '\')) }$\r$\n"
+  FileWrite $0 "$$programFilesX86 = [Environment]::GetEnvironmentVariable('ProgramFiles(x86)')$\r$\n"
+  FileWrite $0 "foreach ($$common in @($$env:ProgramFiles, $$programFilesX86, (Join-Path $$env:LOCALAPPDATA 'Programs'), $$env:USERPROFILE, (Join-Path $$env:PUBLIC 'Desktop'))) { if ($$common -and -not $$roots.Contains($$common)) { [void]$$roots.Add($$common) } }$\r$\n"
+  FileWrite $0 "foreach ($$root in $$roots) { Scan-Tree $$root }$\r$\n"
+  FileWrite $0 "$$unique = $$hits | Sort-Object -Unique$\r$\n"
+  FileWrite $0 "if ($$unique.Count -gt 0) {$\r$\n"
+  FileWrite $0 "  $$preview = $$unique | Select-Object -First 10$\r$\n"
+  FileWrite $0 "  if ($$unique.Count -gt 10) { $$preview += ('... and ' + ($$unique.Count - 10) + ' more') }$\r$\n"
+  FileWrite $0 "  Write-Output ($$preview -join [Environment]::NewLine)$\r$\n"
+  FileWrite $0 "  exit 42$\r$\n"
+  FileWrite $0 "}$\r$\n"
+  FileWrite $0 "exit 0$\r$\n"
+  FileClose $0
+FunctionEnd
+
+Function OMBScanForDuplicateBuilderCopies
+  DetailPrint "Scanning this machine for existing OMB Portfolio Builder copies."
+  Call OMBWriteDuplicateScanScript
+  nsExec::ExecToStack 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$PLUGINSDIR\omb-duplicate-scan.ps1"'
+  Pop $R4
+  Pop $R3
+
+  ${If} $R4 == 42
+    MessageBox MB_OK|MB_ICONSTOP "Setup found another OMB Portfolio Builder copy on this machine.$\r$\n$\r$\n$R3$\r$\n$\r$\nTo prevent duplicate installations and stale builder features, remove, uninstall, or rename the existing copy first, then run this installer again."
+    Quit
+  ${ElseIf} $R4 != 0
+    MessageBox MB_OK|MB_ICONSTOP "Setup could not complete the duplicate-installation scan. To avoid duplicate builder copies, setup will stop. Run the installer again as Administrator, or remove old OMB Portfolio Builder copies manually before installing."
+    Quit
+  ${EndIf}
+FunctionEnd
+
 Function OMBUninstallExistingInstallIfPresent
   StrCpy $R7 ""
   StrCpy $R6 ""
@@ -159,6 +242,7 @@ FunctionEnd
 
 !macro customInit
   Call OMBUninstallExistingInstallIfPresent
+  Call OMBScanForDuplicateBuilderCopies
   StrCpy $OMB_CreateDesktopShortcutState ${BST_CHECKED}
   StrCpy $OMB_InstallPublishingToolsState ${BST_CHECKED}
 !macroend

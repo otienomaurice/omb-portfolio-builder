@@ -6,6 +6,7 @@ const newCategorySelect = document.querySelector("#new-category-select");
 const placementSelect = document.querySelector("#placement-select");
 const newProjectTitle = document.querySelector("#new-project-title");
 const addProjectButton = document.querySelector("#add-project");
+const addCategoryButton = document.querySelector("#add-category");
 const addSiteSectionButton = document.querySelector("#add-site-section");
 const funFactsInput = document.querySelector("#fun-facts-input");
 const funFactsCount = document.querySelector("#fun-facts-count");
@@ -35,6 +36,12 @@ const projectCreateDialog = document.querySelector("#project-create-dialog");
 const projectCreateForm = document.querySelector("#project-create-form");
 const projectCreateCategory = document.querySelector("#project-create-category");
 const projectCreateCancel = document.querySelector("#project-create-cancel");
+const categoryDialog = document.querySelector("#category-dialog");
+const categoryForm = document.querySelector("#category-form");
+const categoryTitle = document.querySelector("#category-title");
+const categoryDescription = document.querySelector("#category-description");
+const categoryAccent = document.querySelector("#category-accent");
+const categoryCancel = document.querySelector("#category-cancel");
 const projectTree = document.querySelector("#project-tree");
 const projectDialog = document.querySelector("#project-dialog");
 const projectWindowTitle = document.querySelector("#project-window-title");
@@ -65,6 +72,7 @@ const openPortfolioPreviewButton = document.querySelector("#open-portfolio-previ
 const saveAllSectionsButton = document.querySelector("#save-all-sections");
 const portfolioPreviewDialog = document.querySelector("#portfolio-preview-dialog");
 const portfolioPreviewClose = document.querySelector("#portfolio-preview-close");
+const appUpdateCheckButton = document.querySelector("#app-update-check");
 const publishTargetOpen = document.querySelector("#publish-target-open");
 const publishTargetDialog = document.querySelector("#publish-target-dialog");
 const publishTargetForm = document.querySelector("#publish-target-form");
@@ -511,6 +519,8 @@ function ensureDialogWindowControls(dialog, handle) {
   }
   if (closeButton) {
     closeButton.classList.add("dialog-window-control", "dialog-close-button");
+    closeButton.dataset.dialogAction = "close";
+    closeButton.dataset.dialogClose = "true";
     cluster.append(closeButton);
   } else {
     const cloneClose = makeDialogControl("close", "\u00d7", "Close window");
@@ -823,12 +833,12 @@ function closeDialogFromControl(dialog, button) {
     originalClose.click();
     return;
   }
-  dialog.close("close");
+  closeDialogElement(dialog, "close");
 }
 
 function handleDialogWindowAction(button) {
   const dialog = button.closest("dialog");
-  if (!dialog) return;
+  if (!dialog?.open) return;
   const action = button.dataset.dialogAction;
   if (action === "hide") toggleDialogHidden(dialog);
   if (action === "minimize") toggleDialogMinimized(dialog);
@@ -917,19 +927,33 @@ function shouldShowUpdateDialog(update = {}) {
   return !appUpdateWasSnoozed(update.latestVersion);
 }
 
-function showUpdateDialog(update = {}) {
-  if (!appUpdateDialog || !shouldShowUpdateDialog(update)) return;
+function showUpdateDialog(update = {}, options = {}) {
+  const force = Boolean(options.force);
+  if (!appUpdateDialog || (!force && !shouldShowUpdateDialog(update))) return;
   pendingAppUpdate = update;
   const downloadUrl = update.installerUrl || update.releaseUrl || update.portableUrl || "";
-  appUpdateTitle.textContent = "Update available";
-  appUpdateMessage.textContent = `OMB Portfolio Builder ${update.latestVersion} is available. You are running ${update.currentVersion || "an older version"}.`;
-  appUpdateDetails.textContent = "Choose Download update to open the latest installer, Remind me later to postpone the prompt, or Skip this version if you do not want this release.";
-  appUpdateReleaseMeta.innerHTML = [
-    `<span>Current version: ${escapeHtml(update.currentVersion || "unknown")}</span>`,
-    `<span>Available version: ${escapeHtml(update.latestVersion || "unknown")}</span>`,
-    update.releaseUrl ? `<span>Release source: GitHub Releases</span>` : ""
-  ].filter(Boolean).join("");
-  appUpdateApply.disabled = !downloadUrl;
+  const hasUpdate = Boolean(update.updateAvailable && update.latestVersion);
+  appUpdateTitle.textContent = hasUpdate ? "Update available" : "Builder is up to date";
+  appUpdateMessage.textContent = hasUpdate
+    ? `OMB Portfolio Builder ${update.latestVersion} is available. You are running ${update.currentVersion || "an older version"}.`
+    : `You are running OMB Portfolio Builder ${update.currentVersion || "the current installed version"}.`;
+  appUpdateDetails.textContent = hasUpdate
+    ? "Choose Download update to open the latest installer, Remind me later to postpone the prompt, or Skip this version if you do not want this release."
+    : "No newer released builder was found on GitHub Releases.";
+  appUpdateReleaseMeta.innerHTML = hasUpdate
+    ? [
+      `<span>Current version: ${escapeHtml(update.currentVersion || "unknown")}</span>`,
+      `<span>Available version: ${escapeHtml(update.latestVersion || "unknown")}</span>`,
+      update.releaseUrl ? `<span>Release source: GitHub Releases</span>` : ""
+    ].filter(Boolean).join("")
+    : [
+      `<span>Current version: ${escapeHtml(update.currentVersion || "unknown")}</span>`,
+      update.checkedAt ? `<span>Checked: ${escapeHtml(update.checkedAt)}</span>` : ""
+    ].filter(Boolean).join("");
+  appUpdateLater.textContent = hasUpdate ? "Remind me later" : "Close";
+  appUpdateSkip.hidden = !hasUpdate;
+  appUpdateApply.hidden = !hasUpdate;
+  appUpdateApply.disabled = hasUpdate && !downloadUrl;
   appUpdateApply.textContent = downloadUrl ? "Download update" : "Open release page";
   if (appUpdateDialog.open) return;
   try {
@@ -941,14 +965,43 @@ function showUpdateDialog(update = {}) {
 
 async function checkForAppUpdates(options = {}) {
   const force = Boolean(options.force);
+  const manual = Boolean(options.manual);
   if (!force && Date.now() - lastAppUpdateCheckAt < 5 * 60 * 1000) return;
   lastAppUpdateCheckAt = Date.now();
+  if (manual) {
+    if (appUpdateCheckButton) {
+      appUpdateCheckButton.disabled = true;
+      appUpdateCheckButton.textContent = "Checking...";
+    }
+  }
   try {
     const response = await fetch(`/api/app-update?t=${Date.now()}`, { cache: "no-store" });
     const update = await response.json();
-    if (response.ok && update.ok !== false) showUpdateDialog(update);
+    if (response.ok && update.ok !== false) {
+      showUpdateDialog({ ...update, checkedAt: new Date().toLocaleString() }, { force: manual });
+    } else if (manual) {
+      showUpdateDialog({
+        currentVersion: update.currentVersion || "unknown",
+        updateAvailable: false,
+        checkedAt: new Date().toLocaleString()
+      }, { force: true });
+    }
   } catch {
+    if (manual) {
+      showUpdateDialog({
+        currentVersion: "unknown",
+        updateAvailable: false,
+        checkedAt: new Date().toLocaleString()
+      }, { force: true });
+    }
     // Update checks should never interrupt builder work.
+  } finally {
+    if (manual) {
+      if (appUpdateCheckButton) {
+        appUpdateCheckButton.disabled = false;
+        appUpdateCheckButton.textContent = "Check updates";
+      }
+    }
   }
 }
 
@@ -1073,7 +1126,7 @@ async function savePublishTarget(event) {
     renderPublishTargetInfo(result.target || {});
     await loadSystemReadiness();
     if (publishTargetPassword) publishTargetPassword.value = "";
-    publishTargetDialog.close();
+    closeDialogElement(publishTargetDialog);
     showBuilderError(
       "Publishing target saved",
       result.target?.credentialsStored
@@ -1137,19 +1190,19 @@ async function authenticatePublishTarget() {
     renderPublishTargetInfo(result.target || {});
     renderSystemReadiness(result.auth?.system || {}, result.target || {});
     if (publishTargetPassword) publishTargetPassword.value = "";
-    showBuilderError(
-      "GitHub authentication complete",
-      "This builder can now load from or apply to the selected target. Authorization will be reused for this target for about one day.",
-      `Repository: ${result.auth?.repository || result.target?.repository || "selected target"}\nBranch: ${result.auth?.branch || result.target?.branch || "current branch"}`
-    );
+    publishTargetCurrent.textContent = "GitHub authentication complete. Loading compatible portfolio files from the target repository...";
+    await syncFromPublishTarget({ afterAuth: true });
   } catch (error) {
     publishTargetCurrent.textContent = error.message || "GitHub authentication did not complete.";
   }
 }
 
-async function syncFromPublishTarget() {
+async function syncFromPublishTarget(options = {}) {
   if (!publishTargetDialog) return;
-  publishTargetCurrent.textContent = "Checking GitHub authorization and loading compatible portfolio files from the target repository...";
+  const afterAuth = Boolean(options.afterAuth);
+  publishTargetCurrent.textContent = afterAuth
+    ? "GitHub authentication was accepted. Importing the target portfolio now..."
+    : "Checking GitHub authorization and loading compatible portfolio files from the target repository...";
   try {
     const response = await fetch(`/api/sync-from-publish-target?t=${Date.now()}`, {
       method: "POST",
@@ -1165,19 +1218,23 @@ async function syncFromPublishTarget() {
       ].filter(Boolean).join("\n\n"));
     }
     renderPublishTargetInfo(result.target || {});
-    publishTargetDialog.close();
+    closeDialogElement(publishTargetDialog);
     await loadData();
     draftSavedSinceChanges = true;
     showBuilderError(
-      "Target content loaded",
-      "Compatible portfolio files were loaded from the authenticated publishing target into this local builder workspace. The local draft now matches the imported target catalog.",
+      afterAuth ? "GitHub connected and target loaded" : "Target content loaded",
+      afterAuth
+        ? "Authentication succeeded, and compatible portfolio files were loaded into this local builder workspace. The local draft now matches the imported target catalog."
+        : "Compatible portfolio files were loaded from the authenticated publishing target into this local builder workspace. The local draft now matches the imported target catalog.",
       [
         `Imported: ${(result.sync?.imported || []).join(", ")}`,
         result.sync?.backup ? `Backup: ${result.sync.backup}` : ""
       ].filter(Boolean).join("\n")
     );
   } catch (error) {
-    publishTargetCurrent.textContent = error.message || "Publishing target could not be imported.";
+    publishTargetCurrent.textContent = afterAuth
+      ? `Authentication completed, but target loading failed. ${error.message || "Publishing target could not be imported."}`
+      : error.message || "Publishing target could not be imported.";
   }
 }
 
@@ -1395,6 +1452,19 @@ function clone(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
+function closeDialogElement(dialog, returnValue = "close") {
+  if (!dialog) return;
+  if (typeof dialog.close === "function") {
+    dialog.close(returnValue);
+    return;
+  }
+  const wasOpen = Boolean(dialog.open || dialog.hasAttribute("open"));
+  dialog.returnValue = String(returnValue || "");
+  dialog.open = false;
+  dialog.removeAttribute("open");
+  if (wasOpen) dialog.dispatchEvent(new Event("close"));
+}
+
 function getByPath(target, pathValue) {
   return String(pathValue || "").split(".").filter(Boolean).reduce((current, key) => current?.[key], target);
 }
@@ -1532,6 +1602,7 @@ function unwrapFormula(value) {
 function isFormulaOnly(value) {
   const text = String(value || "").trim();
   if (!text) return false;
+  if (/\b(?:https?:\/\/|www\.)[^\s<>"']+/i.test(text) || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(text) || looksLikeBareWebAddress(text)) return false;
   if (/^\$\$[\s\S]+\$\$$/.test(text) || /^\\\[[\s\S]+\\\]$/.test(text) || /^\\\([\s\S]+\\\)$/.test(text)) return true;
   const mathSignals = /\\frac|\\sqrt|\\sum|\\int|\\Delta|\\omega|\\pi|[=^_√∫ΣπΩμ]/;
   return text.length <= 180 && mathSignals.test(text) && !/[.!?]\s*$/.test(text);
@@ -1910,7 +1981,7 @@ function deleteProjectById(projectId) {
   selectedProjectId = catalog.projects[0]?.id || "";
   activeSectionId = "brief";
   if (projectDialog?.open && project.id === projectWindowTitle.dataset.projectId) {
-    projectDialog.close();
+    closeDialogElement(projectDialog);
   }
   setStatus("Project deleted locally.");
   scheduleAutosave();
@@ -2197,10 +2268,8 @@ function parseProjectForPortfolio(project) {
 function refreshOpenPreviews() {
   if (projectPreviewDialog?.open) {
     const project = selectedProject();
-    const category = categoryById(project?.category);
-    applyProjectTemplateToElement(projectPreviewDialog, project, category.accent || "#117c7a");
-    projectPreviewTitle.textContent = project?.title || "Project preview";
-    projectPreviewContent.innerHTML = renderProjectPortfolioPreview(project);
+    const savedProject = (savedPortfolioCatalog.projects || []).find((item) => item.id === project?.id);
+    renderProjectWebsitePreview(savedProject || project);
   }
   if (portfolioPreviewDialog?.open) {
     renderPreview();
@@ -2209,7 +2278,7 @@ function refreshOpenPreviews() {
 
 function saveSelectedProjectAndClose() {
   if (saveSelectedProjectToPortfolio()) {
-    projectDialog.close();
+    closeDialogElement(projectDialog);
   }
 }
 
@@ -2235,7 +2304,7 @@ async function saveAllSections(options = {}) {
   savedPortfolioCatalog.siteSections = (catalog.siteSections || []).filter(siteSectionRenderable).map(clone);
   savedPortfolioCatalog.projects = (catalog.projects || []).map((project) => parseProjectForPortfolio(project));
   markDraftNeedsSave();
-  if (projectDialog?.open) projectDialog.close();
+  if (projectDialog?.open) closeDialogElement(projectDialog);
   if (settings.refreshOpenPreviews !== false) refreshOpenPreviews();
   setStatus(`Saved ${savedPortfolioCatalog.projects.length} project${savedPortfolioCatalog.projects.length === 1 ? "" : "s"} into the portfolio preview.`);
   return true;
@@ -2286,6 +2355,27 @@ function openProjectWindow(projectId, sectionId = "brief") {
 
 function categoryById(id) {
   return catalog.categories.find((category) => category.id === id) || {};
+}
+
+function normalizeCategory(category = {}) {
+  const label = String(category.label || category.title || "New category").trim() || "New category";
+  const id = slugify(category.id || label) || "category";
+  const accent = normalizeTextColor(category.accent || "") || "#1677a8";
+  return {
+    accent,
+    description: String(category.description || "").trim(),
+    id,
+    label
+  };
+}
+
+function refreshCategoryControls() {
+  catalog.categories = (catalog.categories || []).map(normalizeCategory);
+  savedPortfolioCatalog.categories = clone(catalog.categories || []);
+  if (newCategorySelect) {
+    newCategorySelect.innerHTML = catalog.categories.map((category) => `<option value="${escapeHtml(category.id)}">${escapeHtml(category.label)}</option>`).join("");
+  }
+  renderCategoryDropdown();
 }
 
 function linkAttributes(url, item = {}) {
@@ -2515,19 +2605,62 @@ function renderProjectPortfolioPreview(project) {
   `;
 }
 
-function openProjectPortfolioPreview() {
-  const project = selectedProject();
-  const savedProject = (savedPortfolioCatalog.projects || []).find((item) => item.id === project?.id);
-  const previewProject = savedProject || project;
-  activeProjectPreviewProject = previewProject;
+function fullProjectPreviewHtmlExact(project) {
+  if (!project) return fullPortfolioPreviewHtmlExact({
+    categories: [],
+    funFacts: [],
+    funFactsRich: null,
+    projects: [],
+    siteSections: []
+  });
+  const parsedProject = project.portfolioView ? project : parseProjectForPortfolio(project);
+  const categorySource = categoryById(parsedProject.category);
+  const previewCategory = normalizeCategory(categorySource.id ? categorySource : {
+    id: parsedProject.category || "project",
+    label: displayTitle(parsedProject.category || "Project", "Project")
+  });
+  const site = normalizeSiteContent(catalog.siteContent || savedPortfolioCatalog.siteContent || {});
+  return fullPortfolioPreviewHtmlExact({
+    categories: [previewCategory],
+    funFacts: [],
+    funFactsRich: null,
+    profile: normalizeProfile(catalog.profile || savedPortfolioCatalog.profile || {}),
+    projects: [parsedProject],
+    siteContent: {
+      ...site,
+      heroCopy: "Single-project preview rendered with the same public website layout.",
+      heroEyebrow: "Project preview",
+      heroTitle: parsedProject.portfolioView?.title || parsedProject.title || "Project preview"
+    },
+    siteSections: []
+  });
+}
+
+function renderProjectWebsitePreview(project) {
+  const category = categoryById(project?.category);
+  applyProjectTemplateToElement(projectPreviewDialog, project, category.accent || "#117c7a");
+  projectPreviewTitle.textContent = project?.portfolioView?.title || project?.title || "Project preview";
+  activeProjectPreviewProject = project || null;
   activeProjectPreviewSectionIndex = -1;
   activeProjectPreviewPath = [];
   activeProjectPreviewForwardStack = [];
   updateProjectPreviewNavigation();
-  const category = categoryById(previewProject?.category);
-  applyProjectTemplateToElement(projectPreviewDialog, previewProject, category.accent || "#117c7a");
-  projectPreviewTitle.textContent = previewProject?.title || "Project preview";
-  projectPreviewContent.innerHTML = renderProjectPortfolioPreview(previewProject);
+  projectPreviewContent.classList.add("is-website-preview");
+  projectPreviewContent.innerHTML = `
+    <iframe
+      class="portfolio-preview-frame project-preview-frame"
+      title="${escapeHtml(project?.title || "Project website preview")}"
+    ></iframe>
+  `;
+  const frame = projectPreviewContent.querySelector("iframe");
+  if (frame) frame.srcdoc = fullProjectPreviewHtmlExact(project);
+}
+
+function openProjectPortfolioPreview() {
+  const project = selectedProject();
+  const savedProject = (savedPortfolioCatalog.projects || []).find((item) => item.id === project?.id);
+  const previewProject = savedProject || project;
+  renderProjectWebsitePreview(previewProject);
   document.body.classList.add("full-window-open");
   projectPreviewDialog.showModal();
   projectPreviewDialog.scrollTop = 0;
@@ -2606,7 +2739,7 @@ function closeProjectPreviewWindow() {
   activeProjectPreviewSectionIndex = -1;
   activeProjectPreviewPath = [];
   activeProjectPreviewForwardStack = [];
-  projectPreviewDialog.close();
+  closeDialogElement(projectPreviewDialog);
 }
 
 function publicProjectCard(project) {
@@ -3022,10 +3155,10 @@ function insertProject(project) {
 }
 
 function renderCategoryDropdown() {
-  categoryDropdown.innerHTML = catalog.categories.map((category) => `
-    <button type="button" data-create-category="${category.id}" style="--category-accent: ${category.accent || "#117c7a"}">
-      <span>${category.label}</span>
-      <small>${category.description}</small>
+  categoryDropdown.innerHTML = (catalog.categories || []).map((category) => `
+    <button type="button" data-create-category="${escapeHtml(category.id)}" style="--category-accent: ${escapeHtml(category.accent || "#117c7a")}">
+      <span>${escapeHtml(category.label)}</span>
+      <small>${escapeHtml(category.description || "Project category")}</small>
     </button>
   `).join("");
 }
@@ -3100,18 +3233,18 @@ function renderTree() {
     return `
       <section class="tree-category">
         <div class="tree-category-heading">
-          <button class="tree-category-toggle" type="button" data-toggle-category="${category.id}" aria-expanded="${isExpanded}">
-            <span>${category.label}</span>
+          <button class="tree-category-toggle" type="button" data-toggle-category="${escapeHtml(category.id)}" aria-expanded="${isExpanded}">
+            <span>${escapeHtml(category.label)}</span>
             <small>${categoryProjects.length} project${categoryProjects.length === 1 ? "" : "s"}</small>
           </button>
         </div>
         <div class="tree-projects" ${isExpanded ? "" : "hidden"}>
           ${categoryProjects.length ? categoryProjects.map((project) => `
             <div class="tree-project-row ${project.id === selectedProjectId ? "active" : ""}">
-              <button type="button" data-project-id="${project.id}">
-                <span>${project.title}</span>
+              <button type="button" data-project-id="${escapeHtml(project.id)}">
+                <span>${escapeHtml(project.title)}</span>
               </button>
-              <button class="tree-project-delete" type="button" data-delete-project="${project.id}" aria-label="Delete ${project.title}" title="Delete project">
+              <button class="tree-project-delete" type="button" data-delete-project="${escapeHtml(project.id)}" aria-label="Delete ${escapeHtml(project.title)}" title="Delete project">
                 &times;
               </button>
             </div>
@@ -5202,6 +5335,15 @@ function openEditorFromButton(button) {
   }
 }
 
+function builderPreviewContent(rich, text = "", emptyText = "No content has been added yet.") {
+  const content = richHasContent(rich)
+    ? renderRichContent(rich, text || "")
+    : text
+      ? `<p class="rich-paragraph">${renderMultilineInlineText(text)}</p>`
+      : `<p class="evidence-empty">${escapeHtml(emptyText)}</p>`;
+  return `<div class="builder-item-preview">${content}</div>`;
+}
+
 function renderCustomSection(project, sectionId) {
   const section = (project.sections || []).find((item) => item.id === sectionId);
   if (!section) return `<p class="evidence-empty">Section not found.</p>`;
@@ -5214,11 +5356,7 @@ function renderCustomSection(project, sectionId) {
         <button class="danger-icon" type="button" data-delete-section="${section.id}">Delete section</button>
       </div>
     </div>
-    ${richHasContent(section.richDescription)
-      ? renderRichContent(section.richDescription, section.description || "")
-      : section.description
-        ? `<p class="rich-paragraph">${renderMultilineInlineText(section.description)}</p>`
-        : `<p class="evidence-empty">No section content has been added yet.</p>`}
+    ${builderPreviewContent(section.richDescription, section.description || "", "No section content has been added yet.")}
     <div class="section-actions">
       <button class="button primary" type="button" data-add-custom-item="${section.id}">Add subsection</button>
       <button class="button secondary" type="button" data-upload-custom="${section.id}">Add file or image</button>
@@ -5229,9 +5367,7 @@ function renderCustomSection(project, sectionId) {
           <div>
             <strong>${escapeHtml(item.title || (item.url ? "Untitled file" : "Untitled subsection"))}</strong>
             ${item.url ? `<span>${escapeHtml(item.url)}</span>` : ""}
-            ${richHasContent(item.richDescription)
-              ? renderRichContent(item.richDescription, item.description || "")
-              : item.description ? `<p>${renderMultilineInlineText(item.description)}</p>` : ""}
+            ${(richHasContent(item.richDescription) || item.description) ? builderPreviewContent(item.richDescription, item.description || "", "") : ""}
             ${(item.children || []).length ? `
               <div class="builder-child-files">
                 ${(item.children || []).map((child, childIndex) => `
@@ -5323,21 +5459,26 @@ function fullPortfolioPreviewHtml() {
   return fullPortfolioPreviewHtmlExact();
 }
 
-function fullPortfolioPreviewHtmlExact() {
+function previewValue(source, key, fallback) {
+  return source && Object.prototype.hasOwnProperty.call(source, key) ? source[key] : fallback;
+}
+
+function fullPortfolioPreviewHtmlExact(dataOverride = null) {
   const baseHref = `${window.location.origin}/`;
-  const siteContent = normalizeSiteContent(catalog.siteContent || savedPortfolioCatalog.siteContent || {});
-  const profile = normalizeProfile(catalog.profile || savedPortfolioCatalog.profile || {});
+  const siteContent = normalizeSiteContent(previewValue(dataOverride, "siteContent", catalog.siteContent || savedPortfolioCatalog.siteContent || {}));
+  const profile = normalizeProfile(previewValue(dataOverride, "profile", catalog.profile || savedPortfolioCatalog.profile || {}));
   const ownerName = profile.displayName || "Portfolio";
   const portfolioLabel = profile.portfolioLabel || "Portfolio";
-  const previewData = JSON.stringify({
-    categories: savedPortfolioCatalog.categories || [],
-    funFacts: normalizeFunFacts(catalog.funFacts || savedPortfolioCatalog.funFacts || []),
-    funFactsRich: catalog.funFactsRich || savedPortfolioCatalog.funFactsRich || null,
+  const previewDataObject = {
+    categories: previewValue(dataOverride, "categories", savedPortfolioCatalog.categories || []),
+    funFacts: previewValue(dataOverride, "funFacts", normalizeFunFacts(catalog.funFacts || savedPortfolioCatalog.funFacts || [])),
+    funFactsRich: previewValue(dataOverride, "funFactsRich", catalog.funFactsRich || savedPortfolioCatalog.funFactsRich || null),
     profile,
-    projects: savedPortfolioCatalog.projects || [],
+    projects: previewValue(dataOverride, "projects", savedPortfolioCatalog.projects || []),
     siteContent,
-    siteSections: savedPortfolioCatalog.siteSections || []
-  }).replaceAll("</", "<\\/");
+    siteSections: previewValue(dataOverride, "siteSections", savedPortfolioCatalog.siteSections || [])
+  };
+  const previewData = JSON.stringify(previewDataObject).replaceAll("</", "<\\/");
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -5419,8 +5560,8 @@ function fullPortfolioPreviewHtmlExact() {
           <span>presented projects</span>
         </div>
         <div class="metric">
-          <strong>3 Tracks</strong>
-          <span>analog, digital, embedded</span>
+          <strong id="project-track-count">0 Tracks</strong>
+          <span id="project-track-labels">project categories</span>
         </div>
         <div class="metric">
           <strong>Artifacts</strong>
@@ -5440,11 +5581,8 @@ function fullPortfolioPreviewHtmlExact() {
           </label>
         </div>
 
-        <div class="filters" aria-label="Project filters">
+        <div class="filters" id="project-filters" aria-label="Project filters">
           <button class="filter-button active" type="button" data-filter="all">All</button>
-          <button class="filter-button" type="button" data-filter="analog-mixed-signal">Analog and Mixed Signal</button>
-          <button class="filter-button" type="button" data-filter="digital">Digital</button>
-          <button class="filter-button" type="button" data-filter="embedded">Embedded</button>
         </div>
 
         <div class="project-grid" id="project-grid" aria-live="polite"></div>
@@ -6099,6 +6237,42 @@ async function openSectionDialog() {
   };
 }
 
+function openCategoryDialog() {
+  categoryTitle.value = "";
+  categoryDescription.value = "";
+  categoryAccent.value = "#1677a8";
+  categoryDialog.showModal();
+  setTimeout(() => categoryTitle.focus(), 0);
+}
+
+function saveCategoryFromDialog() {
+  const label = categoryTitle.value.trim();
+  if (!label) {
+    setStatus("Type a category name before saving.");
+    return;
+  }
+  const baseId = slugify(label);
+  const ids = new Set((catalog.categories || []).map((category) => category.id));
+  let id = baseId;
+  let suffix = 2;
+  while (ids.has(id)) {
+    id = `${baseId}-${suffix}`;
+    suffix += 1;
+  }
+  const category = normalizeCategory({
+    accent: categoryAccent.value,
+    description: categoryDescription.value,
+    id,
+    label
+  });
+  catalog.categories = [...(catalog.categories || []), category];
+  expandedCategories.add(category.id);
+  refreshCategoryControls();
+  renderAll();
+  scheduleAutosave();
+  setStatus(`Category "${category.label}" added locally. It is now available under Add new project.`);
+}
+
 async function addCustomSection() {
   const project = selectedProject();
   if (!project) return;
@@ -6255,8 +6429,7 @@ async function loadData() {
   setStatus(`Loaded ${catalogData.source} catalog. Builder controls are local-only.`);
 
   templateSelect.innerHTML = groupedTemplateOptions();
-  newCategorySelect.innerHTML = catalog.categories.map((category) => `<option value="${category.id}">${category.label}</option>`).join("");
-  renderCategoryDropdown();
+  refreshCategoryControls();
   selectedProjectId = catalog.projects[0]?.id || "";
   expandedCategories = new Set(catalog.categories.map((category) => category.id));
   renderAll();
@@ -6268,7 +6441,7 @@ templateSelect.addEventListener("change", () => {
 });
 
 templatePreviewClose.addEventListener("click", () => {
-  templateDialog.close();
+  closeDialogElement(templateDialog);
 });
 
 builderGuideOpen.addEventListener("click", () => {
@@ -6276,7 +6449,7 @@ builderGuideOpen.addEventListener("click", () => {
 });
 
 builderGuideClose.addEventListener("click", () => {
-  builderGuideDialog.close();
+  closeDialogElement(builderGuideDialog);
 });
 
 projectWindowTitle.addEventListener("dblclick", (event) => {
@@ -6323,7 +6496,7 @@ projectTitleMenu.addEventListener("click", (event) => {
 
 titleRenameSave.addEventListener("click", () => endTitleRename(true));
 titleRenameCancel.addEventListener("click", () => endTitleRename(false));
-projectMetaClose.addEventListener("click", () => projectMetaDialog.close());
+projectMetaClose.addEventListener("click", () => closeDialogElement(projectMetaDialog));
 
 viewProjectPreviewButton.addEventListener("click", openProjectPortfolioPreview);
 projectPreviewClose.addEventListener("click", closeProjectPreviewWindow);
@@ -6347,17 +6520,17 @@ saveProjectCloseButton.addEventListener("click", saveSelectedProjectAndClose);
 openPortfolioPreviewButton.addEventListener("click", openPortfolioPreview);
 saveAllSectionsButton.addEventListener("click", saveAllSections);
 portfolioPreviewClose.addEventListener("click", () => {
-  portfolioPreviewDialog.close();
+  closeDialogElement(portfolioPreviewDialog);
 });
 portfolioPreviewDialog.addEventListener("close", () => {
   document.body.classList.remove("full-window-open");
 });
 publishTargetOpen?.addEventListener("click", openPublishTargetDialog);
 publishTargetClose?.addEventListener("click", () => {
-  publishTargetDialog.close();
+  closeDialogElement(publishTargetDialog);
 });
 publishTargetCancel?.addEventListener("click", () => {
-  publishTargetDialog.close();
+  closeDialogElement(publishTargetDialog);
 });
 publishTargetForm?.addEventListener("submit", savePublishTarget);
 publishTargetSync?.addEventListener("click", syncFromPublishTarget);
@@ -6374,11 +6547,11 @@ publishTargetDomain?.addEventListener("input", () => {
   publishTargetDomain.dataset.autofilled = "false";
 });
 publishResultClose.addEventListener("click", () => {
-  publishResultDialog.close();
+  closeDialogElement(publishResultDialog);
 });
 
 appUpdateClose?.addEventListener("click", () => {
-  appUpdateDialog?.close("close");
+  closeDialogElement(appUpdateDialog, "close");
 });
 
 appUpdateLater?.addEventListener("click", () => {
@@ -6386,25 +6559,37 @@ appUpdateLater?.addEventListener("click", () => {
     localStorage.setItem("omb-snoozed-update-version", pendingAppUpdate.latestVersion);
     localStorage.setItem("omb-snoozed-update-at", String(Date.now()));
   }
-  appUpdateDialog?.close("later");
+  closeDialogElement(appUpdateDialog, "later");
 });
 
 appUpdateSkip?.addEventListener("click", () => {
   if (pendingAppUpdate?.latestVersion) {
     localStorage.setItem("omb-skipped-update-version", pendingAppUpdate.latestVersion);
   }
-  appUpdateDialog?.close("skip");
+  closeDialogElement(appUpdateDialog, "skip");
 });
 
 appUpdateApply?.addEventListener("click", () => {
   const update = pendingAppUpdate || {};
   const target = update.installerUrl || update.releaseUrl || update.portableUrl || "";
   if (target) window.open(target, "_blank", "noreferrer");
-  appUpdateDialog?.close("download");
+  closeDialogElement(appUpdateDialog, "download");
+});
+
+appUpdateCheckButton?.addEventListener("click", () => {
+  checkForAppUpdates({ force: true, manual: true });
 });
 
 addProjectButton.addEventListener("click", () => {
   toggleCategoryDropdown();
+});
+
+addCategoryButton?.addEventListener("click", openCategoryDialog);
+categoryCancel?.addEventListener("click", () => closeDialogElement(categoryDialog, "cancel"));
+categoryForm?.addEventListener("submit", (event) => {
+  event.preventDefault();
+  saveCategoryFromDialog();
+  closeDialogElement(categoryDialog, "save");
 });
 
 addSiteSectionButton.addEventListener("click", addSiteSection);
@@ -6510,14 +6695,14 @@ categoryDropdown.addEventListener("click", (event) => {
 });
 
 projectCreateCancel.addEventListener("click", () => {
-  projectCreateDialog.close("cancel");
+  closeDialogElement(projectCreateDialog, "cancel");
 });
 
 projectCreateForm.addEventListener("submit", (event) => {
   event.preventDefault();
   if (!pendingCreateCategoryId) return;
   createProjectInCategory(pendingCreateCategoryId);
-  projectCreateDialog.close("save");
+  closeDialogElement(projectCreateDialog, "save");
 });
 
 projectTree.addEventListener("click", (event) => {
@@ -7508,7 +7693,7 @@ sectionContent.addEventListener("input", (event) => {
 });
 
 projectWindowClose.addEventListener("click", () => {
-  projectDialog.close();
+  closeDialogElement(projectDialog);
 });
 
 projectDialog.addEventListener("close", () => {
@@ -7524,19 +7709,19 @@ projectWindowDelete.addEventListener("click", () => {
 deleteConfirmYes.addEventListener("click", () => {
   const action = pendingDeleteAction;
   pendingDeleteAction = null;
-  deleteConfirmDialog.close("yes");
+  closeDialogElement(deleteConfirmDialog, "yes");
   if (action) action();
 });
 
 deleteConfirmNo.addEventListener("click", () => {
   pendingDeleteAction = null;
-  deleteConfirmDialog.close("no");
+  closeDialogElement(deleteConfirmDialog, "no");
 });
 
 deleteConfirmDialog.addEventListener("click", (event) => {
   if (!event.target.closest("[data-delete-cancel]")) return;
   pendingDeleteAction = null;
-  deleteConfirmDialog.close("no");
+  closeDialogElement(deleteConfirmDialog, "no");
 });
 
 assetSource.addEventListener("change", updateAssetDialogVisibility);
@@ -7546,28 +7731,28 @@ assetFile.addEventListener("change", () => {
   if (!assetTitle.value && assetFile.files[0]) assetTitle.value = assetFile.files[0].name;
 });
 assetCancel.addEventListener("click", () => {
-  assetDialog.close("cancel");
+  closeDialogElement(assetDialog, "cancel");
 });
 assetForm.addEventListener("submit", (event) => {
   event.preventDefault();
-  assetDialog.close("save");
+  closeDialogElement(assetDialog, "save");
 });
 sectionCancel.addEventListener("click", () => {
-  sectionDialog.close("cancel");
+  closeDialogElement(sectionDialog, "cancel");
 });
 sectionForm.addEventListener("submit", (event) => {
   event.preventDefault();
-  sectionDialog.close("save");
+  closeDialogElement(sectionDialog, "save");
 });
 siteLinkCancel.addEventListener("click", () => {
-  siteLinkDialog.close("cancel");
+  closeDialogElement(siteLinkDialog, "cancel");
 });
 siteLinkForm.addEventListener("submit", (event) => {
   event.preventDefault();
-  siteLinkDialog.close("save");
+  closeDialogElement(siteLinkDialog, "save");
 });
 summaryImageCancel.addEventListener("click", () => {
-  summaryImageDialog.close("cancel");
+  closeDialogElement(summaryImageDialog, "cancel");
 });
 summaryImageSource?.addEventListener("change", updateSummaryImageDialogVisibility);
 summaryImageUrl?.addEventListener("input", () => {
@@ -7580,14 +7765,14 @@ summaryImageFile?.addEventListener("change", () => {
 });
 summaryImageForm.addEventListener("submit", (event) => {
   event.preventDefault();
-  summaryImageDialog.close("save");
+  closeDialogElement(summaryImageDialog, "save");
 });
 summaryFormulaCancel.addEventListener("click", () => {
-  summaryFormulaDialog.close("cancel");
+  closeDialogElement(summaryFormulaDialog, "cancel");
 });
 summaryFormulaForm.addEventListener("submit", (event) => {
   event.preventDefault();
-  summaryFormulaDialog.close("save");
+  closeDialogElement(summaryFormulaDialog, "save");
 });
 
 saveDraftButton.addEventListener("click", () => saveCatalog("/api/save-draft", "Draft saved"));

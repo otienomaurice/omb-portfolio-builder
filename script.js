@@ -1,7 +1,10 @@
 const grid = document.querySelector("#project-grid");
 const searchInput = document.querySelector("#project-search");
-const filterButtons = [...document.querySelectorAll(".filter-button")];
+const projectFilters = document.querySelector("#project-filters");
+let filterButtons = [...document.querySelectorAll(".filter-button")];
 const projectCount = document.querySelector("#project-count");
+const projectTrackCount = document.querySelector("#project-track-count");
+const projectTrackLabels = document.querySelector("#project-track-labels");
 const year = document.querySelector("#year");
 const funFactsCallout = document.querySelector("#fun-facts-callout");
 const heroEyebrow = document.querySelector(".hero-content .eyebrow");
@@ -900,6 +903,73 @@ function projectMatches(project, query) {
 function projectVisible(project, query) {
   const categoryMatch = activeFilter === "all" || project.category === activeFilter;
   return categoryMatch && projectMatches(project, query);
+}
+
+function normalizeCategory(category = {}) {
+  const label = String(category.label || category.title || category.id || "Project category").trim() || "Project category";
+  return {
+    accent: normalizeTextColor(category.accent || "") || "#1677a8",
+    description: String(category.description || "").trim(),
+    id: String(category.id || label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "category"),
+    label
+  };
+}
+
+function hydrateProjectCategories(rawCategories = [], rawProjects = []) {
+  const normalized = rawCategories.map(normalizeCategory);
+  const knownIds = new Set(normalized.map((category) => category.id));
+  rawProjects.forEach((project) => {
+    const id = String(project?.category || "").trim();
+    if (!id || knownIds.has(id)) return;
+    const label = id
+      .split(/[-_\s]+/)
+      .filter(Boolean)
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(" ") || "Project category";
+    normalized.push(normalizeCategory({ id, label, description: "Project category" }));
+    knownIds.add(id);
+  });
+  return normalized;
+}
+
+function setActiveFilter(filter = "all") {
+  activeFilter = filter;
+  if (activeFilter !== "all" && !categories.some((category) => category.id === activeFilter)) {
+    activeFilter = "all";
+  }
+  filterButtons.forEach((item) => item.classList.toggle("active", item.dataset.filter === activeFilter));
+}
+
+function bindFilterButtons() {
+  filterButtons = [...document.querySelectorAll(".filter-button")];
+  filterButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      setActiveFilter(button.dataset.filter || "all");
+      renderProjects();
+      updateSearchDropdown();
+    });
+  });
+}
+
+function renderCategoryFilters() {
+  if (projectTrackCount) {
+    projectTrackCount.textContent = `${categories.length} Track${categories.length === 1 ? "" : "s"}`;
+  }
+  if (projectTrackLabels) {
+    projectTrackLabels.textContent = categories.length
+      ? categories.map((category) => category.label).join(", ")
+      : "project categories";
+  }
+  if (projectFilters) {
+    projectFilters.innerHTML = `
+      <button class="filter-button active" type="button" data-filter="all">All</button>
+      ${categories.map((category) => `
+        <button class="filter-button" type="button" data-filter="${escapeHtml(category.id)}">${escapeHtml(category.label)}</button>
+      `).join("")}
+    `;
+  }
+  bindFilterButtons();
+  setActiveFilter(activeFilter);
 }
 
 function flattenSearchText(values = []) {
@@ -2751,14 +2821,14 @@ function projectCard(project) {
 
 function categorySection(category, visibleProjects) {
   return `
-    <section class="category-section ${visibleProjects.length ? "" : "empty-category-section"}" aria-labelledby="${category.id}-title">
+    <section class="category-section ${visibleProjects.length ? "" : "empty-category-section"}" aria-labelledby="${escapeHtml(category.id)}-title">
       <div class="category-heading">
         <div>
-          <h3 id="${category.id}-title">${category.label}</h3>
+          <h3 id="${escapeHtml(category.id)}-title">${escapeHtml(category.label)}</h3>
         </div>
         ${visibleProjects.length ? `<span>${visibleProjects.length} project${visibleProjects.length === 1 ? "" : "s"}</span>` : ""}
       </div>
-      ${visibleProjects.length ? `<p class="category-description">${category.description}</p>` : ""}
+      ${visibleProjects.length && category.description ? `<p class="category-description">${escapeHtml(category.description)}</p>` : ""}
       <div class="category-projects">
         ${visibleProjects.map(projectCard).join("")}
       </div>
@@ -2950,8 +3020,7 @@ function goToSearchResult(result) {
 
   if (result.projectId) {
     if (!document.getElementById(result.projectId)) {
-      activeFilter = "all";
-      filterButtons.forEach((item) => item.classList.toggle("active", item.dataset.filter === "all"));
+      setActiveFilter("all");
       renderProjects();
     }
     const target = document.getElementById(result.projectId);
@@ -3152,15 +3221,6 @@ window.addEventListener("popstate", (event) => {
   applySectionRoute(sectionRouteFromState(event.state) || sectionRouteFromLocation());
 });
 
-filterButtons.forEach((button) => {
-  button.addEventListener("click", () => {
-    activeFilter = button.dataset.filter;
-    filterButtons.forEach((item) => item.classList.toggle("active", item === button));
-    renderProjects();
-    updateSearchDropdown();
-  });
-});
-
 ensureSearchPanel();
 searchInput.addEventListener("input", handleSearchInput);
 searchInput.addEventListener("focus", showSearchPanelIfNeeded);
@@ -3245,8 +3305,8 @@ function normalizeTextColor(value = "") {
 }
 function loadProjectCatalog() {
   if (window.__PORTFOLIO_CATALOG__) {
-    categories = window.__PORTFOLIO_CATALOG__.categories || [];
     projects = window.__PORTFOLIO_CATALOG__.projects || [];
+    categories = hydrateProjectCategories(window.__PORTFOLIO_CATALOG__.categories || [], projects);
     siteSections = window.__PORTFOLIO_CATALOG__.siteSections || [];
     siteContent = normalizeSiteContent(window.__PORTFOLIO_CATALOG__.siteContent || {});
     profile = normalizeProfile(window.__PORTFOLIO_CATALOG__.profile || {});
@@ -3256,6 +3316,7 @@ function loadProjectCatalog() {
     renderSiteContent();
     renderFunFacts();
     renderSiteSections();
+    renderCategoryFilters();
     renderProjects();
     rebuildSearchIndex();
     updateSearchDropdown();
@@ -3271,8 +3332,8 @@ function loadProjectCatalog() {
       return response.json();
     })
     .then((data) => {
-      categories = data.categories || [];
       projects = data.projects || [];
+      categories = hydrateProjectCategories(data.categories || [], projects);
       siteSections = data.siteSections || [];
       siteContent = normalizeSiteContent(data.siteContent || {});
       profile = normalizeProfile(data.profile || {});
@@ -3282,6 +3343,7 @@ function loadProjectCatalog() {
       renderSiteContent();
       renderFunFacts();
       renderSiteSections();
+      renderCategoryFilters();
       renderProjects();
       rebuildSearchIndex();
       updateSearchDropdown();

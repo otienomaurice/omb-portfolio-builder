@@ -1,6 +1,6 @@
 import { createServer } from "node:http";
 import { execFile, spawn } from "node:child_process";
-import { access, cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { access as fsAccess, cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -40,7 +40,7 @@ const publishAuthorizationHelp = [
   "Publishing was blocked before live website files were applied.",
   "Open Publishing target, enter the repository URL, click Save target, then click Authenticate with GitHub.",
   "A GitHub/Git Credential Manager browser sign-in may open. Sign in with an account that has write access to the selected Pages repository.",
-  "After authentication succeeds, click Load from target or Apply to site again.",
+  "After authentication succeeds, the builder automatically loads compatible target files. You can also click Load from target later to refresh.",
   "For a custom domain, add or update the repository CNAME file after the repository is associated.",
   "Until a compatible writable website repository is associated, the builder remains local-only."
 ].join(" ");
@@ -779,7 +779,7 @@ async function getGitStatus() {
 
 async function publishPathIsStageable(relativePath) {
   try {
-    await access(resolveInsideRoot(relativePath));
+    await fsAccess(resolveInsideRoot(relativePath));
     return true;
   } catch {
     // Missing files can still be stageable if Git already tracks them and they were deleted.
@@ -1055,8 +1055,8 @@ async function assertPublishAccess(options = {}) {
 }
 
 async function syncFromPublishTarget() {
-  const access = await assertPublishAccess();
-  const branch = access.branch || "main";
+  const publishAccess = await assertPublishAccess();
+  const branch = publishAccess.branch || "main";
   const remote = (await runGit(["remote", "get-url", "origin"])).stdout.trim();
   const importRoot = await mkdtemp(path.join(os.tmpdir(), "omb-publish-target-"));
   const cloneRoot = path.join(importRoot, "target");
@@ -1080,7 +1080,7 @@ async function syncFromPublishTarget() {
     const availablePaths = [];
     for (const importPath of importPaths) {
       try {
-        await access(path.join(cloneRoot, importPath));
+        await fsAccess(path.join(cloneRoot, importPath));
         availablePaths.push(importPath);
       } catch {
         // Optional path is absent in the selected site repository.
@@ -1091,7 +1091,7 @@ async function syncFromPublishTarget() {
       throw publishAccessError(
         "The selected repository does not contain a projects.json portfolio catalog.",
         "The target repository must contain a compatible OMB Portfolio Builder catalog before it can be imported.",
-        access
+        publishAccess
       );
     }
 
@@ -1105,7 +1105,7 @@ async function syncFromPublishTarget() {
       const sourcePath = path.join(cloneRoot, importPath);
       const targetPath = resolveInsideRoot(importPath);
       try {
-        await access(targetPath);
+        await fsAccess(targetPath);
         await cp(targetPath, path.join(backupRoot, importPath), { recursive: true, force: true });
         await rm(targetPath, { recursive: true, force: true });
       } catch {
@@ -1118,7 +1118,7 @@ async function syncFromPublishTarget() {
     await writeFile(draftPath, importedCatalog, "utf8");
 
     return {
-      ...access,
+      ...publishAccess,
       imported: availablePaths,
       backup: path.relative(root, backupRoot),
       draftUpdated: true

@@ -28,7 +28,7 @@ Installed users do **not** need to install Node.js or pnpm. The desktop app incl
 
 The public portfolio website also exposes a direct **Download builder application** link near the top of the page, just below Fun Facts.
 
-If OMB Portfolio Builder is already installed, the installer tells the user which version it found, asks for approval to remove it, runs that existing uninstaller, and then continues installing the selected version. This prevents multiple installed copies of the app on the same machine.
+If OMB Portfolio Builder is already installed through Windows, the installer tells the user which version it found, asks for approval to remove it, runs that existing uninstaller, and then continues installing the selected version. Setup also scans fixed drives for unregistered OMB Portfolio Builder executables, portable copies, and local `desktop-builder` workspaces. If it finds one of those duplicate copies, setup stops and asks the user to remove, uninstall, or rename that copy first so the machine does not keep an older builder with stale editing features.
 
 GitHub keeps older releases. To download a previous version, open:
 
@@ -74,6 +74,7 @@ For repository development, use the branch model in [BRANCHING.md](BRANCHING.md)
 | `feature/update-branch-guide` | Updates the branch register rule and the consumer-facing in-app quick guide. | `development` | `development` | Merged into `development` |
 | `codex/update-builder-guide` | Refreshes the consumer-facing Builder Guide with current rich text, image, file, link, save, and publishing behavior. | `development` | `development` | Merged into `development` |
 | `codex/update-release-popup` | Adds the released-app update popup and main-branch release workflow so installed users are prompted when a newer builder is published. | `development` | `development` | Merged into `development` |
+| `codex/manual-update-categories-preview` | Adds manual update checks, custom project categories, link-safe rich paste handling, project-only website previews, broad duplicate-install detection, and a main release workflow fix. | `development` | `development` | Active |
 
 ## Publishing Security
 
@@ -81,7 +82,7 @@ The app can be public, but publishing a live website is controlled by GitHub rep
 
 - Maurice Otieno's live website can be changed only by a GitHub identity that can push to `otienomaurice/otienomaurice.github.io`.
 - Fresh installs do not automatically clone or preload Maurice Otieno's website.
-- If Maurice installs the builder on another machine, open **Publishing target**, authenticate with a GitHub identity that has write access to `otienomaurice/otienomaurice.github.io`, then click **Load from target** to import the current portfolio catalog, docs, images, resume, custom domain, and site files into that local builder workspace.
+- If Maurice installs the builder on another machine, open **Publishing target** and authenticate with a GitHub identity that has write access to `otienomaurice/otienomaurice.github.io`. After authentication succeeds, the builder automatically imports the current portfolio catalog, docs, images, resume, custom domain, and site files into that local builder workspace. **Load from target** can still be used later to refresh from the repository.
 - Other users can use this same builder for their own website by opening **Publishing target** and entering their own GitHub Pages/static-site repository URL.
 - If the selected repository is missing, incompatible, or GitHub rejects the signed-in identity, **Apply to site** is blocked and the builder remains local-only.
 - The app does not embed Maurice's password or private credentials.
@@ -98,7 +99,7 @@ When the app opens for the first time, use the builder panels to add your own co
 4. Click **Save draft** to keep the local version.
 5. Click **Portfolio** to preview the website before publishing.
 
-Nothing from Maurice Otieno's portfolio is included unless a user authenticates against Maurice's publishing repository and intentionally imports it with **Load from target**.
+Nothing from Maurice Otieno's portfolio is included unless a user authenticates against Maurice's publishing repository and imports it through the authenticated target-loading flow.
 
 ## Publishing To A Different Website
 
@@ -113,14 +114,14 @@ https://github.com/YOUR-USERNAME/YOUR-USERNAME.github.io.git
 4. Click **Check tools**. If Git is missing, click **Install Git**; the app starts the Git for Windows installer path for you.
 5. Click **Save target**.
 6. Click **Authenticate with GitHub**. A GitHub/Git Credential Manager browser sign-in may open.
-7. If the repository already contains a compatible portfolio and you own access to it, click **Load from target**. The builder imports through a temporary clone, backs up replaced local portfolio files under `.omb-backups`, and updates the local draft to match the target catalog.
+7. After authentication succeeds, the builder automatically loads a compatible portfolio through a temporary clone, backs up replaced local portfolio files under `.omb-backups`, and updates the local draft to match the target catalog. Use **Load from target** later if you want to refresh from the repository again.
 8. Click **Save draft** before **Apply to site**.
 
 Successful publishing authorization is cached locally for about one day per repository and branch, so Apply to site does not re-check GitHub authorization on every push.
 
 ## Updates
 
-The installed builder checks the latest GitHub Release and opens an in-app update window when a newer installer is available. Choose **Download update** to open the latest installer, **Remind me later** to snooze the prompt, or **Skip this version** to dismiss that release.
+The installed builder checks the latest GitHub Release and opens an in-app update window when a newer installer is available. Choose **Download update** to open the latest installer, **Remind me later** to snooze the prompt, or **Skip this version** to dismiss that release. You can also click **Check updates** in the builder header to check manually.
 
 The app checks on startup, checks periodically while it remains open, and checks again when the window returns to focus after a long idle period. Updates are installed through the same Windows installer flow. The update does not require users to manually run shell scripts. If the app is already installed, setup asks to remove the existing copy before installing the selected version.
 
