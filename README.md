@@ -62,7 +62,7 @@ pnpm run installer
 pnpm run dist
 ```
 
-For repository development, use the branch model in [BRANCHING.md](BRANCHING.md): feature branches merge into `development`, and `main` stays release-ready for consumers. When a branch is created, update the branch register below in the same feature branch.
+For repository development, use the branch model in [BRANCHING.md](BRANCHING.md): feature branches merge into `development`, and `main` stays release-ready for consumers. `main` must only receive release merges from `development`; no feature, fix, or Codex branch should merge directly into `main`. When a branch is created, update the branch register below in the same feature branch.
 
 ## Branch Register
 
@@ -76,7 +76,7 @@ For repository development, use the branch model in [BRANCHING.md](BRANCHING.md)
 | `codex/update-release-popup` | Adds the released-app update popup and main-branch release workflow so installed users are prompted when a newer builder is published. | `development` | `development` | Merged into `development` |
 | `codex/manual-update-categories-preview` | Adds manual update checks, custom project categories, link-safe rich paste handling, project-only website previews, broad duplicate-install detection, and a main release workflow fix. | `development` | `development` | Active |
 | `codex/fix-publish-target-auth` | Makes publishing target setup authenticate before saving, resolves the target default branch before access checks, and blocks known local builder workspaces during installation. | `development` | `development` | Active |
-| `codex/cache-daily-auth-and-restore-profile` | Adds daily and extended publishing authorization caching, clarifies publishing target fields, and keeps active-machine profile fields populated. | `codex/fix-release-tag-check` | `development` | Active |
+| `codex/cache-daily-auth-and-restore-profile` | Adds daily and extended publishing authorization caching, clarifies publishing target fields, keeps active-machine profile fields populated, and enforces development-only PRs into main. | `codex/fix-release-tag-check` | `development` | Active |
 
 ## Publishing Security
 
@@ -127,7 +127,7 @@ The installed builder checks the latest GitHub Release and opens an in-app updat
 
 The app checks on startup, checks periodically while it remains open, and checks again when the window returns to focus after a long idle period. Updates are installed through the same Windows installer flow. The update does not require users to manually run shell scripts. If the app is already installed, setup asks to remove the existing copy before installing the selected version.
 
-Release notifications depend on version numbers. Before merging `development` into `main`, bump `package.json` to the next version. When `main` is pushed, GitHub Actions builds the installer, publishes a `builder-v<version>` GitHub Release, and installed apps detect that newer release.
+Release notifications depend on version numbers. Before merging `development` into `main`, bump `package.json` to the next version. Only `development` should be opened as the source branch for a release pull request into `main`. When `main` is pushed, GitHub Actions builds the installer, publishes a `builder-v<version>` GitHub Release, and installed apps detect that newer release.
 
 ## Uninstalling
 
@@ -143,7 +143,7 @@ When the computer is online again, click **Apply to site**. The app checks the s
 
 This repository includes `.github/workflows/build-windows-builder.yml`.
 
-Use the workflow manually from GitHub Actions, push `main` after bumping `package.json`, or push a tag:
+Use the workflow manually from GitHub Actions, merge `development` into `main` after bumping `package.json`, or push a tag:
 
 ```powershell
 git tag builder-v0.2.6
@@ -153,3 +153,5 @@ git push origin builder-v0.2.6
 Tags beginning with `builder-v` create a GitHub Release containing the installer and portable executable.
 
 When `main` is pushed, the workflow uses `package.json` to create the release tag automatically. If that tag already exists, the workflow stops and asks for a version bump so installed apps can reliably notify users about a newer release.
+
+Pull requests into `main` are guarded by `.github/workflows/main-branch-gate.yml`. A PR into `main` fails unless its source branch is `development`, so all feature and Codex branches must land in `development` before release.
