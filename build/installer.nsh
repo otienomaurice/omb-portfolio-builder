@@ -224,11 +224,15 @@ Function OMBUninstallExistingInstallIfPresent
   StrCpy $R6 ""
   StrCpy $R5 ""
 
+  SetRegView 64
   ReadRegStr $R7 HKLM "Software\${APP_GUID}" InstallLocation
   ReadRegStr $R6 HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${UNINSTALL_APP_KEY}" DisplayVersion
   ReadRegStr $R5 HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${UNINSTALL_APP_KEY}" QuietUninstallString
   ${If} $R5 == ""
     ReadRegStr $R5 HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${UNINSTALL_APP_KEY}" UninstallString
+  ${EndIf}
+  ${If} $R7 == ""
+    ReadRegStr $R7 HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${UNINSTALL_APP_KEY}" InstallLocation
   ${EndIf}
 
   ${If} $R7 == ""
@@ -238,16 +242,54 @@ Function OMBUninstallExistingInstallIfPresent
     ${If} $R5 == ""
       ReadRegStr $R5 HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${UNINSTALL_APP_KEY}" UninstallString
     ${EndIf}
+    ${If} $R7 == ""
+      ReadRegStr $R7 HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${UNINSTALL_APP_KEY}" InstallLocation
+    ${EndIf}
+  ${EndIf}
+
+  ${If} $R7 == ""
+    SetRegView 32
+    ReadRegStr $R7 HKLM "Software\${APP_GUID}" InstallLocation
+    ReadRegStr $R6 HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${UNINSTALL_APP_KEY}" DisplayVersion
+    ReadRegStr $R5 HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${UNINSTALL_APP_KEY}" QuietUninstallString
+    ${If} $R5 == ""
+      ReadRegStr $R5 HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${UNINSTALL_APP_KEY}" UninstallString
+    ${EndIf}
+    ${If} $R7 == ""
+      ReadRegStr $R7 HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${UNINSTALL_APP_KEY}" InstallLocation
+    ${EndIf}
+    SetRegView lastused
+  ${EndIf}
+
+  ${If} $R7 == ""
+    IfFileExists "$PROGRAMFILES64\OMB Portfolio Builder\Uninstall OMB Portfolio Builder.exe" 0 +3
+      StrCpy $R7 "$PROGRAMFILES64\OMB Portfolio Builder"
+      StrCpy $R5 '"$PROGRAMFILES64\OMB Portfolio Builder\Uninstall OMB Portfolio Builder.exe" /S'
+  ${EndIf}
+  ${If} $R7 == ""
+    IfFileExists "$PROGRAMFILES\OMB Portfolio Builder\Uninstall OMB Portfolio Builder.exe" 0 +3
+      StrCpy $R7 "$PROGRAMFILES\OMB Portfolio Builder"
+      StrCpy $R5 '"$PROGRAMFILES\OMB Portfolio Builder\Uninstall OMB Portfolio Builder.exe" /S'
+  ${EndIf}
+  ${If} $R7 == ""
+    IfFileExists "$LOCALAPPDATA\Programs\OMB Portfolio Builder\Uninstall OMB Portfolio Builder.exe" 0 +3
+      StrCpy $R7 "$LOCALAPPDATA\Programs\OMB Portfolio Builder"
+      StrCpy $R5 '"$LOCALAPPDATA\Programs\OMB Portfolio Builder\Uninstall OMB Portfolio Builder.exe" /S'
   ${EndIf}
 
   ${If} $R7 != ""
     ${If} $R6 == ""
       StrCpy $R6 "an existing version"
     ${EndIf}
+    IfSilent omb_existing_install_confirmed
     MessageBox MB_OKCANCEL|MB_ICONEXCLAMATION "OMB Portfolio Builder $R6 is already installed on this machine.$\r$\n$\r$\nInstalled location:$\r$\n$R7$\r$\n$\r$\nSetup will uninstall that copy first, then continue installing this version.$\r$\n$\r$\nClick OK to uninstall the existing copy, or Cancel to stop setup." IDOK omb_existing_install_confirmed
     Quit
 
     omb_existing_install_confirmed:
+    ${If} $R5 == ""
+      IfFileExists "$R7\Uninstall OMB Portfolio Builder.exe" 0 +2
+        StrCpy $R5 '"$R7\Uninstall OMB Portfolio Builder.exe" /S'
+    ${EndIf}
     ${If} $R5 == ""
       MessageBox MB_OK|MB_ICONSTOP "Setup could not find the existing uninstaller. Remove OMB Portfolio Builder from Windows Installed apps or Apps & features, then run this installer again."
       Quit

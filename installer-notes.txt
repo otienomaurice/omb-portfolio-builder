@@ -6,7 +6,7 @@ The app does not require the user to install Node.js or pnpm. Those are developm
 
 The installer creates a desktop shortcut by default. Untick the shortcut option during setup if you do not want one.
 
-If OMB Portfolio Builder is already installed through Windows, setup tells the user which version it found, asks for approval to remove it, runs that existing uninstaller, and then continues installing this version.
+If OMB Portfolio Builder is already installed through Windows, setup tells the user which version it found, asks for approval during normal interactive installs, removes the existing version, and then continues installing this version. During an in-app Update action, setup runs silently after the user clicks Update and removes the old version without requiring the user to manually uninstall first.
 
 Setup also scans fixed drives for other OMB Portfolio Builder executables, portable copies, and local desktop-builder workspaces. If it finds an unregistered copy, setup stops and asks the user to remove, uninstall, or rename that copy first. This prevents duplicate builders from leaving one machine with stale editing features.
 
