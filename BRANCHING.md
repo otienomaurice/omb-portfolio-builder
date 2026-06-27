@@ -36,7 +36,7 @@ git push -u origin feature/my-change
 8. Test `development`.
 9. Before merging `development` into `main`, bump `package.json` to the next release version.
 10. Merge `development` into `main` only when the app is ready for consumers. No other source branch should target `main`.
-11. Push `main` to build and publish the `builder-v<version>` release automatically, or create a release tag from `main`, for example `builder-v0.2.6`.
+11. Push `main` to build and publish the `builder-v<version>` release automatically, or create a release tag from `main`, for example `builder-v0.2.7`.
 
 ## Branch Register Rule
 

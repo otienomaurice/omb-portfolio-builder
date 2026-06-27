@@ -1466,6 +1466,7 @@ async function getUpdateInfo() {
       updateAvailable: compareVersions(latestVersion, currentVersion) > 0,
       releaseUrl: release.html_url || "",
       installerUrl: installer?.browser_download_url || "",
+      installerName: installer?.name || "",
       portableUrl: portable?.browser_download_url || ""
     };
   } catch (error) {
@@ -1477,6 +1478,82 @@ async function getUpdateInfo() {
       error: error.message || "Could not check for updates."
     };
   }
+}
+
+function safeUpdateFileSegment(value = "") {
+  return String(value || "")
+    .replace(/[^a-z0-9._-]+/gi, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80) || "latest";
+}
+
+async function downloadAndLaunchAppUpdate() {
+  const update = await getUpdateInfo();
+  if (!update.ok) throw new Error(update.error || "Could not check for updates.");
+  if (!update.updateAvailable) {
+    throw new Error(`OMB Portfolio Builder ${update.currentVersion || ""} is already up to date.`);
+  }
+  if (!update.installerUrl) {
+    throw new Error("The latest GitHub Release does not include a Windows setup installer.");
+  }
+  if (process.platform !== "win32") {
+    throw new Error("Automatic installer updates are currently available only on Windows.");
+  }
+
+  const updateRoot = path.join(os.tmpdir(), "omb-portfolio-builder-updates");
+  await mkdir(updateRoot, { recursive: true });
+  const installerName = update.installerName && /\.exe$/i.test(update.installerName)
+    ? update.installerName
+    : `OMB-Portfolio-Builder-Setup-${safeUpdateFileSegment(update.latestVersion)}-x64.exe`;
+  const installerPath = path.join(updateRoot, installerName);
+
+  const response = await fetch(update.installerUrl, {
+    headers: { "Accept": "application/octet-stream", "User-Agent": "OMB-Portfolio-Builder" }
+  });
+  if (!response.ok) throw new Error(`GitHub returned ${response.status} while downloading the installer.`);
+  const installerBuffer = Buffer.from(await response.arrayBuffer());
+  if (installerBuffer.length < 1024 * 1024) {
+    throw new Error("The downloaded installer was unexpectedly small, so the update was stopped.");
+  }
+  await writeFile(installerPath, installerBuffer);
+
+  const launcherPath = path.join(updateRoot, `run-update-${safeUpdateFileSegment(update.latestVersion)}.ps1`);
+  const launcherScript = [
+    "$ErrorActionPreference = 'SilentlyContinue'",
+    `$parentPid = ${process.pid}`,
+    `$installer = ${JSON.stringify(installerPath)}`,
+    "try { Wait-Process -Id $parentPid -Timeout 30 } catch {}",
+    "Start-Sleep -Seconds 1",
+    "Start-Process -FilePath $installer -ArgumentList '/S' -Wait",
+    "exit 0"
+  ].join("\r\n");
+  await writeFile(launcherPath, launcherScript, "utf8");
+
+  const child = spawn("powershell.exe", [
+    "-NoProfile",
+    "-ExecutionPolicy",
+    "Bypass",
+    "-WindowStyle",
+    "Hidden",
+    "-File",
+    launcherPath
+  ], {
+    detached: true,
+    stdio: "ignore",
+    windowsHide: true
+  });
+  child.unref();
+
+  setTimeout(() => {
+    process.exit(0);
+  }, 1200);
+
+  return {
+    ...update,
+    installerPath,
+    launcherPath,
+    started: true
+  };
 }
 
 async function publishSiteChanges(publishAccess = null) {
@@ -1682,6 +1759,20 @@ async function handleApi(request, response, url) {
         ok: false,
         error: error.message || "Git for Windows installer could not be started.",
         downloadUrl: "https://git-scm.com/download/win"
+      });
+    }
+    return true;
+  }
+
+  if (url.pathname === "/api/app-update/install") {
+    try {
+      await readRequestJson(request).catch(() => ({}));
+      const update = await downloadAndLaunchAppUpdate();
+      sendJson(response, 200, { ok: true, update });
+    } catch (error) {
+      sendJson(response, 400, {
+        ok: false,
+        error: error.message || "The update could not be started."
       });
     }
     return true;
