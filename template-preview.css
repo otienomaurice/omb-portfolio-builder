@@ -21,6 +21,7 @@
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
+  align-items: center;
 }
 
 .template-preview-page .button,
@@ -85,9 +86,16 @@
 }
 
 .project-library-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 2px 0;
+}
+
+.project-library-heading > div {
   display: grid;
   gap: 4px;
-  padding: 6px 2px 0;
 }
 
 .project-library-heading .eyebrow,
@@ -875,6 +883,10 @@
 }
 
 .tree-category-heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
   padding: 12px;
   border-bottom: 1px solid var(--line);
   background: #f7fcff;
@@ -888,6 +900,18 @@
   min-height: 46px;
   padding: 10px 12px;
   text-align: left;
+}
+
+.tree-category-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.tree-category-actions button {
+  width: 34px;
+  min-height: 34px;
+  padding: 0;
+  text-align: center;
 }
 
 .tree-category-toggle::after {
@@ -1898,6 +1922,25 @@ body.rich-image-dragging * {
   overflow-wrap: anywhere;
 }
 
+.builder-item .builder-item-preview {
+  display: grid;
+  gap: 8px;
+  margin-top: 6px;
+  padding: 10px;
+  border: 1px solid #d9eef7;
+  border-radius: 8px;
+  background: #f8fdff;
+}
+
+.builder-item-preview .rich-content {
+  gap: 8px;
+}
+
+.builder-item-preview .rich-paragraph {
+  margin: 0;
+  color: var(--ink);
+}
+
 .builder-item button {
   min-height: 34px;
   padding: 0 10px;
@@ -2391,6 +2434,22 @@ body.full-window-open {
 .portfolio-preview-dialog.is-resized-dialog .portfolio-preview-frame {
   height: 100%;
   min-height: 0;
+}
+
+.project-preview-content.is-website-preview {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+}
+
+.project-preview-content.is-website-preview .project-preview-frame {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  border: 0;
+  border-radius: 0;
 }
 
 .portfolio-preview-close {
@@ -3043,6 +3102,15 @@ body.full-window-open {
   width: min(1180px, calc(100% - 28px));
   margin: 0 auto;
   padding: clamp(18px, 4vw, 38px) 0 clamp(28px, 5vw, 54px);
+}
+
+.project-preview-dialog .project-preview-content.is-website-preview {
+  align-content: stretch;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
 }
 
 .portfolio-preview-article {

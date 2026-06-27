@@ -139,8 +139,8 @@
           <span>presented projects</span>
         </div>
         <div class="metric">
-          <strong>3 Tracks</strong>
-          <span>analog, digital, embedded</span>
+          <strong id="project-track-count">0 Tracks</strong>
+          <span id="project-track-labels">project categories</span>
         </div>
         <div class="metric">
           <strong>Artifacts</strong>
@@ -160,11 +160,8 @@
           </label>
         </div>
 
-        <div class="filters" aria-label="Project filters">
+        <div class="filters" id="project-filters" aria-label="Project filters">
           <button class="filter-button active" type="button" data-filter="all">All</button>
-          <button class="filter-button" type="button" data-filter="analog-mixed-signal">Analog and Mixed Signal</button>
-          <button class="filter-button" type="button" data-filter="digital">Digital</button>
-          <button class="filter-button" type="button" data-filter="embedded">Embedded</button>
         </div>
 
         <div class="project-grid" id="project-grid" aria-live="polite"></div>

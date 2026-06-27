@@ -6,11 +6,13 @@ The app does not require the user to install Node.js or pnpm. Those are developm
 
 The installer creates a desktop shortcut by default. Untick the shortcut option during setup if you do not want one.
 
-If OMB Portfolio Builder is already installed, setup tells the user which version it found, asks for approval to remove it, runs that existing uninstaller, and then continues installing this version.
+If OMB Portfolio Builder is already installed through Windows, setup tells the user which version it found, asks for approval to remove it, runs that existing uninstaller, and then continues installing this version.
+
+Setup also scans fixed drives for other OMB Portfolio Builder executables, portable copies, and local desktop-builder workspaces. If it finds an unregistered copy, setup stops and asks the user to remove, uninstall, or rename that copy first. This prevents duplicate builders from leaving one machine with stale editing features.
 
 Publishing to GitHub Pages requires Git for Windows with Git Credential Manager. During setup, the installer can check publishing tools and install Git for Windows if Git or Git Credential Manager is missing. If compatible tools already exist, setup skips them. Existing shared tools are not silently removed.
 
-For GitHub authentication, open Publishing target inside the app, enter the target repository, then click Authenticate with GitHub. A GitHub/Git Credential Manager sign-in flow may open in the browser. After signing in, return to the app and click Load from target or Apply to site.
+For GitHub authentication, open Publishing target inside the app, enter the target repository, then click Authenticate with GitHub. A GitHub/Git Credential Manager sign-in flow may open in the browser. After signing in, return to the app; the builder automatically loads compatible portfolio files from the target. Use Load from target later if you want to refresh from the repository again.
 
 Successful publishing authorization is cached locally for about one day for the selected repository and branch.
 

@@ -59,7 +59,9 @@ jobs:
         run: |
           git fetch --tags --force
           $tag = "${{ steps.release_meta.outputs.release_tag }}"
-          if (git rev-parse -q --verify "refs/tags/$tag") {
+          git show-ref --tags --verify --quiet "refs/tags/$tag"
+          $tagExists = $LASTEXITCODE -eq 0
+          if ($tagExists) {
             throw "Release tag $tag already exists. Bump package.json version before merging development into main so installed apps can detect a newer release."
           }
 
