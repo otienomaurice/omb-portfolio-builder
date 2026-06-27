@@ -1019,8 +1019,11 @@ function scheduleAppUpdateChecks() {
 function renderPublishTargetInfo(target = {}) {
   if (!publishTargetCurrent) return;
   currentPublishTarget = target;
+  const checkedText = target.checkedAt ? ` at ${new Date(target.checkedAt).toLocaleString()}` : "";
+  const expiresText = target.expiresAt ? `; remembered until ${new Date(target.expiresAt).toLocaleString()}` : "";
+  const trustText = target.extendedTrust ? " (30-day trusted target)" : target.authorizationCached ? " (daily cache)" : "";
   const authorizationStatus = target.authorizationChecked
-    ? `Verified${target.checkedAt ? ` at ${new Date(target.checkedAt).toLocaleString()}` : ""}`
+    ? `Verified${checkedText}${trustText}${expiresText}`
     : "Not verified for this repository and branch";
   const rows = [
     ["Workspace", target.workspace || "Not available"],
@@ -1077,7 +1080,7 @@ function renderSystemReadiness(system = {}, target = {}) {
     {
       ok: Boolean(target?.authorizationChecked),
       text: target?.authorizationChecked
-        ? `GitHub authorization: verified for ${target.branch || "the selected branch"}.`
+        ? `GitHub authorization: verified for ${target.branch || "the selected branch"}${target.expiresAt ? ` until ${new Date(target.expiresAt).toLocaleString()}` : ""}.`
         : "GitHub authorization: required before Load from target or Apply to site."
     }
   ];
@@ -1180,12 +1183,12 @@ async function authenticatePublishTarget(options = {}) {
   const fromSave = Boolean(options.fromSave);
   if (publishTargetSync) publishTargetSync.disabled = true;
   setPublishTargetProgress(
-    fromSave ? "Saving target requires GitHub verification" : "Starting GitHub authentication",
+    fromSave ? "Saving target and checking authorization" : "Checking GitHub authorization",
     [
       { label: "Step 1", value: "Validating the repository URL and local Git tools." },
-      { label: "Step 2", value: "Opening GitHub/Git Credential Manager if sign-in is needed." },
+      { label: "Step 2", value: "Using the saved daily authorization if it is still valid." },
       { label: "Step 3", value: "Finding the target repository default branch." },
-      { label: "Step 4", value: "Verifying write access before saving this target." }
+      { label: "Step 4", value: "Opening GitHub sign-in only when a fresh authorization is required." }
     ]
   );
   try {
@@ -1203,22 +1206,28 @@ async function authenticatePublishTarget(options = {}) {
     renderPublishTargetInfo(result.target || {});
     renderSystemReadiness(result.auth?.system || {}, result.target || {});
     if (publishTargetPassword) publishTargetPassword.value = "";
+    const usedCachedAuth = Boolean(result.auth?.authorizationCached || result.target?.authorizationCached);
     setPublishTargetProgress(
-      "Target saved and GitHub authorization verified",
+      usedCachedAuth ? "Target saved with existing GitHub authorization" : "Target saved and GitHub authorization verified",
       [
         { label: "Repository", value: result.target?.repository || result.auth?.repository || "Selected target" },
         { label: "Branch", value: result.target?.branch || result.auth?.branch || "Detected target branch" },
+        { label: "Authorization", value: usedCachedAuth ? "A valid saved authorization was reused; no new GitHub sign-in was needed." : "GitHub write access was verified now." },
         { label: "Next step", value: "Click Load from target to pull the compatible portfolio files into this builder." }
       ]
     );
     if (publishTargetSync) publishTargetSync.disabled = false;
     showBuilderError(
-      "Target saved and authenticated",
-      "GitHub accepted write access, so this publishing target is now saved. Load from target is now available.",
+      usedCachedAuth ? "Target saved with saved authorization" : "Target saved and authenticated",
+      usedCachedAuth
+        ? "This repository and branch already had a valid local authorization record, so the target was saved without asking you to sign in again. Load from target is now available."
+        : "GitHub accepted write access, so this publishing target is now saved. Load from target is now available.",
       [
         `Repository: ${result.target?.repository || result.auth?.repository || "selected target"}`,
         `Branch: ${result.target?.branch || result.auth?.branch || "detected branch"}`,
-        result.auth?.credentialsStored ? `Credentials: stored for ${result.auth.credentialUsername || "the selected user"}` : "Credentials: Git Credential Manager session verified"
+        result.auth?.expiresAt || result.target?.expiresAt ? `Authorization valid until: ${new Date(result.auth?.expiresAt || result.target?.expiresAt).toLocaleString()}` : "",
+        result.auth?.extendedTrust || result.target?.extendedTrust ? "Trust window: 30 days for this same repository and branch" : "",
+        result.auth?.credentialsStored ? `Credentials: stored for ${result.auth.credentialUsername || "the selected user"}` : usedCachedAuth ? "Credentials: existing authorization reused" : "Credentials: Git Credential Manager session verified"
       ].filter(Boolean).join("\n")
     );
   } catch (error) {

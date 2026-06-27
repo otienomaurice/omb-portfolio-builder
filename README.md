@@ -76,6 +76,7 @@ For repository development, use the branch model in [BRANCHING.md](BRANCHING.md)
 | `codex/update-release-popup` | Adds the released-app update popup and main-branch release workflow so installed users are prompted when a newer builder is published. | `development` | `development` | Merged into `development` |
 | `codex/manual-update-categories-preview` | Adds manual update checks, custom project categories, link-safe rich paste handling, project-only website previews, broad duplicate-install detection, and a main release workflow fix. | `development` | `development` | Active |
 | `codex/fix-publish-target-auth` | Makes publishing target setup authenticate before saving, resolves the target default branch before access checks, and blocks known local builder workspaces during installation. | `development` | `development` | Active |
+| `codex/cache-daily-auth-and-restore-profile` | Adds daily and extended publishing authorization caching, clarifies publishing target fields, and keeps active-machine profile fields populated. | `codex/fix-release-tag-check` | `development` | Active |
 
 ## Publishing Security
 
@@ -118,7 +119,7 @@ https://github.com/YOUR-USERNAME/YOUR-USERNAME.github.io.git
 7. Click **Load from target** to load a compatible portfolio through a temporary clone. The builder backs up replaced local portfolio files under `.omb-backups` and updates the local draft to match the target catalog.
 8. Click **Save draft** before **Apply to site**.
 
-Successful publishing authorization is cached locally for about one day per repository and branch, so Apply to site does not re-check GitHub authorization on every push.
+Successful publishing authorization is cached locally for about one day per repository and branch, so Apply to site does not re-check GitHub authorization on every push. If the same repository and branch has more than three successful authorizations within one week, the builder extends that local trust window to 30 days for that exact target.
 
 ## Updates
 

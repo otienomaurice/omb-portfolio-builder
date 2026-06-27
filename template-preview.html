@@ -242,7 +242,7 @@
                   </li>
                   <li>
                       <strong>Connect a publishing target before going live.</strong>
-                      <p>Use Publishing target to choose the website repository and custom domain. Click Save target and authenticate so GitHub verifies write access before the target is kept. Load from target becomes available only after authentication succeeds; if authentication fails, the previous target remains in place and the builder stays local.</p>
+                      <p>Use Publishing target to choose the website repository and custom domain. Click Save target and authenticate so GitHub verifies write access before the target is kept. A successful authorization is remembered for the same repository and branch for the day, and frequent successful authorizations can extend that trust window to 30 days. Load from target becomes available only after authentication succeeds or a valid saved authorization is reused; if authentication fails, the previous target remains in place and the builder stays local.</p>
                   </li>
                   <li>
                       <strong>Apply to site publishes when ready.</strong>
@@ -425,17 +425,20 @@
               <label>
                   <span>Custom domain, optional</span>
                   <input id="publish-target-domain" type="text" placeholder="example.com" />
+                  <small class="publish-target-field-note">If filled, the builder writes this value to the website CNAME file when the target is saved.</small>
               </label>
               <label>
-                  <span>GitHub username, optional</span>
+                  <span>Advanced: GitHub username, optional</span>
                   <input id="publish-target-username" type="text" autocomplete="off" placeholder="GitHub username" />
+                  <small class="publish-target-field-note">Use only when you want to authenticate with a GitHub personal access token instead of the browser sign-in window.</small>
               </label>
               <label>
-                  <span>Password or token, optional</span>
+                  <span>Advanced: personal access token, optional</span>
                   <input id="publish-target-password" type="password" autocomplete="off" placeholder="GitHub personal access token or credential password" />
+                  <small class="publish-target-field-note">The token is passed to Git Credential Manager on this computer. It is never saved into the website files or repository.</small>
               </label>
               <p class="publish-target-note">
-                  Publishing uses Git for Windows and Git Credential Manager. Enter a repository, then click Save target and authenticate. A browser or GitHub sign-in window may open. The builder keeps the previous target until GitHub confirms write access to the new target. Load from target becomes available only after authentication is complete.
+                  Publishing uses Git for Windows and Git Credential Manager. Enter a repository, then click Save target and authenticate. A browser or GitHub sign-in window opens only when the saved authorization for this repository and branch has expired. The builder keeps the previous target until GitHub confirms write access to the new target. Load from target becomes available only after authentication is complete.
               </p>
               <div class="dialog-actions">
                   <button class="button primary" type="submit">Save target and authenticate</button>
