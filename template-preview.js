@@ -2606,34 +2606,128 @@ function renderProjectPortfolioPreview(project) {
 }
 
 function fullProjectPreviewHtmlExact(project) {
-  if (!project) return fullPortfolioPreviewHtmlExact({
-    categories: [],
-    funFacts: [],
-    funFactsRich: null,
-    projects: [],
-    siteSections: []
-  });
+  const baseHref = `${window.location.origin}/`;
+  if (!project) {
+    return `<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <base href="${baseHref}" />
+    <link rel="stylesheet" href="styles.css" />
+    <title>Project preview</title>
+  </head>
+  <body class="project-isolated-preview">
+    <main class="project-isolated-shell">
+      <div class="empty-state">
+        <h3>No saved project preview</h3>
+        <p>Click Save project before viewing the parsed project preview.</p>
+      </div>
+    </main>
+  </body>
+</html>`;
+  }
   const parsedProject = project.portfolioView ? project : parseProjectForPortfolio(project);
   const categorySource = categoryById(parsedProject.category);
   const previewCategory = normalizeCategory(categorySource.id ? categorySource : {
     id: parsedProject.category || "project",
     label: displayTitle(parsedProject.category || "Project", "Project")
   });
-  const site = normalizeSiteContent(catalog.siteContent || savedPortfolioCatalog.siteContent || {});
-  return fullPortfolioPreviewHtmlExact({
+  const previewDataObject = {
     categories: [previewCategory],
     funFacts: [],
     funFactsRich: null,
     profile: normalizeProfile(catalog.profile || savedPortfolioCatalog.profile || {}),
     projects: [parsedProject],
-    siteContent: {
-      ...site,
-      heroCopy: "Single-project preview rendered with the same public website layout.",
-      heroEyebrow: "Project preview",
-      heroTitle: parsedProject.portfolioView?.title || parsedProject.title || "Project preview"
-    },
+    siteContent: normalizeSiteContent(catalog.siteContent || savedPortfolioCatalog.siteContent || {}),
     siteSections: []
-  });
+  };
+  const previewData = JSON.stringify(previewDataObject).replaceAll("</", "<\\/");
+  const title = parsedProject.portfolioView?.title || parsedProject.title || "Project preview";
+  return `<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <base href="${baseHref}" />
+    <title>${escapeHtml(title)} | Project preview</title>
+    <link rel="stylesheet" href="styles.css" />
+    <style>
+      body.project-isolated-preview {
+        min-height: 100vh;
+        margin: 0;
+        background: var(--paper, #f8fbff);
+        color: var(--ink, #172636);
+      }
+
+      .project-isolated-shell {
+        width: min(1180px, calc(100vw - 32px));
+        margin: 0 auto;
+        padding: 28px 0 36px;
+      }
+
+      .project-isolated-support {
+        display: none !important;
+      }
+
+      body.project-isolated-preview .project-grid {
+        display: block;
+      }
+
+      body.project-isolated-preview .category-section {
+        padding: 0;
+        border: 0;
+        background: transparent;
+      }
+
+      body.project-isolated-preview .category-heading,
+      body.project-isolated-preview .category-description {
+        display: none;
+      }
+
+      body.project-isolated-preview .category-projects {
+        display: block;
+      }
+
+      body.project-isolated-preview .project-card {
+        margin: 0;
+      }
+
+      @media (max-width: 720px) {
+        .project-isolated-shell {
+          width: min(100vw - 20px, 100%);
+          padding: 14px 0 24px;
+        }
+      }
+    </style>
+  </head>
+  <body class="project-isolated-preview">
+    <main class="project-isolated-shell" aria-label="Isolated project preview">
+      <div class="project-isolated-support" aria-hidden="true">
+        <label class="search-wrap" for="project-search">
+          <span>Search</span>
+          <input id="project-search" type="search" tabindex="-1" />
+        </label>
+        <div id="project-filters">
+          <button class="filter-button active" type="button" data-filter="all" tabindex="-1">All</button>
+        </div>
+        <span id="project-count">0</span>
+        <span id="project-track-count">0 Tracks</span>
+        <span id="project-track-labels">project categories</span>
+        <span id="year">${new Date().getFullYear()}</span>
+      </div>
+
+      <section class="section project-isolated-section" id="projects" aria-labelledby="project-isolated-title">
+        <h1 class="sr-only" id="project-isolated-title">${escapeHtml(title)}</h1>
+        <div class="project-grid" id="project-grid" aria-live="polite"></div>
+      </section>
+    </main>
+
+    <script>window.__PORTFOLIO_CATALOG__ = ${previewData};<\/script>
+    <script src="electronics-search.js"><\/script>
+    <script src="script.js"><\/script>
+  </body>
+</html>`;
 }
 
 function renderProjectWebsitePreview(project) {
