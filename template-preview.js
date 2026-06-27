@@ -86,6 +86,15 @@ const publishResultTitle = document.querySelector("#publish-result-title");
 const publishResultMessage = document.querySelector("#publish-result-message");
 const publishResultOutput = document.querySelector("#publish-result-output");
 const publishResultClose = document.querySelector("#publish-result-close");
+const appUpdateDialog = document.querySelector("#app-update-dialog");
+const appUpdateTitle = document.querySelector("#app-update-title");
+const appUpdateMessage = document.querySelector("#app-update-message");
+const appUpdateDetails = document.querySelector("#app-update-details");
+const appUpdateReleaseMeta = document.querySelector("#app-update-release-meta");
+const appUpdateClose = document.querySelector("#app-update-close");
+const appUpdateLater = document.querySelector("#app-update-later");
+const appUpdateSkip = document.querySelector("#app-update-skip");
+const appUpdateApply = document.querySelector("#app-update-apply");
 const deleteConfirmDialog = document.querySelector("#delete-confirm-dialog");
 const deleteConfirmTitle = document.querySelector("#delete-confirm-title");
 const deleteConfirmMessage = document.querySelector("#delete-confirm-message");
@@ -888,40 +897,70 @@ function showBuilderError(title, message, details = "") {
   publishResultDialog.showModal();
 }
 
-function showUpdateToast(update = {}) {
-  const dismissedVersion = localStorage.getItem("omb-dismissed-update-version") || "";
-  if (!update.updateAvailable || !update.latestVersion || dismissedVersion === update.latestVersion) return;
-  document.querySelector(".app-update-toast")?.remove();
-  const toast = document.createElement("div");
-  toast.className = "app-update-toast";
-  toast.innerHTML = `
-    <h3>Update available</h3>
-    <p>OMB Portfolio Builder ${escapeHtml(update.latestVersion)} is available. Current version: ${escapeHtml(update.currentVersion || "unknown")}.</p>
-    <div class="app-update-actions">
-      <button class="button secondary compact-button" type="button" data-update-later>Later</button>
-      <button class="button primary compact-button" type="button" data-update-apply>Download update</button>
-      <small>Uninstall the current version before running the downloaded installer.</small>
-    </div>
-  `;
-  toast.querySelector("[data-update-later]")?.addEventListener("click", () => {
-    localStorage.setItem("omb-dismissed-update-version", update.latestVersion);
-    toast.remove();
-  });
-  toast.querySelector("[data-update-apply]")?.addEventListener("click", () => {
-    window.open(update.installerUrl || update.releaseUrl, "_blank", "noreferrer");
-    toast.remove();
-  });
-  document.body.appendChild(toast);
+const APP_UPDATE_CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000;
+const APP_UPDATE_FOCUS_RECHECK_MS = 60 * 60 * 1000;
+const APP_UPDATE_SNOOZE_MS = 12 * 60 * 60 * 1000;
+let lastAppUpdateCheckAt = 0;
+let pendingAppUpdate = null;
+
+function appUpdateWasSnoozed(version = "") {
+  if (!version) return false;
+  const snoozedVersion = localStorage.getItem("omb-snoozed-update-version") || "";
+  const snoozedAt = Number(localStorage.getItem("omb-snoozed-update-at") || 0);
+  return snoozedVersion === version && Date.now() - snoozedAt < APP_UPDATE_SNOOZE_MS;
 }
 
-async function checkForAppUpdates() {
+function shouldShowUpdateDialog(update = {}) {
+  if (!update.updateAvailable || !update.latestVersion) return false;
+  const skippedVersion = localStorage.getItem("omb-skipped-update-version") || localStorage.getItem("omb-dismissed-update-version") || "";
+  if (skippedVersion === update.latestVersion) return false;
+  return !appUpdateWasSnoozed(update.latestVersion);
+}
+
+function showUpdateDialog(update = {}) {
+  if (!appUpdateDialog || !shouldShowUpdateDialog(update)) return;
+  pendingAppUpdate = update;
+  const downloadUrl = update.installerUrl || update.releaseUrl || update.portableUrl || "";
+  appUpdateTitle.textContent = "Update available";
+  appUpdateMessage.textContent = `OMB Portfolio Builder ${update.latestVersion} is available. You are running ${update.currentVersion || "an older version"}.`;
+  appUpdateDetails.textContent = "Choose Download update to open the latest installer, Remind me later to postpone the prompt, or Skip this version if you do not want this release.";
+  appUpdateReleaseMeta.innerHTML = [
+    `<span>Current version: ${escapeHtml(update.currentVersion || "unknown")}</span>`,
+    `<span>Available version: ${escapeHtml(update.latestVersion || "unknown")}</span>`,
+    update.releaseUrl ? `<span>Release source: GitHub Releases</span>` : ""
+  ].filter(Boolean).join("");
+  appUpdateApply.disabled = !downloadUrl;
+  appUpdateApply.textContent = downloadUrl ? "Download update" : "Open release page";
+  if (appUpdateDialog.open) return;
+  try {
+    appUpdateDialog.showModal();
+  } catch {
+    appUpdateDialog.show();
+  }
+}
+
+async function checkForAppUpdates(options = {}) {
+  const force = Boolean(options.force);
+  if (!force && Date.now() - lastAppUpdateCheckAt < 5 * 60 * 1000) return;
+  lastAppUpdateCheckAt = Date.now();
   try {
     const response = await fetch(`/api/app-update?t=${Date.now()}`, { cache: "no-store" });
     const update = await response.json();
-    if (response.ok && update.ok !== false) showUpdateToast(update);
+    if (response.ok && update.ok !== false) showUpdateDialog(update);
   } catch {
     // Update checks should never interrupt builder work.
   }
+}
+
+function scheduleAppUpdateChecks() {
+  checkForAppUpdates({ force: true });
+  window.setInterval(() => checkForAppUpdates({ force: true }), APP_UPDATE_CHECK_INTERVAL_MS);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState !== "visible") return;
+    if (Date.now() - lastAppUpdateCheckAt >= APP_UPDATE_FOCUS_RECHECK_MS) {
+      checkForAppUpdates({ force: true });
+    }
+  });
 }
 
 function renderPublishTargetInfo(target = {}) {
@@ -5365,7 +5404,7 @@ function fullPortfolioPreviewHtmlExact() {
       <section class="fun-facts-section" id="fun-facts-callout" aria-label="Fun facts" hidden></section>
 
       <section class="builder-download-section" aria-label="Download portfolio builder">
-        <a class="builder-download-link" href="https://github.com/otienomaurice/omb-portfolio-builder/releases/download/builder-v0.2.5/OMB-Portfolio-Builder-Setup-0.2.5-x64.exe" download>
+        <a class="builder-download-link" href="https://github.com/otienomaurice/omb-portfolio-builder/releases/download/builder-v0.2.6/OMB-Portfolio-Builder-Setup-0.2.6-x64.exe" download>
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <path d="M12 3v11m0 0 4-4m-4 4-4-4" />
             <path d="M5 17v2h14v-2" />
@@ -6336,6 +6375,32 @@ publishTargetDomain?.addEventListener("input", () => {
 });
 publishResultClose.addEventListener("click", () => {
   publishResultDialog.close();
+});
+
+appUpdateClose?.addEventListener("click", () => {
+  appUpdateDialog?.close("close");
+});
+
+appUpdateLater?.addEventListener("click", () => {
+  if (pendingAppUpdate?.latestVersion) {
+    localStorage.setItem("omb-snoozed-update-version", pendingAppUpdate.latestVersion);
+    localStorage.setItem("omb-snoozed-update-at", String(Date.now()));
+  }
+  appUpdateDialog?.close("later");
+});
+
+appUpdateSkip?.addEventListener("click", () => {
+  if (pendingAppUpdate?.latestVersion) {
+    localStorage.setItem("omb-skipped-update-version", pendingAppUpdate.latestVersion);
+  }
+  appUpdateDialog?.close("skip");
+});
+
+appUpdateApply?.addEventListener("click", () => {
+  const update = pendingAppUpdate || {};
+  const target = update.installerUrl || update.releaseUrl || update.portableUrl || "";
+  if (target) window.open(target, "_blank", "noreferrer");
+  appUpdateDialog?.close("download");
 });
 
 addProjectButton.addEventListener("click", () => {
@@ -7567,4 +7632,4 @@ document.addEventListener("builder-disabled-click", () => {
 loadData().catch((error) => {
   setStatus(error.message || "Builder failed to load.");
 });
-checkForAppUpdates();
+scheduleAppUpdateChecks();

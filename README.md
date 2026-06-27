@@ -12,8 +12,8 @@ https://github.com/otienomaurice/omb-portfolio-builder/releases/latest
 
 Use:
 
-- `OMB-Portfolio-Builder-Setup-0.2.5-x64.exe` for the Windows installer.
-- `OMB-Portfolio-Builder-Portable-0.2.5-x64.exe` when you want to run without installing.
+- `OMB-Portfolio-Builder-Setup-0.2.6-x64.exe` for the Windows installer.
+- `OMB-Portfolio-Builder-Portable-0.2.6-x64.exe` when you want to run without installing.
 
 The installer defaults to:
 
@@ -73,6 +73,7 @@ For repository development, use the branch model in [BRANCHING.md](BRANCHING.md)
 | `feature/branching-workflow` | Added the initial branch policy and workflow documentation. | `development` | `development` | Merged into `development` |
 | `feature/update-branch-guide` | Updates the branch register rule and the consumer-facing in-app quick guide. | `development` | `development` | Merged into `development` |
 | `codex/update-builder-guide` | Refreshes the consumer-facing Builder Guide with current rich text, image, file, link, save, and publishing behavior. | `development` | `development` | Merged into `development` |
+| `codex/update-release-popup` | Adds the released-app update popup and main-branch release workflow so installed users are prompted when a newer builder is published. | `development` | `development` | Merged into `development` |
 
 ## Publishing Security
 
@@ -119,9 +120,11 @@ Successful publishing authorization is cached locally for about one day per repo
 
 ## Updates
 
-The installed builder checks the latest GitHub release and shows an in-app bottom-right update notice when a newer installer is available. Choose **Download update** to open the latest installer, or **Later** to dismiss that version.
+The installed builder checks the latest GitHub Release and opens an in-app update window when a newer installer is available. Choose **Download update** to open the latest installer, **Remind me later** to snooze the prompt, or **Skip this version** to dismiss that release.
 
-Updates are installed through the same Windows installer flow. The update does not require users to manually run shell scripts. If the app is already installed, setup asks to remove the existing copy before installing the selected version.
+The app checks on startup, checks periodically while it remains open, and checks again when the window returns to focus after a long idle period. Updates are installed through the same Windows installer flow. The update does not require users to manually run shell scripts. If the app is already installed, setup asks to remove the existing copy before installing the selected version.
+
+Release notifications depend on version numbers. Before merging `development` into `main`, bump `package.json` to the next version. When `main` is pushed, GitHub Actions builds the installer, publishes a `builder-v<version>` GitHub Release, and installed apps detect that newer release.
 
 ## Uninstalling
 
@@ -137,11 +140,13 @@ When the computer is online again, click **Apply to site**. The app checks the s
 
 This repository includes `.github/workflows/build-windows-builder.yml`.
 
-Use the workflow manually from GitHub Actions, or push a tag:
+Use the workflow manually from GitHub Actions, push `main` after bumping `package.json`, or push a tag:
 
 ```powershell
-git tag builder-v0.2.5
-git push origin builder-v0.2.5
+git tag builder-v0.2.6
+git push origin builder-v0.2.6
 ```
 
 Tags beginning with `builder-v` create a GitHub Release containing the installer and portable executable.
+
+When `main` is pushed, the workflow uses `package.json` to create the release tag automatically. If that tag already exists, the workflow stops and asks for a version bump so installed apps can reliably notify users about a newer release.

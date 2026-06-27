@@ -331,42 +331,44 @@
   line-height: 1.45;
 }
 
-.app-update-toast {
-  position: fixed;
-  right: 18px;
-  bottom: 18px;
-  z-index: 80;
-  width: min(380px, calc(100vw - 36px));
+.app-update-dialog {
+  width: min(540px, calc(100vw - 32px));
+}
+
+.app-update-content {
+  gap: 16px;
+}
+
+.app-update-body {
+  display: grid;
+  gap: 10px;
+  padding: 18px;
   border: 1px solid var(--line);
-  border-radius: 10px;
-  background: #ffffff;
-  box-shadow: 0 18px 40px rgba(17, 36, 56, 0.22);
-  padding: 14px;
+  border-radius: 8px;
+  background: #f7fcff;
 }
 
-.app-update-toast h3 {
-  margin: 0 0 6px;
-  font-size: 1rem;
-}
-
-.app-update-toast p {
-  margin: 0 0 12px;
+.app-update-body p {
+  margin: 0;
   color: var(--muted);
-  font-size: 0.88rem;
-  line-height: 1.45;
+  font-size: 0.93rem;
+  line-height: 1.5;
 }
 
-.app-update-toast small {
-  display: block;
-  margin: -4px 0 12px;
+.app-update-body p:first-child {
+  color: var(--ink);
+  font-weight: 750;
+}
+
+.app-update-release-meta {
+  display: grid;
+  gap: 4px;
   color: #4b6475;
-  font-size: 0.78rem;
-  line-height: 1.35;
+  font-size: 0.82rem;
+  line-height: 1.4;
 }
 
-.app-update-actions {
-  display: flex;
-  gap: 8px;
+.app-update-dialog-actions {
   justify-content: flex-end;
 }
 
