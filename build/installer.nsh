@@ -8,6 +8,9 @@ Var OMB_ShortcutCheckbox
 Var OMB_PublishingToolsCheckbox
 Var OMB_CreateDesktopShortcutState
 Var OMB_InstallPublishingToolsState
+Var OMB_ExistingInstallLocation
+Var OMB_IsUpdateInstall
+Var OMB_ManualApplicationInstall
 
 Function OMBToolsPageCreate
   nsDialogs::Create 1018
@@ -49,6 +52,11 @@ FunctionEnd
 Function OMBToolsPageLeave
   ${NSD_GetState} $OMB_ShortcutCheckbox $OMB_CreateDesktopShortcutState
   ${NSD_GetState} $OMB_PublishingToolsCheckbox $OMB_InstallPublishingToolsState
+  ${If} $OMB_IsUpdateInstall == "1"
+  ${AndIf} $INSTDIR != $OMB_ExistingInstallLocation
+    MessageBox MB_OK|MB_ICONSTOP "OMB Portfolio Builder is already installed on this machine.$\r$\n$\r$\nUpdates must use the current installed location:$\r$\n$OMB_ExistingInstallLocation$\r$\n$\r$\nSetup will not create another installed copy in a different directory."
+    Abort
+  ${EndIf}
 FunctionEnd
 
 Function OMBCheckGitAvailable
@@ -115,6 +123,14 @@ Function OMBInstallGitIfNeeded
 FunctionEnd
 
 Function OMBCheckKnownBuilderWorkspace
+  IfFileExists "$PROFILE\OMB\builder\package.json" 0 +3
+    MessageBox MB_OK|MB_ICONSTOP "Setup found an existing local OMB Portfolio Builder workspace:$\r$\n$\r$\n$PROFILE\OMB\builder$\r$\n$\r$\nRemove, uninstall, or rename that copy before installing this release. This prevents an older working builder from staying on the machine beside the installed app."
+    Quit
+
+  IfFileExists "$PROFILE\OMB\builder\desktop-builder\package.json" 0 +3
+    MessageBox MB_OK|MB_ICONSTOP "Setup found an existing local OMB Portfolio Builder workspace:$\r$\n$\r$\n$PROFILE\OMB\builder\desktop-builder$\r$\n$\r$\nRemove, uninstall, or rename that copy before installing this release. This prevents an older working builder from staying on the machine beside the installed app."
+    Quit
+
   IfFileExists "$DOCUMENTS\OMB\desktop-builder\package.json" 0 +3
     MessageBox MB_OK|MB_ICONSTOP "Setup found an existing local OMB Portfolio Builder workspace:$\r$\n$\r$\n$DOCUMENTS\OMB\desktop-builder$\r$\n$\r$\nRemove, uninstall, or rename that copy before installing this release. This prevents an older working builder from staying on the machine beside the installed app."
     Quit
@@ -155,6 +171,13 @@ Function OMBWriteDuplicateScanScript
   FileWrite $0 "  try { $$packageText = Get-Content -LiteralPath (Join-Path $$Directory 'package.json') -Raw -ErrorAction Stop } catch { return $$false }$\r$\n"
   FileWrite $0 "  return $$packageText -match 'OMB Portfolio Builder|omb-portfolio-builder|portfoliobuilder'$\r$\n"
   FileWrite $0 "}$\r$\n"
+  FileWrite $0 "function Test-BuilderWorkspace([string]$$Directory) {$\r$\n"
+  FileWrite $0 "  if (-not (Test-Path -LiteralPath (Join-Path $$Directory 'package.json'))) { return $$false }$\r$\n"
+  FileWrite $0 "  if (-not (Test-Path -LiteralPath (Join-Path $$Directory 'main.cjs'))) { return $$false }$\r$\n"
+  FileWrite $0 "  if (-not (Test-Path -LiteralPath (Join-Path $$Directory 'server.mjs'))) { return $$false }$\r$\n"
+  FileWrite $0 "  try { $$packageText = Get-Content -LiteralPath (Join-Path $$Directory 'package.json') -Raw -ErrorAction Stop } catch { return $$false }$\r$\n"
+  FileWrite $0 "  return $$packageText -match 'OMB Portfolio Builder|omb-portfolio-builder|portfoliobuilder'$\r$\n"
+  FileWrite $0 "}$\r$\n"
   FileWrite $0 "function Should-SkipDirectory([string]$$Directory) {$\r$\n"
   FileWrite $0 "  $$name = Split-Path -Leaf $$Directory$\r$\n"
   FileWrite $0 "  if ($$name -in @('node_modules','.git','dist','.vs','$$Recycle.Bin','System Volume Information','WinSxS')) { return $$true }$\r$\n"
@@ -169,6 +192,7 @@ Function OMBWriteDuplicateScanScript
   FileWrite $0 "    $$dir = $$stack.Pop()$\r$\n"
   FileWrite $0 "    if (Should-SkipDirectory $$dir) { continue }$\r$\n"
   FileWrite $0 "    if ((Split-Path -Leaf $$dir) -ieq 'desktop-builder' -and (Test-DesktopBuilder $$dir)) { Add-Hit 'Local desktop-builder workspace' $$dir }$\r$\n"
+  FileWrite $0 "    if ((Split-Path -Leaf $$dir) -ieq 'builder' -and (Test-BuilderWorkspace $$dir)) { Add-Hit 'Local builder workspace' $$dir }$\r$\n"
   FileWrite $0 "    try { $$children = Get-ChildItem -LiteralPath $$dir -Force -ErrorAction Stop } catch { continue }$\r$\n"
   FileWrite $0 "    foreach ($$child in $$children) {$\r$\n"
   FileWrite $0 "      if ($$child.PSIsContainer) {$\r$\n"
@@ -220,6 +244,9 @@ Function OMBScanForDuplicateBuilderCopies
 FunctionEnd
 
 Function OMBUninstallExistingInstallIfPresent
+  StrCpy $OMB_ExistingInstallLocation ""
+  StrCpy $OMB_IsUpdateInstall "0"
+  StrCpy $OMB_ManualApplicationInstall "0"
   StrCpy $R7 ""
   StrCpy $R6 ""
   StrCpy $R5 ""
@@ -276,19 +303,52 @@ Function OMBUninstallExistingInstallIfPresent
       StrCpy $R7 "$LOCALAPPDATA\Programs\OMB Portfolio Builder"
       StrCpy $R5 '"$LOCALAPPDATA\Programs\OMB Portfolio Builder\Uninstall OMB Portfolio Builder.exe" /S'
   ${EndIf}
+  ${If} $R7 == ""
+    IfFileExists "$PROFILE\OMB\application\OMB Portfolio Builder.exe" 0 +4
+      StrCpy $R7 "$PROFILE\OMB\application"
+      StrCpy $R6 "a standalone app-folder copy"
+      StrCpy $OMB_ManualApplicationInstall "1"
+  ${EndIf}
+  ${If} $R7 == ""
+    IfFileExists "$PROFILE\OneDrive\Documents\OMB\application\OMB Portfolio Builder.exe" 0 +4
+      StrCpy $R7 "$PROFILE\OneDrive\Documents\OMB\application"
+      StrCpy $R6 "a standalone app-folder copy"
+      StrCpy $OMB_ManualApplicationInstall "1"
+  ${EndIf}
+  ${If} $R7 == ""
+    IfFileExists "$PROFILE\OneDrive\Desktop\OMB\application\OMB Portfolio Builder.exe" 0 +4
+      StrCpy $R7 "$PROFILE\OneDrive\Desktop\OMB\application"
+      StrCpy $R6 "a standalone app-folder copy"
+      StrCpy $OMB_ManualApplicationInstall "1"
+  ${EndIf}
+  ${If} $R7 == ""
+    IfFileExists "$DOCUMENTS\OMB\application\OMB Portfolio Builder.exe" 0 +4
+      StrCpy $R7 "$DOCUMENTS\OMB\application"
+      StrCpy $R6 "a standalone app-folder copy"
+      StrCpy $OMB_ManualApplicationInstall "1"
+  ${EndIf}
 
   ${If} $R7 != ""
+    StrCpy $OMB_ExistingInstallLocation $R7
+    StrCpy $OMB_IsUpdateInstall "1"
+    StrCpy $INSTDIR $R7
     ${If} $R6 == ""
       StrCpy $R6 "an existing version"
     ${EndIf}
     IfSilent omb_existing_install_confirmed
-    MessageBox MB_OKCANCEL|MB_ICONEXCLAMATION "OMB Portfolio Builder $R6 is already installed on this machine.$\r$\n$\r$\nInstalled location:$\r$\n$R7$\r$\n$\r$\nSetup will uninstall that copy first, then continue installing this version.$\r$\n$\r$\nClick OK to uninstall the existing copy, or Cancel to stop setup." IDOK omb_existing_install_confirmed
+    MessageBox MB_OKCANCEL|MB_ICONEXCLAMATION "OMB Portfolio Builder $R6 is already installed on this machine.$\r$\n$\r$\nInstalled location:$\r$\n$R7$\r$\n$\r$\nSetup will update that installed copy in place. It will not create another builder installation in a different folder.$\r$\n$\r$\nClick OK to update the existing copy, or Cancel to stop setup." IDOK omb_existing_install_confirmed
     Quit
 
     omb_existing_install_confirmed:
     ${If} $R5 == ""
       IfFileExists "$R7\Uninstall OMB Portfolio Builder.exe" 0 +2
         StrCpy $R5 '"$R7\Uninstall OMB Portfolio Builder.exe" /S'
+    ${EndIf}
+    ${If} $R5 == ""
+    ${AndIf} $OMB_ManualApplicationInstall == "1"
+      DetailPrint "Existing standalone app folder found. Setup will update that folder in place."
+      StrCpy $INSTDIR $OMB_ExistingInstallLocation
+      Return
     ${EndIf}
     ${If} $R5 == ""
       MessageBox MB_OK|MB_ICONSTOP "Setup could not find the existing uninstaller. Remove OMB Portfolio Builder from Windows Installed apps or Apps & features, then run this installer again."
@@ -301,13 +361,18 @@ Function OMBUninstallExistingInstallIfPresent
       MessageBox MB_OK|MB_ICONSTOP "The existing OMB Portfolio Builder uninstall did not complete. Windows returned code $R4.$\r$\n$\r$\nRemove the existing version from Windows Installed apps or Apps & features, then run this installer again."
       Quit
     ${EndIf}
+    StrCpy $INSTDIR $OMB_ExistingInstallLocation
   ${EndIf}
 FunctionEnd
 
 !macro customInit
   Call OMBUninstallExistingInstallIfPresent
-  Call OMBCheckKnownBuilderWorkspace
-  Call OMBScanForDuplicateBuilderCopies
+  ${If} $OMB_IsUpdateInstall == "1"
+    DetailPrint "Existing OMB Portfolio Builder install detected. Setup will update the registered install location only."
+  ${Else}
+    Call OMBCheckKnownBuilderWorkspace
+    Call OMBScanForDuplicateBuilderCopies
+  ${EndIf}
   StrCpy $OMB_CreateDesktopShortcutState ${BST_CHECKED}
   StrCpy $OMB_InstallPublishingToolsState ${BST_CHECKED}
 !macroend

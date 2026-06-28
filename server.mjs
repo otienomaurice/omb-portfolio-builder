@@ -1,12 +1,14 @@
 import { createServer } from "node:http";
 import { execFile, spawn } from "node:child_process";
-import { access as fsAccess, cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { access as fsAccess, chmod, cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
+const portfolioRoot = path.resolve(process.env.OMB_PORTFOLIO_WORKSPACE || root);
 const port = Number(process.env.PORT || 8080);
 const host = process.env.HOST || "0.0.0.0";
 const execFileAsync = promisify(execFile);
@@ -35,6 +37,20 @@ const types = {
 const draftPath = path.join(root, "projects.local.json");
 const catalogPath = path.join(root, "projects.json");
 const publishAuthCachePath = path.join(root, ".omb-publish-session.json");
+const publishPaths = [
+  "projects.json",
+  "docs",
+  "assets",
+  "index.html",
+  "styles.css",
+  "script.js",
+  "electronics-search.js",
+  "Backgrounds",
+  ".nojekyll",
+  "robots.txt",
+  "sitemap.xml",
+  "CNAME"
+];
 const publishAuthCacheTtlMs = 24 * 60 * 60 * 1000;
 const publishAuthExtendedTtlMs = 30 * 24 * 60 * 60 * 1000;
 const publishAuthHistoryWindowMs = 7 * 24 * 60 * 60 * 1000;
@@ -541,6 +557,28 @@ function resolveInsideRoot(...segments) {
   return target;
 }
 
+function resolveInsidePortfolioRoot(...segments) {
+  const target = path.resolve(portfolioRoot, ...segments);
+  const relative = path.relative(portfolioRoot, target);
+  if (relative.startsWith("..") || path.isAbsolute(relative)) {
+    throw new Error("Resolved path is outside the portfolio workspace.");
+  }
+  return target;
+}
+
+function samePath(left, right) {
+  return path.resolve(left).toLowerCase() === path.resolve(right).toLowerCase();
+}
+
+async function pathExists(filePath) {
+  try {
+    await fsAccess(filePath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function publishAccessError(message, details = "", extra = {}) {
   const error = new Error(message);
   error.code = "PUBLISH_AUTHORIZATION_REQUIRED";
@@ -623,10 +661,11 @@ function compareVersions(left = "", right = "") {
   return 0;
 }
 
-async function bumpPublishedAssetVersions() {
+async function bumpPublishedAssetVersions(baseRoot = portfolioRoot) {
   let html = "";
+  const indexPath = path.join(baseRoot, "index.html");
   try {
-    html = await readFile(resolveInsideRoot("index.html"), "utf8");
+    html = await readFile(indexPath, "utf8");
   } catch {
     return false;
   }
@@ -636,14 +675,14 @@ async function bumpPublishedAssetVersions() {
     .replace(/(src="script\.js)(?:\?v=[^"]*)?"/g, `$1?v=${version}"`)
     .replace(/(src="electronics-search\.js)(?:\?v=[^"]*)?"/g, `$1?v=${version}"`);
   if (next === html) return false;
-  await writeFile(resolveInsideRoot("index.html"), next, "utf8");
+  await writeFile(indexPath, next, "utf8");
   return true;
 }
 
-async function workspaceHasCompatibleSiteFiles() {
+async function workspaceHasCompatibleSiteFiles(baseRoot = portfolioRoot) {
   for (const fileName of ["index.html", "styles.css", "script.js"]) {
     try {
-      await readFile(resolveInsideRoot(fileName));
+      await readFile(path.join(baseRoot, fileName));
     } catch {
       return false;
     }
@@ -654,6 +693,8 @@ async function workspaceHasCompatibleSiteFiles() {
 async function getPublishTargetInfo() {
   const info = {
     workspace: root,
+    portfolioWorkspace: portfolioRoot,
+    separatedWorkspace: !samePath(root, portfolioRoot),
     defaultRepository: defaultSiteRepository,
     gitBacked: false,
     compatible: await workspaceHasCompatibleSiteFiles(),
@@ -664,19 +705,19 @@ async function getPublishTargetInfo() {
   };
 
   try {
-    info.gitBacked = (await runGit(["rev-parse", "--is-inside-work-tree"])).stdout.trim() === "true";
+    info.gitBacked = (await runPublishGit(["rev-parse", "--is-inside-work-tree"])).stdout.trim() === "true";
   } catch {
     return info;
   }
 
   try {
-    info.remote = remoteUrlForDisplay((await runGit(["remote", "get-url", "origin"])).stdout.trim());
+    info.remote = remoteUrlForDisplay((await runPublishGit(["remote", "get-url", "origin"])).stdout.trim());
   } catch {
     info.remote = "";
   }
 
   try {
-    info.branch = (await runGit(["branch", "--show-current"])).stdout.trim();
+    info.branch = (await runPublishGit(["branch", "--show-current"])).stdout.trim();
   } catch {
     info.branch = "";
   }
@@ -685,7 +726,7 @@ async function getPublishTargetInfo() {
   info.repository = parsedRemote ? `${parsedRemote.owner}/${parsedRemote.repo}` : info.remote;
 
   try {
-    info.customDomain = (await readFile(resolveInsideRoot("CNAME"), "utf8")).trim();
+    info.customDomain = (await readFile(resolveInsidePortfolioRoot("CNAME"), "utf8")).trim();
   } catch {
     info.customDomain = "";
   }
@@ -735,6 +776,10 @@ async function runGit(args, options = {}) {
     }
   }
   throw lastError || new Error("Git executable was not found.");
+}
+
+async function runPublishGit(args, options = {}) {
+  return runGit(args, { ...options, cwd: options.cwd || portfolioRoot });
 }
 
 async function runOptionalCommand(command, args = [], options = {}) {
@@ -807,14 +852,14 @@ async function getGitStatus() {
 
 async function publishPathIsStageable(relativePath) {
   try {
-    await fsAccess(resolveInsideRoot(relativePath));
+    await fsAccess(resolveInsidePortfolioRoot(relativePath));
     return true;
   } catch {
     // Missing files can still be stageable if Git already tracks them and they were deleted.
   }
 
   try {
-    await runGit(["ls-files", "--error-unmatch", "--", relativePath]);
+    await runPublishGit(["ls-files", "--error-unmatch", "--", relativePath]);
     return true;
   } catch {
     return false;
@@ -829,13 +874,13 @@ async function stageablePublishPaths(pathsToCheck) {
   return stageable;
 }
 
-async function runGitWithInput(args, input) {
+async function runGitWithInput(args, input, options = {}) {
   let lastError = null;
   for (const candidate of gitCandidates) {
     try {
       return await new Promise((resolve, reject) => {
         const child = spawn(candidate, args, {
-          cwd: root,
+          cwd: options.cwd || portfolioRoot,
           windowsHide: true,
           stdio: ["pipe", "pipe", "pipe"]
         });
@@ -893,7 +938,7 @@ async function storeGitCredentials(remoteUrl, username, password) {
   }
 
   const pathName = parsed.pathname.replace(/^\/+/, "");
-  await runGit(["config", "--local", "credential.useHttpPath", "true"]);
+  await runPublishGit(["config", "--local", "credential.useHttpPath", "true"]);
   const credentialInput = [
     "protocol=https",
     "host=github.com",
@@ -902,7 +947,7 @@ async function storeGitCredentials(remoteUrl, username, password) {
     `password=${cleanPassword}`,
     ""
   ].join("\n");
-  await runGitWithInput(["credential", "approve"], credentialInput);
+  await runGitWithInput(["credential", "approve"], credentialInput, { cwd: portfolioRoot });
   return { stored: true, username: cleanUsername };
 }
 
@@ -936,7 +981,7 @@ function normalizeGitBranchName(value = "") {
 async function detectRemoteDefaultBranch(remoteUrl = "") {
   if (!remoteUrl) return "";
   try {
-    const result = await runGit(["ls-remote", "--symref", remoteUrl, "HEAD"], { timeout: 45000 });
+    const result = await runPublishGit(["ls-remote", "--symref", remoteUrl, "HEAD"], { timeout: 45000 });
     const match = String(result.stdout || "").match(/^ref:\s+refs\/heads\/(.+?)\s+HEAD$/m);
     return normalizeGitBranchName(match?.[1] || "");
   } catch {
@@ -946,7 +991,7 @@ async function detectRemoteDefaultBranch(remoteUrl = "") {
 
 async function originRemoteExists() {
   try {
-    await runGit(["remote", "get-url", "origin"]);
+    await runPublishGit(["remote", "get-url", "origin"]);
     return true;
   } catch {
     return false;
@@ -955,20 +1000,20 @@ async function originRemoteExists() {
 
 async function setOriginRemote(remoteUrl) {
   if (await originRemoteExists()) {
-    await runGit(["remote", "set-url", "origin", remoteUrl]);
+    await runPublishGit(["remote", "set-url", "origin", remoteUrl]);
   } else {
-    await runGit(["remote", "add", "origin", remoteUrl]);
+    await runPublishGit(["remote", "add", "origin", remoteUrl]);
   }
 }
 
 async function checkoutPublishBranch(branch) {
   const cleanBranch = normalizeGitBranchName(branch) || "main";
-  const current = (await runGit(["branch", "--show-current"])).stdout.trim();
+  const current = (await runPublishGit(["branch", "--show-current"])).stdout.trim();
   if (current === cleanBranch) return cleanBranch;
   try {
-    await runGit(["checkout", cleanBranch]);
+    await runPublishGit(["checkout", cleanBranch]);
   } catch {
-    await runGit(["checkout", "-B", cleanBranch]);
+    await runPublishGit(["checkout", "-B", cleanBranch]);
   }
   return cleanBranch;
 }
@@ -982,19 +1027,19 @@ async function capturePublishTargetState() {
     remoteExists: false
   };
   try {
-    snapshot.remote = (await runGit(["remote", "get-url", "origin"])).stdout.trim();
+    snapshot.remote = (await runPublishGit(["remote", "get-url", "origin"])).stdout.trim();
     snapshot.remoteExists = true;
   } catch {
     snapshot.remote = "";
     snapshot.remoteExists = false;
   }
   try {
-    snapshot.branch = (await runGit(["branch", "--show-current"])).stdout.trim();
+    snapshot.branch = (await runPublishGit(["branch", "--show-current"])).stdout.trim();
   } catch {
     snapshot.branch = "";
   }
   try {
-    snapshot.customDomainText = await readFile(resolveInsideRoot("CNAME"), "utf8");
+    snapshot.customDomainText = await readFile(resolveInsidePortfolioRoot("CNAME"), "utf8");
     snapshot.customDomainExists = true;
   } catch {
     snapshot.customDomainText = "";
@@ -1008,7 +1053,7 @@ async function restorePublishTargetState(snapshot = {}) {
     if (snapshot.remoteExists && snapshot.remote) {
       await setOriginRemote(snapshot.remote);
     } else if (await originRemoteExists()) {
-      await runGit(["remote", "remove", "origin"]);
+      await runPublishGit(["remote", "remove", "origin"]);
     }
   } catch {
     // Best-effort rollback; preserve the original error for the caller.
@@ -1020,9 +1065,9 @@ async function restorePublishTargetState(snapshot = {}) {
   }
   try {
     if (snapshot.customDomainExists) {
-      await writeFile(resolveInsideRoot("CNAME"), snapshot.customDomainText, "utf8");
+      await writeFile(resolveInsidePortfolioRoot("CNAME"), snapshot.customDomainText, "utf8");
     } else {
-      await rm(resolveInsideRoot("CNAME"), { force: true });
+      await rm(resolveInsidePortfolioRoot("CNAME"), { force: true });
     }
   } catch {
     // Best-effort rollback; preserve the original error for the caller.
@@ -1031,24 +1076,27 @@ async function restorePublishTargetState(snapshot = {}) {
 }
 
 async function writeTargetCustomDomain(domain, customDomainProvided) {
+  const targetPaths = [resolveInsidePortfolioRoot("CNAME")];
+  if (!samePath(root, portfolioRoot)) targetPaths.push(resolveInsideRoot("CNAME"));
   if (customDomainProvided && domain) {
-    await writeFile(resolveInsideRoot("CNAME"), `${domain}\n`, "utf8");
+    for (const targetPath of targetPaths) await writeFile(targetPath, `${domain}\n`, "utf8");
   } else if (customDomainProvided && !domain) {
-    await rm(resolveInsideRoot("CNAME"), { force: true });
+    for (const targetPath of targetPaths) await rm(targetPath, { force: true });
   }
 }
 
 async function ensureGitRepository() {
+  await mkdir(portfolioRoot, { recursive: true });
   try {
-    const insideWorkTree = (await runGit(["rev-parse", "--is-inside-work-tree"])).stdout.trim();
+    const insideWorkTree = (await runPublishGit(["rev-parse", "--is-inside-work-tree"])).stdout.trim();
     if (insideWorkTree === "true") return;
   } catch {
-    await runGit(["init"]);
+    await runPublishGit(["init"]);
   }
 
-  const branch = (await runGit(["branch", "--show-current"])).stdout.trim();
+  const branch = (await runPublishGit(["branch", "--show-current"])).stdout.trim();
   if (!branch) {
-    await runGit(["checkout", "-B", "main"]);
+    await runPublishGit(["checkout", "-B", "main"]);
   }
 }
 
@@ -1123,12 +1171,31 @@ async function writePublishAuthCache(access = {}) {
     extendedTrust,
     remote: access.remote || "",
     repository: access.repository || "",
+    scope: publishAuthCacheScope(),
     successCountLastWeek,
     successHistory,
     trustDays: extendedTrust ? 30 : 1
   };
   await writeFile(publishAuthCachePath, `${JSON.stringify(cache, null, 2)}\n`, "utf8");
+  await chmod(publishAuthCachePath, 0o600).catch(() => {});
   return cache;
+}
+
+function publishAuthCacheScope() {
+  let username = process.env.USERNAME || process.env.USER || "";
+  try {
+    username = os.userInfo().username || username;
+  } catch {
+    // Environment username is a sufficient fallback for cache scoping.
+  }
+  return createHash("sha256")
+    .update([
+      os.hostname(),
+      username,
+      root,
+      portfolioRoot
+    ].join("\n"))
+    .digest("hex");
 }
 
 function parsePublishAuthTimestamp(value = "") {
@@ -1149,6 +1216,7 @@ function publishAuthCacheExpiresAt(cache) {
 function publishAuthCacheIsFresh(cache, access) {
   if (!cache || !access) return false;
   if (cache.remote !== access.remote || cache.branch !== access.branch || cache.repository !== access.repository) return false;
+  if (cache.scope !== publishAuthCacheScope()) return false;
   const expiresAt = Date.parse(publishAuthCacheExpiresAt(cache));
   if (!Number.isFinite(expiresAt)) return false;
   return Date.now() < expiresAt;
@@ -1157,7 +1225,7 @@ function publishAuthCacheIsFresh(cache, access) {
 async function assertPublishAccess(options = {}) {
   let insideWorkTree = "";
   try {
-    insideWorkTree = (await runGit(["rev-parse", "--is-inside-work-tree"])).stdout.trim();
+    insideWorkTree = (await runPublishGit(["rev-parse", "--is-inside-work-tree"])).stdout.trim();
   } catch (error) {
     throw publishAccessError(
       "This workspace is not connected to a Git repository.",
@@ -1177,8 +1245,8 @@ async function assertPublishAccess(options = {}) {
   let remote = "";
   let branch = "";
   try {
-    remote = (await runGit(["remote", "get-url", "origin"])).stdout.trim();
-    branch = (await runGit(["branch", "--show-current"])).stdout.trim();
+    remote = (await runPublishGit(["remote", "get-url", "origin"])).stdout.trim();
+    branch = (await runPublishGit(["branch", "--show-current"])).stdout.trim();
   } catch (error) {
     throw publishAccessError(
       "A publish remote or branch is missing.",
@@ -1195,7 +1263,7 @@ async function assertPublishAccess(options = {}) {
     );
   }
 
-  if (!await workspaceHasCompatibleSiteFiles()) {
+  if (options.requireCompatible !== false && !await workspaceHasCompatibleSiteFiles()) {
     throw publishAccessError(
       "This repository does not look like a compatible static portfolio website.",
       "The workspace must include index.html, styles.css, and script.js before it can be used as a publish target.",
@@ -1228,7 +1296,7 @@ async function assertPublishAccess(options = {}) {
   }
 
   try {
-    await runGit(["push", "--dry-run", "origin", branch]);
+    await runPublishGit(["push", "--dry-run", "origin", branch]);
   } catch (error) {
     throw publishAccessError(
       "GitHub authorization is required before this website can be changed.",
@@ -1251,9 +1319,9 @@ async function assertPublishAccess(options = {}) {
 }
 
 async function syncFromPublishTarget() {
-  const publishAccess = await assertPublishAccess();
+  const publishAccess = await assertPublishAccess({ requireCompatible: false });
   const branch = publishAccess.branch || "main";
-  const remote = (await runGit(["remote", "get-url", "origin"])).stdout.trim();
+  const remote = (await runPublishGit(["remote", "get-url", "origin"])).stdout.trim();
   const importRoot = await mkdtemp(path.join(os.tmpdir(), "omb-publish-target-"));
   const cloneRoot = path.join(importRoot, "target");
   const importPaths = [
@@ -1312,10 +1380,12 @@ async function syncFromPublishTarget() {
 
     const importedCatalog = await readFile(path.join(cloneRoot, "projects.json"), "utf8");
     await writeFile(draftPath, importedCatalog, "utf8");
+    const portfolioSync = await syncPortfolioPublishFiles({ removeMissing: false });
 
     return {
       ...publishAccess,
       imported: availablePaths,
+      portfolioSync,
       backup: path.relative(root, backupRoot),
       draftUpdated: true
     };
@@ -1399,12 +1469,13 @@ async function authenticateGitHubForTarget(options = {}) {
     const storedCredentials = await storeGitCredentials(remoteUrl, authUsername, authPassword);
     if (!storedCredentials.stored) {
       await runGit(["credential-manager", "github", "login"], {
+        cwd: portfolioRoot,
         timeout: 5 * 60 * 1000,
         windowsHide: false
       });
     }
 
-    const access = await assertPublishAccess({ force: true });
+    const access = await assertPublishAccess({ force: true, requireCompatible: false });
     await writeTargetCustomDomain(domain, customDomainProvided);
     const target = await getPublishTargetInfo();
     return {
@@ -1556,43 +1627,69 @@ async function downloadAndLaunchAppUpdate() {
   };
 }
 
+async function syncPortfolioPublishFiles(options = {}) {
+  if (samePath(root, portfolioRoot)) {
+    return { copied: [], skipped: [], workspace: portfolioRoot, separatedWorkspace: false };
+  }
+
+  const { removeMissing = false } = options;
+  const copied = [];
+  const skipped = [];
+
+  await mkdir(portfolioRoot, { recursive: true });
+
+  for (const relativePath of publishPaths) {
+    const sourcePath = resolveInsideRoot(relativePath);
+    const targetPath = resolveInsidePortfolioRoot(relativePath);
+    if (await pathExists(sourcePath)) {
+      await rm(targetPath, { recursive: true, force: true });
+      await mkdir(path.dirname(targetPath), { recursive: true });
+      await cp(sourcePath, targetPath, { recursive: true, force: true });
+      copied.push(relativePath);
+    } else if (removeMissing) {
+      await rm(targetPath, { recursive: true, force: true });
+      skipped.push(relativePath);
+    } else {
+      skipped.push(relativePath);
+    }
+  }
+
+  return {
+    copied,
+    skipped,
+    workspace: portfolioRoot,
+    separatedWorkspace: true
+  };
+}
+
 async function publishSiteChanges(publishAccess = null) {
   const access = publishAccess || await assertPublishAccess();
-  const publishPaths = [
-    "projects.json",
-    "docs",
-    "assets",
-    "index.html",
-    "styles.css",
-    "script.js",
-    "electronics-search.js",
-    "Backgrounds",
-    ".nojekyll",
-    "robots.txt",
-    "CNAME"
-  ];
+  const portfolioSync = await syncPortfolioPublishFiles({ removeMissing: true });
+  await bumpPublishedAssetVersions(portfolioRoot);
 
   const stageablePaths = await stageablePublishPaths(publishPaths);
   if (!stageablePaths.length) {
     throw new Error("No compatible site files were available to publish.");
   }
 
-  await runGit(["add", "-A", "--", ...stageablePaths]);
-  const status = await runGit(["status", "--porcelain", "--", ...stageablePaths]);
+  await runPublishGit(["add", "-A", "--", ...stageablePaths]);
+  const status = await runPublishGit(["status", "--porcelain", "--", ...stageablePaths]);
   const hasChanges = status.stdout.trim().length > 0;
 
   let commit = null;
   if (hasChanges) {
     const message = `Update portfolio site ${new Date().toISOString().slice(0, 10)}`;
-    commit = await runGit(["commit", "-m", message]);
+    commit = await runPublishGit(["commit", "-m", message]);
   }
 
-  const branch = access.branch || (await runGit(["branch", "--show-current"])).stdout.trim();
+  const branch = access.branch || (await runPublishGit(["branch", "--show-current"])).stdout.trim();
   const pushArgs = branch ? ["push", "origin", branch] : ["push"];
-  const push = await runGit(pushArgs);
+  const push = await runPublishGit(pushArgs);
 
   return {
     ...access,
+    portfolioWorkspace: portfolioRoot,
+    portfolioSync,
     branch: branch || "current branch",
     committed: hasChanges,
     commitOutput: commit?.stdout || commit?.stderr || "",
@@ -1844,7 +1941,6 @@ async function handleApi(request, response, url) {
     await writeFile(target, `${JSON.stringify(catalog, null, 2)}\n`, "utf8");
     if (applyingToSite) {
       try {
-        await bumpPublishedAssetVersions();
         const publish = await publishSiteChanges(publishAccess);
         sendJson(response, 200, { ok: true, file: path.relative(root, target), publish });
       } catch (error) {

@@ -43,6 +43,9 @@ const categoryDescription = document.querySelector("#category-description");
 const categoryAccent = document.querySelector("#category-accent");
 const categoryCancel = document.querySelector("#category-cancel");
 const projectTree = document.querySelector("#project-tree");
+const projectSearchInput = document.querySelector("#project-search");
+const projectSearchClear = document.querySelector("#project-search-clear");
+const projectSearchStatus = document.querySelector("#project-search-status");
 const projectDialog = document.querySelector("#project-dialog");
 const projectWindowTitle = document.querySelector("#project-window-title");
 const projectWindowClose = document.querySelector("#project-window-close");
@@ -110,7 +113,14 @@ const deleteConfirmYes = document.querySelector("#delete-confirm-yes");
 const deleteConfirmNo = document.querySelector("#delete-confirm-no");
 const saveDraftButton = document.querySelector("#save-draft");
 const applyCatalogButton = document.querySelector("#apply-catalog");
+const builderSaveState = document.querySelector("#builder-save-state");
 const builderStatus = document.querySelector("#builder-status");
+const workflowSelectedProject = document.querySelector("#workflow-selected-project");
+const workflowTotalProjects = document.querySelector("#workflow-total-projects");
+const workflowSavedProjects = document.querySelector("#workflow-saved-projects");
+const workflowVisibleSections = document.querySelector("#workflow-visible-sections");
+const quickOpenSelected = document.querySelector("#quick-open-selected");
+const quickPreviewSelected = document.querySelector("#quick-preview-selected");
 const portfolioPreviewFrame = document.querySelector("#portfolio-preview-frame");
 const filePicker = document.querySelector("#file-picker");
 const assetDialog = document.querySelector("#asset-dialog");
@@ -392,12 +402,14 @@ let selectionInspectorInputTimer = 0;
 let activeRichDragBlock = null;
 let activeImageCropDrag = null;
 let activeRichImageMoveDrag = null;
+let activeRichDropMarker = null;
 let originalTitleDraft = "";
 let titleClickTimer = 0;
 let autosaveTimer = 0;
 let autosaveInFlight = false;
 let autosaveQueued = false;
 let draftSavedSinceChanges = false;
+let projectSearchQuery = "";
 let activeDialogDrag = null;
 let activeDialogResize = null;
 let projectWindowBackStack = [];
@@ -406,6 +418,91 @@ let suppressProjectWindowHistory = false;
 
 function setStatus(message) {
   builderStatus.textContent = message;
+}
+
+function setSaveState(state, message) {
+  if (!builderSaveState) return;
+  builderSaveState.dataset.state = state || "loaded";
+  builderSaveState.textContent = message || "Loaded";
+}
+
+function projectSearchText(value = "") {
+  return String(value || "").toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+function regexEscape(value = "") {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function highlightSearchText(value = "", query = "") {
+  const text = String(value || "");
+  const cleanQuery = projectSearchText(query);
+  if (!cleanQuery) return escapeHtml(text);
+  const matcher = new RegExp(`(${regexEscape(cleanQuery)})`, "ig");
+  return escapeHtml(text).replace(matcher, "<mark>$1</mark>");
+}
+
+function projectSearchHaystack(project = {}, category = {}) {
+  return projectSearchText([
+    category.label,
+    category.description,
+    project.title,
+    project.summary,
+    project.status,
+    project.category,
+    project.templateLabel,
+    ...(project.focus || []),
+    ...(project.highlights || []),
+    JSON.stringify(project.sections || []),
+    JSON.stringify(project.design || {}),
+    JSON.stringify(project.documents || []),
+    JSON.stringify(project.tests || []),
+    JSON.stringify(project.tools || []),
+    JSON.stringify(project.links || []),
+    JSON.stringify(project.media || [])
+  ].filter(Boolean).join(" "));
+}
+
+function projectMatchesSearch(project, category, query) {
+  const cleanQuery = projectSearchText(query);
+  if (!cleanQuery) return true;
+  return projectSearchHaystack(project, category).includes(cleanQuery);
+}
+
+function updateProjectSearchStatus(matchCount = catalog.projects.length) {
+  const cleanQuery = projectSearchText(projectSearchQuery);
+  if (projectSearchInput && document.activeElement !== projectSearchInput) {
+    projectSearchInput.value = projectSearchQuery;
+  }
+  if (projectSearchClear) projectSearchClear.hidden = !cleanQuery;
+  if (!projectSearchStatus) return;
+  if (!cleanQuery) {
+    projectSearchStatus.textContent = "Showing all projects.";
+    return;
+  }
+  projectSearchStatus.textContent = `${matchCount} matching project${matchCount === 1 ? "" : "s"} for "${projectSearchQuery}".`;
+}
+
+function updateBuilderWorkflow() {
+  const project = selectedProject();
+  const savedIds = new Set((savedPortfolioCatalog.projects || []).map((item) => item.id));
+  const savedCount = (catalog.projects || []).filter((projectItem) => savedIds.has(projectItem.id)).length;
+  const visibleSections = (catalog.siteSections || []).filter(siteSectionRenderable).length;
+  if (workflowSelectedProject) {
+    workflowSelectedProject.textContent = project ? project.title || "Untitled project" : "No project selected";
+  }
+  if (workflowTotalProjects) {
+    workflowTotalProjects.textContent = `${catalog.projects.length} project${catalog.projects.length === 1 ? "" : "s"}`;
+  }
+  if (workflowSavedProjects) {
+    workflowSavedProjects.textContent = `${savedCount} parsed`;
+  }
+  if (workflowVisibleSections) {
+    workflowVisibleSections.textContent = `${visibleSections} live section${visibleSections === 1 ? "" : "s"}`;
+  }
+  [quickOpenSelected, quickPreviewSelected].forEach((button) => {
+    if (button) button.disabled = !project;
+  });
 }
 
 function dialogDragHandles(dialog) {
@@ -897,6 +994,7 @@ function enableDraggableDialogs() {
 
 function markDraftNeedsSave() {
   draftSavedSinceChanges = false;
+  setSaveState("dirty", "Save draft needed");
 }
 
 function showBuilderError(title, message, details = "") {
@@ -1061,7 +1159,8 @@ function renderPublishTargetInfo(target = {}) {
     ? `Verified${checkedText}${trustText}${expiresText}`
     : "Not verified for this repository and branch";
   const rows = [
-    ["Workspace", target.workspace || "Not available"],
+    ["Builder workspace", target.workspace || "Not available"],
+    ["Portfolio workspace", target.portfolioWorkspace || target.workspace || "Not available"],
     ["Repository", target.repository || target.remote || "No repository connected"],
     ["Branch", target.branch || "No branch selected"],
     ["Custom domain", target.customDomain || "None"],
@@ -1372,6 +1471,7 @@ async function autosaveDraft() {
     return;
   }
   autosaveInFlight = true;
+  setSaveState("saving", "Autosaving...");
   try {
     const response = await fetch("/api/save-draft", {
       method: "POST",
@@ -1381,9 +1481,13 @@ async function autosaveDraft() {
     const result = await response.json();
     if (!response.ok) {
       setStatus(result.error || "Autosave failed.");
+      setSaveState("error", "Autosave failed");
+    } else if (!draftSavedSinceChanges) {
+      setSaveState("dirty", "Autosaved locally");
     }
   } catch {
     setStatus("Autosave failed. Make sure the local server is running.");
+    setSaveState("error", "Autosave failed");
   } finally {
     autosaveInFlight = false;
     if (autosaveQueued) {
@@ -1539,12 +1643,17 @@ function clone(value) {
 
 function closeDialogElement(dialog, returnValue = "close") {
   if (!dialog) return;
-  if (typeof dialog.close === "function") {
-    dialog.close(returnValue);
-    return;
-  }
+  const closeValue = String(returnValue || "close");
   const wasOpen = Boolean(dialog.open || dialog.hasAttribute("open"));
-  dialog.returnValue = String(returnValue || "");
+  if (typeof dialog.close === "function") {
+    try {
+      if (dialog.open) dialog.close(closeValue);
+    } catch {
+      // Fall through to manual cleanup if the browser rejects the native close call.
+    }
+    if (!dialog.open && !dialog.hasAttribute("open")) return;
+  }
+  dialog.returnValue = closeValue;
   dialog.open = false;
   dialog.removeAttribute("open");
   if (wasOpen) dialog.dispatchEvent(new Event("close"));
@@ -2051,6 +2160,7 @@ function saveSelectedProjectToPortfolio() {
   markDraftNeedsSave();
   refreshOpenPreviews();
   setStatus(`${project.title} saved into the portfolio preview.`);
+  updateBuilderWorkflow();
   return true;
 }
 
@@ -2392,6 +2502,7 @@ async function saveAllSections(options = {}) {
   if (projectDialog?.open) closeDialogElement(projectDialog);
   if (settings.refreshOpenPreviews !== false) refreshOpenPreviews();
   setStatus(`Saved ${savedPortfolioCatalog.projects.length} project${savedPortfolioCatalog.projects.length === 1 ? "" : "s"} into the portfolio preview.`);
+  updateBuilderWorkflow();
   return true;
 }
 
@@ -3406,32 +3517,46 @@ function showTemplatePreview(template) {
 }
 
 function renderTree() {
-  projectTree.innerHTML = catalog.categories.map((category) => {
-    const categoryProjects = catalog.projects.filter((project) => project.category === category.id);
-    const isExpanded = expandedCategories.has(category.id);
+  const cleanQuery = projectSearchText(projectSearchQuery);
+  let matchCount = 0;
+  const treeMarkup = catalog.categories.map((category) => {
+    const allCategoryProjects = catalog.projects.filter((project) => project.category === category.id);
+    const categoryHit = cleanQuery && projectSearchText(`${category.label} ${category.description}`).includes(cleanQuery);
+    const categoryProjects = cleanQuery
+      ? allCategoryProjects.filter((project) => categoryHit || projectMatchesSearch(project, category, cleanQuery))
+      : allCategoryProjects;
+    if (cleanQuery && !categoryProjects.length && !categoryHit) return "";
+    matchCount += categoryProjects.length;
+    const isExpanded = cleanQuery ? true : expandedCategories.has(category.id);
     return `
       <section class="tree-category">
         <div class="tree-category-heading">
           <button class="tree-category-toggle" type="button" data-toggle-category="${escapeHtml(category.id)}" aria-expanded="${isExpanded}">
-            <span>${escapeHtml(category.label)}</span>
-            <small>${categoryProjects.length} project${categoryProjects.length === 1 ? "" : "s"}</small>
+            <span>${highlightSearchText(category.label, projectSearchQuery)}</span>
+            <small>${allCategoryProjects.length} project${allCategoryProjects.length === 1 ? "" : "s"}</small>
           </button>
         </div>
         <div class="tree-projects" ${isExpanded ? "" : "hidden"}>
           ${categoryProjects.length ? categoryProjects.map((project) => `
             <div class="tree-project-row ${project.id === selectedProjectId ? "active" : ""}">
               <button type="button" data-project-id="${escapeHtml(project.id)}">
-                <span>${escapeHtml(project.title)}</span>
+                <span>${highlightSearchText(project.title, projectSearchQuery)}</span>
               </button>
               <button class="tree-project-delete" type="button" data-delete-project="${escapeHtml(project.id)}" aria-label="Delete ${escapeHtml(project.title)}" title="Delete project">
                 &times;
               </button>
             </div>
-          `).join("") : `<p class="tree-empty">No projects added yet.</p>`}
+          `).join("") : cleanQuery ? `<p class="tree-empty">Category matches, but no projects are in it yet.</p>` : ""}
         </div>
       </section>
     `;
   }).join("");
+  projectTree.innerHTML = treeMarkup || `
+    <section class="tree-category tree-search-empty">
+      <p class="tree-empty">No project, file, tool, or section matched this search.</p>
+    </section>
+  `;
+  updateProjectSearchStatus(cleanQuery ? matchCount : catalog.projects.length);
 }
 
 function summaryWordCount(project) {
@@ -3532,14 +3657,12 @@ function createRichImageBlock(blockData) {
   figure.draggable = true;
   figure.title = "Drag image to move it between text.";
   figure.innerHTML = `
-    <button class="rich-image-caret rich-image-caret-before" type="button" data-rich-caret="before">Type before</button>
     ${richBlockActions("overview image", { movable: true })}
     ${figure.dataset.display === "download" ? `<span class="rich-download-badge">Download only</span>` : ""}
     <span class="rich-image-viewport crop-${figure.dataset.cropAspect === "original" ? "original" : "active"}"${richImageCropStyle(blockData)}>
       <img src="${escapeHtml(normalizeLinkTarget(blockData.url, { assumeWeb: true }))}" alt="${escapeHtml(title || "Overview image")}" draggable="true" data-rich-image-drag="true">
     </span>
     ${(title || blockData.caption) ? `<figcaption>${title ? `<strong>${escapeHtml(title)}</strong>` : ""}${blockData.caption ? `<span>${escapeHtml(blockData.caption)}</span>` : ""}</figcaption>` : ""}
-    <button class="rich-image-caret rich-image-caret-after" type="button" data-rich-caret="after">Type after</button>
   `;
   return figure;
 }
@@ -3577,7 +3700,6 @@ function refreshRichImageBlock(block, blockData) {
   block.classList.add(`justify-${align}`);
   const title = cleanRichImageTitle({ title: block.dataset.title });
   block.innerHTML = `
-    <button class="rich-image-caret rich-image-caret-before" type="button" data-rich-caret="before">Type before</button>
     ${richBlockActions("overview image", { movable: true })}
     ${block.dataset.display === "download" ? `<span class="rich-download-badge">Download only</span>` : ""}
     <span class="rich-image-viewport crop-${block.dataset.cropAspect === "original" ? "original" : "active"}"${richImageCropStyle({
@@ -3589,7 +3711,6 @@ function refreshRichImageBlock(block, blockData) {
       <img src="${escapeHtml(normalizeLinkTarget(block.dataset.url, { assumeWeb: true }))}" alt="${escapeHtml(title || "Overview image")}" draggable="true" data-rich-image-drag="true">
     </span>
     ${(title || block.dataset.caption) ? `<figcaption>${title ? `<strong>${escapeHtml(title)}</strong>` : ""}${block.dataset.caption ? `<span>${escapeHtml(block.dataset.caption)}</span>` : ""}</figcaption>` : ""}
-    <button class="rich-image-caret rich-image-caret-after" type="button" data-rich-caret="after">Type after</button>
   `;
 }
 
@@ -4556,6 +4677,20 @@ async function handleRichAction(action, editor) {
         const text = await navigator.clipboard.readText();
         if (text) {
             insertPlainTextIntoRichEditor(editor, text);
+            saveRichEditorToProject(editor);
+        }
+        return;
+    }
+    if (action === "cut-text") {
+        restoreRichSelection(editor);
+        const selection = window.getSelection();
+        const selectedText = selection?.toString() || "";
+        if (selectedText && selection.rangeCount) {
+            await navigator.clipboard.writeText(selectedText);
+            const range = selection.getRangeAt(0);
+            range.deleteContents();
+            captureRichSelection(editor);
+            cleanupEmptyRichTextBlocks(editor);
             saveRichEditorToProject(editor);
         }
         return;
@@ -5883,6 +6018,7 @@ function renderAll() {
   renderSectionTabs(project);
   renderSectionContent(project);
   if (portfolioPreviewDialog?.open) renderPreview();
+  updateBuilderWorkflow();
 }
 
 function updateProjectField(field, value) {
@@ -6528,6 +6664,7 @@ async function saveCatalog(endpoint, message) {
       "Apply to site was stopped before commit and push. Save the draft, then click Apply to site again."
     );
     setStatus("Apply to site stopped. Save draft first.");
+    setSaveState("dirty", "Save draft needed");
     return;
   }
   if (endpoint === "/api/apply-catalog" && !(targetCatalog.projects || []).length) {
@@ -6537,6 +6674,7 @@ async function saveCatalog(endpoint, message) {
       "Apply to site was stopped before commit and push."
     );
     setStatus("Apply to site stopped. Save a project or use Save all sections first.");
+    setSaveState("dirty", "Preview needs projects");
     return;
   }
 
@@ -6544,7 +6682,9 @@ async function saveCatalog(endpoint, message) {
     clearTimeout(autosaveTimer);
     saveDraftButton.disabled = true;
     applyCatalogButton.disabled = true;
-    setStatus(endpoint === "/api/apply-catalog" ? "Applying site changes..." : "Saving draft...");
+    const applying = endpoint === "/api/apply-catalog";
+    setStatus(applying ? "Applying site changes..." : "Saving draft...");
+    setSaveState(applying ? "publishing" : "saving", applying ? "Publishing..." : "Saving...");
     const response = await fetch(`${endpoint}?t=${Date.now()}`, {
       method: "POST",
       cache: "no-store",
@@ -6554,21 +6694,25 @@ async function saveCatalog(endpoint, message) {
     const result = await response.json();
     if (!response.ok) {
       setStatus(result.error || "Save failed.");
+      setSaveState("error", endpoint === "/api/apply-catalog" ? "Publish failed" : "Save failed");
       return;
     }
     if (result.publish) {
       setStatus(result.publish.pushed
         ? `${message}: ${result.file}. Pushed to ${result.publish.branch}.`
         : `${message}: ${result.file}. Git push failed: ${result.publish.error}`);
+      setSaveState(result.publish.pushed ? "published" : "error", result.publish.pushed ? "Site applied" : "Push failed");
       showPublishResult(result);
       return;
     }
     if (endpoint === "/api/save-draft") {
       draftSavedSinceChanges = true;
+      setSaveState("saved", "Draft saved");
     }
     setStatus(`${message}: ${result.file}`);
   } catch {
     setStatus("Save failed. Make sure the local server window is still running.");
+    setSaveState("error", "Save failed");
   } finally {
     saveDraftButton.disabled = false;
     applyCatalogButton.disabled = false;
@@ -6606,6 +6750,8 @@ async function loadData() {
   };
   templates = templateData.templates || [];
   setStatus(`Loaded ${catalogData.source} catalog. Builder controls are local-only.`);
+  draftSavedSinceChanges = true;
+  setSaveState("loaded", "Loaded");
 
   templateSelect.innerHTML = groupedTemplateOptions();
   refreshCategoryControls();
@@ -6762,6 +6908,32 @@ appUpdateCheckButton?.addEventListener("click", () => {
 
 addProjectButton.addEventListener("click", () => {
   toggleCategoryDropdown();
+});
+
+projectSearchInput?.addEventListener("input", () => {
+  projectSearchQuery = projectSearchInput.value || "";
+  renderTree();
+});
+
+projectSearchClear?.addEventListener("click", () => {
+  projectSearchQuery = "";
+  if (projectSearchInput) {
+    projectSearchInput.value = "";
+    projectSearchInput.focus();
+  }
+  renderTree();
+});
+
+quickOpenSelected?.addEventListener("click", () => {
+  const project = selectedProject();
+  if (!project) return;
+  openProjectWindow(project.id, activeSectionId || "brief");
+});
+
+quickPreviewSelected?.addEventListener("click", () => {
+  const project = selectedProject();
+  if (!project) return;
+  openProjectPortfolioPreview();
 });
 
 addCategoryButton?.addEventListener("click", openCategoryDialog);
@@ -7450,6 +7622,7 @@ function handleRichDragOver(event) {
   if (!editor || editor !== activeRichDragBlock.closest("[data-rich-editor]")) return;
   event.preventDefault();
   if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
+  updateRichDropMarker(editor, activeRichDragBlock, event.clientX, event.clientY, event.target);
 }
 
 function richRangeFromPoint(x, y) {
@@ -7466,6 +7639,23 @@ function richRangeFromPoint(x, y) {
   return null;
 }
 
+function richDropLocation(editor, movingBlock, x, y, eventTarget = null) {
+  const previousPointerEvents = movingBlock?.style.pointerEvents || "";
+  if (movingBlock) movingBlock.style.pointerEvents = "none";
+  try {
+    const dropRange = validDropRangeForEditor(editor, movingBlock, richRangeFromPoint(x, y));
+    const pointTarget = eventTarget && !movingBlock?.contains(eventTarget)
+      ? eventTarget
+      : document.elementFromPoint(x, y);
+    return {
+      dropRange,
+      target: pointTarget?.closest?.(".rich-block") || null
+    };
+  } finally {
+    if (movingBlock) movingBlock.style.pointerEvents = previousPointerEvents;
+  }
+}
+
 function validDropRangeForEditor(editor, movingBlock, range) {
   const rangeNode = range?.startContainer?.nodeType === Node.TEXT_NODE
     ? range.startContainer.parentElement
@@ -7476,11 +7666,55 @@ function validDropRangeForEditor(editor, movingBlock, range) {
   return range;
 }
 
-function moveRichBlockToPoint(editor, movingBlock, x, y, eventTarget = null) {
+function ensureRichDropMarker() {
+  if (!activeRichDropMarker) {
+    activeRichDropMarker = document.createElement("div");
+    activeRichDropMarker.className = "rich-drop-marker";
+    activeRichDropMarker.setAttribute("aria-hidden", "true");
+    document.body.append(activeRichDropMarker);
+  }
+  activeRichDropMarker.hidden = false;
+  return activeRichDropMarker;
+}
+
+function hideRichDropMarker() {
+  if (activeRichDropMarker) activeRichDropMarker.hidden = true;
+}
+
+function updateRichDropMarker(editor, movingBlock, x, y, eventTarget = null) {
   if (!editor || !movingBlock) return;
-  let dropRange = validDropRangeForEditor(editor, movingBlock, richRangeFromPoint(x, y));
-  const pointTarget = eventTarget || document.elementFromPoint(x, y);
-  const target = pointTarget?.closest?.(".rich-block");
+  const marker = ensureRichDropMarker();
+  const { dropRange, target } = richDropLocation(editor, movingBlock, x, y, eventTarget);
+  if (dropRange) {
+    const rangeRect = dropRange.getClientRects()[0];
+    const anchor = dropRange.startContainer.nodeType === Node.TEXT_NODE
+      ? dropRange.startContainer.parentElement
+      : dropRange.startContainer;
+    const anchorRect = anchor?.getBoundingClientRect?.();
+    const rect = rangeRect || anchorRect || editor.getBoundingClientRect();
+    marker.className = "rich-drop-marker caret";
+    marker.style.left = `${Math.max(rect.left, Math.min(x, rect.right || rect.left))}px`;
+    marker.style.top = `${rect.top}px`;
+    marker.style.width = "2px";
+    marker.style.height = `${Math.max(22, rect.height || 22)}px`;
+    return;
+  }
+
+  const targetRect = (target && editor.contains(target) && target !== movingBlock)
+    ? target.getBoundingClientRect()
+    : editor.getBoundingClientRect();
+  const imageRect = movingBlock.getBoundingClientRect();
+  const beforeTarget = !target || y < targetRect.top + targetRect.height / 2;
+  marker.className = "rich-drop-marker block";
+  marker.style.left = `${targetRect.left}px`;
+  marker.style.top = `${beforeTarget ? targetRect.top : targetRect.bottom}px`;
+  marker.style.width = `${Math.min(targetRect.width, Math.max(160, imageRect.width || targetRect.width))}px`;
+  marker.style.height = "3px";
+}
+
+function moveRichBlockToPoint(editor, movingBlock, x, y, eventTarget = null, options = {}) {
+  if (!editor || !movingBlock) return;
+  const { dropRange, target } = richDropLocation(editor, movingBlock, x, y, eventTarget);
 
   movingBlock.classList.remove("is-dragging");
   if (target === movingBlock) return;
@@ -7496,8 +7730,9 @@ function moveRichBlockToPoint(editor, movingBlock, x, y, eventTarget = null) {
   }
 
   cleanupEmptyRichTextBlocks(editor);
-  saveRichEditorToProject(editor);
-  selectRichBlock(movingBlock);
+  if (options.focusAfter !== false) focusAdjacentImageText(movingBlock, "after");
+  if (options.commit !== false) saveRichEditorToProject(editor);
+  if (options.focusAfter === false) selectRichBlock(movingBlock);
 }
 
 function handleRichDrop(event) {
@@ -7506,6 +7741,7 @@ function handleRichDrop(event) {
   if (!editor || editor !== activeRichDragBlock.closest("[data-rich-editor]")) return;
   event.preventDefault();
   moveRichBlockToPoint(editor, activeRichDragBlock, event.clientX, event.clientY, event.target);
+  hideRichDropMarker();
   activeRichDragBlock = null;
 }
 
@@ -7543,6 +7779,7 @@ function moveRichImageMoveDrag(event) {
     drag.block.classList.add("is-dragging");
     document.body.classList.add("rich-image-dragging");
   }
+  updateRichDropMarker(drag.editor, drag.block, event.clientX, event.clientY, event.target);
   event.preventDefault();
 }
 
@@ -7552,6 +7789,7 @@ function endRichImageMoveDrag(event) {
   drag.block.releasePointerCapture?.(drag.pointerId);
   if (drag.moved) {
     moveRichBlockToPoint(drag.editor, drag.block, event.clientX, event.clientY);
+    hideRichDropMarker();
     event.preventDefault();
   }
   drag.block.classList.remove("is-dragging");
@@ -7601,6 +7839,7 @@ function endImageCropDrag() {
   root.addEventListener("drop", handleRichDrop);
   root.addEventListener("dragend", () => {
     activeRichDragBlock?.classList.remove("is-dragging");
+    hideRichDropMarker();
     activeRichDragBlock = null;
   });
   root.addEventListener("pointerdown", beginRichImageMoveDrag);
@@ -7618,7 +7857,7 @@ summaryContextMenu.addEventListener("click", async (event) => {
   if (!actionButton) return;
   const action = actionButton.dataset.richAction;
   await handleRichAction(action, activeSummaryEditor);
-  if (["add-image", "add-formula", "copy-text", "paste-text", "edit-block", "delete-block"].includes(action)) {
+  if (["add-image", "add-formula", "copy-text", "paste-text", "cut-text", "edit-block", "delete-block"].includes(action)) {
     hideSummaryContextMenu();
   }
 });
@@ -7958,6 +8197,17 @@ summaryFormulaForm.addEventListener("submit", (event) => {
 saveDraftButton.addEventListener("click", () => saveCatalog("/api/save-draft", "Draft saved"));
 applyCatalogButton.addEventListener("click", () => {
   saveCatalog("/api/apply-catalog", "Catalog applied and pushed");
+});
+
+window.addEventListener("builder-menu-action", (event) => {
+  const type = event.detail?.type || "";
+  if (type === "new-project") addProjectButton?.click();
+  if (type === "publishing-target") publishTargetOpen?.click();
+  if (type === "save-draft") saveDraftButton?.click();
+  if (type === "apply-site") applyCatalogButton?.click();
+  if (type === "portfolio-preview") openPortfolioPreviewButton?.click();
+  if (type === "builder-guide") builderGuideOpen?.click();
+  if (type === "check-updates") checkForAppUpdates({ force: true, manual: true });
 });
 
 renderSelectionInspectorOptions();

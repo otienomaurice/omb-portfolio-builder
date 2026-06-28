@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog, shell } = require("electron");
+const { app, BrowserWindow, Menu, dialog, nativeTheme, shell } = require("electron");
 const { execFile } = require("node:child_process");
 const fs = require("node:fs");
 const fsp = require("node:fs/promises");
@@ -11,6 +11,7 @@ let mainWindow = null;
 let builderOrigin = "";
 const execFileAsync = promisify(execFile);
 const defaultRepositoryUrl = process.env.OMB_BUILDER_REPOSITORY || "";
+const defaultWorkspaceHomeName = "OMB";
 
 const rootFilesToRefresh = [
   "server.mjs",
@@ -33,6 +34,17 @@ const rootFilesToSeed = [
 ];
 
 const directorySeeds = ["assets", "Backgrounds", "docs"];
+const portfolioFilesToSeed = [
+  "projects.json",
+  "index.html",
+  "styles.css",
+  "script.js",
+  "electronics-search.js",
+  ".nojekyll",
+  "robots.txt",
+  "sitemap.xml"
+];
+const portfolioDirectoriesToSeed = ["assets", "Backgrounds", "docs"];
 const gitCandidates = [
   process.env.GIT_EXE,
   "git",
@@ -41,6 +53,75 @@ const gitCandidates = [
   "C:\\Program Files (x86)\\Git\\cmd\\git.exe",
   "C:\\Program Files (x86)\\Git\\bin\\git.exe"
 ].filter(Boolean);
+
+function dispatchBuilderMenuAction(action) {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  const payload = JSON.stringify(action);
+  mainWindow.webContents.executeJavaScript(
+    `window.dispatchEvent(new CustomEvent("builder-menu-action", { detail: ${payload} }));`,
+    true
+  ).catch(() => {});
+}
+
+function createAppMenu(origin) {
+  return Menu.buildFromTemplate([
+    {
+      label: "File",
+      submenu: [
+        { label: "New Project", accelerator: "CmdOrCtrl+N", click: () => dispatchBuilderMenuAction({ type: "new-project" }) },
+        { label: "Publishing Target", click: () => dispatchBuilderMenuAction({ type: "publishing-target" }) },
+        { type: "separator" },
+        { label: "Save Draft", accelerator: "CmdOrCtrl+S", click: () => dispatchBuilderMenuAction({ type: "save-draft" }) },
+        { label: "Apply to Site", accelerator: "CmdOrCtrl+Shift+S", click: () => dispatchBuilderMenuAction({ type: "apply-site" }) },
+        { type: "separator" },
+        { role: "quit", label: "Exit" }
+      ]
+    },
+    {
+      label: "Edit",
+      submenu: [
+        { role: "undo" },
+        { role: "redo" },
+        { type: "separator" },
+        { role: "cut" },
+        { role: "copy" },
+        { role: "paste" },
+        { role: "selectAll" }
+      ]
+    },
+    {
+      label: "View",
+      submenu: [
+        { role: "reload" },
+        { role: "forceReload" },
+        { type: "separator" },
+        { role: "resetZoom" },
+        { role: "zoomIn" },
+        { role: "zoomOut" },
+        { type: "separator" },
+        { label: "Portfolio Preview", click: () => dispatchBuilderMenuAction({ type: "portfolio-preview" }) },
+        { label: "Check Updates", click: () => dispatchBuilderMenuAction({ type: "check-updates" }) },
+        { type: "separator" },
+        { role: "togglefullscreen" }
+      ]
+    },
+    {
+      label: "Help",
+      submenu: [
+        { label: "Builder Guide", accelerator: "F1", click: () => dispatchBuilderMenuAction({ type: "builder-guide" }) },
+        { label: "GitHub Releases", click: () => shell.openExternal("https://github.com/otienomaurice/omb-portfolio-builder/releases/latest") },
+        {
+          label: "Focus Builder Window",
+          click: () => {
+            if (!mainWindow || mainWindow.isDestroyed()) return;
+            if (mainWindow.isMinimized()) mainWindow.restore();
+            mainWindow.focus();
+          }
+        }
+      ]
+    }
+  ]);
+}
 
 function fileExists(filePath) {
   try {
@@ -136,10 +217,13 @@ async function cloneWorkspaceIfPossible(workspaceRoot) {
 
 async function preparePackagedWorkspace() {
   const bundledSiteRoot = path.join(process.resourcesPath, "site");
-  const workspaceRoot = path.join(app.getPath("documents"), "OMB Portfolio Builder Workspace");
+  const workspaceHome = process.env.OMB_WORKSPACE_HOME || path.join(app.getPath("home"), defaultWorkspaceHomeName);
+  const workspaceRoot = path.join(workspaceHome, "builder");
+  const portfolioRoot = process.env.OMB_PORTFOLIO_WORKSPACE || path.join(workspaceHome, "portfolio");
 
   await fsp.mkdir(workspaceRoot, { recursive: true });
-  await cloneWorkspaceIfPossible(workspaceRoot);
+  await fsp.mkdir(portfolioRoot, { recursive: true });
+  await cloneWorkspaceIfPossible(portfolioRoot);
 
   for (const fileName of rootFilesToRefresh) {
     await copyFileIfAvailable(path.join(bundledSiteRoot, fileName), path.join(workspaceRoot, fileName), true);
@@ -151,15 +235,38 @@ async function preparePackagedWorkspace() {
     await copyDirectoryMissingFiles(path.join(bundledSiteRoot, directoryName), path.join(workspaceRoot, directoryName));
   }
 
-  return workspaceRoot;
+  for (const fileName of portfolioFilesToSeed) {
+    await copyFileIfAvailable(path.join(bundledSiteRoot, fileName), path.join(portfolioRoot, fileName), false);
+  }
+  for (const directoryName of portfolioDirectoriesToSeed) {
+    await copyDirectoryMissingFiles(path.join(bundledSiteRoot, directoryName), path.join(portfolioRoot, directoryName));
+  }
+
+  return { workspaceRoot, portfolioRoot };
 }
 
-async function resolveWorkspaceRoot() {
+async function resolveWorkspaceRoots() {
   const envWorkspace = process.env.OMB_BUILDER_WORKSPACE;
-  if (envWorkspace && workspaceLooksUsable(envWorkspace)) return envWorkspace;
-  if (!app.isPackaged) return path.resolve(__dirname);
+  if (envWorkspace && workspaceLooksUsable(envWorkspace)) {
+    return {
+      workspaceRoot: envWorkspace,
+      portfolioRoot: process.env.OMB_PORTFOLIO_WORKSPACE || path.join(path.dirname(envWorkspace), "portfolio")
+    };
+  }
+  if (!app.isPackaged) {
+    const workspaceRoot = path.resolve(__dirname);
+    return {
+      workspaceRoot,
+      portfolioRoot: process.env.OMB_PORTFOLIO_WORKSPACE || workspaceRoot
+    };
+  }
   const nearbyRepository = findRepositoryNearExecutable();
-  if (nearbyRepository) return nearbyRepository;
+  if (nearbyRepository) {
+    return {
+      workspaceRoot: nearbyRepository,
+      portfolioRoot: process.env.OMB_PORTFOLIO_WORKSPACE || nearbyRepository
+    };
+  }
   return preparePackagedWorkspace();
 }
 
@@ -175,12 +282,13 @@ function findFreePort() {
   });
 }
 
-async function startBuilderServer(workspaceRoot) {
+async function startBuilderServer(workspaceRoot, portfolioRoot) {
   const port = await findFreePort();
   process.env.PORT = String(port);
   process.env.HOST = "127.0.0.1";
   process.env.OMB_DESKTOP_APP = "1";
   process.env.OMB_BUILDER_WORKSPACE = workspaceRoot;
+  process.env.OMB_PORTFOLIO_WORKSPACE = portfolioRoot;
   process.env.OMB_BUILDER_REPOSITORY = defaultRepositoryUrl;
   process.env.OMB_APP_VERSION = app.getVersion();
 
@@ -191,12 +299,14 @@ async function startBuilderServer(workspaceRoot) {
 
 function createWindow(workspaceRoot, origin) {
   const iconPath = path.join(workspaceRoot, "assets", "omb-app-icon-256.png");
+  nativeTheme.themeSource = "light";
   mainWindow = new BrowserWindow({
     width: 1440,
     height: 960,
     minWidth: 980,
     minHeight: 680,
     title: "OMB Portfolio Builder",
+    autoHideMenuBar: false,
     icon: fileExists(iconPath) ? iconPath : undefined,
     backgroundColor: "#eef8fd",
     webPreferences: {
@@ -205,6 +315,8 @@ function createWindow(workspaceRoot, origin) {
       sandbox: true
     }
   });
+  mainWindow.setMenu(createAppMenu(origin));
+  mainWindow.setMenuBarVisibility(true);
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith(origin)) return { action: "allow" };
@@ -236,8 +348,8 @@ async function boot() {
 
   await app.whenReady();
   try {
-    const workspaceRoot = await resolveWorkspaceRoot();
-    builderOrigin = await startBuilderServer(workspaceRoot);
+    const { workspaceRoot, portfolioRoot } = await resolveWorkspaceRoots();
+    builderOrigin = await startBuilderServer(workspaceRoot, portfolioRoot);
     createWindow(workspaceRoot, builderOrigin);
   } catch (error) {
     dialog.showErrorBox("OMB Portfolio Builder could not start", error?.message || String(error));
