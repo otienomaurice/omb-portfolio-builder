@@ -10,6 +10,7 @@ Var OMB_CreateDesktopShortcutState
 Var OMB_InstallPublishingToolsState
 Var OMB_ExistingInstallLocation
 Var OMB_IsUpdateInstall
+Var OMB_ManualApplicationInstall
 
 Function OMBToolsPageCreate
   nsDialogs::Create 1018
@@ -245,6 +246,7 @@ FunctionEnd
 Function OMBUninstallExistingInstallIfPresent
   StrCpy $OMB_ExistingInstallLocation ""
   StrCpy $OMB_IsUpdateInstall "0"
+  StrCpy $OMB_ManualApplicationInstall "0"
   StrCpy $R7 ""
   StrCpy $R6 ""
   StrCpy $R5 ""
@@ -301,6 +303,30 @@ Function OMBUninstallExistingInstallIfPresent
       StrCpy $R7 "$LOCALAPPDATA\Programs\OMB Portfolio Builder"
       StrCpy $R5 '"$LOCALAPPDATA\Programs\OMB Portfolio Builder\Uninstall OMB Portfolio Builder.exe" /S'
   ${EndIf}
+  ${If} $R7 == ""
+    IfFileExists "$PROFILE\OMB\application\OMB Portfolio Builder.exe" 0 +4
+      StrCpy $R7 "$PROFILE\OMB\application"
+      StrCpy $R6 "a standalone app-folder copy"
+      StrCpy $OMB_ManualApplicationInstall "1"
+  ${EndIf}
+  ${If} $R7 == ""
+    IfFileExists "$PROFILE\OneDrive\Documents\OMB\application\OMB Portfolio Builder.exe" 0 +4
+      StrCpy $R7 "$PROFILE\OneDrive\Documents\OMB\application"
+      StrCpy $R6 "a standalone app-folder copy"
+      StrCpy $OMB_ManualApplicationInstall "1"
+  ${EndIf}
+  ${If} $R7 == ""
+    IfFileExists "$PROFILE\OneDrive\Desktop\OMB\application\OMB Portfolio Builder.exe" 0 +4
+      StrCpy $R7 "$PROFILE\OneDrive\Desktop\OMB\application"
+      StrCpy $R6 "a standalone app-folder copy"
+      StrCpy $OMB_ManualApplicationInstall "1"
+  ${EndIf}
+  ${If} $R7 == ""
+    IfFileExists "$DOCUMENTS\OMB\application\OMB Portfolio Builder.exe" 0 +4
+      StrCpy $R7 "$DOCUMENTS\OMB\application"
+      StrCpy $R6 "a standalone app-folder copy"
+      StrCpy $OMB_ManualApplicationInstall "1"
+  ${EndIf}
 
   ${If} $R7 != ""
     StrCpy $OMB_ExistingInstallLocation $R7
@@ -317,6 +343,12 @@ Function OMBUninstallExistingInstallIfPresent
     ${If} $R5 == ""
       IfFileExists "$R7\Uninstall OMB Portfolio Builder.exe" 0 +2
         StrCpy $R5 '"$R7\Uninstall OMB Portfolio Builder.exe" /S'
+    ${EndIf}
+    ${If} $R5 == ""
+    ${AndIf} $OMB_ManualApplicationInstall == "1"
+      DetailPrint "Existing standalone app folder found. Setup will update that folder in place."
+      StrCpy $INSTDIR $OMB_ExistingInstallLocation
+      Return
     ${EndIf}
     ${If} $R5 == ""
       MessageBox MB_OK|MB_ICONSTOP "Setup could not find the existing uninstaller. Remove OMB Portfolio Builder from Windows Installed apps or Apps & features, then run this installer again."

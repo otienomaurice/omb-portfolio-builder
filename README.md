@@ -21,6 +21,14 @@ The installer defaults to:
 C:\Program Files\OMB Portfolio Builder
 ```
 
+The installed application file is:
+
+```text
+C:\Program Files\OMB Portfolio Builder\OMB Portfolio Builder.exe
+```
+
+Desktop and Start Menu shortcuts point directly to that executable. On this development machine, the active standalone app-folder copy is `C:\Users\otien\OMB\application\OMB Portfolio Builder.exe`; installers now detect that app folder as the current copy and update it in place instead of creating a second builder elsewhere.
+
 The installer is not one-click; it uses a normal Windows wizard with Back, Next, Cancel, install progress, and Finish.
 It lets you choose a different installation folder, creates a Windows uninstall entry, and creates a desktop shortcut by default unless you untick that option.
 
@@ -28,7 +36,7 @@ Installed users do **not** need to install Node.js or pnpm. The desktop app incl
 
 The public portfolio website also exposes a direct **Download builder application** link near the top of the page, just below Fun Facts. That link points to `https://github.com/otienomaurice/omb-portfolio-builder/releases/latest/download/OMB-Portfolio-Builder-Setup-latest-x64.exe`. Every successful `main` release marks the new GitHub Release as latest and uploads this stable latest installer asset, so the portfolio link automatically downloads the newest builder without editing the website each time.
 
-If OMB Portfolio Builder is already installed through Windows, the installer becomes an update flow for that registered installation. It tells the user which version it found, pins setup to the existing install location, removes the old copy, and installs the new version in that same location. It will not create a second installed copy in a different folder. On machines without a registered install, setup scans fixed drives for unregistered OMB Portfolio Builder executables, portable copies, and local builder workspaces. If it finds one of those duplicate copies, setup stops and asks the user to remove, uninstall, or rename that copy first so the machine does not keep an older builder with stale editing features.
+If OMB Portfolio Builder is already installed through Windows, the installer becomes an update flow for that registered installation. It tells the user which version it found, pins setup to the existing install location, removes the old copy, and installs the new version in that same location. It will not create a second installed copy in a different folder. A standalone app-folder copy at `C:\Users\<you>\OMB\application` is also treated as the current app and updated in place. On machines without a registered install or known app-folder copy, setup scans fixed drives for unregistered OMB Portfolio Builder executables, portable copies, and local builder workspaces. If it finds one of those duplicate copies, setup stops and asks the user to remove, uninstall, or rename that copy first so the machine does not keep an older builder with stale editing features.
 
 GitHub keeps older releases. To download a previous version, open:
 
@@ -81,6 +89,7 @@ For repository development, use the branch model in [BRANCHING.md](BRANCHING.md)
 | `codex/split-builder-portfolio-workspaces` | Separates local builder files from public portfolio files, syncs publish-safe assets into the portfolio mirror, and bumps the next installer release version. | `development` | `development` | Active |
 | `codex/guard-latest-builder-download` | Enforces the portfolio download link against the stable latest installer URL so main releases automatically feed the newest website download. | `development` | `development` | Active |
 | `codex/secure-builder-editor-shell` | Adds native desktop menus, light app chrome, scoped publishing authorization cache, and smoother rich-editor copy, paste, cut, and image placement behavior. | `development` | `development` | Active |
+| `codex/smooth-builder-workflow` | Adds smoother builder workflow feedback, searchable project navigation, selected-project quick actions, clearer preview metrics, and app-folder update detection for the standalone Windows executable. | `development` | `development` | Active |
 
 ## Publishing Security
 

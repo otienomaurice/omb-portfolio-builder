@@ -110,7 +110,14 @@ function createAppMenu(origin) {
       submenu: [
         { label: "Builder Guide", accelerator: "F1", click: () => dispatchBuilderMenuAction({ type: "builder-guide" }) },
         { label: "GitHub Releases", click: () => shell.openExternal("https://github.com/otienomaurice/omb-portfolio-builder/releases/latest") },
-        { label: "Open Local Builder", click: () => shell.openExternal(`${origin}/template-preview.html`) }
+        {
+          label: "Focus Builder Window",
+          click: () => {
+            if (!mainWindow || mainWindow.isDestroyed()) return;
+            if (mainWindow.isMinimized()) mainWindow.restore();
+            mainWindow.focus();
+          }
+        }
       ]
     }
   ]);

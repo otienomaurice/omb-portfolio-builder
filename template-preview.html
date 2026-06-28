@@ -26,6 +26,7 @@
               </span>
           </a>
           <div class="builder-header-actions">
+              <span class="builder-save-state" id="builder-save-state" data-state="loaded">Loaded</span>
               <a class="button secondary" href="index.html#projects" target="_blank" rel="noreferrer">Portfolio</a>
               <button class="button secondary" id="publish-target-open" type="button">Publishing target</button>
               <button class="button secondary" id="app-update-check" type="button">Check updates</button>
@@ -150,6 +151,14 @@
                   </div>
                   <button class="button secondary compact-button" id="add-category" type="button">Add category</button>
               </div>
+              <div class="project-library-tools" role="search">
+                  <label class="project-search-field">
+                      <span>Search projects</span>
+                      <input id="project-search" type="search" placeholder="Find project, file, tool, section..." autocomplete="off" />
+                  </label>
+                  <button class="button secondary compact-button" id="project-search-clear" type="button" hidden>Clear</button>
+                  <small id="project-search-status">Showing all projects.</small>
+              </div>
               <nav class="project-tree" id="project-tree" aria-label="Project tree"></nav>
               <div class="builder-panel new-project-panel">
                   <h2>Add project</h2>
@@ -168,6 +177,21 @@
                   <p class="eyebrow">Local outlook</p>
                   <h2 id="inspector-title">Preview</h2>
                   <p id="builder-status">Changes are local until saved or applied.</p>
+                  <div class="workflow-card" id="workflow-card" aria-live="polite">
+                      <div>
+                          <span>Selected project</span>
+                          <strong id="workflow-selected-project">No project selected</strong>
+                      </div>
+                      <div class="workflow-metrics">
+                          <span id="workflow-total-projects">0 projects</span>
+                          <span id="workflow-saved-projects">0 parsed</span>
+                          <span id="workflow-visible-sections">0 live sections</span>
+                      </div>
+                  </div>
+                  <div class="workflow-actions">
+                      <button class="button secondary compact-button" id="quick-open-selected" type="button" disabled>Open selected</button>
+                      <button class="button secondary compact-button" id="quick-preview-selected" type="button" disabled>Preview selected</button>
+                  </div>
                   <button class="portfolio-preview-button" id="open-portfolio-preview" type="button" aria-label="Open full portfolio preview">
                       <span class="portfolio-preview-icon" aria-hidden="true"></span>
                       <span>Portfolio preview</span>

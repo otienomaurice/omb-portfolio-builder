@@ -43,6 +43,9 @@ const categoryDescription = document.querySelector("#category-description");
 const categoryAccent = document.querySelector("#category-accent");
 const categoryCancel = document.querySelector("#category-cancel");
 const projectTree = document.querySelector("#project-tree");
+const projectSearchInput = document.querySelector("#project-search");
+const projectSearchClear = document.querySelector("#project-search-clear");
+const projectSearchStatus = document.querySelector("#project-search-status");
 const projectDialog = document.querySelector("#project-dialog");
 const projectWindowTitle = document.querySelector("#project-window-title");
 const projectWindowClose = document.querySelector("#project-window-close");
@@ -110,7 +113,14 @@ const deleteConfirmYes = document.querySelector("#delete-confirm-yes");
 const deleteConfirmNo = document.querySelector("#delete-confirm-no");
 const saveDraftButton = document.querySelector("#save-draft");
 const applyCatalogButton = document.querySelector("#apply-catalog");
+const builderSaveState = document.querySelector("#builder-save-state");
 const builderStatus = document.querySelector("#builder-status");
+const workflowSelectedProject = document.querySelector("#workflow-selected-project");
+const workflowTotalProjects = document.querySelector("#workflow-total-projects");
+const workflowSavedProjects = document.querySelector("#workflow-saved-projects");
+const workflowVisibleSections = document.querySelector("#workflow-visible-sections");
+const quickOpenSelected = document.querySelector("#quick-open-selected");
+const quickPreviewSelected = document.querySelector("#quick-preview-selected");
 const portfolioPreviewFrame = document.querySelector("#portfolio-preview-frame");
 const filePicker = document.querySelector("#file-picker");
 const assetDialog = document.querySelector("#asset-dialog");
@@ -399,6 +409,7 @@ let autosaveTimer = 0;
 let autosaveInFlight = false;
 let autosaveQueued = false;
 let draftSavedSinceChanges = false;
+let projectSearchQuery = "";
 let activeDialogDrag = null;
 let activeDialogResize = null;
 let projectWindowBackStack = [];
@@ -407,6 +418,91 @@ let suppressProjectWindowHistory = false;
 
 function setStatus(message) {
   builderStatus.textContent = message;
+}
+
+function setSaveState(state, message) {
+  if (!builderSaveState) return;
+  builderSaveState.dataset.state = state || "loaded";
+  builderSaveState.textContent = message || "Loaded";
+}
+
+function projectSearchText(value = "") {
+  return String(value || "").toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+function regexEscape(value = "") {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function highlightSearchText(value = "", query = "") {
+  const text = String(value || "");
+  const cleanQuery = projectSearchText(query);
+  if (!cleanQuery) return escapeHtml(text);
+  const matcher = new RegExp(`(${regexEscape(cleanQuery)})`, "ig");
+  return escapeHtml(text).replace(matcher, "<mark>$1</mark>");
+}
+
+function projectSearchHaystack(project = {}, category = {}) {
+  return projectSearchText([
+    category.label,
+    category.description,
+    project.title,
+    project.summary,
+    project.status,
+    project.category,
+    project.templateLabel,
+    ...(project.focus || []),
+    ...(project.highlights || []),
+    JSON.stringify(project.sections || []),
+    JSON.stringify(project.design || {}),
+    JSON.stringify(project.documents || []),
+    JSON.stringify(project.tests || []),
+    JSON.stringify(project.tools || []),
+    JSON.stringify(project.links || []),
+    JSON.stringify(project.media || [])
+  ].filter(Boolean).join(" "));
+}
+
+function projectMatchesSearch(project, category, query) {
+  const cleanQuery = projectSearchText(query);
+  if (!cleanQuery) return true;
+  return projectSearchHaystack(project, category).includes(cleanQuery);
+}
+
+function updateProjectSearchStatus(matchCount = catalog.projects.length) {
+  const cleanQuery = projectSearchText(projectSearchQuery);
+  if (projectSearchInput && document.activeElement !== projectSearchInput) {
+    projectSearchInput.value = projectSearchQuery;
+  }
+  if (projectSearchClear) projectSearchClear.hidden = !cleanQuery;
+  if (!projectSearchStatus) return;
+  if (!cleanQuery) {
+    projectSearchStatus.textContent = "Showing all projects.";
+    return;
+  }
+  projectSearchStatus.textContent = `${matchCount} matching project${matchCount === 1 ? "" : "s"} for "${projectSearchQuery}".`;
+}
+
+function updateBuilderWorkflow() {
+  const project = selectedProject();
+  const savedIds = new Set((savedPortfolioCatalog.projects || []).map((item) => item.id));
+  const savedCount = (catalog.projects || []).filter((projectItem) => savedIds.has(projectItem.id)).length;
+  const visibleSections = (catalog.siteSections || []).filter(siteSectionRenderable).length;
+  if (workflowSelectedProject) {
+    workflowSelectedProject.textContent = project ? project.title || "Untitled project" : "No project selected";
+  }
+  if (workflowTotalProjects) {
+    workflowTotalProjects.textContent = `${catalog.projects.length} project${catalog.projects.length === 1 ? "" : "s"}`;
+  }
+  if (workflowSavedProjects) {
+    workflowSavedProjects.textContent = `${savedCount} parsed`;
+  }
+  if (workflowVisibleSections) {
+    workflowVisibleSections.textContent = `${visibleSections} live section${visibleSections === 1 ? "" : "s"}`;
+  }
+  [quickOpenSelected, quickPreviewSelected].forEach((button) => {
+    if (button) button.disabled = !project;
+  });
 }
 
 function dialogDragHandles(dialog) {
@@ -898,6 +994,7 @@ function enableDraggableDialogs() {
 
 function markDraftNeedsSave() {
   draftSavedSinceChanges = false;
+  setSaveState("dirty", "Save draft needed");
 }
 
 function showBuilderError(title, message, details = "") {
@@ -1374,6 +1471,7 @@ async function autosaveDraft() {
     return;
   }
   autosaveInFlight = true;
+  setSaveState("saving", "Autosaving...");
   try {
     const response = await fetch("/api/save-draft", {
       method: "POST",
@@ -1383,9 +1481,13 @@ async function autosaveDraft() {
     const result = await response.json();
     if (!response.ok) {
       setStatus(result.error || "Autosave failed.");
+      setSaveState("error", "Autosave failed");
+    } else if (!draftSavedSinceChanges) {
+      setSaveState("dirty", "Autosaved locally");
     }
   } catch {
     setStatus("Autosave failed. Make sure the local server is running.");
+    setSaveState("error", "Autosave failed");
   } finally {
     autosaveInFlight = false;
     if (autosaveQueued) {
@@ -1541,12 +1643,17 @@ function clone(value) {
 
 function closeDialogElement(dialog, returnValue = "close") {
   if (!dialog) return;
-  if (typeof dialog.close === "function") {
-    dialog.close(returnValue);
-    return;
-  }
+  const closeValue = String(returnValue || "close");
   const wasOpen = Boolean(dialog.open || dialog.hasAttribute("open"));
-  dialog.returnValue = String(returnValue || "");
+  if (typeof dialog.close === "function") {
+    try {
+      if (dialog.open) dialog.close(closeValue);
+    } catch {
+      // Fall through to manual cleanup if the browser rejects the native close call.
+    }
+    if (!dialog.open && !dialog.hasAttribute("open")) return;
+  }
+  dialog.returnValue = closeValue;
   dialog.open = false;
   dialog.removeAttribute("open");
   if (wasOpen) dialog.dispatchEvent(new Event("close"));
@@ -2053,6 +2160,7 @@ function saveSelectedProjectToPortfolio() {
   markDraftNeedsSave();
   refreshOpenPreviews();
   setStatus(`${project.title} saved into the portfolio preview.`);
+  updateBuilderWorkflow();
   return true;
 }
 
@@ -2394,6 +2502,7 @@ async function saveAllSections(options = {}) {
   if (projectDialog?.open) closeDialogElement(projectDialog);
   if (settings.refreshOpenPreviews !== false) refreshOpenPreviews();
   setStatus(`Saved ${savedPortfolioCatalog.projects.length} project${savedPortfolioCatalog.projects.length === 1 ? "" : "s"} into the portfolio preview.`);
+  updateBuilderWorkflow();
   return true;
 }
 
@@ -3408,32 +3517,46 @@ function showTemplatePreview(template) {
 }
 
 function renderTree() {
-  projectTree.innerHTML = catalog.categories.map((category) => {
-    const categoryProjects = catalog.projects.filter((project) => project.category === category.id);
-    const isExpanded = expandedCategories.has(category.id);
+  const cleanQuery = projectSearchText(projectSearchQuery);
+  let matchCount = 0;
+  const treeMarkup = catalog.categories.map((category) => {
+    const allCategoryProjects = catalog.projects.filter((project) => project.category === category.id);
+    const categoryHit = cleanQuery && projectSearchText(`${category.label} ${category.description}`).includes(cleanQuery);
+    const categoryProjects = cleanQuery
+      ? allCategoryProjects.filter((project) => categoryHit || projectMatchesSearch(project, category, cleanQuery))
+      : allCategoryProjects;
+    if (cleanQuery && !categoryProjects.length && !categoryHit) return "";
+    matchCount += categoryProjects.length;
+    const isExpanded = cleanQuery ? true : expandedCategories.has(category.id);
     return `
       <section class="tree-category">
         <div class="tree-category-heading">
           <button class="tree-category-toggle" type="button" data-toggle-category="${escapeHtml(category.id)}" aria-expanded="${isExpanded}">
-            <span>${escapeHtml(category.label)}</span>
-            <small>${categoryProjects.length} project${categoryProjects.length === 1 ? "" : "s"}</small>
+            <span>${highlightSearchText(category.label, projectSearchQuery)}</span>
+            <small>${allCategoryProjects.length} project${allCategoryProjects.length === 1 ? "" : "s"}</small>
           </button>
         </div>
         <div class="tree-projects" ${isExpanded ? "" : "hidden"}>
           ${categoryProjects.length ? categoryProjects.map((project) => `
             <div class="tree-project-row ${project.id === selectedProjectId ? "active" : ""}">
               <button type="button" data-project-id="${escapeHtml(project.id)}">
-                <span>${escapeHtml(project.title)}</span>
+                <span>${highlightSearchText(project.title, projectSearchQuery)}</span>
               </button>
               <button class="tree-project-delete" type="button" data-delete-project="${escapeHtml(project.id)}" aria-label="Delete ${escapeHtml(project.title)}" title="Delete project">
                 &times;
               </button>
             </div>
-          `).join("") : `<p class="tree-empty">No projects added yet.</p>`}
+          `).join("") : cleanQuery ? `<p class="tree-empty">Category matches, but no projects are in it yet.</p>` : ""}
         </div>
       </section>
     `;
   }).join("");
+  projectTree.innerHTML = treeMarkup || `
+    <section class="tree-category tree-search-empty">
+      <p class="tree-empty">No project, file, tool, or section matched this search.</p>
+    </section>
+  `;
+  updateProjectSearchStatus(cleanQuery ? matchCount : catalog.projects.length);
 }
 
 function summaryWordCount(project) {
@@ -5895,6 +6018,7 @@ function renderAll() {
   renderSectionTabs(project);
   renderSectionContent(project);
   if (portfolioPreviewDialog?.open) renderPreview();
+  updateBuilderWorkflow();
 }
 
 function updateProjectField(field, value) {
@@ -6540,6 +6664,7 @@ async function saveCatalog(endpoint, message) {
       "Apply to site was stopped before commit and push. Save the draft, then click Apply to site again."
     );
     setStatus("Apply to site stopped. Save draft first.");
+    setSaveState("dirty", "Save draft needed");
     return;
   }
   if (endpoint === "/api/apply-catalog" && !(targetCatalog.projects || []).length) {
@@ -6549,6 +6674,7 @@ async function saveCatalog(endpoint, message) {
       "Apply to site was stopped before commit and push."
     );
     setStatus("Apply to site stopped. Save a project or use Save all sections first.");
+    setSaveState("dirty", "Preview needs projects");
     return;
   }
 
@@ -6556,7 +6682,9 @@ async function saveCatalog(endpoint, message) {
     clearTimeout(autosaveTimer);
     saveDraftButton.disabled = true;
     applyCatalogButton.disabled = true;
-    setStatus(endpoint === "/api/apply-catalog" ? "Applying site changes..." : "Saving draft...");
+    const applying = endpoint === "/api/apply-catalog";
+    setStatus(applying ? "Applying site changes..." : "Saving draft...");
+    setSaveState(applying ? "publishing" : "saving", applying ? "Publishing..." : "Saving...");
     const response = await fetch(`${endpoint}?t=${Date.now()}`, {
       method: "POST",
       cache: "no-store",
@@ -6566,21 +6694,25 @@ async function saveCatalog(endpoint, message) {
     const result = await response.json();
     if (!response.ok) {
       setStatus(result.error || "Save failed.");
+      setSaveState("error", endpoint === "/api/apply-catalog" ? "Publish failed" : "Save failed");
       return;
     }
     if (result.publish) {
       setStatus(result.publish.pushed
         ? `${message}: ${result.file}. Pushed to ${result.publish.branch}.`
         : `${message}: ${result.file}. Git push failed: ${result.publish.error}`);
+      setSaveState(result.publish.pushed ? "published" : "error", result.publish.pushed ? "Site applied" : "Push failed");
       showPublishResult(result);
       return;
     }
     if (endpoint === "/api/save-draft") {
       draftSavedSinceChanges = true;
+      setSaveState("saved", "Draft saved");
     }
     setStatus(`${message}: ${result.file}`);
   } catch {
     setStatus("Save failed. Make sure the local server window is still running.");
+    setSaveState("error", "Save failed");
   } finally {
     saveDraftButton.disabled = false;
     applyCatalogButton.disabled = false;
@@ -6618,6 +6750,8 @@ async function loadData() {
   };
   templates = templateData.templates || [];
   setStatus(`Loaded ${catalogData.source} catalog. Builder controls are local-only.`);
+  draftSavedSinceChanges = true;
+  setSaveState("loaded", "Loaded");
 
   templateSelect.innerHTML = groupedTemplateOptions();
   refreshCategoryControls();
@@ -6774,6 +6908,32 @@ appUpdateCheckButton?.addEventListener("click", () => {
 
 addProjectButton.addEventListener("click", () => {
   toggleCategoryDropdown();
+});
+
+projectSearchInput?.addEventListener("input", () => {
+  projectSearchQuery = projectSearchInput.value || "";
+  renderTree();
+});
+
+projectSearchClear?.addEventListener("click", () => {
+  projectSearchQuery = "";
+  if (projectSearchInput) {
+    projectSearchInput.value = "";
+    projectSearchInput.focus();
+  }
+  renderTree();
+});
+
+quickOpenSelected?.addEventListener("click", () => {
+  const project = selectedProject();
+  if (!project) return;
+  openProjectWindow(project.id, activeSectionId || "brief");
+});
+
+quickPreviewSelected?.addEventListener("click", () => {
+  const project = selectedProject();
+  if (!project) return;
+  openProjectPortfolioPreview();
 });
 
 addCategoryButton?.addEventListener("click", openCategoryDialog);
