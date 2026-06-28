@@ -4,6 +4,9 @@ on:
   pull_request:
     branches:
       - main
+  push:
+    branches:
+      - main
 
 permissions:
   contents: read
@@ -16,7 +19,19 @@ jobs:
     steps:
       - name: Verify main only receives development
         shell: bash
+        env:
+          HEAD_COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
         run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            if printf '%s' "$HEAD_COMMIT_MESSAGE" | grep -Eq '^Merge pull request #[0-9]+ from [^/]+/development$'; then
+              echo "main was updated by a development release PR."
+              exit 0
+            fi
+
+            echo "::error::Direct pushes to main are not allowed. Open a pull request from development into main."
+            exit 1
+          fi
+
           if [ "${{ github.head_ref }}" != "development" ]; then
             echo "::error::Pull requests into main must come from development. Merge this branch into development first, test development, then open the development -> main release pull request."
             exit 1

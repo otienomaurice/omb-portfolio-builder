@@ -525,6 +525,10 @@
   justify-content: flex-end;
 }
 
+.app-update-dialog-actions [hidden] {
+  display: none !important;
+}
+
 .portfolio-preview-button {
   display: inline-flex;
   align-items: center;
