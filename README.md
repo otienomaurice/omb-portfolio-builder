@@ -80,6 +80,7 @@ For repository development, use the branch model in [BRANCHING.md](BRANCHING.md)
 | `codex/automatic-installer-update-flow` | Makes the update popup run the installer automatically, strengthens existing-install detection, and publishes stable latest installer asset names for website downloads. | `development` | `development` | Active |
 | `codex/split-builder-portfolio-workspaces` | Separates local builder files from public portfolio files, syncs publish-safe assets into the portfolio mirror, and bumps the next installer release version. | `development` | `development` | Active |
 | `codex/guard-latest-builder-download` | Enforces the portfolio download link against the stable latest installer URL so main releases automatically feed the newest website download. | `development` | `development` | Active |
+| `codex/secure-builder-editor-shell` | Adds native desktop menus, light app chrome, scoped publishing authorization cache, and smoother rich-editor copy, paste, cut, and image placement behavior. | `development` | `development` | Active |
 
 ## Publishing Security
 

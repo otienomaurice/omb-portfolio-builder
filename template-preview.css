@@ -1455,21 +1455,24 @@ body.rich-image-dragging * {
 }
 
 .rich-image-caret {
-  justify-self: center;
-  min-height: 26px;
-  padding: 0 8px;
-  border: 1px dashed #9fc1d4;
-  border-radius: 6px;
-  color: #526d82;
-  background: #fafdff;
-  font: inherit;
-  font-size: 0.72rem;
-  font-weight: 800;
+  display: none;
 }
 
-.rich-image-caret:hover {
-  border-color: #1f6ed4;
-  color: #1f6ed4;
+.rich-drop-marker {
+  position: fixed;
+  z-index: 999999;
+  pointer-events: none;
+  border-radius: 999px;
+  background: #1f6ed4;
+  box-shadow: 0 0 0 4px rgba(31, 110, 212, 0.14);
+}
+
+.rich-drop-marker.caret {
+  width: 2px;
+}
+
+.rich-drop-marker.block {
+  height: 3px;
 }
 
 .rich-image figcaption,
