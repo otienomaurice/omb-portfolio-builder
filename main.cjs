@@ -11,6 +11,7 @@ let mainWindow = null;
 let builderOrigin = "";
 const execFileAsync = promisify(execFile);
 const defaultRepositoryUrl = process.env.OMB_BUILDER_REPOSITORY || "";
+const defaultWorkspaceHomeName = "OMB";
 
 const rootFilesToRefresh = [
   "server.mjs",
@@ -33,6 +34,17 @@ const rootFilesToSeed = [
 ];
 
 const directorySeeds = ["assets", "Backgrounds", "docs"];
+const portfolioFilesToSeed = [
+  "projects.json",
+  "index.html",
+  "styles.css",
+  "script.js",
+  "electronics-search.js",
+  ".nojekyll",
+  "robots.txt",
+  "sitemap.xml"
+];
+const portfolioDirectoriesToSeed = ["assets", "Backgrounds", "docs"];
 const gitCandidates = [
   process.env.GIT_EXE,
   "git",
@@ -136,10 +148,13 @@ async function cloneWorkspaceIfPossible(workspaceRoot) {
 
 async function preparePackagedWorkspace() {
   const bundledSiteRoot = path.join(process.resourcesPath, "site");
-  const workspaceRoot = path.join(app.getPath("documents"), "OMB Portfolio Builder Workspace");
+  const workspaceHome = process.env.OMB_WORKSPACE_HOME || path.join(app.getPath("home"), defaultWorkspaceHomeName);
+  const workspaceRoot = path.join(workspaceHome, "builder");
+  const portfolioRoot = process.env.OMB_PORTFOLIO_WORKSPACE || path.join(workspaceHome, "portfolio");
 
   await fsp.mkdir(workspaceRoot, { recursive: true });
-  await cloneWorkspaceIfPossible(workspaceRoot);
+  await fsp.mkdir(portfolioRoot, { recursive: true });
+  await cloneWorkspaceIfPossible(portfolioRoot);
 
   for (const fileName of rootFilesToRefresh) {
     await copyFileIfAvailable(path.join(bundledSiteRoot, fileName), path.join(workspaceRoot, fileName), true);
@@ -151,15 +166,38 @@ async function preparePackagedWorkspace() {
     await copyDirectoryMissingFiles(path.join(bundledSiteRoot, directoryName), path.join(workspaceRoot, directoryName));
   }
 
-  return workspaceRoot;
+  for (const fileName of portfolioFilesToSeed) {
+    await copyFileIfAvailable(path.join(bundledSiteRoot, fileName), path.join(portfolioRoot, fileName), false);
+  }
+  for (const directoryName of portfolioDirectoriesToSeed) {
+    await copyDirectoryMissingFiles(path.join(bundledSiteRoot, directoryName), path.join(portfolioRoot, directoryName));
+  }
+
+  return { workspaceRoot, portfolioRoot };
 }
 
-async function resolveWorkspaceRoot() {
+async function resolveWorkspaceRoots() {
   const envWorkspace = process.env.OMB_BUILDER_WORKSPACE;
-  if (envWorkspace && workspaceLooksUsable(envWorkspace)) return envWorkspace;
-  if (!app.isPackaged) return path.resolve(__dirname);
+  if (envWorkspace && workspaceLooksUsable(envWorkspace)) {
+    return {
+      workspaceRoot: envWorkspace,
+      portfolioRoot: process.env.OMB_PORTFOLIO_WORKSPACE || path.join(path.dirname(envWorkspace), "portfolio")
+    };
+  }
+  if (!app.isPackaged) {
+    const workspaceRoot = path.resolve(__dirname);
+    return {
+      workspaceRoot,
+      portfolioRoot: process.env.OMB_PORTFOLIO_WORKSPACE || workspaceRoot
+    };
+  }
   const nearbyRepository = findRepositoryNearExecutable();
-  if (nearbyRepository) return nearbyRepository;
+  if (nearbyRepository) {
+    return {
+      workspaceRoot: nearbyRepository,
+      portfolioRoot: process.env.OMB_PORTFOLIO_WORKSPACE || nearbyRepository
+    };
+  }
   return preparePackagedWorkspace();
 }
 
@@ -175,12 +213,13 @@ function findFreePort() {
   });
 }
 
-async function startBuilderServer(workspaceRoot) {
+async function startBuilderServer(workspaceRoot, portfolioRoot) {
   const port = await findFreePort();
   process.env.PORT = String(port);
   process.env.HOST = "127.0.0.1";
   process.env.OMB_DESKTOP_APP = "1";
   process.env.OMB_BUILDER_WORKSPACE = workspaceRoot;
+  process.env.OMB_PORTFOLIO_WORKSPACE = portfolioRoot;
   process.env.OMB_BUILDER_REPOSITORY = defaultRepositoryUrl;
   process.env.OMB_APP_VERSION = app.getVersion();
 
@@ -236,8 +275,8 @@ async function boot() {
 
   await app.whenReady();
   try {
-    const workspaceRoot = await resolveWorkspaceRoot();
-    builderOrigin = await startBuilderServer(workspaceRoot);
+    const { workspaceRoot, portfolioRoot } = await resolveWorkspaceRoots();
+    builderOrigin = await startBuilderServer(workspaceRoot, portfolioRoot);
     createWindow(workspaceRoot, builderOrigin);
   } catch (error) {
     dialog.showErrorBox("OMB Portfolio Builder could not start", error?.message || String(error));

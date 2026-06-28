@@ -1061,7 +1061,8 @@ function renderPublishTargetInfo(target = {}) {
     ? `Verified${checkedText}${trustText}${expiresText}`
     : "Not verified for this repository and branch";
   const rows = [
-    ["Workspace", target.workspace || "Not available"],
+    ["Builder workspace", target.workspace || "Not available"],
+    ["Portfolio workspace", target.portfolioWorkspace || target.workspace || "Not available"],
     ["Repository", target.repository || target.remote || "No repository connected"],
     ["Branch", target.branch || "No branch selected"],
     ["Custom domain", target.customDomain || "None"],
