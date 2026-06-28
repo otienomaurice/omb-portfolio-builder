@@ -26,7 +26,7 @@ It lets you choose a different installation folder, creates a Windows uninstall 
 
 Installed users do **not** need to install Node.js or pnpm. The desktop app includes its runtime. Git for Windows with Git Credential Manager is needed only for GitHub publishing. The installer checks for publishing tools and can install Git for Windows if Git/Git Credential Manager is missing. If a compatible tool is already present, setup skips it. Existing shared tools are not silently uninstalled.
 
-The public portfolio website also exposes a direct **Download builder application** link near the top of the page, just below Fun Facts. That link points to the latest installer asset, so new downloads receive the newest duplicate-detection and update behavior.
+The public portfolio website also exposes a direct **Download builder application** link near the top of the page, just below Fun Facts. That link points to `https://github.com/otienomaurice/omb-portfolio-builder/releases/latest/download/OMB-Portfolio-Builder-Setup-latest-x64.exe`. Every successful `main` release marks the new GitHub Release as latest and uploads this stable latest installer asset, so the portfolio link automatically downloads the newest builder without editing the website each time.
 
 If OMB Portfolio Builder is already installed through Windows, the installer becomes an update flow for that registered installation. It tells the user which version it found, pins setup to the existing install location, removes the old copy, and installs the new version in that same location. It will not create a second installed copy in a different folder. On machines without a registered install, setup scans fixed drives for unregistered OMB Portfolio Builder executables, portable copies, and local builder workspaces. If it finds one of those duplicate copies, setup stops and asks the user to remove, uninstall, or rename that copy first so the machine does not keep an older builder with stale editing features.
 
@@ -79,6 +79,7 @@ For repository development, use the branch model in [BRANCHING.md](BRANCHING.md)
 | `codex/cache-daily-auth-and-restore-profile` | Adds daily and extended publishing authorization caching, clarifies publishing target fields, keeps active-machine profile fields populated, and enforces development-only PRs into main. | `codex/fix-release-tag-check` | `development` | Active |
 | `codex/automatic-installer-update-flow` | Makes the update popup run the installer automatically, strengthens existing-install detection, and publishes stable latest installer asset names for website downloads. | `development` | `development` | Active |
 | `codex/split-builder-portfolio-workspaces` | Separates local builder files from public portfolio files, syncs publish-safe assets into the portfolio mirror, and bumps the next installer release version. | `development` | `development` | Active |
+| `codex/guard-latest-builder-download` | Enforces the portfolio download link against the stable latest installer URL so main releases automatically feed the newest website download. | `development` | `development` | Active |
 
 ## Publishing Security
 

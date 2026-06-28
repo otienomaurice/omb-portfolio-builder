@@ -67,6 +67,15 @@ jobs:
           "version=$version" >> $env:GITHUB_OUTPUT
           "release_tag=$tag" >> $env:GITHUB_OUTPUT
 
+      - name: Verify portfolio download link follows latest release
+        shell: pwsh
+        run: |
+          $latestInstallerUrl = "https://github.com/otienomaurice/omb-portfolio-builder/releases/latest/download/OMB-Portfolio-Builder-Setup-latest-x64.exe"
+          $index = Get-Content index.html -Raw
+          if ($index -notmatch [regex]::Escape($latestInstallerUrl)) {
+            throw "The portfolio download link must use the stable latest installer URL: $latestInstallerUrl"
+          }
+
       - name: Require a new version for main releases
         if: github.ref == 'refs/heads/main'
         shell: pwsh
