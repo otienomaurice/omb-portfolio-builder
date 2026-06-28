@@ -30,7 +30,7 @@ C:\Program Files\OMB Portfolio Builder\OMB Portfolio Builder.exe
 Desktop and Start Menu shortcuts point directly to that executable. On this development machine, the active standalone app-folder copy is `C:\Users\otien\OMB\application\OMB Portfolio Builder.exe`; installers now detect that app folder as the current copy and update it in place instead of creating a second builder elsewhere.
 
 The installer is not one-click; it uses a normal Windows wizard with Back, Next, Cancel, install progress, and Finish.
-It lets you choose a different installation folder, creates a Windows uninstall entry, and creates a desktop shortcut by default unless you untick that option.
+It lets you choose a different installation folder, creates a Windows uninstall entry, and creates a desktop shortcut by default unless you untick that option. The desktop shortcut is written to the physical Windows user desktop, `C:\Users\<you>\Desktop`, so OneDrive Desktop redirection does not create a second shortcut in `C:\Users\<you>\OneDrive\Desktop`.
 
 Installed users do **not** need to install Node.js or pnpm. The desktop app includes its runtime. Git for Windows with Git Credential Manager is needed only for GitHub publishing. The installer checks for publishing tools and can install Git for Windows if Git/Git Credential Manager is missing. If a compatible tool is already present, setup skips it. Existing shared tools are not silently uninstalled.
 
@@ -90,6 +90,8 @@ For repository development, use the branch model in [BRANCHING.md](BRANCHING.md)
 | `codex/guard-latest-builder-download` | Enforces the portfolio download link against the stable latest installer URL so main releases automatically feed the newest website download. | `development` | `development` | Active |
 | `codex/secure-builder-editor-shell` | Adds native desktop menus, light app chrome, scoped publishing authorization cache, and smoother rich-editor copy, paste, cut, and image placement behavior. | `development` | `development` | Active |
 | `codex/smooth-builder-workflow` | Adds smoother builder workflow feedback, searchable project navigation, selected-project quick actions, clearer preview metrics, and app-folder update detection for the standalone Windows executable. | `development` | `development` | Active |
+| `codex/local-desktop-shortcut` | Forces installer-created shortcuts onto the physical Windows desktop instead of redirected OneDrive Desktop folders. | `development` | `development` | Active |
+| `codex/update-dialog-and-main-gate` | Hides inactive update actions when the builder is current and adds a clearer main-branch push guard. | `development` | `development` | Active |
 
 ## Publishing Security
 

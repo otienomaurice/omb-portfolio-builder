@@ -384,7 +384,15 @@ FunctionEnd
 !macro customInstall
   ${If} $OMB_CreateDesktopShortcutState != ${BST_CHECKED}
     Delete "$newDesktopLink"
+    Delete "$DESKTOP\OMB Portfolio Builder.lnk"
+    Delete "$PROFILE\Desktop\OMB Portfolio Builder.lnk"
     DetailPrint "Desktop shortcut removed because it was not selected."
+  ${Else}
+    Delete "$newDesktopLink"
+    Delete "$DESKTOP\OMB Portfolio Builder.lnk"
+    CreateDirectory "$PROFILE\Desktop"
+    CreateShortCut "$PROFILE\Desktop\OMB Portfolio Builder.lnk" "$INSTDIR\OMB Portfolio Builder.exe" "" "$INSTDIR\resources\site\assets\omb-app-icon.ico" 0
+    DetailPrint "Desktop shortcut created at $PROFILE\Desktop\OMB Portfolio Builder.lnk."
   ${EndIf}
 
   ${If} $OMB_InstallPublishingToolsState == ${BST_CHECKED}
@@ -416,5 +424,10 @@ FunctionEnd
 
 !macro customUnWelcomePage
   Page custom OMBUninstallPageCreate
+!macroend
+
+!macro customUnInstall
+  Delete "$PROFILE\Desktop\OMB Portfolio Builder.lnk"
+  Delete "$DESKTOP\OMB Portfolio Builder.lnk"
 !macroend
 !endif
