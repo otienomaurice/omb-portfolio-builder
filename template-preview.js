@@ -392,6 +392,7 @@ let selectionInspectorInputTimer = 0;
 let activeRichDragBlock = null;
 let activeImageCropDrag = null;
 let activeRichImageMoveDrag = null;
+let activeRichDropMarker = null;
 let originalTitleDraft = "";
 let titleClickTimer = 0;
 let autosaveTimer = 0;
@@ -3533,14 +3534,12 @@ function createRichImageBlock(blockData) {
   figure.draggable = true;
   figure.title = "Drag image to move it between text.";
   figure.innerHTML = `
-    <button class="rich-image-caret rich-image-caret-before" type="button" data-rich-caret="before">Type before</button>
     ${richBlockActions("overview image", { movable: true })}
     ${figure.dataset.display === "download" ? `<span class="rich-download-badge">Download only</span>` : ""}
     <span class="rich-image-viewport crop-${figure.dataset.cropAspect === "original" ? "original" : "active"}"${richImageCropStyle(blockData)}>
       <img src="${escapeHtml(normalizeLinkTarget(blockData.url, { assumeWeb: true }))}" alt="${escapeHtml(title || "Overview image")}" draggable="true" data-rich-image-drag="true">
     </span>
     ${(title || blockData.caption) ? `<figcaption>${title ? `<strong>${escapeHtml(title)}</strong>` : ""}${blockData.caption ? `<span>${escapeHtml(blockData.caption)}</span>` : ""}</figcaption>` : ""}
-    <button class="rich-image-caret rich-image-caret-after" type="button" data-rich-caret="after">Type after</button>
   `;
   return figure;
 }
@@ -3578,7 +3577,6 @@ function refreshRichImageBlock(block, blockData) {
   block.classList.add(`justify-${align}`);
   const title = cleanRichImageTitle({ title: block.dataset.title });
   block.innerHTML = `
-    <button class="rich-image-caret rich-image-caret-before" type="button" data-rich-caret="before">Type before</button>
     ${richBlockActions("overview image", { movable: true })}
     ${block.dataset.display === "download" ? `<span class="rich-download-badge">Download only</span>` : ""}
     <span class="rich-image-viewport crop-${block.dataset.cropAspect === "original" ? "original" : "active"}"${richImageCropStyle({
@@ -3590,7 +3588,6 @@ function refreshRichImageBlock(block, blockData) {
       <img src="${escapeHtml(normalizeLinkTarget(block.dataset.url, { assumeWeb: true }))}" alt="${escapeHtml(title || "Overview image")}" draggable="true" data-rich-image-drag="true">
     </span>
     ${(title || block.dataset.caption) ? `<figcaption>${title ? `<strong>${escapeHtml(title)}</strong>` : ""}${block.dataset.caption ? `<span>${escapeHtml(block.dataset.caption)}</span>` : ""}</figcaption>` : ""}
-    <button class="rich-image-caret rich-image-caret-after" type="button" data-rich-caret="after">Type after</button>
   `;
 }
 
@@ -4557,6 +4554,20 @@ async function handleRichAction(action, editor) {
         const text = await navigator.clipboard.readText();
         if (text) {
             insertPlainTextIntoRichEditor(editor, text);
+            saveRichEditorToProject(editor);
+        }
+        return;
+    }
+    if (action === "cut-text") {
+        restoreRichSelection(editor);
+        const selection = window.getSelection();
+        const selectedText = selection?.toString() || "";
+        if (selectedText && selection.rangeCount) {
+            await navigator.clipboard.writeText(selectedText);
+            const range = selection.getRangeAt(0);
+            range.deleteContents();
+            captureRichSelection(editor);
+            cleanupEmptyRichTextBlocks(editor);
             saveRichEditorToProject(editor);
         }
         return;
@@ -7451,6 +7462,7 @@ function handleRichDragOver(event) {
   if (!editor || editor !== activeRichDragBlock.closest("[data-rich-editor]")) return;
   event.preventDefault();
   if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
+  updateRichDropMarker(editor, activeRichDragBlock, event.clientX, event.clientY, event.target);
 }
 
 function richRangeFromPoint(x, y) {
@@ -7467,6 +7479,23 @@ function richRangeFromPoint(x, y) {
   return null;
 }
 
+function richDropLocation(editor, movingBlock, x, y, eventTarget = null) {
+  const previousPointerEvents = movingBlock?.style.pointerEvents || "";
+  if (movingBlock) movingBlock.style.pointerEvents = "none";
+  try {
+    const dropRange = validDropRangeForEditor(editor, movingBlock, richRangeFromPoint(x, y));
+    const pointTarget = eventTarget && !movingBlock?.contains(eventTarget)
+      ? eventTarget
+      : document.elementFromPoint(x, y);
+    return {
+      dropRange,
+      target: pointTarget?.closest?.(".rich-block") || null
+    };
+  } finally {
+    if (movingBlock) movingBlock.style.pointerEvents = previousPointerEvents;
+  }
+}
+
 function validDropRangeForEditor(editor, movingBlock, range) {
   const rangeNode = range?.startContainer?.nodeType === Node.TEXT_NODE
     ? range.startContainer.parentElement
@@ -7477,11 +7506,55 @@ function validDropRangeForEditor(editor, movingBlock, range) {
   return range;
 }
 
-function moveRichBlockToPoint(editor, movingBlock, x, y, eventTarget = null) {
+function ensureRichDropMarker() {
+  if (!activeRichDropMarker) {
+    activeRichDropMarker = document.createElement("div");
+    activeRichDropMarker.className = "rich-drop-marker";
+    activeRichDropMarker.setAttribute("aria-hidden", "true");
+    document.body.append(activeRichDropMarker);
+  }
+  activeRichDropMarker.hidden = false;
+  return activeRichDropMarker;
+}
+
+function hideRichDropMarker() {
+  if (activeRichDropMarker) activeRichDropMarker.hidden = true;
+}
+
+function updateRichDropMarker(editor, movingBlock, x, y, eventTarget = null) {
   if (!editor || !movingBlock) return;
-  let dropRange = validDropRangeForEditor(editor, movingBlock, richRangeFromPoint(x, y));
-  const pointTarget = eventTarget || document.elementFromPoint(x, y);
-  const target = pointTarget?.closest?.(".rich-block");
+  const marker = ensureRichDropMarker();
+  const { dropRange, target } = richDropLocation(editor, movingBlock, x, y, eventTarget);
+  if (dropRange) {
+    const rangeRect = dropRange.getClientRects()[0];
+    const anchor = dropRange.startContainer.nodeType === Node.TEXT_NODE
+      ? dropRange.startContainer.parentElement
+      : dropRange.startContainer;
+    const anchorRect = anchor?.getBoundingClientRect?.();
+    const rect = rangeRect || anchorRect || editor.getBoundingClientRect();
+    marker.className = "rich-drop-marker caret";
+    marker.style.left = `${Math.max(rect.left, Math.min(x, rect.right || rect.left))}px`;
+    marker.style.top = `${rect.top}px`;
+    marker.style.width = "2px";
+    marker.style.height = `${Math.max(22, rect.height || 22)}px`;
+    return;
+  }
+
+  const targetRect = (target && editor.contains(target) && target !== movingBlock)
+    ? target.getBoundingClientRect()
+    : editor.getBoundingClientRect();
+  const imageRect = movingBlock.getBoundingClientRect();
+  const beforeTarget = !target || y < targetRect.top + targetRect.height / 2;
+  marker.className = "rich-drop-marker block";
+  marker.style.left = `${targetRect.left}px`;
+  marker.style.top = `${beforeTarget ? targetRect.top : targetRect.bottom}px`;
+  marker.style.width = `${Math.min(targetRect.width, Math.max(160, imageRect.width || targetRect.width))}px`;
+  marker.style.height = "3px";
+}
+
+function moveRichBlockToPoint(editor, movingBlock, x, y, eventTarget = null, options = {}) {
+  if (!editor || !movingBlock) return;
+  const { dropRange, target } = richDropLocation(editor, movingBlock, x, y, eventTarget);
 
   movingBlock.classList.remove("is-dragging");
   if (target === movingBlock) return;
@@ -7497,8 +7570,9 @@ function moveRichBlockToPoint(editor, movingBlock, x, y, eventTarget = null) {
   }
 
   cleanupEmptyRichTextBlocks(editor);
-  saveRichEditorToProject(editor);
-  selectRichBlock(movingBlock);
+  if (options.focusAfter !== false) focusAdjacentImageText(movingBlock, "after");
+  if (options.commit !== false) saveRichEditorToProject(editor);
+  if (options.focusAfter === false) selectRichBlock(movingBlock);
 }
 
 function handleRichDrop(event) {
@@ -7507,6 +7581,7 @@ function handleRichDrop(event) {
   if (!editor || editor !== activeRichDragBlock.closest("[data-rich-editor]")) return;
   event.preventDefault();
   moveRichBlockToPoint(editor, activeRichDragBlock, event.clientX, event.clientY, event.target);
+  hideRichDropMarker();
   activeRichDragBlock = null;
 }
 
@@ -7544,6 +7619,7 @@ function moveRichImageMoveDrag(event) {
     drag.block.classList.add("is-dragging");
     document.body.classList.add("rich-image-dragging");
   }
+  updateRichDropMarker(drag.editor, drag.block, event.clientX, event.clientY, event.target);
   event.preventDefault();
 }
 
@@ -7553,6 +7629,7 @@ function endRichImageMoveDrag(event) {
   drag.block.releasePointerCapture?.(drag.pointerId);
   if (drag.moved) {
     moveRichBlockToPoint(drag.editor, drag.block, event.clientX, event.clientY);
+    hideRichDropMarker();
     event.preventDefault();
   }
   drag.block.classList.remove("is-dragging");
@@ -7602,6 +7679,7 @@ function endImageCropDrag() {
   root.addEventListener("drop", handleRichDrop);
   root.addEventListener("dragend", () => {
     activeRichDragBlock?.classList.remove("is-dragging");
+    hideRichDropMarker();
     activeRichDragBlock = null;
   });
   root.addEventListener("pointerdown", beginRichImageMoveDrag);
@@ -7619,7 +7697,7 @@ summaryContextMenu.addEventListener("click", async (event) => {
   if (!actionButton) return;
   const action = actionButton.dataset.richAction;
   await handleRichAction(action, activeSummaryEditor);
-  if (["add-image", "add-formula", "copy-text", "paste-text", "edit-block", "delete-block"].includes(action)) {
+  if (["add-image", "add-formula", "copy-text", "paste-text", "cut-text", "edit-block", "delete-block"].includes(action)) {
     hideSummaryContextMenu();
   }
 });
@@ -7959,6 +8037,17 @@ summaryFormulaForm.addEventListener("submit", (event) => {
 saveDraftButton.addEventListener("click", () => saveCatalog("/api/save-draft", "Draft saved"));
 applyCatalogButton.addEventListener("click", () => {
   saveCatalog("/api/apply-catalog", "Catalog applied and pushed");
+});
+
+window.addEventListener("builder-menu-action", (event) => {
+  const type = event.detail?.type || "";
+  if (type === "new-project") addProjectButton?.click();
+  if (type === "publishing-target") publishTargetOpen?.click();
+  if (type === "save-draft") saveDraftButton?.click();
+  if (type === "apply-site") applyCatalogButton?.click();
+  if (type === "portfolio-preview") openPortfolioPreviewButton?.click();
+  if (type === "builder-guide") builderGuideOpen?.click();
+  if (type === "check-updates") checkForAppUpdates({ force: true, manual: true });
 });
 
 renderSelectionInspectorOptions();

@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog, shell } = require("electron");
+const { app, BrowserWindow, Menu, dialog, nativeTheme, shell } = require("electron");
 const { execFile } = require("node:child_process");
 const fs = require("node:fs");
 const fsp = require("node:fs/promises");
@@ -53,6 +53,68 @@ const gitCandidates = [
   "C:\\Program Files (x86)\\Git\\cmd\\git.exe",
   "C:\\Program Files (x86)\\Git\\bin\\git.exe"
 ].filter(Boolean);
+
+function dispatchBuilderMenuAction(action) {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  const payload = JSON.stringify(action);
+  mainWindow.webContents.executeJavaScript(
+    `window.dispatchEvent(new CustomEvent("builder-menu-action", { detail: ${payload} }));`,
+    true
+  ).catch(() => {});
+}
+
+function createAppMenu(origin) {
+  return Menu.buildFromTemplate([
+    {
+      label: "File",
+      submenu: [
+        { label: "New Project", accelerator: "CmdOrCtrl+N", click: () => dispatchBuilderMenuAction({ type: "new-project" }) },
+        { label: "Publishing Target", click: () => dispatchBuilderMenuAction({ type: "publishing-target" }) },
+        { type: "separator" },
+        { label: "Save Draft", accelerator: "CmdOrCtrl+S", click: () => dispatchBuilderMenuAction({ type: "save-draft" }) },
+        { label: "Apply to Site", accelerator: "CmdOrCtrl+Shift+S", click: () => dispatchBuilderMenuAction({ type: "apply-site" }) },
+        { type: "separator" },
+        { role: "quit", label: "Exit" }
+      ]
+    },
+    {
+      label: "Edit",
+      submenu: [
+        { role: "undo" },
+        { role: "redo" },
+        { type: "separator" },
+        { role: "cut" },
+        { role: "copy" },
+        { role: "paste" },
+        { role: "selectAll" }
+      ]
+    },
+    {
+      label: "View",
+      submenu: [
+        { role: "reload" },
+        { role: "forceReload" },
+        { type: "separator" },
+        { role: "resetZoom" },
+        { role: "zoomIn" },
+        { role: "zoomOut" },
+        { type: "separator" },
+        { label: "Portfolio Preview", click: () => dispatchBuilderMenuAction({ type: "portfolio-preview" }) },
+        { label: "Check Updates", click: () => dispatchBuilderMenuAction({ type: "check-updates" }) },
+        { type: "separator" },
+        { role: "togglefullscreen" }
+      ]
+    },
+    {
+      label: "Help",
+      submenu: [
+        { label: "Builder Guide", accelerator: "F1", click: () => dispatchBuilderMenuAction({ type: "builder-guide" }) },
+        { label: "GitHub Releases", click: () => shell.openExternal("https://github.com/otienomaurice/omb-portfolio-builder/releases/latest") },
+        { label: "Open Local Builder", click: () => shell.openExternal(`${origin}/template-preview.html`) }
+      ]
+    }
+  ]);
+}
 
 function fileExists(filePath) {
   try {
@@ -230,12 +292,14 @@ async function startBuilderServer(workspaceRoot, portfolioRoot) {
 
 function createWindow(workspaceRoot, origin) {
   const iconPath = path.join(workspaceRoot, "assets", "omb-app-icon-256.png");
+  nativeTheme.themeSource = "light";
   mainWindow = new BrowserWindow({
     width: 1440,
     height: 960,
     minWidth: 980,
     minHeight: 680,
     title: "OMB Portfolio Builder",
+    autoHideMenuBar: false,
     icon: fileExists(iconPath) ? iconPath : undefined,
     backgroundColor: "#eef8fd",
     webPreferences: {
@@ -244,6 +308,8 @@ function createWindow(workspaceRoot, origin) {
       sandbox: true
     }
   });
+  mainWindow.setMenu(createAppMenu(origin));
+  mainWindow.setMenuBarVisibility(true);
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith(origin)) return { action: "allow" };

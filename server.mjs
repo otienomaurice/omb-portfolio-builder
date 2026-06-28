@@ -1,6 +1,7 @@
 import { createServer } from "node:http";
 import { execFile, spawn } from "node:child_process";
-import { access as fsAccess, cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { access as fsAccess, chmod, cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -1170,12 +1171,31 @@ async function writePublishAuthCache(access = {}) {
     extendedTrust,
     remote: access.remote || "",
     repository: access.repository || "",
+    scope: publishAuthCacheScope(),
     successCountLastWeek,
     successHistory,
     trustDays: extendedTrust ? 30 : 1
   };
   await writeFile(publishAuthCachePath, `${JSON.stringify(cache, null, 2)}\n`, "utf8");
+  await chmod(publishAuthCachePath, 0o600).catch(() => {});
   return cache;
+}
+
+function publishAuthCacheScope() {
+  let username = process.env.USERNAME || process.env.USER || "";
+  try {
+    username = os.userInfo().username || username;
+  } catch {
+    // Environment username is a sufficient fallback for cache scoping.
+  }
+  return createHash("sha256")
+    .update([
+      os.hostname(),
+      username,
+      root,
+      portfolioRoot
+    ].join("\n"))
+    .digest("hex");
 }
 
 function parsePublishAuthTimestamp(value = "") {
@@ -1196,6 +1216,7 @@ function publishAuthCacheExpiresAt(cache) {
 function publishAuthCacheIsFresh(cache, access) {
   if (!cache || !access) return false;
   if (cache.remote !== access.remote || cache.branch !== access.branch || cache.repository !== access.repository) return false;
+  if (cache.scope !== publishAuthCacheScope()) return false;
   const expiresAt = Date.parse(publishAuthCacheExpiresAt(cache));
   if (!Number.isFinite(expiresAt)) return false;
   return Date.now() < expiresAt;
