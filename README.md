@@ -154,10 +154,11 @@ The builder runs from a local server inside the desktop app. Project creation, s
 
 On Windows the app keeps editing and publishing separated:
 
+- `C:\Users\<you>\OMB\application` stores the installed desktop application files, including `OMB Portfolio Builder.exe`. Shortcuts should point here.
 - `C:\Users\<you>\OMB\builder` stores the builder app workspace, drafts, uploaded files, templates, previews, and local editing tools.
 - `C:\Users\<you>\OMB\portfolio` stores the public website mirror and Git repository used for publishing.
 
-When **Apply to site** runs, the builder copies only public website files from `builder` into `portfolio`, then commits and pushes from the `portfolio` Git repository. Builder-only files such as `server.mjs`, `template-preview.*`, local drafts, installer notes, and desktop tooling are not copied into the public portfolio folder.
+When you update a resume, background, profile photo, project file, or other public asset in the builder, the file is saved first inside `builder`. **Save draft** keeps that work local. When **Apply to site** runs, the builder copies only public website files from `builder` into `portfolio`, then commits and pushes from the `portfolio` Git repository. Builder-only files such as `server.mjs`, `template-preview.*`, local drafts, installer notes, and desktop tooling are not copied into the public portfolio folder.
 
 When the computer is online again, click **Apply to site**. The app checks the selected publishing target, verifies GitHub push access, writes the live site catalog, commits changed site files, and pushes.
 
