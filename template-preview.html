@@ -266,7 +266,7 @@
                   </li>
                   <li>
                       <strong>Connect a publishing target before going live.</strong>
-                      <p>Use Publishing target to choose the website repository and custom domain. Click Save target and authenticate so GitHub verifies write access before the target is kept. A successful authorization is remembered for the same repository and branch for the day, and frequent successful authorizations can extend that trust window to 30 days. Load from target becomes available only after authentication succeeds or a valid saved authorization is reused; if authentication fails, the previous target remains in place and the builder stays local.</p>
+                      <p>Use Publishing target to choose the website repository and custom domain. Click Save target and authenticate so GitHub verifies write access before the target is kept. A successful authorization is remembered for the same repository and branch for the day, and frequent successful authorizations can extend that trust window to 30 days. After authentication succeeds, the builder immediately loads the latest compatible website copy from that target into this local builder; if authentication fails, the previous target remains in place and the builder stays local.</p>
                   </li>
                   <li>
                       <strong>Apply to site publishes when ready.</strong>
@@ -462,7 +462,7 @@
                   <small class="publish-target-field-note">The token is passed to Git Credential Manager on this computer. It is never saved into the website files or repository.</small>
               </label>
               <p class="publish-target-note">
-                  Publishing uses Git for Windows and Git Credential Manager. Enter a repository, then click Save target and authenticate. A browser or GitHub sign-in window opens only when the saved authorization for this repository and branch has expired. The builder keeps the previous target until GitHub confirms write access to the new target. Load from target becomes available only after authentication is complete.
+                  Publishing uses Git for Windows and Git Credential Manager. Enter a repository, then click Save target and authenticate. A browser or GitHub sign-in window opens only when the saved authorization for this repository and branch has expired. The builder keeps the previous target until GitHub confirms write access to the new target, then it loads the latest compatible website copy from that target into this local builder.
               </p>
               <div class="dialog-actions">
                   <button class="button primary" type="submit">Save target and authenticate</button>

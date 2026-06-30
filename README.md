@@ -130,17 +130,17 @@ https://github.com/YOUR-USERNAME/YOUR-USERNAME.github.io.git
 3. Optionally enter a custom domain such as `example.com`; the builder writes it to `CNAME`.
 4. Click **Check tools**. If Git is missing, click **Install Git**; the app starts the Git for Windows installer path for you.
 5. Click **Save target and authenticate**. A GitHub/Git Credential Manager browser sign-in may open.
-6. The builder detects the repository default branch, verifies write access, and keeps the new target only after GitHub authorization succeeds.
-7. Click **Load from target** to load a compatible portfolio through a temporary clone. The builder backs up replaced local portfolio files under `.omb-backups` and updates the local draft to match the target catalog.
+6. The builder detects the repository default branch, verifies write access with a safe temporary dry-run ref, and keeps the new target only after GitHub authorization succeeds.
+7. After authentication succeeds, the builder automatically loads a compatible portfolio through a temporary clone. The builder backs up replaced local portfolio files under `.omb-backups` and updates the local draft to match the target catalog. You can also click **Load from target** later to refresh from the latest website copy.
 8. Click **Save draft** before **Apply to site**.
 
 Successful publishing authorization is cached locally for about one day per repository and branch, so Apply to site does not re-check GitHub authorization on every push. If the same repository and branch has more than three successful authorizations within one week, the builder extends that local trust window to 30 days for that exact target.
 
 ## Updates
 
-The installed builder checks the latest GitHub Release and opens an in-app update window when a newer installer is available. Choose **Update** to download the latest installer, close the app, and run the installer automatically. Choose **Remind me later** to snooze the prompt or **Skip this version** to dismiss that release. You can also click **Check updates** in the builder header to check manually.
+The installed builder checks the latest GitHub Release and opens an in-app update window when a newer installer is available. Choose **Update** to download the latest installer, close the app, run the installer automatically, and reopen the app. Choose **Remind me later** to snooze the prompt or **Skip this version** to dismiss that release. You can also click **Check updates** in the builder header to check manually.
 
-The app checks on startup, checks periodically while it remains open, and checks again when the window returns to focus after a long idle period. Updates are installed through the same Windows installer flow. The update does not require users to manually run shell scripts or manually delete the previous version. If the app is already installed, setup detects the existing copy, removes it, and continues installing the selected version.
+The app checks on startup, checks periodically while it remains open, and checks again when the window returns to focus after a long idle period. Updates are installed through the same Windows installer flow. The update does not require users to manually run shell scripts or manually delete the previous version. If the app is already installed, setup detects the existing copy, stops when the installed version is already current or newer, and updates the existing location only when the installer is newer.
 
 Release notifications depend on version numbers. Before merging `development` into `main`, bump `package.json` to the next version. Only `development` should be opened as the source branch for a release pull request into `main`. When `main` is pushed, GitHub Actions builds the installer, publishes a `builder-v<version>` GitHub Release, and installed apps detect that newer release.
 
