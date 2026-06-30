@@ -92,6 +92,8 @@ For repository development, use the branch model in [BRANCHING.md](BRANCHING.md)
 | `codex/smooth-builder-workflow` | Adds smoother builder workflow feedback, searchable project navigation, selected-project quick actions, clearer preview metrics, and app-folder update detection for the standalone Windows executable. | `development` | `development` | Active |
 | `codex/local-desktop-shortcut` | Forces installer-created shortcuts onto the physical Windows desktop instead of redirected OneDrive Desktop folders. | `development` | `development` | Active |
 | `codex/update-dialog-and-main-gate` | Hides inactive update actions when the builder is current and adds a clearer main-branch push guard. | `development` | `development` | Active |
+| `codex/responsive-builder-output` | Makes the project parser build responsive layout profiles so saved portfolio projects render cleanly on phones and PCs. | `development` | `development` | Merged into `development` |
+| `codex/responsive-builder-docs` | Updates the README and in-app guide for responsive builder output. | `development` | `development` | Merged into `development` |
 
 ## Publishing Security
 
@@ -117,6 +119,10 @@ When the app opens for the first time, use the builder panels to add your own co
 5. Click **Portfolio** to preview the website before publishing.
 
 Nothing from Maurice Otieno's portfolio is included unless a user authenticates against Maurice's publishing repository and imports it through the authenticated target-loading flow.
+
+## Responsive Website Output
+
+The builder parser prepares projects for both desktop and mobile viewing. When a project is saved, the parser records layout guidance for section-card density, content width, media width, touch targets, and full-screen project windows. The local portfolio preview and the published website use the same saved layout profile, so a project that looks right in preview is built to behave the same way on PCs, tablets, and phones.
 
 ## Publishing To A Different Website
 
