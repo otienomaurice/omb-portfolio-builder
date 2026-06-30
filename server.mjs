@@ -1018,6 +1018,75 @@ async function checkoutPublishBranch(branch) {
   return cleanBranch;
 }
 
+async function verifyPublishWriteAccess(access = {}) {
+  const checkBranch = `omb-auth-check-${safeSegment(os.hostname(), "device")}-${Date.now()}`;
+  try {
+    await runPublishGit(["push", "--dry-run", "origin", `HEAD:refs/heads/${checkBranch}`], {
+      timeout: 60 * 1000
+    });
+    return {
+      method: "temporary-dry-run-ref",
+      ref: checkBranch
+    };
+  } catch (error) {
+    throw publishAccessError(
+      "GitHub authorization is required before this website can be changed.",
+      gitFailureText(error),
+      access
+    );
+  }
+}
+
+async function ensurePublishHeadForWriteCheck() {
+  try {
+    await runPublishGit(["rev-parse", "--verify", "HEAD"]);
+    return { created: false };
+  } catch {
+    await runPublishGit([
+      "-c",
+      "user.name=OMB Portfolio Builder",
+      "-c",
+      "user.email=omb-builder@localhost",
+      "commit",
+      "--allow-empty",
+      "-m",
+      "Initialize publish authorization check"
+    ]);
+    return { created: true };
+  }
+}
+
+async function synchronizePublishBranchFromRemote(branch, access = {}) {
+  const cleanBranch = normalizeGitBranchName(branch) || "main";
+  try {
+    const remoteBranch = await runPublishGit(["ls-remote", "--heads", "origin", cleanBranch], {
+      timeout: 45 * 1000
+    });
+    if (!String(remoteBranch.stdout || "").trim()) {
+      return {
+        branch: cleanBranch,
+        remoteBranchExists: false,
+        synchronized: false
+      };
+    }
+
+    await runPublishGit(["fetch", "origin", cleanBranch], { timeout: 2 * 60 * 1000 });
+    await checkoutPublishBranch(cleanBranch);
+    await runPublishGit(["reset", "--hard", `origin/${cleanBranch}`], { timeout: 60 * 1000 });
+    return {
+      branch: cleanBranch,
+      remoteBranchExists: true,
+      synchronized: true
+    };
+  } catch (error) {
+    throw publishAccessError(
+      "The selected website target could not be synchronized from GitHub.",
+      gitFailureText(error),
+      { ...access, branch: cleanBranch }
+    );
+  }
+}
+
 async function capturePublishTargetState() {
   const snapshot = {
     branch: "",
@@ -1295,19 +1364,16 @@ async function assertPublishAccess(options = {}) {
     };
   }
 
-  try {
-    await runPublishGit(["push", "--dry-run", "origin", branch]);
-  } catch (error) {
-    throw publishAccessError(
-      "GitHub authorization is required before this website can be changed.",
-      gitFailureText(error),
-      { remote: remoteUrlForDisplay(remote), branch, repository }
-    );
-  }
+  const remoteSync = await synchronizePublishBranchFromRemote(branch, access);
+  const localHead = await ensurePublishHeadForWriteCheck();
+  const writeCheck = await verifyPublishWriteAccess(access);
 
   const authCache = await writePublishAuthCache(access);
   return {
     ...access,
+    remoteSync,
+    localHead,
+    writeCheck,
     authorizationChecked: true,
     authorizationCached: false,
     checkedAt: authCache.checkedAt,
@@ -1708,6 +1774,8 @@ async function syncPortfolioPublishFiles(options = {}) {
 
 async function publishSiteChanges(publishAccess = null) {
   const access = publishAccess || await assertPublishAccess();
+  const branch = access.branch || (await runPublishGit(["branch", "--show-current"])).stdout.trim();
+  const remoteSync = await synchronizePublishBranchFromRemote(branch, access);
   const portfolioSync = await syncPortfolioPublishFiles({ removeMissing: true });
   await bumpPublishedAssetVersions(portfolioRoot);
 
@@ -1726,13 +1794,13 @@ async function publishSiteChanges(publishAccess = null) {
     commit = await runPublishGit(["commit", "-m", message]);
   }
 
-  const branch = access.branch || (await runPublishGit(["branch", "--show-current"])).stdout.trim();
   const pushArgs = branch ? ["push", "origin", branch] : ["push"];
   const push = await runPublishGit(pushArgs);
 
   return {
     ...access,
     portfolioWorkspace: portfolioRoot,
+    remoteSync,
     portfolioSync,
     branch: branch || "current branch",
     committed: hasChanges,

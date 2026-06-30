@@ -1,6 +1,7 @@
 !include LogicLib.nsh
 !include nsDialogs.nsh
 !include WinMessages.nsh
+!include WordFunc.nsh
 
 !ifndef BUILD_UNINSTALLER
 Var OMB_ToolsDialog
@@ -9,6 +10,7 @@ Var OMB_PublishingToolsCheckbox
 Var OMB_CreateDesktopShortcutState
 Var OMB_InstallPublishingToolsState
 Var OMB_ExistingInstallLocation
+Var OMB_ExistingInstallVersion
 Var OMB_IsUpdateInstall
 Var OMB_ManualApplicationInstall
 
@@ -119,6 +121,45 @@ Function OMBInstallGitIfNeeded
     MessageBox MB_OK|MB_ICONINFORMATION "OMB Portfolio Builder was installed, but Git for Windows setup did not complete. Open Publishing target > Install Git inside the app when you are ready to publish."
   ${Else}
     DetailPrint "Git for Windows setup completed."
+  ${EndIf}
+FunctionEnd
+
+Function OMBReadExistingAppVersion
+  StrCpy $OMB_ExistingInstallVersion ""
+  IfFileExists "$R7\OMB Portfolio Builder.exe" omb_read_existing_app_version 0
+  Return
+
+  omb_read_existing_app_version:
+  nsExec::ExecToStack 'powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$$p = ''$R7\OMB Portfolio Builder.exe''; try { $$v = (Get-Item -LiteralPath $$p).VersionInfo.FileVersion; if (-not $$v) { $$v = (Get-Item -LiteralPath $$p).VersionInfo.ProductVersion }; [Console]::Write($$v) } catch { exit 1 }"'
+  Pop $R4
+  Pop $R3
+  ${If} $R4 == 0
+    StrCpy $OMB_ExistingInstallVersion $R3
+  ${EndIf}
+FunctionEnd
+
+Function OMBStopIfExistingInstallIsCurrent
+  ${If} $OMB_ExistingInstallVersion == ""
+    Return
+  ${EndIf}
+
+  ${VersionCompare} "$OMB_ExistingInstallVersion" "${VERSION}" $R4
+  ${If} $R4 == 0
+    IfSilent omb_existing_install_current_silent
+    MessageBox MB_OK|MB_ICONINFORMATION "OMB Portfolio Builder $OMB_ExistingInstallVersion is already installed.$\r$\n$\r$\nThis installer is also version ${VERSION}, so setup will stop without changing the app."
+    Quit
+
+    omb_existing_install_current_silent:
+    DetailPrint "OMB Portfolio Builder $OMB_ExistingInstallVersion is already installed. Setup stopped because the installed version is current."
+    Quit
+  ${ElseIf} $R4 == 1
+    IfSilent omb_existing_install_newer_silent
+    MessageBox MB_OK|MB_ICONINFORMATION "OMB Portfolio Builder $OMB_ExistingInstallVersion is already installed.$\r$\n$\r$\nThis installer is older (${VERSION}), so setup will stop without changing the app."
+    Quit
+
+    omb_existing_install_newer_silent:
+    DetailPrint "OMB Portfolio Builder $OMB_ExistingInstallVersion is newer than installer ${VERSION}. Setup stopped."
+    Quit
   ${EndIf}
 FunctionEnd
 
@@ -245,6 +286,7 @@ FunctionEnd
 
 Function OMBUninstallExistingInstallIfPresent
   StrCpy $OMB_ExistingInstallLocation ""
+  StrCpy $OMB_ExistingInstallVersion ""
   StrCpy $OMB_IsUpdateInstall "0"
   StrCpy $OMB_ManualApplicationInstall "0"
   StrCpy $R7 ""
@@ -329,9 +371,18 @@ Function OMBUninstallExistingInstallIfPresent
   ${EndIf}
 
   ${If} $R7 != ""
+    ${If} $OMB_ManualApplicationInstall == "1"
+      Call OMBReadExistingAppVersion
+    ${Else}
+      StrCpy $OMB_ExistingInstallVersion $R6
+    ${EndIf}
+    Call OMBStopIfExistingInstallIsCurrent
     StrCpy $OMB_ExistingInstallLocation $R7
     StrCpy $OMB_IsUpdateInstall "1"
     StrCpy $INSTDIR $R7
+    ${If} $OMB_ExistingInstallVersion != ""
+      StrCpy $R6 $OMB_ExistingInstallVersion
+    ${EndIf}
     ${If} $R6 == ""
       StrCpy $R6 "an existing version"
     ${EndIf}

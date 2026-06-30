@@ -1347,23 +1347,11 @@ async function authenticatePublishTarget(options = {}) {
         { label: "Repository", value: result.target?.repository || result.auth?.repository || "Selected target" },
         { label: "Branch", value: result.target?.branch || result.auth?.branch || "Detected target branch" },
         { label: "Authorization", value: usedCachedAuth ? "A valid saved authorization was reused; no new GitHub sign-in was needed." : "GitHub write access was verified now." },
-        { label: "Next step", value: "Click Load from target to pull the compatible portfolio files into this builder." }
+        { label: "Next step", value: "Loading the latest compatible portfolio files from the target now." }
       ]
     );
     if (publishTargetSync) publishTargetSync.disabled = false;
-    showBuilderError(
-      usedCachedAuth ? "Target saved with saved authorization" : "Target saved and authenticated",
-      usedCachedAuth
-        ? "This repository and branch already had a valid local authorization record, so the target was saved without asking you to sign in again. Load from target is now available."
-        : "GitHub accepted write access, so this publishing target is now saved. Load from target is now available.",
-      [
-        `Repository: ${result.target?.repository || result.auth?.repository || "selected target"}`,
-        `Branch: ${result.target?.branch || result.auth?.branch || "detected branch"}`,
-        result.auth?.expiresAt || result.target?.expiresAt ? `Authorization valid until: ${new Date(result.auth?.expiresAt || result.target?.expiresAt).toLocaleString()}` : "",
-        result.auth?.extendedTrust || result.target?.extendedTrust ? "Trust window: 30 days for this same repository and branch" : "",
-        result.auth?.credentialsStored ? `Credentials: stored for ${result.auth.credentialUsername || "the selected user"}` : usedCachedAuth ? "Credentials: existing authorization reused" : "Credentials: Git Credential Manager session verified"
-      ].filter(Boolean).join("\n")
-    );
+    await syncFromPublishTarget({ afterAuth: true });
   } catch (error) {
     if (publishTargetSync) publishTargetSync.disabled = true;
     setPublishTargetProgress(
@@ -1419,6 +1407,13 @@ async function syncFromPublishTarget(options = {}) {
     publishTargetCurrent.textContent = afterAuth
       ? `Authentication completed, but target loading failed. ${error.message || "Publishing target could not be imported."}`
       : error.message || "Publishing target could not be imported.";
+    if (afterAuth) {
+      showBuilderError(
+        "Target saved, loading failed",
+        "GitHub authorization succeeded, but the builder could not import compatible portfolio files from that target.",
+        error.message || "Publishing target could not be imported."
+      );
+    }
   }
 }
 
