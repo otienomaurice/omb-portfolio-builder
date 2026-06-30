@@ -1018,6 +1018,75 @@ async function checkoutPublishBranch(branch) {
   return cleanBranch;
 }
 
+async function verifyPublishWriteAccess(access = {}) {
+  const checkBranch = `omb-auth-check-${safeSegment(os.hostname(), "device")}-${Date.now()}`;
+  try {
+    await runPublishGit(["push", "--dry-run", "origin", `HEAD:refs/heads/${checkBranch}`], {
+      timeout: 60 * 1000
+    });
+    return {
+      method: "temporary-dry-run-ref",
+      ref: checkBranch
+    };
+  } catch (error) {
+    throw publishAccessError(
+      "GitHub authorization is required before this website can be changed.",
+      gitFailureText(error),
+      access
+    );
+  }
+}
+
+async function ensurePublishHeadForWriteCheck() {
+  try {
+    await runPublishGit(["rev-parse", "--verify", "HEAD"]);
+    return { created: false };
+  } catch {
+    await runPublishGit([
+      "-c",
+      "user.name=OMB Portfolio Builder",
+      "-c",
+      "user.email=omb-builder@localhost",
+      "commit",
+      "--allow-empty",
+      "-m",
+      "Initialize publish authorization check"
+    ]);
+    return { created: true };
+  }
+}
+
+async function synchronizePublishBranchFromRemote(branch, access = {}) {
+  const cleanBranch = normalizeGitBranchName(branch) || "main";
+  try {
+    const remoteBranch = await runPublishGit(["ls-remote", "--heads", "origin", cleanBranch], {
+      timeout: 45 * 1000
+    });
+    if (!String(remoteBranch.stdout || "").trim()) {
+      return {
+        branch: cleanBranch,
+        remoteBranchExists: false,
+        synchronized: false
+      };
+    }
+
+    await runPublishGit(["fetch", "origin", cleanBranch], { timeout: 2 * 60 * 1000 });
+    await checkoutPublishBranch(cleanBranch);
+    await runPublishGit(["reset", "--hard", `origin/${cleanBranch}`], { timeout: 60 * 1000 });
+    return {
+      branch: cleanBranch,
+      remoteBranchExists: true,
+      synchronized: true
+    };
+  } catch (error) {
+    throw publishAccessError(
+      "The selected website target could not be synchronized from GitHub.",
+      gitFailureText(error),
+      { ...access, branch: cleanBranch }
+    );
+  }
+}
+
 async function capturePublishTargetState() {
   const snapshot = {
     branch: "",
@@ -1295,19 +1364,16 @@ async function assertPublishAccess(options = {}) {
     };
   }
 
-  try {
-    await runPublishGit(["push", "--dry-run", "origin", branch]);
-  } catch (error) {
-    throw publishAccessError(
-      "GitHub authorization is required before this website can be changed.",
-      gitFailureText(error),
-      { remote: remoteUrlForDisplay(remote), branch, repository }
-    );
-  }
+  const remoteSync = await synchronizePublishBranchFromRemote(branch, access);
+  const localHead = await ensurePublishHeadForWriteCheck();
+  const writeCheck = await verifyPublishWriteAccess(access);
 
   const authCache = await writePublishAuthCache(access);
   return {
     ...access,
+    remoteSync,
+    localHead,
+    writeCheck,
     authorizationChecked: true,
     authorizationCached: false,
     checkedAt: authCache.checkedAt,
@@ -1558,6 +1624,10 @@ function safeUpdateFileSegment(value = "") {
     .slice(0, 80) || "latest";
 }
 
+function powershellSingleQuoted(value = "") {
+  return `'${String(value).replaceAll("'", "''")}'`;
+}
+
 async function downloadAndLaunchAppUpdate() {
   const update = await getUpdateInfo();
   if (!update.ok) throw new Error(update.error || "Could not check for updates.");
@@ -1588,15 +1658,54 @@ async function downloadAndLaunchAppUpdate() {
   }
   await writeFile(installerPath, installerBuffer);
 
+  const updateLogPath = path.join(updateRoot, `update-${safeUpdateFileSegment(update.latestVersion)}.log`);
+  const currentExecutable = /OMB Portfolio Builder\.exe$/i.test(process.execPath || "") ? process.execPath : "";
+  const currentInstallDirectory = currentExecutable ? path.dirname(currentExecutable) : "";
+  const relaunchCandidates = Array.from(new Set([
+    currentExecutable,
+    currentInstallDirectory ? path.join(currentInstallDirectory, "OMB Portfolio Builder.exe") : "",
+    path.join(os.homedir(), "OMB", "application", "OMB Portfolio Builder.exe"),
+    process.env.ProgramFiles ? path.join(process.env.ProgramFiles, "OMB Portfolio Builder", "OMB Portfolio Builder.exe") : "",
+    process.env["ProgramFiles(x86)"] ? path.join(process.env["ProgramFiles(x86)"], "OMB Portfolio Builder", "OMB Portfolio Builder.exe") : "",
+    process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, "Programs", "OMB Portfolio Builder", "OMB Portfolio Builder.exe") : ""
+  ].filter(Boolean)));
+  const relaunchCandidatesPs = `@(${relaunchCandidates.map(powershellSingleQuoted).join(", ")})`;
   const launcherPath = path.join(updateRoot, `run-update-${safeUpdateFileSegment(update.latestVersion)}.ps1`);
   const launcherScript = [
-    "$ErrorActionPreference = 'SilentlyContinue'",
+    "$ErrorActionPreference = 'Continue'",
     `$parentPid = ${process.pid}`,
-    `$installer = ${JSON.stringify(installerPath)}`,
-    "try { Wait-Process -Id $parentPid -Timeout 30 } catch {}",
+    `$installer = ${powershellSingleQuoted(installerPath)}`,
+    `$log = ${powershellSingleQuoted(updateLogPath)}`,
+    `$candidates = ${relaunchCandidatesPs}`,
+    "function Write-UpdateLog([string]$Message) {",
+    "  try { Add-Content -LiteralPath $log -Value ((Get-Date).ToString('s') + ' ' + $Message) } catch {}",
+    "}",
+    "Write-UpdateLog 'Update launcher started.'",
+    "try { Wait-Process -Id $parentPid -Timeout 45; Write-UpdateLog 'Previous app process exited.' } catch { Write-UpdateLog ('Previous app wait finished: ' + $_.Exception.Message) }",
     "Start-Sleep -Seconds 1",
-    "Start-Process -FilePath $installer -ArgumentList '/S' -Wait",
-    "exit 0"
+    "$installerProcess = $null",
+    "try {",
+    "  Write-UpdateLog ('Starting installer: ' + $installer)",
+    "  $installerProcess = Start-Process -FilePath $installer -ArgumentList @('/S') -Wait -PassThru",
+    "  $installerExit = if ($installerProcess) { $installerProcess.ExitCode } else { 0 }",
+    "  Write-UpdateLog ('Installer exit code: ' + $installerExit)",
+    "} catch {",
+    "  Write-UpdateLog ('Installer launch failed: ' + $_.Exception.Message)",
+    "  exit 1",
+    "}",
+    "if ($installerExit -ne 0) { exit $installerExit }",
+    "$target = $null",
+    "foreach ($candidate in $candidates) {",
+    "  if ($candidate -and (Test-Path -LiteralPath $candidate)) { $target = $candidate; break }",
+    "}",
+    "if ($target) {",
+    "  Start-Sleep -Seconds 1",
+    "  Start-Process -FilePath $target",
+    "  Write-UpdateLog ('Relaunched app: ' + $target)",
+    "  exit 0",
+    "}",
+    "Write-UpdateLog 'No installed app executable was found after update.'",
+    "exit 2"
   ].join("\r\n");
   await writeFile(launcherPath, launcherScript, "utf8");
 
@@ -1623,6 +1732,7 @@ async function downloadAndLaunchAppUpdate() {
     ...update,
     installerPath,
     launcherPath,
+    updateLogPath,
     started: true
   };
 }
@@ -1664,6 +1774,8 @@ async function syncPortfolioPublishFiles(options = {}) {
 
 async function publishSiteChanges(publishAccess = null) {
   const access = publishAccess || await assertPublishAccess();
+  const branch = access.branch || (await runPublishGit(["branch", "--show-current"])).stdout.trim();
+  const remoteSync = await synchronizePublishBranchFromRemote(branch, access);
   const portfolioSync = await syncPortfolioPublishFiles({ removeMissing: true });
   await bumpPublishedAssetVersions(portfolioRoot);
 
@@ -1682,13 +1794,13 @@ async function publishSiteChanges(publishAccess = null) {
     commit = await runPublishGit(["commit", "-m", message]);
   }
 
-  const branch = access.branch || (await runPublishGit(["branch", "--show-current"])).stdout.trim();
   const pushArgs = branch ? ["push", "origin", branch] : ["push"];
   const push = await runPublishGit(pushArgs);
 
   return {
     ...access,
     portfolioWorkspace: portfolioRoot,
+    remoteSync,
     portfolioSync,
     branch: branch || "current branch",
     committed: hasChanges,
