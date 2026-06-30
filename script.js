@@ -767,12 +767,34 @@ function canonicalTemplateId(id) {
 }
 
 function projectTemplateId(project) {
-  return canonicalTemplateId(project.portfolioView?.template?.id || project.templateId || "");
+  return canonicalTemplateId(project?.portfolioView?.template?.id || project?.templateId || "");
 }
 
 function projectTemplateClass(project) {
   const templateId = projectTemplateId(project);
   return templateId ? `project-template project-template-${templateId}` : "project-template-white";
+}
+
+function responsiveClassName(value, fallback) {
+  return String(value || fallback || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "") || fallback;
+}
+
+function projectResponsiveClass(project) {
+  const profile = projectResponsiveProfile(project);
+  return `responsive-project responsive-density-${responsiveClassName(profile.density, "balanced")} responsive-card-${responsiveClassName(profile.cardLayout, "single")}`;
+}
+
+function responsiveStyleValues(project) {
+  const profile = projectResponsiveProfile(project);
+  return {
+    "--responsive-section-card-min": profile.sectionCardMin,
+    "--responsive-content-max": profile.contentMax,
+    "--responsive-media-max": profile.mediaMax,
+    "--responsive-touch-target": profile.touchTarget
+  };
 }
 
 function hasPublicTemplate(project) {
@@ -794,7 +816,8 @@ function projectTemplateStyle(project, accent) {
     "--template-click": visual.click,
     "--template-click-text": visual.clickText,
     "--template-line": visual.line,
-    "--template-text": visual.text
+    "--template-text": visual.text,
+    ...responsiveStyleValues(project)
   };
   return Object.entries(values)
     .filter(([, value]) => value)
@@ -805,9 +828,17 @@ function projectTemplateStyle(project, accent) {
 function applyProjectTemplateToElement(element, project, accent) {
   if (!element) return;
   [...element.classList]
-    .filter((className) => className === "project-template" || className === "project-template-white" || className.startsWith("project-template-"))
+    .filter((className) =>
+      className === "project-template" ||
+      className === "project-template-white" ||
+      className === "responsive-project" ||
+      className.startsWith("project-template-") ||
+      className.startsWith("responsive-density-") ||
+      className.startsWith("responsive-card-")
+    )
     .forEach((className) => element.classList.remove(className));
   projectTemplateClass(project).split(" ").forEach((className) => element.classList.add(className));
+  projectResponsiveClass(project).split(" ").forEach((className) => element.classList.add(className));
   const visual = projectTemplateVisual(project) || {};
   const values = {
     "--accent": accent,
@@ -818,7 +849,8 @@ function applyProjectTemplateToElement(element, project, accent) {
     "--template-click": visual.click,
     "--template-click-text": visual.clickText,
     "--template-line": visual.line,
-    "--template-text": visual.text
+    "--template-text": visual.text,
+    ...responsiveStyleValues(project)
   };
   Object.entries(values).forEach(([key, value]) => {
     if (value) {
@@ -2637,6 +2669,74 @@ function sectionHasRenderableContent(section) {
   return Boolean(section?.description || richHasRenderableContent(section?.rich) || (section?.items || []).some(nodeHasRenderableContent));
 }
 
+function responsiveChildren(node) {
+  return node?.items || node?.children || [];
+}
+
+function richContainsMedia(rich) {
+  return Boolean(rich?.blocks?.some((block) => block.type === "image" && block.url));
+}
+
+function responsiveNodeHasMedia(node) {
+  if (!node) return false;
+  if (node.kind === "image" || richContainsMedia(node.rich)) return true;
+  const url = String(node.url || "");
+  if (/\.(apng|avif|gif|jpe?g|png|svg|webp)(\?|#|$)/i.test(url)) return true;
+  return responsiveChildren(node).some(responsiveNodeHasMedia);
+}
+
+function responsiveNodeCount(node) {
+  if (!node || !nodeHasRenderableContent(node)) return 0;
+  return 1 + responsiveChildren(node).reduce((count, child) => count + responsiveNodeCount(child), 0);
+}
+
+function responsiveNodeDepth(node) {
+  if (!node || !nodeHasRenderableContent(node)) return 0;
+  const children = responsiveChildren(node).filter(nodeHasRenderableContent);
+  if (!children.length) return 1;
+  return 1 + Math.max(...children.map(responsiveNodeDepth));
+}
+
+function inferResponsiveProfile(project) {
+  const sections = project?.portfolioView?.sections || [];
+  const visibleSections = sections.filter((section) => section?.id !== "brief" && sectionHasRenderableContent(section));
+  const itemCount = visibleSections.reduce(
+    (count, section) => count + (section.items || []).reduce((sum, item) => sum + responsiveNodeCount(item), 0),
+    0
+  );
+  const maxDepth = visibleSections.reduce(
+    (depth, section) => Math.max(depth, ...(section.items || []).map(responsiveNodeDepth), 1),
+    1
+  );
+  const hasMedia = visibleSections.some((section) => responsiveNodeHasMedia(section));
+  const density = itemCount >= 18 || visibleSections.length >= 6 || maxDepth >= 4
+    ? "dense"
+    : itemCount <= 6 && visibleSections.length <= 2
+      ? "simple"
+      : "balanced";
+  return {
+    version: 1,
+    breakpoints: {
+      mobile: 640,
+      tablet: 900,
+      desktop: 1180
+    },
+    cardLayout: hasPublicTemplate(project) ? "single" : "split",
+    contentMax: hasMedia || maxDepth >= 3 ? "1180px" : "980px",
+    density,
+    mediaMax: hasMedia ? "860px" : "720px",
+    sectionCardMin: density === "dense" ? "210px" : density === "simple" ? "280px" : "240px",
+    touchTarget: "44px",
+    windowMode: "full-screen"
+  };
+}
+
+function projectResponsiveProfile(project) {
+  const savedProfile = project?.portfolioView?.responsive;
+  if (savedProfile?.version) return { ...inferResponsiveProfile(project), ...savedProfile };
+  return inferResponsiveProfile(project);
+}
+
 function nodeSummary(title, rich, text, emptyMessage = "No summary has been added yet.") {
   if (!rich?.blocks?.length && !text) return "";
   return `
@@ -2744,7 +2844,7 @@ function projectCard(project) {
     const otherSections = sections.filter((section) => section.id !== "brief" && sectionHasRenderableContent(section));
 
     return `
-      <article class="project-card catalog-card ${projectTemplateClass(project)}" id="${project.id}" style="${projectTemplateStyle(project, accent)}">
+      <article class="project-card catalog-card ${projectTemplateClass(project)} ${projectResponsiveClass(project)}" id="${project.id}" style="${projectTemplateStyle(project, accent)}">
         <div class="project-body">
           <h3>${project.portfolioView.title || project.title}</h3>
           ${renderParsedBriefBlock(briefSection, project.summary)}
@@ -2760,7 +2860,7 @@ function projectCard(project) {
   const accent = category.accent || "#117c7a";
 
   return `
-      <article class="project-card catalog-card ${projectTemplateClass(project)}" id="${project.id}" style="${projectTemplateStyle(project, accent)}">
+      <article class="project-card catalog-card ${projectTemplateClass(project)} ${projectResponsiveClass(project)}" id="${project.id}" style="${projectTemplateStyle(project, accent)}">
         <div class="project-body">
           <h3>${project.title}</h3>
           <p class="rich-paragraph">${renderMultilineInlineText(project.summary)}</p>
