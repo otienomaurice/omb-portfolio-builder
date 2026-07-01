@@ -265,6 +265,7 @@ async function preparePackagedWorkspace() {
   for (const fileName of portfolioFilesToSeed) {
     await copyFileIfAvailable(path.join(bundledSiteRoot, fileName), path.join(portfolioRoot, fileName), false);
   }
+  await copyFileIfAvailable(path.join(bundledSiteRoot, "portfolio-README.md"), path.join(portfolioRoot, "README.md"), false);
   for (const directoryName of portfolioDirectoriesToSeed) {
     await copyDirectoryMissingFiles(path.join(bundledSiteRoot, directoryName), path.join(portfolioRoot, directoryName));
   }

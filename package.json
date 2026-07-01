@@ -48,6 +48,7 @@
           "template-preview.js",
           "installer-notes.txt",
           "README.md",
+          "portfolio-README.md",
           ".nojekyll",
           "robots.txt"
         ]
