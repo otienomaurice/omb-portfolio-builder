@@ -1628,6 +1628,10 @@ function powershellSingleQuoted(value = "") {
   return `'${String(value).replaceAll("'", "''")}'`;
 }
 
+function windowsCommandQuoted(value = "") {
+  return `"${String(value).replaceAll('"', '""')}"`;
+}
+
 async function downloadAndLaunchAppUpdate() {
   const update = await getUpdateInfo();
   if (!update.ok) throw new Error(update.error || "Could not check for updates.");
@@ -1741,15 +1745,20 @@ async function downloadAndLaunchAppUpdate() {
   ].join("\r\n");
   await writeFile(launcherPath, launcherScript, "utf8");
 
-  const child = spawn("powershell.exe", [
+  const launcherCommand = [
+    "start",
+    '""',
+    "/min",
+    "powershell.exe",
     "-NoProfile",
     "-ExecutionPolicy",
     "Bypass",
     "-WindowStyle",
     "Hidden",
     "-File",
-    launcherPath
-  ], {
+    windowsCommandQuoted(launcherPath)
+  ].join(" ");
+  const child = spawn("cmd.exe", ["/d", "/s", "/c", launcherCommand], {
     detached: true,
     stdio: "ignore",
     windowsHide: true
