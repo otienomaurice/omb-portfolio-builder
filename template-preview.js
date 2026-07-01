@@ -1794,7 +1794,7 @@ function unwrapFormula(value) {
 function isFormulaOnly(value) {
   const text = String(value || "").trim();
   if (!text) return false;
-  if (/\b(?:https?:\/\/|www\.)[^\s<>"']+/i.test(text) || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(text) || looksLikeBareWebAddress(text)) return false;
+  if (looksLikeWebOrContactText(text)) return false;
   if (/^\$\$[\s\S]+\$\$$/.test(text) || /^\\\[[\s\S]+\\\]$/.test(text) || /^\\\([\s\S]+\\\)$/.test(text)) return true;
   const mathSignals = /\\frac|\\sqrt|\\sum|\\int|\\Delta|\\omega|\\pi|[=^_√∫ΣπΩμ]/;
   return text.length <= 180 && mathSignals.test(text) && !/[.!?]\s*$/.test(text);
@@ -1803,7 +1803,7 @@ function isFormulaOnly(value) {
 function renderInlineMath(text) {
   const escaped = escapeHtml(text);
   const withMath = escaped.replace(/\$([^$]+)\$/g, '<span class="rich-inline-formula">$1</span>');
-  return withMath.replace(/\b(https?:\/\/[^\s<]+|www\.[^\s<]+)/g, (match) => {
+  return withMath.replace(/\b(https?:\/\/[^\s<]+|www\.[^\s<]+|(?:github|linkedin|gitlab|bitbucket|drive|docs)\.com\/[^\s<]+)/gi, (match) => {
     const trailing = match.match(/[),.;:!?]+$/)?.[0] || "";
     const clean = trailing ? match.slice(0, -trailing.length) : match;
     const href = normalizeLinkTarget(clean, { assumeWeb: true });
@@ -1822,6 +1822,16 @@ function looksLikeBareWebAddress(value = "") {
   const host = clean.split(/[/?#]/)[0].toLowerCase();
   if (!/^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(host)) return false;
   return !/\.(pdf|docx?|xlsx?|pptx?|zip|7z|rar|png|jpe?g|gif|svg|webp|txt|md|csv|json|xml|log|c|h|cpp|hpp|py|js|mjs|ts|v|sv|vhdl?|spice|cir|net|asc|sch|kicad_sch|kicad_pcb)$/i.test(host);
+}
+
+function looksLikeWebOrContactText(value = "") {
+  const clean = String(value || "").trim();
+  if (!clean) return false;
+  if (/\b(?:https?:\/\/|www\.)[^\s<>"']+/i.test(clean)) return true;
+  if (/\b[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}\b/i.test(clean)) return true;
+  if (/\b(?:github|linkedin|gitlab|bitbucket|drive|docs)\.com\/[^\s<>"']+/i.test(clean)) return true;
+  if (looksLikeBareWebAddress(clean)) return true;
+  return clean.split(/\s+/).some((word) => looksLikeBareWebAddress(word.replace(/^[("']+|[)"'.,;:!?]+$/g, "")));
 }
 
 function normalizeLinkTarget(target = "", options = {}) {
@@ -1900,7 +1910,7 @@ function displayNameFromUrl(value = "", fallback = "Linked asset") {
 function linkifyRichTextNodes(root) {
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
     acceptNode(node) {
-      if (!node.textContent || !/(https?:\/\/|www\.)/i.test(node.textContent)) return NodeFilter.FILTER_REJECT;
+      if (!node.textContent || !/(https?:\/\/|www\.|(?:github|linkedin|gitlab|bitbucket|drive|docs)\.com\/)/i.test(node.textContent)) return NodeFilter.FILTER_REJECT;
       return node.parentElement?.closest("a") ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT;
     }
   });
@@ -1915,7 +1925,7 @@ function linkifyRichTextNodes(root) {
     const text = textNode.textContent || "";
     const fragment = document.createDocumentFragment();
     let cursor = 0;
-    text.replace(/\b(https?:\/\/[^\s<]+|www\.[^\s<]+)/gi, (match, _url, offset) => {
+    text.replace(/\b(https?:\/\/[^\s<]+|www\.[^\s<]+|(?:github|linkedin|gitlab|bitbucket|drive|docs)\.com\/[^\s<]+)/gi, (match, _url, offset) => {
       if (offset > cursor) fragment.append(document.createTextNode(text.slice(cursor, offset)));
       const trailing = match.match(/[),.;:!?]+$/)?.[0] || "";
       const clean = trailing ? match.slice(0, -trailing.length) : match;
@@ -2132,7 +2142,11 @@ function renderRichContent(rich, fallbackText = "") {
           `;
         }
         if (block.type === "formula") {
-          return `<div class="rich-formula justify-${align}">${escapeHtml(unwrapFormula(block.formula))}</div>`;
+          const formula = unwrapFormula(block.formula);
+          if (looksLikeWebOrContactText(formula)) {
+            return `<p class="rich-paragraph rich-text-normal text-${align}">${renderInlineMath(formula)}</p>`;
+          }
+          return `<div class="rich-formula justify-${align}">${escapeHtml(formula)}</div>`;
         }
         const size = ["small", "normal", "large"].includes(block.fontSize) ? block.fontSize : "normal";
         const content = block.html
@@ -4051,6 +4065,38 @@ function rangeBelongsToEditor(range, editor) {
     ? range.commonAncestorContainer.parentElement
     : range.commonAncestorContainer;
   return Boolean(container && editor.contains(container));
+}
+
+function editorFromRange(range) {
+  if (!range || range.collapsed) return null;
+  const container = range.commonAncestorContainer.nodeType === Node.TEXT_NODE
+    ? range.commonAncestorContainer.parentElement
+    : range.commonAncestorContainer;
+  return container?.closest?.("[data-rich-editor]") || null;
+}
+
+function pointInsideRange(range, x, y) {
+  if (!range || range.collapsed) return false;
+  return [...range.getClientRects()].some((rect) =>
+    rect.width > 0 &&
+    rect.height > 0 &&
+    x >= rect.left &&
+    x <= rect.right &&
+    y >= rect.top &&
+    y <= rect.bottom
+  );
+}
+
+function richEditorFromContextEvent(event) {
+  const directEditor = event.target.closest?.("[data-rich-editor]");
+  if (directEditor) return directEditor;
+  const savedRange = rangeBelongsToEditor(activeTextSelectionRange, activeSummaryEditor)
+    ? activeTextSelectionRange
+    : activeRichSelectionRange;
+  if (pointInsideRange(savedRange, event.clientX, event.clientY)) {
+    return editorFromRange(savedRange);
+  }
+  return null;
 }
 
 function displayRichFontName(value = "") {
@@ -7353,8 +7399,8 @@ projectFields.addEventListener("click", async (event) => {
 });
 
 function handleRichEditorContextMenu(event) {
-    const editor = event.target.closest("[data-rich-editor]");
-    const textBlock = event.target.closest(".rich-text-block");
+    const editor = richEditorFromContextEvent(event);
+    const textBlock = event.target.closest?.(".rich-text-block");
 
     if (!editor && !textBlock) return;
 
@@ -7382,7 +7428,7 @@ function handleRichEditorContextMenu(event) {
     } else {
       captureRichSelection(activeSummaryEditor);
     }
-    selectRichBlock(event.target.closest(".rich-block") || currentRichBlock(activeSummaryEditor));
+    selectRichBlock(event.target.closest?.(".rich-block") || currentRichBlock(activeSummaryEditor));
     syncRichContextMenuControls(activeSummaryBlock);
 
     const menuHost = activeSummaryEditor.closest("dialog") || document.body;
@@ -7622,9 +7668,14 @@ document.addEventListener("selectionchange", () => {
 document.addEventListener("pointerdown", (event) => {
   if (event.target.closest("#text-selection-inspector, #summary-context-menu")) return;
 
-  const editor = event.target.closest("[data-rich-editor]");
+  const editor = event.button === 2
+    ? richEditorFromContextEvent(event)
+    : event.target.closest("[data-rich-editor]");
   if (event.button === 2 && editor) {
-    const range = selectionRangeInsideEditor(editor);
+    const savedRange = rangeBelongsToEditor(activeTextSelectionRange, editor)
+      ? activeTextSelectionRange.cloneRange()
+      : null;
+    const range = selectionRangeInsideEditor(editor) || savedRange;
     activeSummaryEditor = editor;
     if (range && !range.collapsed) {
       activeRichSelectionRange = range.cloneRange();
@@ -8077,7 +8128,7 @@ summaryContextMenu.addEventListener("click", async (event) => {
   if (!actionButton) return;
   const action = actionButton.dataset.richAction;
   await handleRichAction(action, activeSummaryEditor);
-  if (["add-image", "add-formula", "copy-text", "paste-text", "cut-text", "edit-block", "delete-block"].includes(action)) {
+  if (["add-image", "add-formula", "copy-text", "paste-text", "cut-text", "select-all-text", "edit-block", "delete-block"].includes(action)) {
     hideSummaryContextMenu();
   }
 });

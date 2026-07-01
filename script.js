@@ -507,7 +507,7 @@ function unwrapFormula(value) {
 function renderInlineMath(text) {
   const escaped = escapeHtml(text);
   const withMath = escaped.replace(/\$([^$]+)\$/g, '<span class="rich-inline-formula">$1</span>');
-  return withMath.replace(/\b(https?:\/\/[^\s<]+|www\.[^\s<]+)/g, (match) => {
+  return withMath.replace(/\b(https?:\/\/[^\s<]+|www\.[^\s<]+|(?:github|linkedin|gitlab|bitbucket|drive|docs)\.com\/[^\s<]+)/gi, (match) => {
     const trailing = match.match(/[),.;:!?]+$/)?.[0] || "";
     const clean = trailing ? match.slice(0, -trailing.length) : match;
     const href = normalizeLinkTarget(clean, { assumeWeb: true });
@@ -526,6 +526,16 @@ function looksLikeBareWebAddress(value = "") {
   const host = clean.split(/[/?#]/)[0].toLowerCase();
   if (!/^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(host)) return false;
   return !/\.(pdf|docx?|xlsx?|pptx?|zip|7z|rar|png|jpe?g|gif|svg|webp|txt|md|csv|json|xml|log|c|h|cpp|hpp|py|js|mjs|ts|v|sv|vhdl?|spice|cir|net|asc|sch|kicad_sch|kicad_pcb)$/i.test(host);
+}
+
+function looksLikeWebOrContactText(value = "") {
+  const clean = String(value || "").trim();
+  if (!clean) return false;
+  if (/\b(?:https?:\/\/|www\.)[^\s<>"']+/i.test(clean)) return true;
+  if (/\b[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}\b/i.test(clean)) return true;
+  if (/\b(?:github|linkedin|gitlab|bitbucket|drive|docs)\.com\/[^\s<>"']+/i.test(clean)) return true;
+  if (looksLikeBareWebAddress(clean)) return true;
+  return clean.split(/\s+/).some((word) => looksLikeBareWebAddress(word.replace(/^[("']+|[)"'.,;:!?]+$/g, "")));
 }
 
 function normalizeLinkTarget(target = "", options = {}) {
@@ -550,7 +560,7 @@ function isWebsiteLinkItem(item = {}, target = "") {
 function linkifyRichTextNodes(root) {
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
     acceptNode(node) {
-      if (!node.textContent || !/(https?:\/\/|www\.)/i.test(node.textContent)) return NodeFilter.FILTER_REJECT;
+      if (!node.textContent || !/(https?:\/\/|www\.|(?:github|linkedin|gitlab|bitbucket|drive|docs)\.com\/)/i.test(node.textContent)) return NodeFilter.FILTER_REJECT;
       return node.parentElement?.closest("a") ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT;
     }
   });
@@ -565,7 +575,7 @@ function linkifyRichTextNodes(root) {
     const text = textNode.textContent || "";
     const fragment = document.createDocumentFragment();
     let cursor = 0;
-    text.replace(/\b(https?:\/\/[^\s<]+|www\.[^\s<]+)/gi, (match, _url, offset) => {
+    text.replace(/\b(https?:\/\/[^\s<]+|www\.[^\s<]+|(?:github|linkedin|gitlab|bitbucket|drive|docs)\.com\/[^\s<]+)/gi, (match, _url, offset) => {
       if (offset > cursor) fragment.append(document.createTextNode(text.slice(cursor, offset)));
       const trailing = match.match(/[),.;:!?]+$/)?.[0] || "";
       const clean = trailing ? match.slice(0, -trailing.length) : match;
@@ -745,7 +755,11 @@ function renderRichContent(rich, fallbackText = "") {
             `;
         }
         if (block.type === "formula") {
-          return `<div class="rich-formula justify-${align}">${escapeHtml(unwrapFormula(block.formula))}</div>`;
+          const formula = unwrapFormula(block.formula);
+          if (looksLikeWebOrContactText(formula)) {
+            return `<p class="rich-paragraph rich-text-normal text-${align}">${renderInlineMath(formula)}</p>`;
+          }
+          return `<div class="rich-formula justify-${align}">${escapeHtml(formula)}</div>`;
         }
         const size = ["small", "normal", "large"].includes(block.fontSize) ? block.fontSize : "normal";
         const content = block.html
