@@ -319,6 +319,8 @@
   display: grid;
   gap: 16px;
   padding: 0 18px 18px;
+  max-height: calc(100dvh - 36px);
+  overflow: hidden;
 }
 
 .builder-guide-live,
@@ -396,9 +398,14 @@
 
 .builder-guide-sections {
   display: grid;
+  align-content: start;
+  align-items: start;
   gap: 10px;
+  min-height: 240px;
   max-height: min(58vh, 560px);
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   margin: 0;
   padding: 14px;
   border: 1px solid var(--line);
@@ -410,7 +417,8 @@
   border: 1px solid #d6e6ef;
   border-radius: 8px;
   background: #ffffff;
-  overflow: hidden;
+  overflow: visible;
+  min-height: 0;
 }
 
 .builder-guide-section[hidden] {
@@ -418,12 +426,46 @@
 }
 
 .builder-guide-section summary {
-  min-height: 42px;
-  padding: 11px 13px;
+  position: relative;
+  display: block;
+  min-height: 0;
+  padding: 13px 14px 13px 36px;
   color: var(--ink);
   cursor: pointer;
   font-size: 0.92rem;
   font-weight: 950;
+  line-height: 1.35;
+  white-space: normal;
+  overflow: visible;
+  overflow-wrap: anywhere;
+  list-style: none;
+}
+
+.builder-guide-section summary::-webkit-details-marker {
+  display: none;
+}
+
+.builder-guide-section summary::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 15px;
+  width: 0;
+  height: 0;
+  border-top: 5px solid transparent;
+  border-bottom: 5px solid transparent;
+  border-left: 7px solid currentColor;
+  transform: translateY(-50%);
+  transform-origin: center;
+}
+
+.builder-guide-section[open] summary {
+  border-bottom: 1px solid #d6e6ef;
+  background: #f5fbff;
+}
+
+.builder-guide-section[open] summary::before {
+  transform: translateY(-50%) rotate(90deg);
 }
 
 .builder-guide-section summary:hover {
@@ -434,7 +476,10 @@
 .builder-guide-section > div {
   display: grid;
   gap: 8px;
-  padding: 0 13px 13px;
+  min-height: max-content;
+  padding: 12px 14px 16px 36px;
+  overflow: visible;
+  background: #ffffff;
 }
 
 .builder-guide-section p {
