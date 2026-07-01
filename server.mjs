@@ -1628,10 +1628,6 @@ function powershellSingleQuoted(value = "") {
   return `'${String(value).replaceAll("'", "''")}'`;
 }
 
-function windowsCommandQuoted(value = "") {
-  return `"${String(value).replaceAll('"', '""')}"`;
-}
-
 async function downloadAndLaunchAppUpdate() {
   const update = await getUpdateInfo();
   if (!update.ok) throw new Error(update.error || "Could not check for updates.");
@@ -1675,6 +1671,7 @@ async function downloadAndLaunchAppUpdate() {
   ].filter(Boolean)));
   const relaunchCandidatesPs = `@(${relaunchCandidates.map(powershellSingleQuoted).join(", ")})`;
   const launcherPath = path.join(updateRoot, `run-update-${safeUpdateFileSegment(update.latestVersion)}.ps1`);
+  const launcherCommandPath = path.join(updateRoot, `run-update-${safeUpdateFileSegment(update.latestVersion)}.cmd`);
   const launcherScript = [
     "$ErrorActionPreference = 'Continue'",
     `$parentPid = ${process.pid}`,
@@ -1694,19 +1691,29 @@ async function downloadAndLaunchAppUpdate() {
     "  } while ((Get-Date) -lt $deadline)",
     "  return $null",
     "}",
-    "function Stop-BuilderIfStillRunning([int]$ProcessId) {",
+    "function Stop-BuilderProcesses([int]$ProcessId, [string[]]$Paths) {",
     "  try {",
-    "    $process = Get-Process -Id $ProcessId -ErrorAction SilentlyContinue",
-    "    if ($process) {",
-    "      Write-UpdateLog ('Previous app process still running; stopping PID ' + $ProcessId)",
-    "      Stop-Process -Id $ProcessId -Force -ErrorAction SilentlyContinue",
-    "      Start-Sleep -Seconds 2",
+    "    $normalizedPaths = @($Paths | Where-Object { $_ } | ForEach-Object {",
+    "      try { [System.IO.Path]::GetFullPath($_).ToLowerInvariant() } catch { $_.ToLowerInvariant() }",
+    "    })",
+    "    $processes = Get-CimInstance Win32_Process | Where-Object {",
+    "      $_.ProcessId -eq $ProcessId -or",
+    "      $_.Name -eq 'OMB Portfolio Builder.exe' -or",
+    "      ($_.ExecutablePath -and ($normalizedPaths -contains ([System.IO.Path]::GetFullPath($_.ExecutablePath).ToLowerInvariant())))",
+    "    } | Sort-Object ProcessId -Unique",
+    "    foreach ($process in $processes) {",
+    "      try {",
+    "        Write-UpdateLog ('Stopping previous builder process PID ' + $process.ProcessId + ' at ' + $process.ExecutablePath)",
+    "        Stop-Process -Id $process.ProcessId -Force -ErrorAction SilentlyContinue",
+    "      } catch { Write-UpdateLog ('Could not stop PID ' + $process.ProcessId + ': ' + $_.Exception.Message) }",
     "    }",
-    "  } catch { Write-UpdateLog ('Could not stop previous app process: ' + $_.Exception.Message) }",
+    "    Start-Sleep -Seconds 2",
+    "  } catch { Write-UpdateLog ('Could not stop previous builder processes: ' + $_.Exception.Message) }",
     "}",
     "Write-UpdateLog 'Update launcher started.'",
-    "try { Wait-Process -Id $parentPid -Timeout 60; Write-UpdateLog 'Previous app process exited.' } catch { Write-UpdateLog ('Previous app wait finished: ' + $_.Exception.Message) }",
-    "Stop-BuilderIfStillRunning $parentPid",
+    "Start-Sleep -Seconds 3",
+    "try { Wait-Process -Id $parentPid -Timeout 8; Write-UpdateLog 'Previous app process exited.' } catch { Write-UpdateLog ('Previous app wait finished: ' + $_.Exception.Message) }",
+    "Stop-BuilderProcesses $parentPid $candidates",
     "Start-Sleep -Seconds 1",
     "$installerProcess = $null",
     "$installerExit = 1",
@@ -1744,21 +1751,13 @@ async function downloadAndLaunchAppUpdate() {
     "exit 2"
   ].join("\r\n");
   await writeFile(launcherPath, launcherScript, "utf8");
+  const launcherCommandScript = [
+    "@echo off",
+    `start "" /min powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "${launcherPath}"`
+  ].join("\r\n");
+  await writeFile(launcherCommandPath, launcherCommandScript, "utf8");
 
-  const launcherCommand = [
-    "start",
-    '""',
-    "/min",
-    "powershell.exe",
-    "-NoProfile",
-    "-ExecutionPolicy",
-    "Bypass",
-    "-WindowStyle",
-    "Hidden",
-    "-File",
-    windowsCommandQuoted(launcherPath)
-  ].join(" ");
-  const child = spawn("cmd.exe", ["/d", "/s", "/c", launcherCommand], {
+  const child = spawn("cmd.exe", ["/d", "/c", launcherCommandPath], {
     detached: true,
     stdio: "ignore",
     windowsHide: true
@@ -1777,6 +1776,7 @@ async function downloadAndLaunchAppUpdate() {
     installerPath,
     launcherPath,
     updateLogPath,
+    launcherCommandPath,
     started: true
   };
 }
