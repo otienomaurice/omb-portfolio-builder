@@ -284,6 +284,14 @@ Function OMBScanForDuplicateBuilderCopies
   ${EndIf}
 FunctionEnd
 
+Function OMBStopBuilderProcessesForUpdate
+  DetailPrint "Stopping running OMB Portfolio Builder processes before update."
+  nsExec::ExecToStack 'cmd /c taskkill /IM "OMB Portfolio Builder.exe" /F /T'
+  Pop $R4
+  Pop $R3
+  Sleep 1500
+FunctionEnd
+
 Function OMBUninstallExistingInstallIfPresent
   StrCpy $OMB_ExistingInstallLocation ""
   StrCpy $OMB_ExistingInstallVersion ""
@@ -370,6 +378,10 @@ Function OMBUninstallExistingInstallIfPresent
       StrCpy $OMB_ManualApplicationInstall "1"
   ${EndIf}
 
+  ${If} $OMB_ManualApplicationInstall == "1"
+    StrCpy $R5 ""
+  ${EndIf}
+
   ${If} $R7 != ""
     ${If} $OMB_ManualApplicationInstall == "1"
       Call OMBReadExistingAppVersion
@@ -398,6 +410,7 @@ Function OMBUninstallExistingInstallIfPresent
     ${If} $R5 == ""
     ${AndIf} $OMB_ManualApplicationInstall == "1"
       DetailPrint "Existing standalone app folder found. Setup will update that folder in place."
+      Call OMBStopBuilderProcessesForUpdate
       StrCpy $INSTDIR $OMB_ExistingInstallLocation
       Return
     ${EndIf}
@@ -407,10 +420,10 @@ Function OMBUninstallExistingInstallIfPresent
     ${EndIf}
 
     DetailPrint "Uninstalling existing OMB Portfolio Builder $R6 before installing this version."
+    Call OMBStopBuilderProcessesForUpdate
     ExecWait '$R5' $R4
     ${If} $R4 != 0
-      MessageBox MB_OK|MB_ICONSTOP "The existing OMB Portfolio Builder uninstall did not complete. Windows returned code $R4.$\r$\n$\r$\nRemove the existing version from Windows Installed apps or Apps & features, then run this installer again."
-      Quit
+      DetailPrint "Existing uninstaller returned code $R4. Setup will continue as an in-place update."
     ${EndIf}
     StrCpy $INSTDIR $OMB_ExistingInstallLocation
   ${EndIf}
