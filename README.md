@@ -94,6 +94,7 @@ For repository development, use the branch model in [BRANCHING.md](BRANCHING.md)
 | `codex/update-dialog-and-main-gate` | Hides inactive update actions when the builder is current and adds a clearer main-branch push guard. | `development` | `development` | Active |
 | `codex/responsive-builder-output` | Makes the project parser build responsive layout profiles so saved portfolio projects render cleanly on phones and PCs. | `development` | `development` | Merged into `development` |
 | `codex/responsive-builder-docs` | Updates the README and in-app guide for responsive builder output. | `development` | `development` | Merged into `development` |
+| `codex/fix-update-auto-restart` | Makes the app update flow quit the desktop app cleanly, run the installer, and relaunch the updated executable automatically. | `development` | `development` | Merged into `development` |
 
 ## Publishing Security
 
@@ -144,7 +145,7 @@ Successful publishing authorization is cached locally for about one day per repo
 
 ## Updates
 
-The installed builder checks the latest GitHub Release and opens an in-app update window when a newer installer is available. Choose **Update** to download the latest installer, close the app, run the installer automatically, and reopen the app. Choose **Remind me later** to snooze the prompt or **Skip this version** to dismiss that release. You can also click **Check updates** in the builder header to check manually.
+The installed builder checks the latest GitHub Release and opens an in-app update window when a newer installer is available. Choose **Update** to download the latest installer, close the app, run the installer automatically, and reopen the updated app. The updater waits for the old builder process to close, installs the new release, then launches the updated `OMB Portfolio Builder.exe`. Choose **Remind me later** to snooze the prompt or **Skip this version** to dismiss that release. You can also click **Check updates** in the builder header to check manually.
 
 The app checks on startup, checks periodically while it remains open, and checks again when the window returns to focus after a long idle period. Updates are installed through the same Windows installer flow. The update does not require users to manually run shell scripts or manually delete the previous version. If the app is already installed, setup detects the existing copy, stops when the installed version is already current or newer, and updates the existing location only when the installer is newer.
 

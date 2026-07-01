@@ -9,6 +9,7 @@ const { promisify } = require("node:util");
 
 let mainWindow = null;
 let builderOrigin = "";
+let updateShutdownStarted = false;
 const execFileAsync = promisify(execFile);
 const defaultRepositoryUrl = process.env.OMB_BUILDER_REPOSITORY || "";
 const defaultWorkspaceHomeName = "OMB";
@@ -62,6 +63,32 @@ function dispatchBuilderMenuAction(action) {
     true
   ).catch(() => {});
 }
+
+function quitForBuilderUpdate() {
+  if (updateShutdownStarted) return;
+  updateShutdownStarted = true;
+  try {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.destroy();
+    }
+  } catch {
+    // The process exit fallback below still guarantees the updater can continue.
+  }
+  try {
+    app.quit();
+  } catch {
+    // Fall through to app.exit.
+  }
+  setTimeout(() => {
+    try {
+      app.exit(0);
+    } catch {
+      process.exit(0);
+    }
+  }, 1500);
+}
+
+process.on("omb-builder-update-started", quitForBuilderUpdate);
 
 function createAppMenu(origin) {
   return Menu.buildFromTemplate([
