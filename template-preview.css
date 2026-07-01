@@ -1536,7 +1536,7 @@ body.rich-image-dragging * {
   position: relative;
   display: grid;
   gap: 8px;
-  max-width: min(100%, 720px);
+  max-width: min(100%, var(--responsive-media-max, 720px));
   margin: 0;
   padding-top: 36px;
 }
@@ -1573,7 +1573,7 @@ body.rich-image-dragging * {
 .rich-image-viewport {
   position: relative;
   display: block;
-  width: min(100%, 720px);
+  width: min(100%, var(--responsive-media-max, 720px));
   overflow: hidden;
   border-radius: 8px;
   background: #ffffff;
@@ -2222,7 +2222,7 @@ body.rich-image-dragging * {
 }
 
 .section-open-card {
-  min-height: 88px;
+  min-height: max(var(--responsive-touch-target, 44px), 76px);
   color: var(--ink);
   text-align: left;
   cursor: pointer;
@@ -2275,8 +2275,8 @@ body.rich-image-dragging * {
 .subsection-grid.section-content-grid .section-open-card {
   flex: 0 1 auto;
   width: fit-content;
-  min-width: min(210px, 100%);
-  max-width: min(360px, 100%);
+  min-width: min(var(--responsive-section-card-min, 210px), 100%);
+  max-width: min(420px, 100%);
 }
 
 .subsection-grid.section-content-grid .section-open-card span {
@@ -3845,3 +3845,65 @@ body.full-window-open {
     .project-preview-content .rich-content {
         justify-items: stretch;
     }
+
+.portfolio-preview-article.responsive-project {
+    --responsive-section-card-min: 240px;
+    --responsive-content-max: 1180px;
+    --responsive-media-max: 760px;
+    --responsive-touch-target: 44px;
+}
+
+.portfolio-preview-article.responsive-density-simple {
+    --responsive-section-card-min: 280px;
+    --responsive-content-max: 980px;
+}
+
+.portfolio-preview-article.responsive-density-dense {
+    --responsive-section-card-min: 210px;
+    --responsive-content-max: 1180px;
+}
+
+.portfolio-preview-article.responsive-project .evidence-grid {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, var(--responsive-section-card-min, 240px)), 1fr));
+}
+
+.portfolio-preview-article.responsive-project .rich-paragraph,
+.portfolio-preview-article.responsive-project .portfolio-resource,
+.project-preview-content .section-file-link {
+    overflow-wrap: anywhere;
+}
+
+.portfolio-preview-article.responsive-project .rich-formula,
+.project-preview-content .rich-formula {
+    max-width: 100%;
+    overflow-x: auto;
+}
+
+@media (max-width: 760px) {
+    .project-preview-content {
+        padding: 14px;
+    }
+
+    .portfolio-preview-article.responsive-project .evidence-grid,
+    .project-preview-content .section-content-grid,
+    .project-preview-content .subsection-grid.section-content-grid,
+    .project-preview-content .portfolio-media-grid {
+        display: grid;
+        grid-template-columns: 1fr;
+    }
+
+    .project-preview-content .section-open-card,
+    .project-preview-content .subsection-grid.section-content-grid .section-open-card {
+        width: 100%;
+        min-width: 0;
+        max-width: none;
+        min-height: max(var(--responsive-touch-target, 44px), 58px);
+    }
+
+    .project-preview-content .rich-image,
+    .project-preview-content .rich-image-block,
+    .project-preview-content .rich-image-viewport {
+        width: 100%;
+        max-width: 100%;
+    }
+}

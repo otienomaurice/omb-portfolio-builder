@@ -2226,6 +2226,28 @@ function projectTemplateClass(project) {
   return templateId ? `project-template project-template-${templateId}` : "project-template-white";
 }
 
+function responsiveClassName(value, fallback) {
+  return String(value || fallback || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "") || fallback;
+}
+
+function projectResponsiveClass(project) {
+  const profile = projectResponsiveProfile(project);
+  return `responsive-project responsive-density-${responsiveClassName(profile.density, "balanced")} responsive-card-${responsiveClassName(profile.cardLayout, "single")}`;
+}
+
+function responsiveStyleValues(project) {
+  const profile = projectResponsiveProfile(project);
+  return {
+    "--responsive-section-card-min": profile.sectionCardMin,
+    "--responsive-content-max": profile.contentMax,
+    "--responsive-media-max": profile.mediaMax,
+    "--responsive-touch-target": profile.touchTarget
+  };
+}
+
 function hasPublicTemplate(project) {
   return Boolean(projectTemplateId(project));
 }
@@ -2245,7 +2267,8 @@ function projectTemplateStyle(project, accent) {
     "--template-click": visual.click,
     "--template-click-text": visual.clickText,
     "--template-line": visual.line,
-    "--template-text": visual.text
+    "--template-text": visual.text,
+    ...responsiveStyleValues(project)
   };
   return Object.entries(values)
     .filter(([, value]) => value)
@@ -2256,9 +2279,17 @@ function projectTemplateStyle(project, accent) {
 function applyProjectTemplateToElement(element, project, accent) {
   if (!element) return;
   [...element.classList]
-    .filter((className) => className === "project-template" || className === "project-template-white" || className.startsWith("project-template-"))
+    .filter((className) =>
+      className === "project-template" ||
+      className === "project-template-white" ||
+      className === "responsive-project" ||
+      className.startsWith("project-template-") ||
+      className.startsWith("responsive-density-") ||
+      className.startsWith("responsive-card-")
+    )
     .forEach((className) => element.classList.remove(className));
   projectTemplateClass(project).split(" ").forEach((className) => element.classList.add(className));
+  projectResponsiveClass(project).split(" ").forEach((className) => element.classList.add(className));
   const visual = projectTemplateVisual(project) || {};
   const values = {
     "--accent": accent,
@@ -2269,7 +2300,8 @@ function applyProjectTemplateToElement(element, project, accent) {
     "--template-click": visual.click,
     "--template-click-text": visual.clickText,
     "--template-line": visual.line,
-    "--template-text": visual.text
+    "--template-text": visual.text,
+    ...responsiveStyleValues(project)
   };
   Object.entries(values).forEach(([key, value]) => {
     if (value) {
@@ -2342,6 +2374,78 @@ function parsedItemHasContent(item) {
 
 function parsedSectionHasContent(section) {
   return Boolean(section?.description || richHasContent(section?.rich) || (section?.items || []).some(parsedItemHasContent));
+}
+
+function responsiveChildren(node) {
+  return node?.items || node?.children || [];
+}
+
+function richContainsMedia(rich) {
+  return Boolean(rich?.blocks?.some((block) => block.type === "image" && block.url));
+}
+
+function responsiveNodeHasMedia(node) {
+  if (!node) return false;
+  if (node.kind === "image" || richContainsMedia(node.rich)) return true;
+  const url = String(node.url || "");
+  if (/\.(apng|avif|gif|jpe?g|png|svg|webp)(\?|#|$)/i.test(url)) return true;
+  return responsiveChildren(node).some(responsiveNodeHasMedia);
+}
+
+function responsiveNodeCount(node) {
+  if (!node || !parsedItemHasContent(node)) return 0;
+  return 1 + responsiveChildren(node).reduce((count, child) => count + responsiveNodeCount(child), 0);
+}
+
+function responsiveNodeDepth(node) {
+  if (!node || !parsedItemHasContent(node)) return 0;
+  const children = responsiveChildren(node).filter(parsedItemHasContent);
+  if (!children.length) return 1;
+  return 1 + Math.max(...children.map(responsiveNodeDepth));
+}
+
+function buildResponsiveProfile(project, parsedSections = []) {
+  const visibleSections = (parsedSections || []).filter((section) => section?.id !== "brief" && parsedSectionHasContent(section));
+  const itemCount = visibleSections.reduce(
+    (count, section) => count + (section.items || []).reduce((sum, item) => sum + responsiveNodeCount(item), 0),
+    0
+  );
+  const maxDepth = visibleSections.reduce(
+    (depth, section) => Math.max(depth, ...(section.items || []).map(responsiveNodeDepth), 1),
+    1
+  );
+  const hasMedia = visibleSections.some((section) => responsiveNodeHasMedia(section));
+  const density = itemCount >= 18 || visibleSections.length >= 6 || maxDepth >= 4
+    ? "dense"
+    : itemCount <= 6 && visibleSections.length <= 2
+      ? "simple"
+      : "balanced";
+  return {
+    version: 1,
+    breakpoints: {
+      mobile: 640,
+      tablet: 900,
+      desktop: 1180
+    },
+    cardLayout: hasPublicTemplate(project) ? "single" : "split",
+    contentMax: hasMedia || maxDepth >= 3 ? "1180px" : "980px",
+    density,
+    mediaMax: hasMedia ? "860px" : "720px",
+    sectionCardMin: density === "dense" ? "210px" : density === "simple" ? "280px" : "240px",
+    touchTarget: "44px",
+    windowMode: "full-screen"
+  };
+}
+
+function projectResponsiveProfile(project) {
+  const savedProfile = project?.portfolioView?.responsive;
+  if (savedProfile?.version) {
+    return {
+      ...buildResponsiveProfile(project, project?.portfolioView?.sections || []),
+      ...savedProfile
+    };
+  }
+  return buildResponsiveProfile(project, project?.portfolioView?.sections || []);
 }
 
 function parsedSection(id, title, items = [], description = "", rich = null) {
@@ -2449,6 +2553,7 @@ function parseProjectForPortfolio(project) {
         label: template.label || project.templateLabel || "",
         visual: template.visual ? clone(template.visual) : projectTemplateVisual(project)
       },
+      responsive: buildResponsiveProfile(project, parsedSections),
       title: project.title,
       sections: parsedSections
     }
@@ -2762,11 +2867,13 @@ function publicCustomSectionBlocks(project) {
 
 function renderProjectPortfolioPreview(project) {
   if (!project) return `<p class="evidence-empty">Select a project first.</p>`;
+  const category = categoryById(project.category);
+  const accent = category.accent || "#117c7a";
   if (project.portfolioView) {
     const briefSection = (project.portfolioView.sections || []).find((section) => section.id === "brief");
     const otherSections = (project.portfolioView.sections || []).filter((section) => section.id !== "brief" && previewSectionHasRenderableContent(section));
     return `
-      <article class="portfolio-preview-article">
+      <article class="portfolio-preview-article ${projectTemplateClass(project)} ${projectResponsiveClass(project)}" style="${projectTemplateStyle(project, accent)}">
         <header>
           ${renderParsedBriefBlock(briefSection, project.summary)}
         </header>
@@ -2777,7 +2884,7 @@ function renderProjectPortfolioPreview(project) {
     `;
   }
   return `
-    <article class="portfolio-preview-article">
+    <article class="portfolio-preview-article ${projectTemplateClass(project)} ${projectResponsiveClass(project)}" style="${projectTemplateStyle(project, accent)}">
       <header>
         <div class="project-brief-default">
           <h4>Overview</h4>
@@ -3033,7 +3140,7 @@ function publicProjectCard(project) {
   const accent = category.accent || "#117c7a";
 
   return `
-    <article class="project-card catalog-card ${projectTemplateClass(project)}" id="${project.id}" style="${projectTemplateStyle(project, accent)}">
+    <article class="project-card catalog-card ${projectTemplateClass(project)} ${projectResponsiveClass(project)}" id="${project.id}" style="${projectTemplateStyle(project, accent)}">
       <div class="project-body">
         <h3>${project.title}</h3>
         <p>${project.summary || ""}</p>
@@ -3243,7 +3350,7 @@ function parsedPublicProjectCard(project) {
   const otherSections = (view.sections || []).filter((section) => section.id !== "brief" && previewSectionHasRenderableContent(section));
 
   return `
-    <article class="project-card catalog-card ${projectTemplateClass(project)}" id="${project.id}" style="${projectTemplateStyle(project, accent)}">
+    <article class="project-card catalog-card ${projectTemplateClass(project)} ${projectResponsiveClass(project)}" id="${project.id}" style="${projectTemplateStyle(project, accent)}">
       <div class="project-body">
         <h3>${view.title || project.title}</h3>
         ${renderParsedBriefBlock(briefSection, project.summary)}
@@ -3315,7 +3422,7 @@ function projectCard(project, isSelected = false) {
   const accent = category.accent || "#117c7a";
 
   return `
-    <article class="project-card catalog-card ${projectTemplateClass(project)} ${isSelected ? "preview-project-card" : ""}" id="${project.id}" style="${projectTemplateStyle(project, accent)}">
+    <article class="project-card catalog-card ${projectTemplateClass(project)} ${projectResponsiveClass(project)} ${isSelected ? "preview-project-card" : ""}" id="${project.id}" style="${projectTemplateStyle(project, accent)}">
       <div class="project-body">
         <div class="local-card-controls">
           <button type="button" title="Open project" data-preview-project="${project.id}">Open</button>
