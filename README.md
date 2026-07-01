@@ -95,6 +95,7 @@ For repository development, use the branch model in [BRANCHING.md](BRANCHING.md)
 | `codex/responsive-builder-output` | Makes the project parser build responsive layout profiles so saved portfolio projects render cleanly on phones and PCs. | `development` | `development` | Merged into `development` |
 | `codex/responsive-builder-docs` | Updates the README and in-app guide for responsive builder output. | `development` | `development` | Merged into `development` |
 | `codex/fix-update-auto-restart` | Makes the app update flow quit the desktop app cleanly, run the installer, and relaunch the updated executable automatically. | `development` | `development` | Merged into `development` |
+| `codex/fix-update-launch-handoff` | Launches the updater through a detached Windows command handoff so the installer/relaunch script survives app shutdown. | `development` | `development` | Merged into `development` |
 
 ## Publishing Security
 
