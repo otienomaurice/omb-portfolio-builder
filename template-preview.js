@@ -1,6 +1,9 @@
 const builderGuideOpen = document.querySelector("#builder-guide-open");
 const builderGuideDialog = document.querySelector("#builder-guide-dialog");
 const builderGuideClose = document.querySelector("#builder-guide-close");
+const builderGuideSearch = document.querySelector("#builder-guide-search");
+const builderGuideResults = document.querySelector("#builder-guide-results");
+const builderGuideSections = document.querySelector("#builder-guide-sections");
 const templateSelect = document.querySelector("#template-select");
 const newCategorySelect = document.querySelector("#new-category-select");
 const placementSelect = document.querySelector("#placement-select");
@@ -4797,6 +4800,20 @@ async function handleRichAction(action, editor) {
         }
         return;
     }
+    if (action === "select-all-text") {
+        const block = selectedRichBlock(editor);
+        const target = block?.dataset.type === "paragraph" ? block : editor;
+        const range = document.createRange();
+        range.selectNodeContents(target);
+        const selection = window.getSelection();
+        selection.removeAllRanges();
+        selection.addRange(range);
+        activeRichSelectionRange = range.cloneRange();
+        activeTextSelectionRange = range.cloneRange();
+        showPersistentTextSelection(range);
+        showTextSelectionInspector(editor, range);
+        return;
+    }
   if (action === "add-image") {
       const imageBlock = await openSummaryImageDialog(null, {
           folder: editor.dataset.richFolder || "summary",
@@ -6871,12 +6888,113 @@ templatePreviewClose.addEventListener("click", () => {
   closeDialogElement(templateDialog);
 });
 
+let activeBuilderGuideTopic = "all";
+
+function updateBuilderGuideStats() {
+  if (!builderGuideDialog) return;
+  const projectCount = catalog.projects?.length || 0;
+  const categoryCount = catalog.categories?.length || 0;
+  const parsedCount = savedPortfolioCatalog.projects?.length || 0;
+  const targetLabel = currentPublishTarget?.remote
+    ? `Target: ${currentPublishTarget.remote.replace(/^https:\/\/github\.com\//i, "")}`
+    : "Target: not connected";
+  const values = {
+    projects: `Projects: ${projectCount} (${parsedCount} parsed)`,
+    categories: `Categories: ${categoryCount}`,
+    draft: draftSavedSinceChanges ? "Draft: saved" : "Draft: unsaved changes",
+    target: targetLabel
+  };
+  Object.entries(values).forEach(([key, value]) => {
+    const node = builderGuideDialog.querySelector(`[data-guide-stat='${key}']`);
+    if (node) node.textContent = value;
+  });
+}
+
+function guideSectionText(section) {
+  return [
+    section.querySelector("summary")?.textContent || "",
+    section.textContent || "",
+    section.dataset.guideSection || ""
+  ].join(" ").toLowerCase();
+}
+
+function filterBuilderGuide() {
+  if (!builderGuideSections) return;
+  const query = String(builderGuideSearch?.value || "").trim().toLowerCase();
+  const sections = [...builderGuideSections.querySelectorAll("[data-guide-section]")];
+  let visibleCount = 0;
+  sections.forEach((section) => {
+    const topicMatch = activeBuilderGuideTopic === "all" || (section.dataset.guideSection || "").split(/\s+/).includes(activeBuilderGuideTopic);
+    const queryMatch = !query || guideSectionText(section).includes(query);
+    const visible = topicMatch && queryMatch;
+    section.hidden = !visible;
+    if (visible) {
+      visibleCount += 1;
+      if (query || activeBuilderGuideTopic !== "all") section.open = true;
+    }
+  });
+  if (builderGuideResults) {
+    const topicText = activeBuilderGuideTopic === "all" ? "all topics" : activeBuilderGuideTopic;
+    builderGuideResults.textContent = visibleCount
+      ? `Showing ${visibleCount} guide topic${visibleCount === 1 ? "" : "s"} for ${topicText}${query ? ` matching "${query}"` : ""}.`
+      : `No guide topics match "${query}".`;
+  }
+}
+
+function setBuilderGuideTopic(topic = "all") {
+  activeBuilderGuideTopic = topic || "all";
+  builderGuideDialog?.querySelectorAll("[data-guide-topic]").forEach((button) => {
+    button.setAttribute("aria-pressed", button.dataset.guideTopic === activeBuilderGuideTopic ? "true" : "false");
+  });
+  filterBuilderGuide();
+}
+
+function closeGuideAndFocus(target) {
+  closeDialogElement(builderGuideDialog);
+  requestAnimationFrame(() => {
+    target?.scrollIntoView?.({ behavior: "smooth", block: "center" });
+    if (target?.focus) target.focus({ preventScroll: true });
+  });
+}
+
+function handleBuilderGuideAction(action = "") {
+  if (action === "profile") closeGuideAndFocus(profileDisplayNameInput);
+  if (action === "site-content") closeGuideAndFocus(siteHeroTitleInput);
+  if (action === "fun-facts") closeGuideAndFocus(funFactsInput);
+  if (action === "projects") closeGuideAndFocus(projectTree);
+  if (action === "preview") {
+    closeDialogElement(builderGuideDialog);
+    openPortfolioPreviewButton?.click();
+  }
+  if (action === "target") {
+    closeDialogElement(builderGuideDialog);
+    publishTargetOpen?.click();
+  }
+  if (action === "updates") {
+    closeDialogElement(builderGuideDialog);
+    appUpdateCheckButton?.click();
+  }
+}
+
 builderGuideOpen.addEventListener("click", () => {
+  updateBuilderGuideStats();
+  filterBuilderGuide();
   builderGuideDialog.showModal();
 });
 
 builderGuideClose.addEventListener("click", () => {
   closeDialogElement(builderGuideDialog);
+});
+
+builderGuideSearch?.addEventListener("input", filterBuilderGuide);
+builderGuideDialog?.addEventListener("click", (event) => {
+  const topic = event.target.closest("[data-guide-topic]");
+  if (topic) {
+    setBuilderGuideTopic(topic.dataset.guideTopic || "all");
+    return;
+  }
+  const action = event.target.closest("[data-guide-action]");
+  if (action) handleBuilderGuideAction(action.dataset.guideAction || "");
 });
 
 projectWindowTitle.addEventListener("dblclick", (event) => {
