@@ -163,6 +163,7 @@ Use the workflow in [BRANCHING.md](BRANCHING.md):
 | `codex/fix-update-cmd-runner` | Writes a detached updater command file, closes lingering builder processes, and relaunches the updated app after installation. | `development` | `development` | Merged into `development` |
 | `codex/fix-editor-fullscreen-update-flow` | Separates builder and portfolio README content and expands the in-app Builder Guide into an interactive help center. | `development` | `development` | Active |
 | `codex/fix-editor-installer-update-flow` | Fixes rich-editor context menus, prevents pasted links from rendering as formulas, adds safe fullscreen exit behavior, and lets installers update in place when old uninstallers fail. | `development` | `development` | Active |
+| `codex/populate-builder-guide` | Populates the in-app Builder Guide with detailed setup, project, editor, preview, publishing, mobile, update, and safety workflows. | `development` | `development` | Active |
 
 ## Uninstall
 

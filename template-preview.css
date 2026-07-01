@@ -444,6 +444,21 @@
   line-height: 1.55;
 }
 
+.builder-guide-section ol,
+.builder-guide-section ul {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding-left: 22px;
+  color: #2b5064;
+  font-size: 0.86rem;
+  line-height: 1.5;
+}
+
+.builder-guide-section li {
+  padding-left: 2px;
+}
+
 .publish-result-box {
   display: grid;
   gap: 12px;
