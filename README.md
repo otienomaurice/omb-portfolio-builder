@@ -17,7 +17,7 @@ Use:
 - `OMB-Portfolio-Builder-Setup-latest-x64.exe` for the Windows installer.
 - `OMB-Portfolio-Builder-Portable-latest-x64.exe` when you want to run without installing.
 
-The normal installer default is a per-user Windows app location:
+The normal installer default is a per-user AppData location:
 
 ```text
 C:\Users\<you>\AppData\Local\Programs\OMB Portfolio Builder
@@ -47,11 +47,13 @@ https://github.com/otienomaurice/omb-portfolio-builder/releases
 
 ## Local Workspaces
 
-On Windows, the app separates application files from editable content:
+On Windows, the app keeps application files and editable content under AppData:
 
 - `C:\Users\<you>\AppData\Local\Programs\OMB Portfolio Builder` stores the installed desktop application.
-- `C:\Users\<you>\OMB\builder` stores the builder workspace, local drafts, uploaded files, templates, previews, and editing tools.
-- `C:\Users\<you>\OMB\portfolio` stores the publish mirror used by Git-based publishing.
+- `C:\Users\<you>\AppData\Local\OMB Portfolio Builder\builder` stores the builder workspace, local drafts, uploaded files, templates, previews, and editing tools.
+- `C:\Users\<you>\AppData\Local\OMB Portfolio Builder\portfolio` stores the publish mirror used by Git-based publishing.
+
+The installer and updater treat the AppData builder and portfolio folders as managed workspaces, not duplicate app installs.
 
 The builder works offline for editing, project creation, file attachment, local previews, and draft saves. Publishing requires network access and repository write permission.
 
@@ -187,6 +189,7 @@ Use the workflow in [BRANCHING.md](BRANCHING.md):
 | `codex/code-block-preferences` | Adds code-block authoring with syntax highlighting, source/basic paste modes, parser rendering, and builder Preferences for light/dark mode. | `codex/rich-profile-frontpage-editors` | `development` | Active |
 | `codex/full-builder-dark-mode` | Expands builder dark mode across panels, dialogs, menus, status chips, and icon controls while preserving input-field colors and project appearance templates. | `codex/code-block-preferences` | `development` | Active |
 | `codex/per-user-update-migration` | Moves the installer/update model to the current user's app location and prefers per-user install records over stale machine-wide records. | `codex/full-builder-dark-mode` | `development` | Active |
+| `codex/appdata-workspace-root` | Standardizes future installs and managed builder/portfolio workspaces under AppData and migrates legacy OMB app-folder installs forward. | `codex/per-user-update-migration` | `development` | Active |
 
 ## Uninstall
 
