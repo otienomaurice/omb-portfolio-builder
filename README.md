@@ -70,7 +70,7 @@ The builder works offline for editing, project creation, file attachment, local 
 
 Project and portfolio-area overview editors support rich text editing with selection-level formatting, links, images, formulas, hard line breaks, copy, paste, cut, and select all.
 
-Front-page, profile, and contact fields use simpler input and textarea controls. Their right-click menu supports copy, paste, cut, select all, font family, font size, text color, bold, italic, and underline, and those formatting choices apply to the whole field in the builder, full preview, and published portfolio.
+Front-page, profile, contact, fun facts, and project overview fields use the same selection-level text behavior: highlight the exact words to edit, then use the right-click menu or floating selection inspector to change font family, font size, text color, bold, italic, or underline. Identity and contact fields are text-only, so image and formula insertion is intentionally disabled there while copy, paste, cut, select all, links, and text formatting still work.
 
 ## Publishing
 
