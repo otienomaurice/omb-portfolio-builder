@@ -40,7 +40,9 @@ let funFacts = [];
 let funFactsRich = null;
 let fieldStyles = {};
 let siteContent = null;
+let siteContentRich = {};
 let profile = null;
+let profileRich = {};
 let activeFilter = "all";
 let activeSectionDialogDrag = null;
 let activeSectionDialogResize = null;
@@ -383,9 +385,9 @@ function phoneLink(phone = "") {
 
 function renderSiteContent() {
   const content = normalizeSiteContent(siteContent || {});
-  if (heroEyebrow) heroEyebrow.textContent = content.heroEyebrow;
-  if (heroTitle) heroTitle.innerHTML = renderPlainMultiline(content.heroTitle);
-  if (heroCopy) heroCopy.innerHTML = renderPlainMultiline(content.heroCopy);
+  if (heroEyebrow) heroEyebrow.innerHTML = renderRichFieldContent(siteContentRich.heroEyebrow, content.heroEyebrow);
+  if (heroTitle) heroTitle.innerHTML = renderRichFieldContent(siteContentRich.heroTitle, content.heroTitle);
+  if (heroCopy) heroCopy.innerHTML = renderRichFieldContent(siteContentRich.heroCopy, content.heroCopy);
   applyPlainFieldStyle(heroEyebrow, "site-hero-eyebrow");
   applyPlainFieldStyle(heroTitle, "site-hero-title");
   applyPlainFieldStyle(heroCopy, "site-hero-copy");
@@ -407,8 +409,8 @@ function renderProfile() {
   ].filter(Boolean);
 
   document.title = `${displayName} | ${label}`;
-  if (brandName) brandName.textContent = displayName;
-  if (brandSubtitle) brandSubtitle.textContent = label;
+  if (brandName) brandName.innerHTML = renderRichFieldContent(profileRich.displayName, displayName);
+  if (brandSubtitle) brandSubtitle.innerHTML = renderRichFieldContent(profileRich.portfolioLabel, label);
   applyPlainFieldStyle(brandName, "profile-display-name");
   applyPlainFieldStyle(brandSubtitle, "profile-portfolio-label");
   if (brandText) brandText.textContent = current.brandText || displayName.slice(0, 3).toUpperCase() || "PORT";
@@ -468,16 +470,19 @@ function renderProfile() {
       profilePhoto.alt = `Portrait of ${displayName}`;
     }
   }
-  if (contactTitle) contactTitle.textContent = displayName;
+  if (contactTitle) contactTitle.innerHTML = renderRichFieldContent(profileRich.displayName, displayName);
   applyPlainFieldStyle(contactTitle, "profile-display-name");
   if (contactIntro) {
-    contactIntro.textContent = current.contactIntro || (current.displayName ? `${displayName}'s contact information and public links.` : "Add contact details in the builder.");
+    contactIntro.innerHTML = renderRichFieldContent(
+      profileRich.contactIntro,
+      current.contactIntro || (current.displayName ? `${displayName}'s contact information and public links.` : "Add contact details in the builder.")
+    );
   }
   applyPlainFieldStyle(contactIntro, "profile-contact-intro");
   if (contactDetails) {
     contactDetails.innerHTML = [
-      current.email ? `<a href="${emailLink}" target="_blank" rel="noreferrer"${plainFieldStyleAttribute("profile-email")}>${current.email}</a>` : "",
-      current.phone ? `<a href="${callLink}"${plainFieldStyleAttribute("profile-phone")}>${current.phone}</a>` : ""
+      current.email ? `<a href="${emailLink}" target="_blank" rel="noreferrer"${plainFieldStyleAttribute("profile-email")}>${renderRichFieldContent(profileRich.email, current.email)}</a>` : "",
+      current.phone ? `<a href="${callLink}"${plainFieldStyleAttribute("profile-phone")}>${renderRichFieldContent(profileRich.phone, current.phone)}</a>` : ""
     ].filter(Boolean).join("");
   }
   if (contactLinks) {
@@ -763,6 +768,8 @@ function richTextStyle(block = {}) {
     if (fontPx) styles.push(`font-size: ${fontPx}px`);
     if (color) styles.push(`color: ${color}`);
     if (block.bold) styles.push("font-weight: 700");
+    if (block.italic) styles.push("font-style: italic");
+    if (block.underline) styles.push("text-decoration: underline");
 
     return styles.length ? ` style="${escapeHtml(styles.join("; "))}"` : "";
 }
@@ -850,6 +857,18 @@ function renderRichContent(rich, fallbackText = "") {
       }).join("")}
     </div>
   `;
+}
+
+function renderRichFieldContent(rich, fallbackText = "") {
+  const blocks = rich?.blocks?.length ? rich.blocks : textBlocksFromPlainText(fallbackText);
+  return blocks.map((block) => {
+    if (block.type !== "paragraph") return "";
+    const align = ["left", "center", "right"].includes(block.align) ? block.align : "left";
+    const content = block.html
+      ? sanitizeRichInlineHtml(block.html)
+      : renderInlineMath(block.text || "");
+    return `<span class="rich-field-line text-${align}"${richTextStyle(block)}>${content}</span>`;
+  }).filter(Boolean).join("");
 }
 
 function slugLabel(value) {
@@ -3505,7 +3524,9 @@ function loadProjectCatalog() {
     siteSections = window.__PORTFOLIO_CATALOG__.siteSections || [];
     fieldStyles = normalizeFieldStyles(window.__PORTFOLIO_CATALOG__.fieldStyles || {});
     siteContent = normalizeSiteContent(window.__PORTFOLIO_CATALOG__.siteContent || {});
+    siteContentRich = window.__PORTFOLIO_CATALOG__.siteContentRich || {};
     profile = normalizeProfile(window.__PORTFOLIO_CATALOG__.profile || {});
+    profileRich = window.__PORTFOLIO_CATALOG__.profileRich || {};
     funFacts = normalizeFunFacts(window.__PORTFOLIO_CATALOG__.funFacts || []);
     funFactsRich = window.__PORTFOLIO_CATALOG__.funFactsRich || null;
     renderProfile();
@@ -3533,7 +3554,9 @@ function loadProjectCatalog() {
       siteSections = data.siteSections || [];
       fieldStyles = normalizeFieldStyles(data.fieldStyles || {});
       siteContent = normalizeSiteContent(data.siteContent || {});
+      siteContentRich = data.siteContentRich || {};
       profile = normalizeProfile(data.profile || {});
+      profileRich = data.profileRich || {};
       funFacts = normalizeFunFacts(data.funFacts || []);
       funFactsRich = data.funFactsRich || null;
       renderProfile();

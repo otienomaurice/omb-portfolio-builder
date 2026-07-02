@@ -1686,19 +1686,74 @@ function renderFunFactsEditor() {
   populateStandaloneRichEditor(funFactsInput, catalog.funFactsRich, facts.join("\n"));
 }
 
+function populateTextOnlyRichField(field, rich, fallbackText = "") {
+  if (!field) return;
+  populateStandaloneRichEditor(field, rich, fallbackText);
+  field.dataset.richTextOnly = "true";
+}
+
+function richFieldValue(field, fallbackText = "") {
+  if (!field) {
+    return {
+      plain: String(fallbackText || "").trim(),
+      rich: { blocks: textBlocksFromPlainText(fallbackText) }
+    };
+  }
+  const rich = extractRichSummary(field);
+  return {
+    plain: plainTextFromRich(rich, "\n").trim(),
+    rich
+  };
+}
+
+function siteContentRichValue(key) {
+  return catalog.siteContentRich?.[key] || savedPortfolioCatalog.siteContentRich?.[key] || null;
+}
+
+function profileRichValue(key) {
+  return catalog.profileRich?.[key] || savedPortfolioCatalog.profileRich?.[key] || null;
+}
+
+function syncSiteRichField(editor) {
+  const key = editor?.dataset.siteField;
+  if (!key) return;
+  catalog.siteContentRich = catalog.siteContentRich || {};
+  const { plain, rich } = richFieldValue(editor, catalog.siteContent?.[key] || "");
+  catalog.siteContent = normalizeSiteContent({
+    ...(catalog.siteContent || {}),
+    [key]: plain
+  });
+  catalog.siteContentRich[key] = rich;
+  markDraftNeedsSave();
+  scheduleAutosave();
+  schedulePreviewRender();
+}
+
+function syncProfileRichField(editor) {
+  const key = editor?.dataset.profileField;
+  if (!key) return;
+  catalog.profileRich = catalog.profileRich || {};
+  const { plain, rich } = richFieldValue(editor, catalog.profile?.[key] || "");
+  catalog.profile = normalizeProfile({
+    ...(catalog.profile || {}),
+    [key]: plain
+  });
+  catalog.profileRich[key] = rich;
+  markDraftNeedsSave();
+  scheduleAutosave();
+  schedulePreviewRender();
+}
+
 function renderSiteContentEditor() {
   const content = normalizeSiteContent(catalog.siteContent || {});
   if (siteHeroEyebrowInput && document.activeElement !== siteHeroEyebrowInput) {
-    siteHeroEyebrowInput.value = content.heroEyebrow;
-    applyStoredPlainFieldStyle(siteHeroEyebrowInput);
+    populateTextOnlyRichField(siteHeroEyebrowInput, siteContentRichValue("heroEyebrow"), content.heroEyebrow);
   }
   if (siteHeroTitleInput && document.activeElement !== siteHeroTitleInput) {
-    siteHeroTitleInput.value = content.heroTitle;
-    applyStoredPlainFieldStyle(siteHeroTitleInput);
+    populateTextOnlyRichField(siteHeroTitleInput, siteContentRichValue("heroTitle"), content.heroTitle);
   }
   if (siteHeroCopyInput && document.activeElement !== siteHeroCopyInput) {
-    siteHeroCopyInput.value = content.heroCopy;
-    applyStoredPlainFieldStyle(siteHeroCopyInput);
+    populateTextOnlyRichField(siteHeroCopyInput, siteContentRichValue("heroCopy"), content.heroCopy);
   }
 }
 
@@ -1716,8 +1771,7 @@ function renderProfileEditor() {
   ];
   fields.forEach(([field, value]) => {
     if (field && document.activeElement !== field) {
-      field.value = value;
-      applyStoredPlainFieldStyle(field);
+      populateTextOnlyRichField(field, profileRichValue(field.dataset.profileField), value);
     }
   });
   if (profileAssetStatus) {
@@ -1734,25 +1788,46 @@ function renderProfileEditor() {
 }
 
 function syncSiteContentFromInputs() {
+  catalog.siteContentRich = catalog.siteContentRich || {};
+  const eyebrow = richFieldValue(siteHeroEyebrowInput, catalog.siteContent?.heroEyebrow || "");
+  const title = richFieldValue(siteHeroTitleInput, catalog.siteContent?.heroTitle || "");
+  const copy = richFieldValue(siteHeroCopyInput, catalog.siteContent?.heroCopy || "");
   catalog.siteContent = normalizeSiteContent({
-    heroCopy: siteHeroCopyInput?.value,
-    heroEyebrow: siteHeroEyebrowInput?.value,
-    heroTitle: siteHeroTitleInput?.value
+    heroCopy: copy.plain,
+    heroEyebrow: eyebrow.plain,
+    heroTitle: title.plain
   });
+  catalog.siteContentRich.heroCopy = copy.rich;
+  catalog.siteContentRich.heroEyebrow = eyebrow.rich;
+  catalog.siteContentRich.heroTitle = title.rich;
   return catalog.siteContent;
 }
 
 function syncProfileFromInputs() {
+  catalog.profileRich = catalog.profileRich || {};
+  const fields = {
+    contactIntro: richFieldValue(profileContactIntroInput, catalog.profile?.contactIntro || ""),
+    displayName: richFieldValue(profileDisplayNameInput, catalog.profile?.displayName || ""),
+    email: richFieldValue(profileEmailInput, catalog.profile?.email || ""),
+    githubUrl: richFieldValue(profileGithubInput, catalog.profile?.githubUrl || ""),
+    linkedinUrl: richFieldValue(profileLinkedinInput, catalog.profile?.linkedinUrl || ""),
+    phone: richFieldValue(profilePhoneInput, catalog.profile?.phone || ""),
+    portfolioLabel: richFieldValue(profilePortfolioLabelInput, catalog.profile?.portfolioLabel || ""),
+    websiteUrl: richFieldValue(profileWebsiteInput, catalog.profile?.websiteUrl || "")
+  };
   catalog.profile = normalizeProfile({
     ...(catalog.profile || {}),
-    contactIntro: profileContactIntroInput?.value,
-    displayName: profileDisplayNameInput?.value,
-    email: profileEmailInput?.value,
-    githubUrl: profileGithubInput?.value,
-    linkedinUrl: profileLinkedinInput?.value,
-    phone: profilePhoneInput?.value,
-    portfolioLabel: profilePortfolioLabelInput?.value,
-    websiteUrl: profileWebsiteInput?.value
+    contactIntro: fields.contactIntro.plain,
+    displayName: fields.displayName.plain,
+    email: fields.email.plain,
+    githubUrl: fields.githubUrl.plain,
+    linkedinUrl: fields.linkedinUrl.plain,
+    phone: fields.phone.plain,
+    portfolioLabel: fields.portfolioLabel.plain,
+    websiteUrl: fields.websiteUrl.plain
+  });
+  Object.entries(fields).forEach(([key, value]) => {
+    catalog.profileRich[key] = value.rich;
   });
   return catalog.profile;
 }
@@ -2297,6 +2372,8 @@ function richTextStyle(block = {}) {
     if (fontPx) styles.push(`font-size: ${fontPx}px`);
     if (color) styles.push(`color: ${color}`);
     if (block.bold) styles.push("font-weight: 700");
+    if (block.italic) styles.push("font-style: italic");
+    if (block.underline) styles.push("text-decoration: underline");
 
     return styles.length ? ` style="${escapeHtml(styles.join("; "))}"` : "";
 }
@@ -2371,6 +2448,18 @@ function renderRichContent(rich, fallbackText = "") {
       }).join("")}
     </div>
   `;
+}
+
+function renderRichFieldContent(rich, fallbackText = "") {
+  const blocks = rich?.blocks?.length ? rich.blocks : textBlocksFromPlainText(fallbackText);
+  return blocks.map((block) => {
+    if (block.type !== "paragraph") return "";
+    const align = ["left", "center", "right"].includes(block.align) ? block.align : "left";
+    const content = block.html
+      ? sanitizeRichInlineHtml(block.html)
+      : renderInlineMath(block.text || "");
+    return `<span class="rich-field-line text-${align}"${richTextStyle(block)}>${content}</span>`;
+  }).filter(Boolean).join("");
 }
 
 function saveSelectedProjectToPortfolio() {
@@ -2824,11 +2913,15 @@ async function saveAllSections(options = {}) {
   if (!(await commitActiveProjectEdits())) return false;
   if (funFactsInput) syncFunFactsFromInput();
   if (siteHeroTitleInput || siteHeroCopyInput || siteHeroEyebrowInput) syncSiteContentFromInputs();
+  if (profileDisplayNameInput || profileEmailInput || profilePhoneInput) syncProfileFromInputs();
   savedPortfolioCatalog.categories = clone(catalog.categories || []);
   savedPortfolioCatalog.fieldStyles = clone(normalizeFieldStyles(catalog.fieldStyles || {}));
   savedPortfolioCatalog.funFacts = normalizeFunFacts(catalog.funFacts || []);
   savedPortfolioCatalog.funFactsRich = clone(catalog.funFactsRich || null);
+  savedPortfolioCatalog.profile = clone(normalizeProfile(catalog.profile || {}));
   savedPortfolioCatalog.siteContent = clone(normalizeSiteContent(catalog.siteContent || {}));
+  savedPortfolioCatalog.siteContentRich = clone(catalog.siteContentRich || {});
+  savedPortfolioCatalog.profileRich = clone(catalog.profileRich || {});
   savedPortfolioCatalog.siteSections = (catalog.siteSections || []).filter(siteSectionRenderable).map(clone);
   savedPortfolioCatalog.projects = (catalog.projects || []).map((project) => parseProjectForPortfolio(project));
   markDraftNeedsSave();
@@ -3170,8 +3263,10 @@ function fullProjectPreviewHtmlExact(project) {
     funFacts: [],
     funFactsRich: null,
     profile: normalizeProfile(catalog.profile || savedPortfolioCatalog.profile || {}),
+    profileRich: clone(catalog.profileRich || savedPortfolioCatalog.profileRich || {}),
     projects: [parsedProject],
     siteContent: normalizeSiteContent(catalog.siteContent || savedPortfolioCatalog.siteContent || {}),
+    siteContentRich: clone(catalog.siteContentRich || savedPortfolioCatalog.siteContentRich || {}),
     siteSections: []
   };
   const previewData = JSON.stringify(previewDataObject).replaceAll("</", "<\\/");
@@ -3944,9 +4039,11 @@ function applyRichTextBlockStyle(block) {
     block.style.fontSize = fontPx ? `${fontPx}px` : "";
     block.style.color = color || "";
     block.style.fontWeight = block.dataset.bold === "true" ? "700" : "";
+    block.style.fontStyle = block.dataset.italic === "true" ? "italic" : "";
+    block.style.textDecoration = block.dataset.underline === "true" ? "underline" : "";
 }
 
-function createRichTextBlock(text = "", fontSize = "normal", align = "left", fontFamily = "Arial", fontPx = "", color = "", bold = false, html = "") {
+function createRichTextBlock(text = "", fontSize = "normal", align = "left", fontFamily = "Arial", fontPx = "", color = "", bold = false, html = "", italic = false, underline = false) {
     const block = document.createElement("p");
     block.className = `rich-block rich-text-block rich-text-${fontSize} text-${align}`;
     block.dataset.type = "paragraph";
@@ -3956,6 +4053,8 @@ function createRichTextBlock(text = "", fontSize = "normal", align = "left", fon
     block.dataset.fontPx = normalizeFontPx(fontPx);
     block.dataset.color = normalizeTextColor(color);
     block.dataset.bold = bold ? "true" : "false";
+    block.dataset.italic = italic ? "true" : "false";
+    block.dataset.underline = underline ? "true" : "false";
     block.spellcheck = true;
     if (html) block.innerHTML = sanitizeRichInlineHtml(html);
     else block.textContent = text;
@@ -4075,7 +4174,9 @@ function createRichBlockElement(block) {
         block.fontPx || "",
         block.color || "",
         Boolean(block.bold),
-        block.html || ""
+        block.html || "",
+        Boolean(block.italic),
+        Boolean(block.underline)
     );
 }
 
@@ -4137,6 +4238,18 @@ function saveRichEditorToProject(editor) {
     if (editor.dataset.richEditor === "fun-facts") {
         syncFunFactsFromInput();
         setStatus("Unsaved local changes.");
+        return true;
+    }
+
+    if (editor.dataset.richEditor === "site-field") {
+        syncSiteRichField(editor);
+        setStatus("Front page text formatting updated locally. Click Save draft before applying to site.");
+        return true;
+    }
+
+    if (editor.dataset.richEditor === "profile-field") {
+        syncProfileRichField(editor);
+        setStatus("Profile and contact formatting updated locally. Click Save draft before applying to site.");
         return true;
     }
 
@@ -4367,6 +4480,15 @@ function textNodesInRichSelection(range, editor, includeWhitespace = false) {
   return nodes;
 }
 
+function richBlockFromRange(range, editor) {
+  if (!range || !editor) return null;
+  const container = range.startContainer?.nodeType === Node.TEXT_NODE
+    ? range.startContainer.parentElement
+    : range.startContainer;
+  const block = container?.closest?.(".rich-block");
+  return block && editor.contains(block) ? block : null;
+}
+
 function uniformSelectionValue(values) {
   const cleanValues = values.map((value) => String(value || "").trim()).filter(Boolean);
   if (!cleanValues.length) return "";
@@ -4580,14 +4702,36 @@ function applyRichInlineCommand(editor, command, value = "") {
       ? activeRichSelectionRange.cloneRange()
       : null;
 
+  let appliedToSelection = false;
   if (savedRange) {
     const nextRange = applyStyleToRichSelection(editor, savedRange, command, value);
-    if (!nextRange) return;
-    activeRichSelectionRange = nextRange.cloneRange();
-    activeTextSelectionRange = nextRange.cloneRange();
-    showPersistentTextSelection(nextRange);
-  } else {
-    setStatus("Highlight the text you want to format first.");
+    if (nextRange) {
+      activeRichSelectionRange = nextRange.cloneRange();
+      activeTextSelectionRange = nextRange.cloneRange();
+      showPersistentTextSelection(nextRange);
+      appliedToSelection = true;
+    }
+  }
+
+  if (!appliedToSelection) {
+    const block = richBlockFromRange(savedRange, editor) || selectedRichBlock(editor) || currentRichBlock(editor);
+    if (!block || block.dataset.type !== "paragraph") {
+      setStatus("Highlight text or click inside a text line before formatting.");
+      return;
+    }
+    selectRichBlock(block);
+    if (command === "fontName") updateCurrentTextBlock(editor, { fontFamily: value });
+    if (command === "foreColor") updateCurrentTextBlock(editor, { color: value });
+    if (command === "fontSize") updateCurrentTextBlock(editor, { fontPx: value });
+    if (command === "bold") updateCurrentTextBlock(editor, { bold: block.dataset.bold !== "true" });
+    if (command === "italic") {
+      updateCurrentTextBlock(editor, { italic: block.dataset.italic !== "true" });
+    }
+    if (command === "underline") {
+      updateCurrentTextBlock(editor, { underline: block.dataset.underline !== "true" });
+    }
+    saveRichEditorToProject(editor);
+    setStatus("Formatting applied and saved locally for the current text line.");
     return;
   }
 
@@ -4683,7 +4827,10 @@ function matchingTextBlock(block, text = "") {
         block?.dataset.fontFamily || "Arial",
         block?.dataset.fontPx || "",
         block?.dataset.color || "",
-        block?.dataset.bold === "true"
+        block?.dataset.bold === "true",
+        "",
+        block?.dataset.italic === "true",
+        block?.dataset.underline === "true"
     );
 }
 
@@ -4834,6 +4981,14 @@ function updateCurrentTextBlock(editor, updates) {
         block.dataset.bold = updates.bold ? "true" : "false";
     }
 
+    if (Object.prototype.hasOwnProperty.call(updates, "italic")) {
+        block.dataset.italic = updates.italic ? "true" : "false";
+    }
+
+    if (Object.prototype.hasOwnProperty.call(updates, "underline")) {
+        block.dataset.underline = updates.underline ? "true" : "false";
+    }
+
     applyRichTextBlockStyle(block);
     saveRichEditorToProject(editor);
 }
@@ -4878,7 +5033,9 @@ function extractRichSummary(editor) {
       fontPx: element.dataset.fontPx || "",
       fontSize: element.dataset.fontSize || "normal",
       html: sanitizeRichInlineHtml(element.innerHTML),
+      italic: element.dataset.italic === "true",
       text,
+      underline: element.dataset.underline === "true",
       type: "paragraph"
     };
   }).filter(Boolean);
@@ -6323,6 +6480,8 @@ function fullPortfolioPreviewHtmlExact(dataOverride = null) {
   const siteContent = normalizeSiteContent(previewValue(dataOverride, "siteContent", catalog.siteContent || savedPortfolioCatalog.siteContent || {}));
   const profile = normalizeProfile(previewValue(dataOverride, "profile", catalog.profile || savedPortfolioCatalog.profile || {}));
   const fieldStyles = normalizeFieldStyles(previewValue(dataOverride, "fieldStyles", catalog.fieldStyles || savedPortfolioCatalog.fieldStyles || {}));
+  const profileRich = previewValue(dataOverride, "profileRich", catalog.profileRich || savedPortfolioCatalog.profileRich || {});
+  const siteContentRich = previewValue(dataOverride, "siteContentRich", catalog.siteContentRich || savedPortfolioCatalog.siteContentRich || {});
   const ownerName = profile.displayName || "Portfolio";
   const portfolioLabel = profile.portfolioLabel || "Portfolio";
   const previewDataObject = {
@@ -6331,8 +6490,10 @@ function fullPortfolioPreviewHtmlExact(dataOverride = null) {
     funFacts: previewValue(dataOverride, "funFacts", normalizeFunFacts(catalog.funFacts || savedPortfolioCatalog.funFacts || [])),
     funFactsRich: previewValue(dataOverride, "funFactsRich", catalog.funFactsRich || savedPortfolioCatalog.funFactsRich || null),
     profile,
+    profileRich,
     projects: previewValue(dataOverride, "projects", savedPortfolioCatalog.projects || []),
     siteContent,
+    siteContentRich,
     siteSections: previewValue(dataOverride, "siteSections", savedPortfolioCatalog.siteSections || [])
   };
   const previewData = JSON.stringify(previewDataObject).replaceAll("</", "<\\/");
@@ -6357,8 +6518,8 @@ function fullPortfolioPreviewHtmlExact(dataOverride = null) {
           <span class="omb-engraving">${escapeHtml(profile.brandText || "Portfolio")}</span>
         </span>
         <span>
-          <strong${plainFieldStyleAttribute(fieldStyles, "profile-display-name")}>${escapeHtml(ownerName)}</strong>
-          <small${plainFieldStyleAttribute(fieldStyles, "profile-portfolio-label")}>${escapeHtml(portfolioLabel)}</small>
+          <strong${plainFieldStyleAttribute(fieldStyles, "profile-display-name")}>${renderRichFieldContent(profileRich.displayName, ownerName)}</strong>
+          <small${plainFieldStyleAttribute(fieldStyles, "profile-portfolio-label")}>${renderRichFieldContent(profileRich.portfolioLabel, portfolioLabel)}</small>
         </span>
       </a>
 
@@ -6381,9 +6542,9 @@ function fullPortfolioPreviewHtmlExact(dataOverride = null) {
         <img class="hero-image" alt="" hidden />
         <div class="hero-shade" aria-hidden="true"></div>
         <div class="hero-content">
-          <p class="eyebrow"${plainFieldStyleAttribute(fieldStyles, "site-hero-eyebrow")}>${escapeHtml(siteContent.heroEyebrow)}</p>
-          <h1 id="hero-title"${plainFieldStyleAttribute(fieldStyles, "site-hero-title")}>${renderPlainMultiline(siteContent.heroTitle)}</h1>
-          <p class="hero-copy"${plainFieldStyleAttribute(fieldStyles, "site-hero-copy")}>${renderPlainMultiline(siteContent.heroCopy)}</p>
+          <p class="eyebrow"${plainFieldStyleAttribute(fieldStyles, "site-hero-eyebrow")}>${renderRichFieldContent(siteContentRich.heroEyebrow, siteContent.heroEyebrow)}</p>
+          <h1 id="hero-title"${plainFieldStyleAttribute(fieldStyles, "site-hero-title")}>${renderRichFieldContent(siteContentRich.heroTitle, siteContent.heroTitle)}</h1>
+          <p class="hero-copy"${plainFieldStyleAttribute(fieldStyles, "site-hero-copy")}>${renderRichFieldContent(siteContentRich.heroCopy, siteContent.heroCopy)}</p>
           <div class="hero-actions">
             <a class="button primary" href="#projects">View projects</a>
             <a class="button secondary" href="#resume" hidden>View resume</a>
@@ -6500,7 +6661,7 @@ function fullPortfolioPreviewHtmlExact(dataOverride = null) {
         <div class="contact-content">
           <div>
             <p class="eyebrow">Contact</p>
-            <h2 id="contact-title"${plainFieldStyleAttribute(fieldStyles, "profile-display-name")}>${escapeHtml(ownerName)}</h2>
+            <h2 id="contact-title"${plainFieldStyleAttribute(fieldStyles, "profile-display-name")}>${renderRichFieldContent(profileRich.displayName, ownerName)}</h2>
             <p class="contact-intro"${plainFieldStyleAttribute(fieldStyles, "profile-contact-intro")}>Add contact details in the builder.</p>
             <div class="contact-details"></div>
           </div>
@@ -7192,7 +7353,9 @@ function catalogForSave(endpoint) {
       funFacts: normalizeFunFacts(catalog.funFacts || savedPortfolioCatalog.funFacts || []),
       funFactsRich: clone(catalog.funFactsRich || savedPortfolioCatalog.funFactsRich || null),
       profile: clone(normalizeProfile(catalog.profile || savedPortfolioCatalog.profile || {})),
+      profileRich: clone(catalog.profileRich || savedPortfolioCatalog.profileRich || {}),
       siteContent: clone(normalizeSiteContent(catalog.siteContent || savedPortfolioCatalog.siteContent || {})),
+      siteContentRich: clone(catalog.siteContentRich || savedPortfolioCatalog.siteContentRich || {}),
       siteSections: (catalog.siteSections || []).filter(siteSectionRenderable).map(clone)
     };
   }
@@ -7277,6 +7440,8 @@ async function loadData() {
     : clone(defaultFunFacts);
   catalog.funFactsRich = catalog.funFactsRich || null;
   catalog.fieldStyles = normalizeFieldStyles(catalog.fieldStyles || {});
+  catalog.siteContentRich = catalog.siteContentRich || {};
+  catalog.profileRich = catalog.profileRich || {};
   catalog.profile = normalizeProfile(catalog.profile || {});
   catalog.siteContent = normalizeSiteContent(catalog.siteContent || {});
   catalog.siteSections = catalog.siteSections || [];
@@ -7290,7 +7455,9 @@ async function loadData() {
     funFacts: clone(catalog.funFacts || []),
     funFactsRich: clone(catalog.funFactsRich || null),
     profile: clone(normalizeProfile(catalog.profile || {})),
+    profileRich: clone(catalog.profileRich || {}),
     siteContent: clone(catalog.siteContent || defaultSiteContent),
+    siteContentRich: clone(catalog.siteContentRich || {}),
     projects: [],
     siteSections: clone(catalog.siteSections || [])
   };
@@ -7879,11 +8046,19 @@ function handleRichEditorContextMenu(event) {
     if (!editor && !textBlock) return;
 
     event.preventDefault();
+    event.stopPropagation();
+    const nextEditor = editor || textBlock.closest("[data-rich-editor]");
+    if (activeSummaryEditor && nextEditor && activeSummaryEditor !== nextEditor) {
+      activeRichSelectionRange = null;
+      activeTextSelectionRange = null;
+      clearPersistentTextSelection(true);
+      summaryContextMenu.hidden = true;
+    }
     hideTextSelectionInspector();
 
     activePlainTextControl = null;
     activePlainTextSelection = null;
-    activeSummaryEditor = editor || textBlock.closest("[data-rich-editor]");
+    activeSummaryEditor = nextEditor;
     configureSummaryContextMenu("rich", { textOnly: activeSummaryEditor.dataset.richTextOnly === "true" });
     const liveRange = selectionRangeInsideEditor(activeSummaryEditor);
     const savedRange = activeTextSelectionRange && !activeTextSelectionRange.collapsed
@@ -7930,6 +8105,25 @@ projectFields.addEventListener("contextmenu", handleRichEditorContextMenu);
 sectionContent.addEventListener("contextmenu", handleRichEditorContextMenu);
 funFactsInput?.addEventListener("contextmenu", handleRichEditorContextMenu);
 sectionDescription?.addEventListener("contextmenu", handleRichEditorContextMenu);
+[
+  siteHeroEyebrowInput,
+  siteHeroTitleInput,
+  siteHeroCopyInput,
+  profileDisplayNameInput,
+  profilePortfolioLabelInput,
+  profileContactIntroInput,
+  profileEmailInput,
+  profilePhoneInput,
+  profileGithubInput,
+  profileLinkedinInput,
+  profileWebsiteInput
+].filter(Boolean).forEach((editor) => {
+  editor.addEventListener("contextmenu", handleRichEditorContextMenu);
+});
+document.addEventListener("contextmenu", (event) => {
+  if (!richEditorFromContextEvent(event) && !event.target.closest?.(".rich-text-block")) return;
+  handleRichEditorContextMenu(event);
+}, true);
 
 function handlePlainTextContextMenu(event) {
   const control = plainTextControlFromContextEvent(event);
@@ -7978,6 +8172,10 @@ async function handleRichEditorPaste(event) {
 
     if (imageItem) {
         event.preventDefault();
+        if (editor.dataset.richTextOnly === "true") {
+          setStatus("Images can only be pasted into overview editors, not title, profile, or contact fields.");
+          return;
+        }
 
         const imageBlock = await uploadSummaryImageFile(imageItem.getAsFile(), {
             align: "center",
@@ -8078,6 +8276,21 @@ projectFields.addEventListener("paste", handleRichEditorPaste);
 sectionContent.addEventListener("paste", handleRichEditorPaste);
 funFactsInput?.addEventListener("paste", handleRichEditorPaste);
 sectionDescription?.addEventListener("paste", handleRichEditorPaste);
+[
+  siteHeroEyebrowInput,
+  siteHeroTitleInput,
+  siteHeroCopyInput,
+  profileDisplayNameInput,
+  profilePortfolioLabelInput,
+  profileContactIntroInput,
+  profileEmailInput,
+  profilePhoneInput,
+  profileGithubInput,
+  profileLinkedinInput,
+  profileWebsiteInput
+].filter(Boolean).forEach((editor) => {
+  editor.addEventListener("paste", handleRichEditorPaste);
+});
 
 function handleRichEditorKeydown(event) {
     const editor = event.target.closest("[data-rich-editor]");
@@ -8130,6 +8343,21 @@ projectFields.addEventListener("keydown", handleRichEditorKeydown);
 sectionContent.addEventListener("keydown", handleRichEditorKeydown);
 funFactsInput?.addEventListener("keydown", handleRichEditorKeydown);
 sectionDescription?.addEventListener("keydown", handleRichEditorKeydown);
+[
+  siteHeroEyebrowInput,
+  siteHeroTitleInput,
+  siteHeroCopyInput,
+  profileDisplayNameInput,
+  profilePortfolioLabelInput,
+  profileContactIntroInput,
+  profileEmailInput,
+  profilePhoneInput,
+  profileGithubInput,
+  profileLinkedinInput,
+  profileWebsiteInput
+].filter(Boolean).forEach((editor) => {
+  editor.addEventListener("keydown", handleRichEditorKeydown);
+});
 
 function handleRichEditorFocus(event) {
   const editor = event.target.closest("[data-rich-editor]");
@@ -8154,7 +8382,19 @@ function handleRichEditorBeforeInput(event) {
   }
 }
 
-[projectFields, sectionContent, funFactsInput, sectionDescription].filter(Boolean).forEach((root) => {
+[projectFields, sectionContent, funFactsInput, sectionDescription,
+  siteHeroEyebrowInput,
+  siteHeroTitleInput,
+  siteHeroCopyInput,
+  profileDisplayNameInput,
+  profilePortfolioLabelInput,
+  profileContactIntroInput,
+  profileEmailInput,
+  profilePhoneInput,
+  profileGithubInput,
+  profileLinkedinInput,
+  profileWebsiteInput
+].filter(Boolean).forEach((root) => {
   root.addEventListener("beforeinput", handleRichEditorBeforeInput);
   root.addEventListener("focusin", handleRichEditorFocus);
   root.addEventListener("input", handleRichEditorInput);
@@ -8709,6 +8949,21 @@ async function handleStandaloneRichClick(event) {
 
 funFactsInput?.addEventListener("click", handleStandaloneRichClick);
 sectionDescription?.addEventListener("click", handleStandaloneRichClick);
+[
+  siteHeroEyebrowInput,
+  siteHeroTitleInput,
+  siteHeroCopyInput,
+  profileDisplayNameInput,
+  profilePortfolioLabelInput,
+  profileContactIntroInput,
+  profileEmailInput,
+  profilePhoneInput,
+  profileGithubInput,
+  profileLinkedinInput,
+  profileWebsiteInput
+].filter(Boolean).forEach((editor) => {
+  editor.addEventListener("click", handleStandaloneRichClick);
+});
 summaryContextMenu.addEventListener("change", (event) => {
     if (activePlainTextControl) {
         if (event.target.matches("[data-rich-font-select]")) {
