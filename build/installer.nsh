@@ -403,6 +403,7 @@ Function OMBUninstallExistingInstallIfPresent
     Quit
 
     omb_existing_install_confirmed:
+    IfSilent omb_existing_install_silent_in_place_update
     ${If} $R5 == ""
       IfFileExists "$R7\Uninstall OMB Portfolio Builder.exe" 0 +2
         StrCpy $R5 '"$R7\Uninstall OMB Portfolio Builder.exe" /S'
@@ -426,6 +427,13 @@ Function OMBUninstallExistingInstallIfPresent
       DetailPrint "Existing uninstaller returned code $R4. Setup will continue as an in-place update."
     ${EndIf}
     StrCpy $INSTDIR $OMB_ExistingInstallLocation
+    Return
+
+    omb_existing_install_silent_in_place_update:
+    DetailPrint "Silent app update detected. Skipping the old uninstaller and updating the existing install folder in place."
+    Call OMBStopBuilderProcessesForUpdate
+    StrCpy $INSTDIR $OMB_ExistingInstallLocation
+    Return
   ${EndIf}
 FunctionEnd
 
