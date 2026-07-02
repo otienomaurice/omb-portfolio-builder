@@ -23,7 +23,8 @@ const rootFilesToRefresh = [
   "builder-rich-future-sections.js",
   "template-preview.html",
   "template-preview.css",
-  "template-preview.js"
+  "template-preview.js",
+  "_headers"
 ];
 
 const rootFilesToSeed = [
@@ -34,7 +35,7 @@ const rootFilesToSeed = [
   "robots.txt"
 ];
 
-const directorySeeds = ["assets", "Backgrounds", "docs"];
+const directorySeeds = ["assets", "Backgrounds", "docs", ".well-known"];
 const portfolioFilesToSeed = [
   "projects.json",
   "index.html",
@@ -43,9 +44,10 @@ const portfolioFilesToSeed = [
   "electronics-search.js",
   ".nojekyll",
   "robots.txt",
+  "_headers",
   "sitemap.xml"
 ];
-const portfolioDirectoriesToSeed = ["assets", "Backgrounds", "docs"];
+const portfolioDirectoriesToSeed = ["assets", "Backgrounds", "docs", ".well-known"];
 const gitCandidates = [
   process.env.GIT_EXE,
   "git",

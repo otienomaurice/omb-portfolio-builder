@@ -83,6 +83,12 @@ const saveAllSectionsButton = document.querySelector("#save-all-sections");
 const portfolioPreviewDialog = document.querySelector("#portfolio-preview-dialog");
 const portfolioPreviewClose = document.querySelector("#portfolio-preview-close");
 const appUpdateCheckButton = document.querySelector("#app-update-check");
+const securityReportOpen = document.querySelector("#security-report-open");
+const securityReportDialog = document.querySelector("#security-report-dialog");
+const securityReportBody = document.querySelector("#security-report-body");
+const securityReportClose = document.querySelector("#security-report-close");
+const securityReportRefresh = document.querySelector("#security-report-refresh");
+const securityReportOk = document.querySelector("#security-report-ok");
 const publishTargetOpen = document.querySelector("#publish-target-open");
 const publishTargetDialog = document.querySelector("#publish-target-dialog");
 const publishTargetForm = document.querySelector("#publish-target-form");
@@ -394,6 +400,8 @@ let currentPublishTarget = null;
 let summaryEditorProjectId = "";
 let activeSummaryEditor = null;
 let activeSummaryBlock = null;
+let activePlainTextControl = null;
+let activePlainTextSelection = null;
 let activeRichSelectionRange = null;
 let activeTextSelectionRange = null;
 const persistentSelectionHighlightName = "builder-text-selection";
@@ -1147,6 +1155,85 @@ async function checkForAppUpdates(options = {}) {
         appUpdateCheckButton.textContent = "Check updates";
       }
     }
+  }
+}
+
+function formatReportDate(value = "") {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "" : date.toLocaleString();
+}
+
+function renderSecurityReport(report = {}) {
+  if (!securityReportBody) return;
+  const downloads = report.appDownloads || {};
+  const assets = Array.isArray(downloads.assets) ? downloads.assets : [];
+  const auth = report.publishingAuth || {};
+  const access = report.websiteAccess || {};
+  const controls = Array.isArray(report.securityControls) ? report.securityControls : [];
+  const assetRows = assets.length
+    ? assets.map((asset) => `
+        <li>
+          <span>${escapeHtml(asset.name || "Release asset")}</span>
+          <span>${Number(asset.downloadCount || 0).toLocaleString()} downloads</span>
+        </li>
+      `).join("")
+    : `<li><span>No release assets found</span><span>0 downloads</span></li>`;
+  securityReportBody.innerHTML = `
+    <div class="security-report-grid">
+      <section class="security-report-card">
+        <h3>Builder downloads</h3>
+        <strong>${downloads.ok ? Number(downloads.totalDownloads || 0).toLocaleString() : "Unavailable"}</strong>
+        <p>${downloads.ok
+          ? `Latest release: ${escapeHtml(downloads.releaseTag || downloads.releaseName || "latest")}`
+          : escapeHtml(downloads.error || "GitHub release counts are not available.")}</p>
+        <ul class="security-report-assets">${assetRows}</ul>
+      </section>
+      <section class="security-report-card">
+        <h3>Publishing authorization</h3>
+        <strong>${auth.authenticated ? "Active" : "Not active"}</strong>
+        <p>${auth.authenticated
+          ? `This builder has a remembered GitHub publishing session until ${escapeHtml(formatReportDate(auth.expiresAt) || auth.expiresAt || "the cache expires")}.`
+          : "No fresh GitHub publishing session is cached for the current target."}</p>
+        <ul>
+          <li>Target: ${escapeHtml(auth.targetRepository || "No publishing target saved")}</li>
+          <li>Branch: ${escapeHtml(auth.branch || "Not set")}</li>
+          <li>Successful authorizations this week: ${Number(auth.successCountLastWeek || 0).toLocaleString()}</li>
+        </ul>
+      </section>
+      <section class="security-report-card">
+        <h3>Website access reporting</h3>
+        <strong>${access.available ? "Configured" : "Needs Cloudflare"}</strong>
+        <p>${escapeHtml(access.summary || "Visitor and IP reporting needs a server-side analytics source.")}</p>
+        <ul>${(access.recommendedSetup || []).map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
+      </section>
+      <section class="security-report-card">
+        <h3>Security controls</h3>
+        <strong>${controls.length.toLocaleString()}</strong>
+        <p>Controls currently enabled or prepared for publishing.</p>
+        <ul>${controls.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
+      </section>
+    </div>
+    <p>Generated ${escapeHtml(formatReportDate(report.generatedAt) || "just now")}.</p>
+  `;
+}
+
+async function openSecurityReport() {
+  if (!securityReportDialog || !securityReportBody) return;
+  securityReportBody.innerHTML = "<p>Loading security report...</p>";
+  if (!securityReportDialog.open) securityReportDialog.showModal();
+  updateDialogWindowButtons(securityReportDialog);
+  try {
+    const response = await fetch(`/api/security-report?t=${Date.now()}`, { cache: "no-store" });
+    const report = await response.json();
+    if (!response.ok || report.ok === false) throw new Error(report.error || "Security report could not be loaded.");
+    renderSecurityReport(report);
+  } catch (error) {
+    securityReportBody.innerHTML = `
+      <div class="security-report-card">
+        <h3>Security report unavailable</h3>
+        <p>${escapeHtml(error.message || "The report could not be loaded.")}</p>
+      </div>
+    `;
   }
 }
 
@@ -4003,6 +4090,18 @@ function captureRichSelection(editor) {
   return range;
 }
 
+function rememberRichFormattingSelection(editor = activeSummaryEditor) {
+  if (!editor) return null;
+  const range = selectionRangeInsideEditor(editor)
+    || (rangeBelongsToEditor(activeTextSelectionRange, editor) ? activeTextSelectionRange.cloneRange() : null)
+    || (rangeBelongsToEditor(activeRichSelectionRange, editor) ? activeRichSelectionRange.cloneRange() : null);
+  if (!range) return null;
+  activeSummaryEditor = editor;
+  activeRichSelectionRange = range.cloneRange();
+  if (!range.collapsed) activeTextSelectionRange = range.cloneRange();
+  return range;
+}
+
 function restoreRichSelection(editor) {
   if (!activeRichSelectionRange) return false;
   const container = activeRichSelectionRange.commonAncestorContainer.nodeType === Node.TEXT_NODE
@@ -4809,6 +4908,68 @@ async function openSummaryFormulaDialog(existingBlock = null) {
   return { align: summaryFormulaAlign.value, formula, type: "formula" };
 }
 
+function configureSummaryContextMenu(mode = "rich", options = {}) {
+  const textActions = new Set(["copy-text", "paste-text", "cut-text", "select-all-text"]);
+  summaryContextMenu.querySelectorAll("[data-rich-action]").forEach((button) => {
+    const action = button.dataset.richAction;
+    button.hidden = mode === "plain" ? !textActions.has(action) : false;
+  });
+  summaryContextMenu.querySelectorAll(".rich-menu-field").forEach((field) => {
+    field.hidden = mode === "plain";
+  });
+  if (mode === "rich") {
+    const textOnly = Boolean(options.textOnly);
+    summaryContextMenu.querySelectorAll("[data-rich-action='add-image'], [data-rich-action='add-formula']").forEach((button) => {
+      button.hidden = textOnly;
+    });
+  }
+}
+
+function plainTextControlFromContextEvent(event) {
+  const control = event.target.closest?.("textarea, input");
+  if (!control || control.closest("#summary-context-menu")) return null;
+  const type = String(control.type || "text").toLowerCase();
+  if (control.disabled || control.readOnly) return null;
+  if (["button", "checkbox", "color", "file", "hidden", "image", "radio", "range", "reset", "submit"].includes(type)) return null;
+  return control;
+}
+
+async function handlePlainTextAction(action) {
+  const control = activePlainTextControl;
+  if (!control) return;
+  control.focus({ preventScroll: true });
+  const selection = activePlainTextSelection || {
+    start: control.selectionStart ?? 0,
+    end: control.selectionEnd ?? control.value.length
+  };
+  const start = Math.max(0, Math.min(selection.start, control.value.length));
+  const end = Math.max(start, Math.min(selection.end, control.value.length));
+
+  if (action === "copy-text" || action === "cut-text") {
+    const text = control.value.slice(start, end) || control.value;
+    if (text) await navigator.clipboard.writeText(text);
+    if (action === "cut-text" && end > start) {
+      control.setRangeText("", start, end, "start");
+      control.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+    return;
+  }
+
+  if (action === "paste-text") {
+    const text = await navigator.clipboard.readText();
+    if (text) {
+      control.setRangeText(text, start, end, "end");
+      control.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+    return;
+  }
+
+  if (action === "select-all-text") {
+    control.select();
+    activePlainTextSelection = { start: 0, end: control.value.length };
+  }
+}
+
 async function handleRichAction(action, editor) {
   if (!editor) return;
   activeSummaryEditor = editor;
@@ -4895,6 +5056,8 @@ async function handleRichAction(action, editor) {
 
 function hideSummaryContextMenu() {
   summaryContextMenu.hidden = true;
+  activePlainTextControl = null;
+  activePlainTextSelection = null;
 }
 
 async function editSelectedRichBlock(editor) {
@@ -5518,6 +5681,8 @@ function renderDesignSummaryField(project, pathValue, label, placeholder) {
           data-rich-path="${escapeHtml(richPath)}"
           data-rich-folder="${escapeHtml(overviewFolderFromPath(pathValue))}"
           data-placeholder="${escapeHtml(placeholder || "")}"
+          contenteditable="true"
+          spellcheck="true"
           aria-label="${escapeHtml(label)} rich editor"
         ></div>
       </div>
@@ -5603,6 +5768,8 @@ function renderPendingRichDescriptionEditor(editor = pendingEditor) {
           data-rich-editor="pending-description"
           data-rich-folder="${escapeHtml(pendingEditorFolder(editor))}"
           data-placeholder="Type or paste the complete content here."
+          contenteditable="true"
+          spellcheck="true"
           aria-label="${escapeHtml(label)} rich editor"
         ></div>
       </div>
@@ -7239,6 +7406,15 @@ appUpdateCheckButton?.addEventListener("click", () => {
   checkForAppUpdates({ force: true, manual: true });
 });
 
+securityReportOpen?.addEventListener("click", openSecurityReport);
+securityReportRefresh?.addEventListener("click", openSecurityReport);
+securityReportClose?.addEventListener("click", () => {
+  closeDialogElement(securityReportDialog, "close");
+});
+securityReportOk?.addEventListener("click", () => {
+  closeDialogElement(securityReportDialog, "close");
+});
+
 addProjectButton.addEventListener("click", () => {
   toggleCategoryDropdown();
 });
@@ -7474,11 +7650,10 @@ function handleRichEditorContextMenu(event) {
     event.preventDefault();
     hideTextSelectionInspector();
 
+    activePlainTextControl = null;
+    activePlainTextSelection = null;
     activeSummaryEditor = editor || textBlock.closest("[data-rich-editor]");
-    const textOnly = activeSummaryEditor.dataset.richTextOnly === "true";
-    summaryContextMenu.querySelectorAll("[data-rich-action='add-image'], [data-rich-action='add-formula']").forEach((button) => {
-      button.hidden = textOnly;
-    });
+    configureSummaryContextMenu("rich", { textOnly: activeSummaryEditor.dataset.richTextOnly === "true" });
     const liveRange = selectionRangeInsideEditor(activeSummaryEditor);
     const savedRange = activeTextSelectionRange && !activeTextSelectionRange.collapsed
       ? activeTextSelectionRange.cloneRange()
@@ -7524,6 +7699,44 @@ projectFields.addEventListener("contextmenu", handleRichEditorContextMenu);
 sectionContent.addEventListener("contextmenu", handleRichEditorContextMenu);
 funFactsInput?.addEventListener("contextmenu", handleRichEditorContextMenu);
 sectionDescription?.addEventListener("contextmenu", handleRichEditorContextMenu);
+
+function handlePlainTextContextMenu(event) {
+  const control = plainTextControlFromContextEvent(event);
+  if (!control) return;
+
+  event.preventDefault();
+  hideTextSelectionInspector();
+  activeSummaryEditor = null;
+  activeSummaryBlock = null;
+  activePlainTextControl = control;
+  activePlainTextSelection = {
+    start: control.selectionStart ?? 0,
+    end: control.selectionEnd ?? control.value.length
+  };
+  configureSummaryContextMenu("plain");
+
+  const menuHost = control.closest("dialog") || document.body;
+  if (summaryContextMenu.parentElement !== menuHost) menuHost.append(summaryContextMenu);
+  summaryContextMenu.style.left = `${event.clientX}px`;
+  summaryContextMenu.style.top = `${event.clientY}px`;
+  summaryContextMenu.style.maxHeight = "";
+  summaryContextMenu.hidden = false;
+  const hostRect = menuHost.getBoundingClientRect();
+  const bounds = {
+    bottom: Math.min(window.innerHeight - 8, hostRect.bottom - 8),
+    left: Math.max(8, hostRect.left + 8),
+    right: Math.min(window.innerWidth - 8, hostRect.right - 8),
+    top: Math.max(8, hostRect.top + 8)
+  };
+  summaryContextMenu.style.maxHeight = `${Math.max(140, bounds.bottom - bounds.top)}px`;
+  const menuRect = summaryContextMenu.getBoundingClientRect();
+  const left = Math.max(bounds.left, Math.min(event.clientX, bounds.right - menuRect.width));
+  const top = Math.max(bounds.top, Math.min(event.clientY, bounds.bottom - menuRect.height));
+  summaryContextMenu.style.left = `${left}px`;
+  summaryContextMenu.style.top = `${top}px`;
+}
+
+document.addEventListener("contextmenu", handlePlainTextContextMenu);
 
 async function handleRichEditorPaste(event) {
     const editor = event.target.closest("[data-rich-editor]");
@@ -8194,11 +8407,23 @@ summaryContextMenu.addEventListener("click", async (event) => {
   const actionButton = event.target.closest("[data-rich-action]");
   if (!actionButton) return;
   const action = actionButton.dataset.richAction;
+  if (activePlainTextControl) {
+    await handlePlainTextAction(action);
+    if (["copy-text", "paste-text", "cut-text", "select-all-text"].includes(action)) {
+      hideSummaryContextMenu();
+    }
+    return;
+  }
   await handleRichAction(action, activeSummaryEditor);
   if (["add-image", "add-formula", "copy-text", "paste-text", "cut-text", "select-all-text", "edit-block", "delete-block"].includes(action)) {
     hideSummaryContextMenu();
   }
 });
+
+summaryContextMenu.addEventListener("pointerdown", () => {
+  if (!activePlainTextControl) rememberRichFormattingSelection(activeSummaryEditor);
+}, true);
+
 sectionContent.addEventListener("click", async (event) => {
     if (handleRichCaretClick(event)) return;
     const blockAction = event.target.closest("[data-rich-block-action]");
@@ -8240,7 +8465,8 @@ async function handleStandaloneRichClick(event) {
 funFactsInput?.addEventListener("click", handleStandaloneRichClick);
 sectionDescription?.addEventListener("click", handleStandaloneRichClick);
 summaryContextMenu.addEventListener("change", (event) => {
-    if (!activeSummaryEditor) return;
+    if (!activeSummaryEditor || activePlainTextControl) return;
+    rememberRichFormattingSelection(activeSummaryEditor);
 
     if (event.target.matches("[data-rich-font-select]")) {
         const value = event.target.value;
@@ -8257,7 +8483,8 @@ summaryContextMenu.addEventListener("change", (event) => {
 });
 
 summaryContextMenu.addEventListener("input", (event) => {
-    if (!activeSummaryEditor) return;
+    if (!activeSummaryEditor || activePlainTextControl) return;
+    rememberRichFormattingSelection(activeSummaryEditor);
 
     if (event.target.matches("[data-rich-color-input]")) {
         applyRichInlineCommand(activeSummaryEditor, "foreColor", event.target.value);

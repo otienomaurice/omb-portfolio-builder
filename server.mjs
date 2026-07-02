@@ -47,6 +47,8 @@ const publishPaths = [
   "electronics-search.js",
   "Backgrounds",
   ".nojekyll",
+  "_headers",
+  ".well-known",
   "robots.txt",
   "sitemap.xml",
   "CNAME"
@@ -105,8 +107,19 @@ const portfolioAiInstructions = [
   "Do not expose chain-of-thought. Give the polished answer only."
 ].join("\n");
 
+function securityHeaders(extra = {}) {
+  return {
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
+    "Cross-Origin-Opener-Policy": "same-origin",
+    ...extra
+  };
+}
+
 function sendJson(response, status, data) {
   response.writeHead(status, {
+    ...securityHeaders(),
     "Content-Type": "application/json",
     "Cache-Control": "no-store, no-cache, must-revalidate"
   });
@@ -1623,6 +1636,76 @@ async function getUpdateInfo() {
   }
 }
 
+async function getBuilderReleaseDownloadReport() {
+  const owner = "otienomaurice";
+  const repo = "omb-portfolio-builder";
+  const response = await fetch(`https://api.github.com/repos/${owner}/${repo}/releases/latest`, {
+    headers: { "Accept": "application/vnd.github+json", "User-Agent": "OMB-Portfolio-Builder" }
+  });
+  if (!response.ok) throw new Error(`GitHub returned ${response.status}.`);
+  const release = await response.json();
+  const assets = (release.assets || []).map((asset) => ({
+    name: asset.name || "",
+    downloadCount: Number(asset.download_count || 0),
+    sizeBytes: Number(asset.size || 0),
+    updatedAt: asset.updated_at || "",
+    url: asset.browser_download_url || ""
+  }));
+  return {
+    releaseName: release.name || release.tag_name || "latest",
+    releaseTag: release.tag_name || "",
+    releaseUrl: release.html_url || "",
+    totalDownloads: assets.reduce((total, asset) => total + asset.downloadCount, 0),
+    assets
+  };
+}
+
+async function getSecurityReport() {
+  const [downloadResult, authCacheResult, targetResult] = await Promise.allSettled([
+    getBuilderReleaseDownloadReport(),
+    readPublishAuthCache(),
+    getPublishTargetInfo()
+  ]);
+  const authCache = authCacheResult.status === "fulfilled" ? authCacheResult.value : null;
+  const target = targetResult.status === "fulfilled" ? targetResult.value : null;
+  return {
+    ok: true,
+    generatedAt: new Date().toISOString(),
+    appDownloads: downloadResult.status === "fulfilled"
+      ? { ok: true, ...downloadResult.value }
+      : { ok: false, error: downloadResult.reason?.message || "GitHub release download counts were not available." },
+    publishingAuth: {
+      targetRepository: target?.repository || "",
+      branch: target?.branch || "",
+      authenticated: Boolean(authCache && publishAuthCacheIsFresh(authCache, {
+        remote: target?.remote || "",
+        repository: target?.repository || "",
+        branch: target?.branch || ""
+      })),
+      expiresAt: publishAuthCacheExpiresAt(authCache) || "",
+      trustDays: Number(authCache?.trustDays || 0),
+      successCountLastWeek: Number(authCache?.successCountLastWeek || 0)
+    },
+    websiteAccess: {
+      available: false,
+      summary: "Visitor counts and visitor IP addresses are not available from a static GitHub Pages site or GitHub release download counts.",
+      recommendedSetup: [
+        "Proxy the custom domain through Cloudflare instead of DNS-only.",
+        "Enable Cloudflare Web Analytics for aggregate page-view counts.",
+        "Use Cloudflare Logpush, Analytics Engine, or a Worker-backed endpoint if you need IP-level security logs.",
+        "Publish a privacy notice before collecting raw IP addresses or persistent identifiers."
+      ]
+    },
+    securityControls: [
+      "Local builder write APIs are restricted to local requests.",
+      "Publishing target details are only returned to the local machine.",
+      "GitHub publishing authorization is cached for one day by default, or longer after repeated successful authorizations.",
+      "The desktop app runs with Electron nodeIntegration disabled, contextIsolation enabled, and sandbox enabled.",
+      "Deployable website security headers and security.txt metadata are included in the publishable site files."
+    ]
+  };
+}
+
 function safeUpdateFileSegment(value = "") {
   return String(value || "")
     .replace(/[^a-z0-9._-]+/gi, "-")
@@ -2005,6 +2088,15 @@ async function handleApi(request, response, url) {
     return true;
   }
 
+  if (request.method === "GET" && url.pathname === "/api/security-report") {
+    if (!isLocalRequest(request)) {
+      sendJson(response, 403, { error: "Security reports are only available from this computer." });
+      return true;
+    }
+    sendJson(response, 200, await getSecurityReport());
+    return true;
+  }
+
   if (request.method !== "POST") return false;
 
   if (!isLocalRequest(request)) {
@@ -2182,6 +2274,7 @@ createServer(async (request, response) => {
 
     const body = await readFile(filePath);
     response.writeHead(200, {
+      ...securityHeaders(),
       "Content-Type": types[path.extname(filePath)] || "application/octet-stream",
       "Cache-Control": "no-store, no-cache, must-revalidate"
     });
