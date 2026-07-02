@@ -460,14 +460,15 @@
                       <summary>5. Rich text editing and right-click menu</summary>
                       <div>
                           <p>Rich text fields behave like document editors. Click where you want to type, highlight the exact words you want to edit, then apply formatting to that selection. Formatting should not change an entire paragraph unless the whole paragraph is selected.</p>
-                          <p>The builder stores the text as structured content so the portfolio can render it cleanly later. That means the editor may standardize pasted formatting, but it should preserve intentional choices such as bold text, font size, color, links, hard line breaks, images, and formulas.</p>
-                          <p>Front-page, profile, contact, fun facts, and project overview fields now use the same selection-level text behavior. Highlight the exact words you want to edit, then use the right-click menu or floating selection inspector to change font, size, color, bold, italic, or underline. Identity and contact fields remain text-only, so image and formula insertion is intentionally disabled there.</p>
+                          <p>The builder stores the text as structured content so the portfolio can render it cleanly later. That means the editor may standardize pasted formatting, but it should preserve intentional choices such as bold text, font size, color, links, hard line breaks, images, formulas, and code blocks.</p>
+                          <p>Front-page, profile, contact, fun facts, and project overview fields now use the same selection-level text behavior. Highlight the exact words you want to edit, then use the right-click menu or floating selection inspector to change font, size, color, bold, italic, or underline. Identity and contact fields remain text-only, so image, formula, and code block insertion is intentionally disabled there.</p>
                           <ol>
                               <li>Right-click highlighted text in any builder text field to copy, cut, paste, select all, change font, change size, change color, and apply bold, italic, or underline.</li>
                               <li>The default typing font is Arial.</li>
                               <li>If selected text has mixed font, size, or color, the inspector fields are blank so you know the selection is mixed.</li>
                               <li>Use Enter for a new paragraph. Pasted line breaks remain line breaks.</li>
                               <li>Typing and wrapping should not create fake new paragraphs; only hard enters and pasted line breaks do.</li>
+                              <li>Use the Code block command or Paste as code for source snippets so they render differently from general text.</li>
                               <li>Save project and Save all sections both pass front-page, profile, contact, fun facts, and project rich text into the parsed preview catalog before the website is generated.</li>
                           </ol>
                           <ul>
@@ -480,13 +481,15 @@
                       </div>
                   </details>
                   <details class="builder-guide-section" data-guide-section="editor">
-                      <summary>6. Links, formulas, and pasted content</summary>
+                      <summary>6. Links, formulas, code, and pasted content</summary>
                       <div>
                           <p>The builder distinguishes normal links from mathematical formulas because they behave differently on the public website. A link should take the visitor to a webpage or resource. A formula should render as math and stay readable inside the project explanation.</p>
-                          <p>Use this section when pasting content from ChatGPT, documentation, GitHub, LinkedIn, LTspice notes, equations, or lab references. The builder tries to recognize the content, but you should still check the preview before publishing.</p>
+                          <p>Use this section when pasting content from ChatGPT, documentation, GitHub, LinkedIn, LTspice notes, equations, source code, or lab references. The builder tries to recognize the content, but you should still check the preview before publishing.</p>
                           <ol>
                               <li>URLs such as linkedin.com, github.com, www links, and https links are treated as links.</li>
                               <li>Use Add mathematical formula only when you intentionally want a formula block.</li>
+                              <li>Use Code block or Paste as code for C, C++, SystemVerilog, LTspice, Java, JavaScript, Python, and HTML snippets.</li>
+                              <li>Choose Basic paste when you want the builder to clean extra trailing whitespace, or Keep source spacing when indentation is important.</li>
                               <li>Links in rich text open as websites on the portfolio unless you attach them as downloadable files.</li>
                               <li>PDFs, spreadsheets, code files, archives, and documents are saved as downloadable resources.</li>
                               <li>Image files can be visible on the website or hidden as downloadable evidence.</li>
@@ -495,9 +498,10 @@
                               <li>Use full links when possible: https://github.com/user/repo is clearer than only github.com.</li>
                               <li>Use link text that explains the destination, such as GitHub repository, LinkedIn profile, test report, or schematic PDF.</li>
                               <li>Use formulas for equations, transfer functions, gain expressions, timing relationships, or component calculations.</li>
+                              <li>Use code blocks for short code examples that should be readable on the website; use files or GitHub links for long source trees.</li>
                               <li>If a link is accidentally treated as a formula, remove the formula block and paste it again as normal text or link content.</li>
                           </ul>
-                          <p>When pasting from ChatGPT, review formulas before saving. If the content is a link, it should render as a clickable link, not as a formula. If the content is math, the preview should show math cleanly without markdown control text.</p>
+                          <p>When pasting from ChatGPT, review formulas and code before saving. If the content is a link, it should render as a clickable link, not as a formula. If the content is source code, it should render inside a dark code block with language coloring instead of becoming ordinary paragraph text.</p>
                       </div>
                   </details>
                   <details class="builder-guide-section" data-guide-section="editor projects">
@@ -609,7 +613,7 @@
                   <details class="builder-guide-section" data-guide-section="update">
                       <summary>12. App updates and troubleshooting</summary>
                       <div>
-                          <p>Use Check updates to manually look for a newer builder. Updates come from GitHub Releases after changes are merged into the release branch and a new installer is built.</p>
+                          <p>Use Check updates to manually look for a newer builder. Updates come from GitHub Releases after changes are merged into the release branch and a new installer is built. Use the Preferences menu to switch between light and dark builder mode without changing the public portfolio appearance.</p>
                           <p>An update should behave like a repair of the existing app, not like a second installation. It should close the current builder, update the existing install location, and reopen the app with the new files.</p>
                           <ol>
                               <li>When an update is available, click Update.</li>
@@ -1162,6 +1166,66 @@
           </form>
       </dialog>
 
+      <dialog class="asset-dialog" id="summary-code-dialog">
+          <form method="dialog" id="summary-code-form">
+              <div>
+                  <p class="eyebrow">Code support</p>
+                  <h2>Add code block</h2>
+              </div>
+              <label>
+                  <span>Language</span>
+                  <select id="summary-code-language">
+                      <option value="auto">Auto detect</option>
+                      <option value="c">C</option>
+                      <option value="cpp">C++</option>
+                      <option value="systemverilog">SystemVerilog</option>
+                      <option value="ltspice">LTspice</option>
+                      <option value="java">Java</option>
+                      <option value="javascript">JavaScript</option>
+                      <option value="python">Python</option>
+                      <option value="html">HTML</option>
+                  </select>
+              </label>
+              <label>
+                  <span>Paste mode</span>
+                  <select id="summary-code-paste-mode">
+                      <option value="basic">Basic paste</option>
+                      <option value="source">Keep source spacing</option>
+                  </select>
+              </label>
+              <label class="wide-field">
+                  <span>Code</span>
+                  <textarea id="summary-code-input" rows="10" spellcheck="false" placeholder="Paste or type source code here"></textarea>
+              </label>
+              <div class="summary-code-preview" id="summary-code-preview" aria-live="polite"></div>
+              <div class="dialog-actions">
+                  <button class="button primary" type="submit">Add code</button>
+                  <button class="project-window-close" id="summary-code-cancel" type="button" aria-label="Close code dialog">&times;</button>
+              </div>
+          </form>
+      </dialog>
+
+      <dialog class="asset-dialog preferences-dialog" id="preferences-dialog">
+          <form method="dialog" id="preferences-form">
+              <div>
+                  <p class="eyebrow">Preferences</p>
+                  <h2>Builder preferences</h2>
+              </div>
+              <label>
+                  <span>Theme</span>
+                  <select id="preference-theme">
+                      <option value="light">Light mode</option>
+                      <option value="dark">Dark mode</option>
+                  </select>
+              </label>
+              <p class="preference-note">Preferences affect the builder workspace only. Portfolio appearance still comes from the selected site and project appearances.</p>
+              <div class="dialog-actions">
+                  <button class="button primary" type="submit">Save preferences</button>
+                  <button class="project-window-close" id="preferences-close" type="button" aria-label="Close preferences">&times;</button>
+              </div>
+          </form>
+      </dialog>
+
       <dialog class="template-dialog" id="template-dialog">
           <div class="template-dialog-shell">
               <div class="template-dialog-heading">
@@ -1183,6 +1247,8 @@
           </div>
       </dialog>
       <div class="summary-context-menu" id="summary-context-menu" hidden>
+          <button class="code-menu-item" type="button" data-rich-action="add-code">&lt;/&gt; Code block</button>
+          <button class="code-menu-item" type="button" data-rich-action="paste-code">Paste as code</button>
           <button type="button" data-rich-action="add-image">Add image</button>
           <button type="button" data-rich-action="add-formula">Add mathematical formula</button>
             <button type="button" data-rich-action="copy-text">Copy</button>
