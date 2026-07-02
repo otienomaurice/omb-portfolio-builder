@@ -182,6 +182,7 @@ const summaryContextMenu = document.querySelector("#summary-context-menu");
 const richFontSelect = document.querySelector("#rich-font-select");
 const richFontSize = document.querySelector("#rich-font-size");
 const richColorInput = document.querySelector("#rich-color-input");
+const richContextColorSwatches = document.querySelector("#rich-context-color-swatches");
 const richBoldButton = document.querySelector("[data-rich-bold]");
 const textSelectionInspector = document.querySelector("#text-selection-inspector");
 const selectionTextPreview = document.querySelector("#selection-text-preview");
@@ -238,10 +239,29 @@ const commonRichFonts = [
   "Segoe UI", "Inter", "Roboto", "Open Sans", "Lato", "Montserrat"
 ];
 const commonRichColors = [
-  "#17202a", "#000000", "#ffffff", "#1f6ed4", "#087f9b",
-  "#117c7a", "#dc2626", "#b45309", "#6d28d9", "#475569"
+  "#17202a", "#000000", "#ffffff", "#334155", "#475569",
+  "#64748b", "#94a3b8", "#1f6ed4", "#2563eb", "#1d4ed8",
+  "#0ea5e9", "#0284c7", "#087f9b", "#0891b2", "#06b6d4",
+  "#117c7a", "#0f766e", "#059669", "#16a34a", "#65a30d",
+  "#ca8a04", "#eab308", "#f59e0b", "#b45309", "#ea580c",
+  "#dc2626", "#b91c1c", "#e11d48", "#be123c", "#db2777",
+  "#c026d3", "#9333ea", "#6d28d9", "#4f46e5", "#4338ca",
+  "#7c3aed", "#8b5cf6", "#14b8a6", "#22c55e", "#f97316"
 ];
 const commonRichSizes = Array.from({ length: 17 }, (_, index) => String(index + 8));
+const persistentPlainStyleFieldIds = new Set([
+  "site-hero-eyebrow",
+  "site-hero-title",
+  "site-hero-copy",
+  "profile-display-name",
+  "profile-portfolio-label",
+  "profile-contact-intro",
+  "profile-email",
+  "profile-phone",
+  "profile-github",
+  "profile-linkedin",
+  "profile-website"
+]);
 
 const defaultSiteSections = [
   {
@@ -1670,12 +1690,15 @@ function renderSiteContentEditor() {
   const content = normalizeSiteContent(catalog.siteContent || {});
   if (siteHeroEyebrowInput && document.activeElement !== siteHeroEyebrowInput) {
     siteHeroEyebrowInput.value = content.heroEyebrow;
+    applyStoredPlainFieldStyle(siteHeroEyebrowInput);
   }
   if (siteHeroTitleInput && document.activeElement !== siteHeroTitleInput) {
     siteHeroTitleInput.value = content.heroTitle;
+    applyStoredPlainFieldStyle(siteHeroTitleInput);
   }
   if (siteHeroCopyInput && document.activeElement !== siteHeroCopyInput) {
     siteHeroCopyInput.value = content.heroCopy;
+    applyStoredPlainFieldStyle(siteHeroCopyInput);
   }
 }
 
@@ -1692,7 +1715,10 @@ function renderProfileEditor() {
     [profileWebsiteInput, profile.websiteUrl]
   ];
   fields.forEach(([field, value]) => {
-    if (field && document.activeElement !== field) field.value = value;
+    if (field && document.activeElement !== field) {
+      field.value = value;
+      applyStoredPlainFieldStyle(field);
+    }
   });
   if (profileAssetStatus) {
     const assetLabels = [
@@ -1834,6 +1860,99 @@ function normalizeProfile(profile = {}) {
     resumeUrl: String(profile.resumeUrl || "").trim(),
     websiteUrl: String(profile.websiteUrl || "").trim()
   };
+}
+
+function normalizePlainFieldStyle(style = {}) {
+  const fontFamily = cleanFontFamily(style.fontFamily || "");
+  const fontPx = normalizeFontPx(style.fontPx || style.fontSize || "");
+  const color = normalizeTextColor(style.color || "");
+  const normalized = {};
+
+  if (fontFamily) normalized.fontFamily = fontFamily;
+  if (fontPx) normalized.fontPx = fontPx;
+  if (color) normalized.color = rgbColorToHex(color);
+  if (style.bold === true || style.bold === "true") normalized.bold = true;
+  if (style.italic === true || style.italic === "true") normalized.italic = true;
+  if (style.underline === true || style.underline === "true") normalized.underline = true;
+
+  return normalized;
+}
+
+function normalizeFieldStyles(styles = {}) {
+  return Object.fromEntries(
+    Object.entries(styles || {})
+      .filter(([fieldId]) => persistentPlainStyleFieldIds.has(fieldId))
+      .map(([fieldId, style]) => [fieldId, normalizePlainFieldStyle(style)])
+      .filter(([, style]) => Object.keys(style).length)
+  );
+}
+
+function plainFieldStyleToCss(style = {}) {
+  const normalized = normalizePlainFieldStyle(style);
+  const rules = [];
+  if (normalized.fontFamily) rules.push(`font-family: ${normalized.fontFamily}`);
+  if (normalized.fontPx) rules.push(`font-size: ${normalized.fontPx}px`);
+  if (normalized.color) rules.push(`color: ${normalized.color}`);
+  if (normalized.bold) rules.push("font-weight: 700");
+  if (normalized.italic) rules.push("font-style: italic");
+  if (normalized.underline) rules.push("text-decoration: underline");
+  return rules.join("; ");
+}
+
+function plainFieldStyleAttribute(styles = {}, fieldId = "") {
+  const css = plainFieldStyleToCss(styles[fieldId]);
+  return css ? ` style="${escapeHtml(css)}"` : "";
+}
+
+function plainStyleFromControl(control) {
+  if (!control) return {};
+  return normalizePlainFieldStyle({
+    bold: control.dataset.builderBold,
+    color: control.dataset.builderColor,
+    fontFamily: control.dataset.builderFontFamily,
+    fontPx: control.dataset.builderFontPx,
+    italic: control.dataset.builderItalic,
+    underline: control.dataset.builderUnderline
+  });
+}
+
+function applyPlainFieldStyleToControl(control, style = {}) {
+  if (!control) return;
+  const normalized = normalizePlainFieldStyle(style);
+  control.dataset.builderFontFamily = normalized.fontFamily || "";
+  control.dataset.builderFontPx = normalized.fontPx || "";
+  control.dataset.builderColor = normalized.color || "";
+  control.dataset.builderBold = normalized.bold ? "true" : "false";
+  control.dataset.builderItalic = normalized.italic ? "true" : "false";
+  control.dataset.builderUnderline = normalized.underline ? "true" : "false";
+  control.style.fontFamily = normalized.fontFamily || "";
+  control.style.fontSize = normalized.fontPx ? `${normalized.fontPx}px` : "";
+  control.style.color = normalized.color || "";
+  control.style.fontWeight = normalized.bold ? "700" : "";
+  control.style.fontStyle = normalized.italic ? "italic" : "";
+  control.style.textDecoration = normalized.underline ? "underline" : "";
+}
+
+function applyStoredPlainFieldStyle(control) {
+  if (!control?.id || !persistentPlainStyleFieldIds.has(control.id)) return;
+  const styles = normalizeFieldStyles(catalog.fieldStyles || {});
+  applyPlainFieldStyleToControl(control, styles[control.id] || {});
+}
+
+function storePlainControlStyle(control) {
+  if (!control?.id || !persistentPlainStyleFieldIds.has(control.id)) return;
+  const nextStyles = normalizeFieldStyles(catalog.fieldStyles || {});
+  const style = plainStyleFromControl(control);
+  if (Object.keys(style).length) {
+    nextStyles[control.id] = style;
+  } else {
+    delete nextStyles[control.id];
+  }
+  catalog.fieldStyles = nextStyles;
+  savedPortfolioCatalog.fieldStyles = clone(nextStyles);
+  markDraftNeedsSave();
+  scheduleAutosave();
+  schedulePreviewRender();
 }
 
 function mailComposeLink(email = "") {
@@ -2706,6 +2825,7 @@ async function saveAllSections(options = {}) {
   if (funFactsInput) syncFunFactsFromInput();
   if (siteHeroTitleInput || siteHeroCopyInput || siteHeroEyebrowInput) syncSiteContentFromInputs();
   savedPortfolioCatalog.categories = clone(catalog.categories || []);
+  savedPortfolioCatalog.fieldStyles = clone(normalizeFieldStyles(catalog.fieldStyles || {}));
   savedPortfolioCatalog.funFacts = normalizeFunFacts(catalog.funFacts || []);
   savedPortfolioCatalog.funFactsRich = clone(catalog.funFactsRich || null);
   savedPortfolioCatalog.siteContent = clone(normalizeSiteContent(catalog.siteContent || {}));
@@ -3046,6 +3166,7 @@ function fullProjectPreviewHtmlExact(project) {
   });
   const previewDataObject = {
     categories: [previewCategory],
+    fieldStyles: normalizeFieldStyles(catalog.fieldStyles || savedPortfolioCatalog.fieldStyles || {}),
     funFacts: [],
     funFactsRich: null,
     profile: normalizeProfile(catalog.profile || savedPortfolioCatalog.profile || {}),
@@ -4395,6 +4516,9 @@ function renderSelectionInspectorOptions() {
   if (selectionColorSwatches) {
     selectionColorSwatches.innerHTML = commonRichColors.map((color) => `<button type="button" data-selection-value="color" data-value="${color}" style="--selection-swatch: ${color}" aria-label="Use ${color}"></button>`).join("");
   }
+  if (richContextColorSwatches) {
+    richContextColorSwatches.innerHTML = commonRichColors.map((color) => `<button type="button" data-rich-color-value="${color}" style="--selection-swatch: ${color}" aria-label="Use ${color}"></button>`).join("");
+  }
 }
 
 function applyStyleToRichSelection(editor, range, command, value = "") {
@@ -4909,13 +5033,21 @@ async function openSummaryFormulaDialog(existingBlock = null) {
 }
 
 function configureSummaryContextMenu(mode = "rich", options = {}) {
-  const textActions = new Set(["copy-text", "paste-text", "cut-text", "select-all-text"]);
+  const plainActions = new Set([
+    "copy-text",
+    "paste-text",
+    "cut-text",
+    "select-all-text",
+    "toggle-bold",
+    "toggle-italic",
+    "toggle-underline"
+  ]);
   summaryContextMenu.querySelectorAll("[data-rich-action]").forEach((button) => {
     const action = button.dataset.richAction;
-    button.hidden = mode === "plain" ? !textActions.has(action) : false;
+    button.hidden = mode === "plain" ? !plainActions.has(action) : false;
   });
   summaryContextMenu.querySelectorAll(".rich-menu-field").forEach((field) => {
-    field.hidden = mode === "plain";
+    field.hidden = false;
   });
   if (mode === "rich") {
     const textOnly = Boolean(options.textOnly);
@@ -4923,6 +5055,60 @@ function configureSummaryContextMenu(mode = "rich", options = {}) {
       button.hidden = textOnly;
     });
   }
+}
+
+function applyPlainTextControlFormat(control, updates = {}) {
+  if (!control) return;
+  if (Object.prototype.hasOwnProperty.call(updates, "fontFamily")) {
+    const font = cleanFontFamily(updates.fontFamily);
+    control.dataset.builderFontFamily = font;
+    control.style.fontFamily = font || "";
+  }
+  if (Object.prototype.hasOwnProperty.call(updates, "fontPx")) {
+    const size = normalizeFontPx(updates.fontPx);
+    control.dataset.builderFontPx = size;
+    control.style.fontSize = size ? `${size}px` : "";
+  }
+  if (Object.prototype.hasOwnProperty.call(updates, "color")) {
+    const color = normalizeTextColor(updates.color);
+    control.dataset.builderColor = color;
+    control.style.color = color || "";
+    if (richColorInput && color && /^#[0-9a-f]{6}$/i.test(rgbColorToHex(color))) {
+      richColorInput.value = rgbColorToHex(color);
+    }
+  }
+  if (Object.prototype.hasOwnProperty.call(updates, "bold")) {
+    control.dataset.builderBold = updates.bold ? "true" : "false";
+    control.style.fontWeight = updates.bold ? "700" : "";
+  }
+  if (Object.prototype.hasOwnProperty.call(updates, "italic")) {
+    control.dataset.builderItalic = updates.italic ? "true" : "false";
+    control.style.fontStyle = updates.italic ? "italic" : "";
+  }
+  if (Object.prototype.hasOwnProperty.call(updates, "underline")) {
+    control.dataset.builderUnderline = updates.underline ? "true" : "false";
+    control.style.textDecoration = updates.underline ? "underline" : "";
+  }
+  storePlainControlStyle(control);
+  setStatus("Formatting applied and saved locally for this field.");
+}
+
+function syncPlainContextMenuControls(control) {
+  if (!control) return;
+  const computed = getComputedStyle(control);
+  const family = displayRichFontName(control.dataset.builderFontFamily || computed.fontFamily) || "Arial";
+  const size = String(Math.round(parseFloat(control.dataset.builderFontPx || computed.fontSize) || 16));
+  const color = rgbColorToHex(control.dataset.builderColor || computed.color || "#17202a");
+  if (richFontSelect) {
+    richFontSelect.value = [...richFontSelect.options].some((option) => option.value === family || option.textContent === family)
+      ? family
+      : "Arial";
+  }
+  if (richFontSize) richFontSize.value = [...richFontSize.options].some((option) => option.value === size || option.textContent === size)
+    ? size
+    : "16";
+  if (richColorInput && /^#[0-9a-f]{6}$/i.test(color)) richColorInput.value = color;
+  if (richBoldButton) richBoldButton.setAttribute("aria-pressed", control.dataset.builderBold === "true" ? "true" : "false");
 }
 
 function plainTextControlFromContextEvent(event) {
@@ -4967,6 +5153,20 @@ async function handlePlainTextAction(action) {
   if (action === "select-all-text") {
     control.select();
     activePlainTextSelection = { start: 0, end: control.value.length };
+    return;
+  }
+
+  if (action === "toggle-bold") {
+    applyPlainTextControlFormat(control, { bold: control.dataset.builderBold !== "true" });
+    return;
+  }
+  if (action === "toggle-italic") {
+    applyPlainTextControlFormat(control, { italic: control.dataset.builderItalic !== "true" });
+    return;
+  }
+  if (action === "toggle-underline") {
+    applyPlainTextControlFormat(control, { underline: control.dataset.builderUnderline !== "true" });
+    return;
   }
 }
 
@@ -6122,10 +6322,12 @@ function fullPortfolioPreviewHtmlExact(dataOverride = null) {
   const baseHref = `${window.location.origin}/`;
   const siteContent = normalizeSiteContent(previewValue(dataOverride, "siteContent", catalog.siteContent || savedPortfolioCatalog.siteContent || {}));
   const profile = normalizeProfile(previewValue(dataOverride, "profile", catalog.profile || savedPortfolioCatalog.profile || {}));
+  const fieldStyles = normalizeFieldStyles(previewValue(dataOverride, "fieldStyles", catalog.fieldStyles || savedPortfolioCatalog.fieldStyles || {}));
   const ownerName = profile.displayName || "Portfolio";
   const portfolioLabel = profile.portfolioLabel || "Portfolio";
   const previewDataObject = {
     categories: previewValue(dataOverride, "categories", savedPortfolioCatalog.categories || []),
+    fieldStyles,
     funFacts: previewValue(dataOverride, "funFacts", normalizeFunFacts(catalog.funFacts || savedPortfolioCatalog.funFacts || [])),
     funFactsRich: previewValue(dataOverride, "funFactsRich", catalog.funFactsRich || savedPortfolioCatalog.funFactsRich || null),
     profile,
@@ -6155,8 +6357,8 @@ function fullPortfolioPreviewHtmlExact(dataOverride = null) {
           <span class="omb-engraving">${escapeHtml(profile.brandText || "Portfolio")}</span>
         </span>
         <span>
-          <strong>${escapeHtml(ownerName)}</strong>
-          <small>${escapeHtml(portfolioLabel)}</small>
+          <strong${plainFieldStyleAttribute(fieldStyles, "profile-display-name")}>${escapeHtml(ownerName)}</strong>
+          <small${plainFieldStyleAttribute(fieldStyles, "profile-portfolio-label")}>${escapeHtml(portfolioLabel)}</small>
         </span>
       </a>
 
@@ -6179,9 +6381,9 @@ function fullPortfolioPreviewHtmlExact(dataOverride = null) {
         <img class="hero-image" alt="" hidden />
         <div class="hero-shade" aria-hidden="true"></div>
         <div class="hero-content">
-          <p class="eyebrow">${escapeHtml(siteContent.heroEyebrow)}</p>
-          <h1 id="hero-title">${renderPlainMultiline(siteContent.heroTitle)}</h1>
-          <p class="hero-copy">${renderPlainMultiline(siteContent.heroCopy)}</p>
+          <p class="eyebrow"${plainFieldStyleAttribute(fieldStyles, "site-hero-eyebrow")}>${escapeHtml(siteContent.heroEyebrow)}</p>
+          <h1 id="hero-title"${plainFieldStyleAttribute(fieldStyles, "site-hero-title")}>${renderPlainMultiline(siteContent.heroTitle)}</h1>
+          <p class="hero-copy"${plainFieldStyleAttribute(fieldStyles, "site-hero-copy")}>${renderPlainMultiline(siteContent.heroCopy)}</p>
           <div class="hero-actions">
             <a class="button primary" href="#projects">View projects</a>
             <a class="button secondary" href="#resume" hidden>View resume</a>
@@ -6298,8 +6500,8 @@ function fullPortfolioPreviewHtmlExact(dataOverride = null) {
         <div class="contact-content">
           <div>
             <p class="eyebrow">Contact</p>
-            <h2 id="contact-title">${escapeHtml(ownerName)}</h2>
-            <p class="contact-intro">Add contact details in the builder.</p>
+            <h2 id="contact-title"${plainFieldStyleAttribute(fieldStyles, "profile-display-name")}>${escapeHtml(ownerName)}</h2>
+            <p class="contact-intro"${plainFieldStyleAttribute(fieldStyles, "profile-contact-intro")}>Add contact details in the builder.</p>
             <div class="contact-details"></div>
           </div>
           <div class="contact-links"></div>
@@ -6986,6 +7188,7 @@ function catalogForSave(endpoint) {
   if (endpoint === "/api/apply-catalog") {
     return {
       ...savedPortfolioCatalog,
+      fieldStyles: clone(normalizeFieldStyles(catalog.fieldStyles || savedPortfolioCatalog.fieldStyles || {})),
       funFacts: normalizeFunFacts(catalog.funFacts || savedPortfolioCatalog.funFacts || []),
       funFactsRich: clone(catalog.funFactsRich || savedPortfolioCatalog.funFactsRich || null),
       profile: clone(normalizeProfile(catalog.profile || savedPortfolioCatalog.profile || {})),
@@ -7073,6 +7276,7 @@ async function loadData() {
     ? normalizeFunFacts(catalog.funFacts)
     : clone(defaultFunFacts);
   catalog.funFactsRich = catalog.funFactsRich || null;
+  catalog.fieldStyles = normalizeFieldStyles(catalog.fieldStyles || {});
   catalog.profile = normalizeProfile(catalog.profile || {});
   catalog.siteContent = normalizeSiteContent(catalog.siteContent || {});
   catalog.siteSections = catalog.siteSections || [];
@@ -7082,6 +7286,7 @@ async function loadData() {
   });
   savedPortfolioCatalog = {
     categories: clone(catalog.categories || []),
+    fieldStyles: clone(catalog.fieldStyles || {}),
     funFacts: clone(catalog.funFacts || []),
     funFactsRich: clone(catalog.funFactsRich || null),
     profile: clone(normalizeProfile(catalog.profile || {})),
@@ -7308,15 +7513,41 @@ projectWindowTitle.addEventListener("contextmenu", (event) => {
   projectTitleMenu.hidden = false;
 });
 
-projectTitleMenu.addEventListener("click", (event) => {
+projectTitleMenu.addEventListener("click", async (event) => {
   const button = event.target.closest("[data-title-action]");
   if (!button) return;
-  if (button.dataset.titleAction === "close") {
+  const action = button.dataset.titleAction;
+  if (action === "close") {
     projectTitleMenu.hidden = true;
     return;
   }
-  if (button.dataset.titleAction === "rename") renameSelectedProject();
-  if (button.dataset.titleAction === "details") openProjectMetaDetails();
+  if (action === "copy") {
+    const text = projectWindowTitle.textContent?.trim() || "";
+    if (text) await navigator.clipboard.writeText(text);
+    projectTitleMenu.hidden = true;
+    return;
+  }
+  if (action === "paste") {
+    const text = (await navigator.clipboard.readText()).trim();
+    if (text) {
+      beginTitleRename();
+      projectWindowTitle.textContent = text;
+      endTitleRename(true);
+    }
+    projectTitleMenu.hidden = true;
+    return;
+  }
+  if (action === "select") {
+    const range = document.createRange();
+    range.selectNodeContents(projectWindowTitle);
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+    projectTitleMenu.hidden = true;
+    return;
+  }
+  if (action === "rename") renameSelectedProject();
+  if (action === "details") openProjectMetaDetails();
 });
 
 titleRenameSave.addEventListener("click", () => endTitleRename(true));
@@ -7714,6 +7945,7 @@ function handlePlainTextContextMenu(event) {
     end: control.selectionEnd ?? control.value.length
   };
   configureSummaryContextMenu("plain");
+  syncPlainContextMenuControls(control);
 
   const menuHost = control.closest("dialog") || document.body;
   if (summaryContextMenu.parentElement !== menuHost) menuHost.append(summaryContextMenu);
@@ -8404,6 +8636,19 @@ document.addEventListener("pointercancel", endImageCropDrag);
 document.addEventListener("pointercancel", endRichImageMoveDrag);
 
 summaryContextMenu.addEventListener("click", async (event) => {
+  const colorButton = event.target.closest("[data-rich-color-value]");
+  if (colorButton) {
+    const color = colorButton.dataset.richColorValue;
+    if (richColorInput) richColorInput.value = color;
+    if (activePlainTextControl) {
+      applyPlainTextControlFormat(activePlainTextControl, { color });
+      hideSummaryContextMenu();
+    } else if (activeSummaryEditor) {
+      rememberRichFormattingSelection(activeSummaryEditor);
+      applyRichInlineCommand(activeSummaryEditor, "foreColor", color);
+    }
+    return;
+  }
   const actionButton = event.target.closest("[data-rich-action]");
   if (!actionButton) return;
   const action = actionButton.dataset.richAction;
@@ -8465,7 +8710,19 @@ async function handleStandaloneRichClick(event) {
 funFactsInput?.addEventListener("click", handleStandaloneRichClick);
 sectionDescription?.addEventListener("click", handleStandaloneRichClick);
 summaryContextMenu.addEventListener("change", (event) => {
-    if (!activeSummaryEditor || activePlainTextControl) return;
+    if (activePlainTextControl) {
+        if (event.target.matches("[data-rich-font-select]")) {
+            applyPlainTextControlFormat(activePlainTextControl, { fontFamily: event.target.value });
+        }
+        if (event.target.matches("[data-rich-font-size]")) {
+            applyPlainTextControlFormat(activePlainTextControl, { fontPx: event.target.value });
+        }
+        if (event.target.matches("[data-rich-color-input]")) {
+            applyPlainTextControlFormat(activePlainTextControl, { color: event.target.value });
+        }
+        return;
+    }
+    if (!activeSummaryEditor) return;
     rememberRichFormattingSelection(activeSummaryEditor);
 
     if (event.target.matches("[data-rich-font-select]")) {
@@ -8483,7 +8740,13 @@ summaryContextMenu.addEventListener("change", (event) => {
 });
 
 summaryContextMenu.addEventListener("input", (event) => {
-    if (!activeSummaryEditor || activePlainTextControl) return;
+    if (activePlainTextControl) {
+        if (event.target.matches("[data-rich-color-input]")) {
+            applyPlainTextControlFormat(activePlainTextControl, { color: event.target.value });
+        }
+        return;
+    }
+    if (!activeSummaryEditor) return;
     rememberRichFormattingSelection(activeSummaryEditor);
 
     if (event.target.matches("[data-rich-color-input]")) {
