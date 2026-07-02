@@ -148,6 +148,15 @@ function createAppMenu(origin) {
       ]
     },
     {
+      label: "Preferences",
+      submenu: [
+        { label: "Open Preferences", accelerator: "CmdOrCtrl+,", click: () => dispatchBuilderMenuAction({ type: "preferences" }) },
+        { type: "separator" },
+        { label: "Light Mode", click: () => dispatchBuilderMenuAction({ type: "set-theme", theme: "light" }) },
+        { label: "Dark Mode", click: () => dispatchBuilderMenuAction({ type: "set-theme", theme: "dark" }) }
+      ]
+    },
+    {
       label: "Help",
       submenu: [
         { label: "Builder Guide", accelerator: "F1", click: () => dispatchBuilderMenuAction({ type: "builder-guide" }) },
