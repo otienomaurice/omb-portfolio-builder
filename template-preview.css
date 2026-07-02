@@ -705,11 +705,16 @@
   width: min(540px, calc(100vw - 32px));
 }
 
+.security-report-dialog {
+  width: min(760px, calc(100vw - 32px));
+}
+
 .app-update-content {
   gap: 16px;
 }
 
-.app-update-body {
+.app-update-body,
+.security-report-body {
   display: grid;
   gap: 10px;
   padding: 18px;
@@ -718,7 +723,8 @@
   background: #f7fcff;
 }
 
-.app-update-body p {
+.app-update-body p,
+.security-report-body p {
   margin: 0;
   color: var(--muted);
   font-size: 0.93rem;
@@ -728,6 +734,75 @@
 .app-update-body p:first-child {
   color: var(--ink);
   font-weight: 750;
+}
+
+.security-report-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.security-report-card {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  min-height: 132px;
+  padding: 14px;
+  border: 1px solid #c5ddeb;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.security-report-card h3 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 0.95rem;
+  line-height: 1.25;
+}
+
+.security-report-card strong {
+  color: #007d9c;
+  font-size: 1.45rem;
+  line-height: 1.1;
+}
+
+.security-report-card ul {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding-left: 18px;
+  color: var(--muted);
+  font-size: 0.84rem;
+  line-height: 1.4;
+}
+
+.security-report-assets {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.security-report-assets li {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 7px 0;
+  border-bottom: 1px solid #e3f0f6;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.security-report-assets li:last-child {
+  border-bottom: 0;
+}
+
+.security-report-assets span:first-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--ink);
+  font-weight: 800;
 }
 
 .app-update-release-meta {

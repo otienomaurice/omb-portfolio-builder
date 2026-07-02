@@ -29,6 +29,7 @@
               <span class="builder-save-state" id="builder-save-state" data-state="loaded">Loaded</span>
               <a class="button secondary" href="index.html#projects" target="_blank" rel="noreferrer">Portfolio</a>
               <button class="button secondary" id="publish-target-open" type="button">Publishing target</button>
+              <button class="button secondary" id="security-report-open" type="button">Security report</button>
               <button class="button secondary" id="app-update-check" type="button">Check updates</button>
               <button class="button primary" id="save-draft" type="button">Save draft</button>
               <button class="button secondary" id="apply-catalog" type="button">Apply to site</button>
@@ -520,6 +521,7 @@
                               <li>Check code files for tokens, API keys, Wi-Fi credentials, private comments, or machine-specific paths.</li>
                               <li>Check PDF reports for instructor-only notes, grades, or private collaborator data.</li>
                               <li>Check images for visible serial numbers, passwords, private tabs, or unrelated desktop content.</li>
+                              <li>Use Security report to review app download counts, current publishing authorization status, and whether visitor logging requires Cloudflare analytics.</li>
                           </ul>
                           <p>If another user installs the builder, they should connect their own target unless you explicitly authorize access to your target. The builder should help people create portfolios, but it should not give anyone silent access to your website.</p>
                       </div>
@@ -791,6 +793,25 @@
                   <button class="button secondary" id="app-update-later" type="button">Remind me later</button>
                   <button class="button secondary" id="app-update-skip" type="button">Skip this version</button>
                   <button class="button primary" id="app-update-apply" type="button">Update</button>
+              </div>
+          </div>
+      </dialog>
+
+      <dialog class="asset-dialog security-report-dialog" id="security-report-dialog" aria-labelledby="security-report-title">
+          <div class="builder-guide-dialog-content security-report-content">
+              <div class="project-preview-heading">
+                  <div>
+                      <p class="eyebrow">Security and analytics</p>
+                      <h2 id="security-report-title">Builder security report</h2>
+                  </div>
+                  <button class="project-window-close" id="security-report-close" type="button" aria-label="Close security report">&times;</button>
+              </div>
+              <div class="security-report-body" id="security-report-body">
+                  <p>Loading security report...</p>
+              </div>
+              <div class="dialog-actions app-update-dialog-actions">
+                  <button class="button secondary" id="security-report-refresh" type="button">Refresh report</button>
+                  <button class="button primary" id="security-report-ok" type="button">Close</button>
               </div>
           </div>
       </dialog>

@@ -292,6 +292,23 @@ Function OMBStopBuilderProcessesForUpdate
   Sleep 1500
 FunctionEnd
 
+Function OMBDisableBuiltInOldUninstallerForInPlaceUpdate
+  DetailPrint "Preparing in-place update. The old uninstaller handoff will be skipped."
+
+  SetRegView 64
+  DeleteRegValue HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${UNINSTALL_APP_KEY}" "UninstallString"
+  DeleteRegValue HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${UNINSTALL_APP_KEY}" "QuietUninstallString"
+  DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${UNINSTALL_APP_KEY}" "UninstallString"
+  DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${UNINSTALL_APP_KEY}" "QuietUninstallString"
+
+  SetRegView 32
+  DeleteRegValue HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${UNINSTALL_APP_KEY}" "UninstallString"
+  DeleteRegValue HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${UNINSTALL_APP_KEY}" "QuietUninstallString"
+  DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${UNINSTALL_APP_KEY}" "UninstallString"
+  DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${UNINSTALL_APP_KEY}" "QuietUninstallString"
+  SetRegView lastused
+FunctionEnd
+
 Function OMBUninstallExistingInstallIfPresent
   StrCpy $OMB_ExistingInstallLocation ""
   StrCpy $OMB_ExistingInstallVersion ""
@@ -403,6 +420,12 @@ Function OMBUninstallExistingInstallIfPresent
     Quit
 
     omb_existing_install_confirmed:
+    DetailPrint "Updating existing OMB Portfolio Builder in place without launching the old uninstaller."
+    Call OMBStopBuilderProcessesForUpdate
+    Call OMBDisableBuiltInOldUninstallerForInPlaceUpdate
+    StrCpy $INSTDIR $OMB_ExistingInstallLocation
+    Return
+
     IfSilent omb_existing_install_silent_in_place_update
     ${If} $R5 == ""
       IfFileExists "$R7\Uninstall OMB Portfolio Builder.exe" 0 +2
