@@ -178,6 +178,17 @@ const summaryFormulaForm = document.querySelector("#summary-formula-form");
 const summaryFormulaInput = document.querySelector("#summary-formula-input");
 const summaryFormulaAlign = document.querySelector("#summary-formula-align");
 const summaryFormulaCancel = document.querySelector("#summary-formula-cancel");
+const summaryCodeDialog = document.querySelector("#summary-code-dialog");
+const summaryCodeForm = document.querySelector("#summary-code-form");
+const summaryCodeLanguage = document.querySelector("#summary-code-language");
+const summaryCodePasteMode = document.querySelector("#summary-code-paste-mode");
+const summaryCodeInput = document.querySelector("#summary-code-input");
+const summaryCodePreview = document.querySelector("#summary-code-preview");
+const summaryCodeCancel = document.querySelector("#summary-code-cancel");
+const preferencesDialog = document.querySelector("#preferences-dialog");
+const preferencesForm = document.querySelector("#preferences-form");
+const preferenceTheme = document.querySelector("#preference-theme");
+const preferencesClose = document.querySelector("#preferences-close");
 const summaryContextMenu = document.querySelector("#summary-context-menu");
 const richFontSelect = document.querySelector("#rich-font-select");
 const richFontSize = document.querySelector("#rich-font-size");
@@ -206,6 +217,21 @@ const standardSections = [
   { id: "brief", label: "Overview", folder: "" },
   { id: "design", label: "Design", folder: "documents" },
   { id: "simulation", label: "Simulation", folder: "simulations", analogOnly: true }
+];
+
+const preferenceStorageKey = "omb-builder-preferences";
+const defaultBuilderPreferences = { theme: "light" };
+let builderPreferences = { ...defaultBuilderPreferences };
+
+const supportedCodeLanguages = [
+  { id: "c", label: "C", aliases: ["c"] },
+  { id: "cpp", label: "C++", aliases: ["cpp", "c++", "cplusplus"] },
+  { id: "systemverilog", label: "SystemVerilog", aliases: ["systemverilog", "system verilog", "sv"] },
+  { id: "ltspice", label: "LTspice", aliases: ["ltspice", "spice", "cir", "net", "asc"] },
+  { id: "java", label: "Java", aliases: ["java"] },
+  { id: "javascript", label: "JavaScript", aliases: ["javascript", "js", "mjs"] },
+  { id: "python", label: "Python", aliases: ["python", "py"] },
+  { id: "html", label: "HTML", aliases: ["html", "htm"] }
 ];
 
 const defaultFunFacts = [];
@@ -1953,6 +1979,99 @@ function escapeHtml(value) {
     .replaceAll("'", "&#039;");
 }
 
+function normalizeCodeLanguage(value = "") {
+  const clean = String(value || "").trim().toLowerCase().replace(/[_-]+/g, " ");
+  const match = supportedCodeLanguages.find((language) =>
+    language.id === clean || language.aliases.includes(clean)
+  );
+  return match?.id || "javascript";
+}
+
+function codeLanguageLabel(value = "") {
+  return supportedCodeLanguages.find((language) => language.id === normalizeCodeLanguage(value))?.label || "Code";
+}
+
+function normalizeCodePasteMode(value = "") {
+  return value === "source" ? "source" : "basic";
+}
+
+function normalizeCodeText(value = "", pasteMode = "source") {
+  const normalized = String(value || "").replace(/\r\n?/g, "\n").replace(/\u00a0/g, " ");
+  if (normalizeCodePasteMode(pasteMode) === "source") return normalized.replace(/\t/g, "  ").replace(/\s+$/g, "");
+  return normalized
+    .split("\n")
+    .map((line) => line.trimEnd())
+    .join("\n")
+    .replace(/\n{4,}/g, "\n\n\n")
+    .trim();
+}
+
+function detectCodeLanguage(value = "") {
+  const code = String(value || "");
+  if (/<\/?[a-z][\s\S]*?>/i.test(code) || /<!doctype\s+html/i.test(code)) return "html";
+  if (/\b(module|endmodule|always_ff|always_comb|logic|reg|wire|assign)\b/.test(code)) return "systemverilog";
+  if (/^\s*\.?(tran|ac|dc|op|model|subckt|ends|param)\b/im.test(code) || /\bV\w+\s+\w+\s+\w+\s+(?:DC|SIN|PULSE)?/i.test(code)) return "ltspice";
+  if (/\b(def|elif|import\s+\w+|from\s+\w+\s+import|self|None|True|False)\b/.test(code)) return "python";
+  if (/\b(public\s+class|private\s+|protected\s+|static\s+void\s+main|System\.out)\b/.test(code)) return "java";
+  if (/\b(const|let|var|function|=>|console\.log|document\.|window\.)\b/.test(code)) return "javascript";
+  if (/\b(#include|printf|scanf|malloc|free|std::|cout|cin|namespace|template\s*<)\b/.test(code)) {
+    return /\b(std::|cout|cin|namespace|template\s*<|class\s+\w+)/.test(code) ? "cpp" : "c";
+  }
+  return "javascript";
+}
+
+function tokenizedCodeHtml(code = "", language = "javascript") {
+  let html = escapeHtml(code);
+  const tokens = [];
+  const protect = (pattern, className) => {
+    html = html.replace(pattern, (match) => {
+      const token = `@@CODE_TOKEN_${tokens.length}@@`;
+      tokens.push(`<span class="${className}">${match}</span>`);
+      return token;
+    });
+  };
+
+  if (language === "html") {
+    protect(/&lt;!--[\s\S]*?--&gt;/g, "code-token-comment");
+    protect(/(&lt;\/?)([a-zA-Z0-9:-]+)([\s\S]*?)(\/?&gt;)/g, "code-token-tag");
+  } else {
+    const commentPattern = ["python", "ltspice"].includes(normalizeCodeLanguage(language))
+      ? /\/\*[\s\S]*?\*\/|\/\/[^\n]*|#[^\n]*/g
+      : /\/\*[\s\S]*?\*\/|\/\/[^\n]*/g;
+    protect(commentPattern, "code-token-comment");
+    protect(/"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`/g, "code-token-string");
+  }
+
+  protect(/\b(?:0x[\da-f]+|\d+(?:\.\d+)?(?:e[+-]?\d+)?)\b/gi, "code-token-number");
+
+  const keywordMap = {
+    c: "auto|break|case|char|const|continue|default|do|double|else|enum|extern|float|for|goto|if|inline|int|long|register|return|short|signed|sizeof|static|struct|switch|typedef|union|unsigned|void|volatile|while",
+    cpp: "alignas|alignof|auto|bool|break|case|catch|char|class|const|constexpr|continue|default|delete|do|double|else|enum|explicit|export|extern|false|float|for|friend|if|inline|int|long|namespace|new|nullptr|operator|private|protected|public|return|short|signed|sizeof|static|struct|switch|template|this|throw|true|try|typedef|typename|union|unsigned|using|virtual|void|volatile|while",
+    systemverilog: "always|always_comb|always_ff|always_latch|assign|automatic|begin|bit|case|class|clocking|covergroup|default|disable|do|else|end|endcase|endclass|endclocking|endfunction|endmodule|endpackage|endtask|enum|for|forever|function|generate|genvar|if|initial|input|int|interface|logic|module|negedge|output|package|parameter|posedge|reg|return|signed|task|typedef|wire",
+    ltspice: "ac|dc|end|ends|four|func|global|ic|include|lib|meas|model|nodeset|op|options|param|plot|probe|save|step|subckt|temp|tran",
+    java: "abstract|assert|boolean|break|byte|case|catch|char|class|const|continue|default|do|double|else|enum|extends|final|finally|float|for|if|implements|import|instanceof|int|interface|long|native|new|null|package|private|protected|public|return|short|static|strictfp|super|switch|synchronized|this|throw|throws|transient|try|void|volatile|while",
+    javascript: "async|await|break|case|catch|class|const|continue|debugger|default|delete|do|else|export|extends|false|finally|for|from|function|if|import|in|instanceof|let|new|null|of|return|static|super|switch|this|throw|true|try|typeof|undefined|var|void|while|yield",
+    python: "and|as|assert|async|await|break|class|continue|def|del|elif|else|except|False|finally|for|from|global|if|import|in|is|lambda|None|nonlocal|not|or|pass|raise|return|True|try|while|with|yield",
+    html: "html|head|body|main|section|article|div|span|script|style|link|meta|title|header|footer|nav|button|input|form|label|img|a|p|pre|code"
+  };
+  const keywords = keywordMap[normalizeCodeLanguage(language)] || keywordMap.javascript;
+  html = html.replace(new RegExp(`\\b(${keywords})\\b`, "g"), '<span class="code-token-keyword">$1</span>');
+  html = html.replace(/@@CODE_TOKEN_(\d+)@@/g, (_match, index) => tokens[Number(index)] || "");
+  return html;
+}
+
+function renderRichCodeBlock(block = {}) {
+  const language = normalizeCodeLanguage(block.language || detectCodeLanguage(block.code || ""));
+  const code = normalizeCodeText(block.code || "", block.pasteMode || "source");
+  const label = codeLanguageLabel(language);
+  return `
+    <figure class="rich-code-block rich-code-language-${language}">
+      <figcaption><span>&lt;/&gt;</span> ${escapeHtml(label)}</figcaption>
+      <pre><code>${tokenizedCodeHtml(code, language)}</code></pre>
+    </figure>
+  `;
+}
+
 function renderPlainMultiline(value = "") {
   return escapeHtml(value).replace(/\r\n?|\n/g, "<br>");
 }
@@ -2006,6 +2125,44 @@ function normalizeFieldStyles(styles = {}) {
       .map(([fieldId, style]) => [fieldId, normalizePlainFieldStyle(style)])
       .filter(([, style]) => Object.keys(style).length)
   );
+}
+
+function loadBuilderPreferences() {
+  try {
+    const stored = JSON.parse(localStorage.getItem(preferenceStorageKey) || "{}");
+    builderPreferences = {
+      ...defaultBuilderPreferences,
+      ...stored,
+      theme: ["light", "dark"].includes(stored.theme) ? stored.theme : defaultBuilderPreferences.theme
+    };
+  } catch {
+    builderPreferences = { ...defaultBuilderPreferences };
+  }
+  applyBuilderPreferences();
+}
+
+function applyBuilderPreferences() {
+  const theme = ["light", "dark"].includes(builderPreferences.theme) ? builderPreferences.theme : "light";
+  document.documentElement.dataset.builderTheme = theme;
+  document.body.dataset.builderTheme = theme;
+  if (preferenceTheme) preferenceTheme.value = theme;
+}
+
+function setBuilderTheme(theme = "light") {
+  builderPreferences.theme = ["light", "dark"].includes(theme) ? theme : "light";
+  localStorage.setItem(preferenceStorageKey, JSON.stringify(builderPreferences));
+  applyBuilderPreferences();
+  setStatus(`Builder ${builderPreferences.theme} mode enabled.`);
+}
+
+function openPreferencesDialog() {
+  applyBuilderPreferences();
+  if (!preferencesDialog?.open) preferencesDialog.showModal();
+}
+
+function saveBuilderPreferencesFromDialog() {
+  setBuilderTheme(preferenceTheme?.value || "light");
+  setStatus("Preferences saved.");
 }
 
 function plainFieldStyleToCss(style = {}) {
@@ -2105,6 +2262,7 @@ function plainTextFromRich(rich, separator = "\n\n") {
     .map((block) => {
       if (block.type === "paragraph") return block.text || "";
       if (block.type === "formula") return block.formula || "";
+      if (block.type === "code") return block.code || "";
       if (block.type === "image") return [block.title, block.caption].filter(Boolean).join(" ");
       return "";
     })
@@ -2486,6 +2644,7 @@ function renderRichContent(rich, fallbackText = "") {
           }
           return `<div class="rich-formula justify-${align}">${escapeHtml(formula)}</div>`;
         }
+        if (block.type === "code") return renderRichCodeBlock(block);
         const size = ["small", "normal", "large"].includes(block.fontSize) ? block.fontSize : "normal";
         const content = block.html
           ? sanitizeRichInlineHtml(block.html)
@@ -2720,6 +2879,7 @@ function richHasContent(rich) {
   return Boolean(rich?.blocks?.some((block) =>
     block.type === "image" && block.url ||
     block.type === "formula" && block.formula ||
+    block.type === "code" && block.code ||
     block.text ||
     block.title ||
     block.caption
@@ -4055,7 +4215,7 @@ function renderSummaryBuilder(project) {
       </div>
       ${isEditing ? `
         <div class="rich-summary-panel">
-          <p class="rich-editor-hint">Right-click text or an inserted block for formatting, images, formulas, alignment, and delete controls.</p>
+          <p class="rich-editor-hint">Right-click text or an inserted block for formatting, images, formulas, code blocks, alignment, and delete controls.</p>
           <div class="rich-summary-editor" data-rich-editor="summary" data-placeholder="Click anywhere and start writing the project overview." contenteditable="true" spellcheck="true" aria-label="Rich overview editor"></div>
           <div class="summary-save-actions">
             <button class="button primary" type="button" data-summary-save="true">Save overview</button>
@@ -4153,6 +4313,25 @@ function createRichFormulaBlock(blockData) {
   return block;
 }
 
+function createRichCodeBlock(blockData = {}) {
+  const block = document.createElement("figure");
+  const pasteMode = normalizeCodePasteMode(blockData.pasteMode || "source");
+  const code = normalizeCodeText(blockData.code || "", pasteMode);
+  const language = normalizeCodeLanguage(blockData.language || detectCodeLanguage(code));
+  block.className = `rich-block rich-code-block rich-code-language-${language}`;
+  block.dataset.type = "code";
+  block.dataset.language = language;
+  block.dataset.pasteMode = pasteMode;
+  block.dataset.code = code;
+  block.contentEditable = "false";
+  block.innerHTML = `
+    ${richBlockActions("code block")}
+    <figcaption><span>&lt;/&gt;</span> ${escapeHtml(codeLanguageLabel(language))}<button type="button" data-rich-block-action="copy-code">Copy code</button></figcaption>
+    <pre><code>${tokenizedCodeHtml(code, language)}</code></pre>
+  `;
+  return block;
+}
+
 function refreshRichImageBlock(block, blockData) {
   const align = blockData.align || block.dataset.align || "center";
   block.dataset.url = blockData.url || block.dataset.url || "";
@@ -4198,9 +4377,25 @@ function refreshRichFormulaBlock(block, blockData) {
   `;
 }
 
+function refreshRichCodeBlock(block, blockData = {}) {
+  const pasteMode = normalizeCodePasteMode(blockData.pasteMode || block.dataset.pasteMode || "source");
+  const code = normalizeCodeText(blockData.code || block.dataset.code || "", pasteMode);
+  const language = normalizeCodeLanguage(blockData.language || block.dataset.language || detectCodeLanguage(code));
+  block.dataset.language = language;
+  block.dataset.pasteMode = pasteMode;
+  block.dataset.code = code;
+  block.className = `rich-block rich-code-block rich-code-language-${language}`;
+  block.innerHTML = `
+    ${richBlockActions("code block")}
+    <figcaption><span>&lt;/&gt;</span> ${escapeHtml(codeLanguageLabel(language))}<button type="button" data-rich-block-action="copy-code">Copy code</button></figcaption>
+    <pre><code>${tokenizedCodeHtml(code, language)}</code></pre>
+  `;
+}
+
 function createRichBlockElement(block) {
     if (block.type === "image") return createRichImageBlock(block);
     if (block.type === "formula") return createRichFormulaBlock(block);
+    if (block.type === "code") return createRichCodeBlock(block);
 
     return createRichTextBlock(
         block.text || "",
@@ -5056,6 +5251,16 @@ function extractRichSummary(editor) {
         type: "formula"
       };
     }
+    if (element.dataset.type === "code") {
+      const code = normalizeCodeText(element.dataset.code || element.querySelector("code")?.textContent || "", element.dataset.pasteMode || "source");
+      if (!code) return null;
+      return {
+        code,
+        language: normalizeCodeLanguage(element.dataset.language || detectCodeLanguage(code)),
+        pasteMode: normalizeCodePasteMode(element.dataset.pasteMode),
+        type: "code"
+      };
+    }
     const text = richElementPlainText(element);
     if (!text) return null;
     if (isFormulaOnly(text)) {
@@ -5225,6 +5430,40 @@ async function openSummaryFormulaDialog(existingBlock = null) {
   return { align: summaryFormulaAlign.value, formula, type: "formula" };
 }
 
+function refreshSummaryCodeDialogPreview() {
+  if (!summaryCodePreview || !summaryCodeInput) return;
+  const rawCode = summaryCodeInput.value || "";
+  const language = summaryCodeLanguage?.value === "auto"
+    ? detectCodeLanguage(rawCode)
+    : normalizeCodeLanguage(summaryCodeLanguage?.value || "javascript");
+  const code = normalizeCodeText(rawCode, summaryCodePasteMode?.value || "source");
+  summaryCodePreview.innerHTML = code
+    ? renderRichCodeBlock({ code, language, pasteMode: summaryCodePasteMode?.value || "source" })
+    : `<p class="evidence-empty">Code preview appears here.</p>`;
+}
+
+async function openSummaryCodeDialog(existingBlock = null, options = {}) {
+  const heading = summaryCodeDialog.querySelector("h2");
+  const submitButton = summaryCodeDialog.querySelector("button[type='submit']");
+  if (heading) heading.textContent = existingBlock ? "Edit code block" : "Add code block";
+  if (submitButton) submitButton.textContent = existingBlock ? "Save code" : "Add code";
+  const defaultCode = options.code || "";
+  summaryCodeLanguage.value = existingBlock?.dataset.language || (defaultCode ? detectCodeLanguage(defaultCode) : "auto");
+  summaryCodePasteMode.value = existingBlock?.dataset.pasteMode || options.pasteMode || "source";
+  summaryCodeInput.value = existingBlock?.dataset.code || defaultCode;
+  refreshSummaryCodeDialogPreview();
+  const saved = await dialogValue(summaryCodeDialog);
+  if (!saved) return null;
+  const pasteMode = normalizeCodePasteMode(summaryCodePasteMode.value);
+  const code = normalizeCodeText(summaryCodeInput.value, pasteMode);
+  if (!code) {
+    setStatus("Paste or type code before saving the block.");
+    return null;
+  }
+  const language = summaryCodeLanguage.value === "auto" ? detectCodeLanguage(code) : normalizeCodeLanguage(summaryCodeLanguage.value);
+  return { code, language, pasteMode, type: "code" };
+}
+
 function configureSummaryContextMenu(mode = "rich", options = {}) {
   const plainActions = new Set([
     "copy-text",
@@ -5244,7 +5483,7 @@ function configureSummaryContextMenu(mode = "rich", options = {}) {
   });
   if (mode === "rich") {
     const textOnly = Boolean(options.textOnly);
-    summaryContextMenu.querySelectorAll("[data-rich-action='add-image'], [data-rich-action='add-formula']").forEach((button) => {
+    summaryContextMenu.querySelectorAll("[data-rich-action='add-image'], [data-rich-action='add-formula'], [data-rich-action='add-code'], [data-rich-action='paste-code']").forEach((button) => {
       button.hidden = textOnly;
     });
   }
@@ -5440,6 +5679,22 @@ async function handleRichAction(action, editor) {
       saveRichEditorToProject(editor);
     }
   }
+  if (action === "add-code") {
+    const selectedText = window.getSelection()?.toString() || "";
+    const codeBlock = await openSummaryCodeDialog(null, { code: selectedText, pasteMode: "source" });
+    if (codeBlock) {
+      insertRichBlockAfterCursor(editor, createRichCodeBlock(codeBlock));
+      saveRichEditorToProject(editor);
+    }
+  }
+  if (action === "paste-code") {
+    const text = await navigator.clipboard.readText();
+    const codeBlock = await openSummaryCodeDialog(null, { code: text, pasteMode: "source" });
+    if (codeBlock) {
+      insertRichBlockAfterCursor(editor, createRichCodeBlock(codeBlock));
+      saveRichEditorToProject(editor);
+    }
+  }
   if (action === "edit-block") {
     await editSelectedRichBlock(editor);
     saveRichEditorToProject(editor);
@@ -5467,10 +5722,24 @@ async function editSelectedRichBlock(editor) {
     if (updated) refreshRichFormulaBlock(block, updated);
     return;
   }
+  if (block.dataset.type === "code") {
+    const updated = await openSummaryCodeDialog(block);
+    if (updated) refreshRichCodeBlock(block, updated);
+    return;
+  }
   if (block.dataset.type === "paragraph") {
     focusTextBlock(block);
     setStatus("Text block selected. Type directly in the block to edit it.");
   }
+}
+
+async function copyRichCodeBlock(block) {
+  if (!block || block.dataset.type !== "code") return false;
+  const code = block.dataset.code || block.querySelector("code")?.textContent || "";
+  if (!code) return false;
+  await navigator.clipboard.writeText(code);
+  setStatus("Code copied to clipboard.");
+  return true;
 }
 
 function removeRichBlock(block, editor) {
@@ -5493,7 +5762,9 @@ function deleteSelectedRichBlock(editor) {
     ? "this overview image"
     : block.dataset.type === "formula"
       ? "this formula"
-      : "this text block";
+      : block.dataset.type === "code"
+        ? "this code block"
+        : "this text block";
   openDeleteConfirm({
     title: "Delete overview block",
     message: `Are you sure you want to delete ${label}?`,
@@ -6065,7 +6336,7 @@ function renderDesignSummaryField(project, pathValue, label, placeholder) {
       </div>
 
       <div class="rich-summary-panel">
-        <p class="rich-editor-hint">Right-click to add images, apply bold, color, font, numeric size, alignment, or formulas.</p>
+        <p class="rich-editor-hint">Right-click to add images, code blocks, apply bold, color, font, numeric size, alignment, or formulas.</p>
 
         <div
           class="rich-summary-editor"
@@ -6155,7 +6426,7 @@ function renderPendingRichDescriptionEditor(editor = pendingEditor) {
     <div class="pending-rich-description rich-design-summary-field">
       <div class="summary-builder-heading"><span>${escapeHtml(label)}</span></div>
       <div class="rich-summary-panel">
-        <p class="rich-editor-hint">Right-click to add images, apply bold, color, font, numeric size, alignment, or formulas.</p>
+        <p class="rich-editor-hint">Right-click to add images, code blocks, apply bold, color, font, numeric size, alignment, or formulas.</p>
         <div
           class="rich-summary-editor"
           data-rich-editor="pending-description"
@@ -8051,6 +8322,10 @@ projectFields.addEventListener("click", async (event) => {
     const editor = blockAction.closest("[data-rich-editor='summary']");
     const block = blockAction.closest(".rich-block");
     selectRichBlock(block);
+    if (blockAction.dataset.richBlockAction === "copy-code") {
+      await copyRichCodeBlock(block);
+      return;
+    }
     if (blockAction.dataset.richBlockAction === "edit") await editSelectedRichBlock(editor);
     if (blockAction.dataset.richBlockAction === "delete") deleteSelectedRichBlock(editor);
     return;
@@ -8941,7 +9216,7 @@ summaryContextMenu.addEventListener("click", async (event) => {
     return;
   }
   await handleRichAction(action, activeSummaryEditor);
-  if (["add-image", "add-formula", "copy-text", "paste-text", "cut-text", "select-all-text", "edit-block", "delete-block"].includes(action)) {
+  if (["add-image", "add-formula", "add-code", "paste-code", "copy-text", "paste-text", "cut-text", "select-all-text", "edit-block", "delete-block"].includes(action)) {
     hideSummaryContextMenu();
   }
 });
@@ -8963,6 +9238,10 @@ sectionContent.addEventListener("click", async (event) => {
         const block = blockAction.closest(".rich-block");
         selectRichBlock(block);
 
+        if (blockAction.dataset.richBlockAction === "copy-code") {
+            await copyRichCodeBlock(block);
+            return;
+        }
         if (blockAction.dataset.richBlockAction === "edit") await editSelectedRichBlock(editor);
         if (blockAction.dataset.richBlockAction === "delete") deleteSelectedRichBlock(editor);
 
@@ -8983,6 +9262,10 @@ async function handleStandaloneRichClick(event) {
   if (!blockAction) return;
   const editor = blockAction.closest("[data-rich-editor]");
   selectRichBlock(blockAction.closest(".rich-block"));
+  if (blockAction.dataset.richBlockAction === "copy-code") {
+    await copyRichCodeBlock(blockAction.closest(".rich-block"));
+    return;
+  }
   if (blockAction.dataset.richBlockAction === "edit") await editSelectedRichBlock(editor);
   if (blockAction.dataset.richBlockAction === "delete") deleteSelectedRichBlock(editor);
   saveRichEditorToProject(editor);
@@ -9317,6 +9600,24 @@ summaryFormulaForm.addEventListener("submit", (event) => {
   event.preventDefault();
   closeDialogElement(summaryFormulaDialog, "save");
 });
+summaryCodeCancel?.addEventListener("click", () => {
+  closeDialogElement(summaryCodeDialog, "cancel");
+});
+summaryCodeInput?.addEventListener("input", refreshSummaryCodeDialogPreview);
+summaryCodeLanguage?.addEventListener("change", refreshSummaryCodeDialogPreview);
+summaryCodePasteMode?.addEventListener("change", refreshSummaryCodeDialogPreview);
+summaryCodeForm?.addEventListener("submit", (event) => {
+  event.preventDefault();
+  closeDialogElement(summaryCodeDialog, "save");
+});
+preferencesClose?.addEventListener("click", () => {
+  closeDialogElement(preferencesDialog, "cancel");
+});
+preferencesForm?.addEventListener("submit", (event) => {
+  event.preventDefault();
+  saveBuilderPreferencesFromDialog();
+  closeDialogElement(preferencesDialog, "save");
+});
 
 saveDraftButton.addEventListener("click", () => saveCatalog("/api/save-draft", "Draft saved"));
 applyCatalogButton.addEventListener("click", () => {
@@ -9332,8 +9633,11 @@ window.addEventListener("builder-menu-action", (event) => {
   if (type === "portfolio-preview") openPortfolioPreviewButton?.click();
   if (type === "builder-guide") builderGuideOpen?.click();
   if (type === "check-updates") checkForAppUpdates({ force: true, manual: true });
+  if (type === "preferences") openPreferencesDialog();
+  if (type === "set-theme") setBuilderTheme(event.detail?.theme || "light");
 });
 
+loadBuilderPreferences();
 renderSelectionInspectorOptions();
 enableDraggableDialogs();
 
