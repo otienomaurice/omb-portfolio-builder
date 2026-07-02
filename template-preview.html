@@ -340,6 +340,7 @@
                       <div>
                           <p>Rich text fields behave like document editors. Click where you want to type, highlight the exact words you want to edit, then apply formatting to that selection. Formatting should not change an entire paragraph unless the whole paragraph is selected.</p>
                           <p>The builder stores the text as structured content so the portfolio can render it cleanly later. That means the editor may standardize pasted formatting, but it should preserve intentional choices such as bold text, font size, color, links, hard line breaks, images, and formulas.</p>
+                          <p>Front-page, profile, and contact text fields use simpler one-line or textarea controls. Their right-click menu still supports copy, paste, select all, font, size, color, bold, italic, and underline, but those choices apply to the whole field and are saved into the portfolio preview and published site.</p>
                           <ol>
                               <li>Right-click highlighted text to copy, cut, paste, select all, change font, change size, change color, and apply bold, italic, or underline.</li>
                               <li>The default typing font is Arial.</li>
@@ -640,6 +641,9 @@
               </div>
               <div class="project-title-menu" id="project-title-menu" hidden>
                   <button type="button" data-title-action="close">Close menu</button>
+                  <button type="button" data-title-action="copy">Copy title</button>
+                  <button type="button" data-title-action="paste">Paste as title</button>
+                  <button type="button" data-title-action="select">Select title</button>
                   <button type="button" data-title-action="rename">Rename project</button>
                   <button type="button" data-title-action="details">Details</button>
               </div>
@@ -1070,6 +1074,7 @@
           <label class="rich-menu-field">
               <span>Text color</span>
               <input id="rich-color-input" type="color" value="#17202a" data-rich-color-input />
+              <div class="rich-context-color-swatches" id="rich-context-color-swatches" aria-label="Common text colors"></div>
           </label>
           <label class="rich-menu-field">
               <span>Font</span>

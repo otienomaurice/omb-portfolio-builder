@@ -66,6 +66,12 @@ The builder works offline for editing, project creation, file attachment, local 
 7. Save draft to keep the local working state.
 8. Configure a publishing target before applying changes to a repository.
 
+## Text Editing
+
+Project and portfolio-area overview editors support rich text editing with selection-level formatting, links, images, formulas, hard line breaks, copy, paste, cut, and select all.
+
+Front-page, profile, and contact fields use simpler input and textarea controls. Their right-click menu supports copy, paste, cut, select all, font family, font size, text color, bold, italic, and underline, and those formatting choices apply to the whole field in the builder, full preview, and published portfolio.
+
 ## Publishing
 
 Publishing is controlled by Git repository write access. The builder does not embed owner passwords or private credentials.
@@ -169,6 +175,7 @@ Use the workflow in [BRANCHING.md](BRANCHING.md):
 | `codex/skip-old-uninstaller-on-update` | Prevents in-app silent updates from launching stale uninstallers and adds an updater timeout for hung installers. | `development` | `development` | Active |
 | `codex/expand-builder-guide-explanations` | Expands the in-app Builder Guide topics with fuller setup, editing, preview, publishing, update, and safety explanations. | `development` | `development` | Active |
 | `codex/security-and-context-menu-reporting` | Improves text-field context menus, adds builder security/download reporting, and prepares publishable website security headers. | `development` | `development` | Active |
+| `codex/uniform-rich-text-controls` | Makes right-click text formatting consistent for front-page, profile, and contact fields, persists field styles into previews and published portfolios, and expands common color choices. | `development` | `development` | Active |
 
 ## Uninstall
 
