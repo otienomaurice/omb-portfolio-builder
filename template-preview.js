@@ -1706,6 +1706,52 @@ function richFieldValue(field, fallbackText = "") {
   };
 }
 
+function mergeRichFieldMaps(current = {}, fallback = {}) {
+  return {
+    ...clone(fallback || {}),
+    ...clone(current || {})
+  };
+}
+
+function parsedSiteContentRich() {
+  return mergeRichFieldMaps(catalog.siteContentRich, savedPortfolioCatalog.siteContentRich);
+}
+
+function parsedProfileRich() {
+  return mergeRichFieldMaps(catalog.profileRich, savedPortfolioCatalog.profileRich);
+}
+
+function parsedFunFactsRich() {
+  return Object.prototype.hasOwnProperty.call(catalog, "funFactsRich")
+    ? clone(catalog.funFactsRich || null)
+    : clone(savedPortfolioCatalog.funFactsRich || null);
+}
+
+function syncPortfolioTextInputsForParsing() {
+  if (funFactsInput) syncFunFactsFromInput();
+  if (siteHeroTitleInput || siteHeroCopyInput || siteHeroEyebrowInput) syncSiteContentFromInputs();
+  if (profileDisplayNameInput || profileEmailInput || profilePhoneInput) syncProfileFromInputs();
+}
+
+function parsedPortfolioGlobals() {
+  syncPortfolioTextInputsForParsing();
+  return {
+    categories: clone(catalog.categories || savedPortfolioCatalog.categories || []),
+    fieldStyles: clone(normalizeFieldStyles(catalog.fieldStyles || savedPortfolioCatalog.fieldStyles || {})),
+    funFacts: normalizeFunFacts(catalog.funFacts || savedPortfolioCatalog.funFacts || []),
+    funFactsRich: parsedFunFactsRich(),
+    profile: clone(normalizeProfile(catalog.profile || savedPortfolioCatalog.profile || {})),
+    profileRich: parsedProfileRich(),
+    siteContent: clone(normalizeSiteContent(catalog.siteContent || savedPortfolioCatalog.siteContent || {})),
+    siteContentRich: parsedSiteContentRich(),
+    siteSections: (catalog.siteSections || savedPortfolioCatalog.siteSections || []).filter(siteSectionRenderable).map(clone)
+  };
+}
+
+function syncParsedPortfolioGlobalsIntoSaved() {
+  Object.assign(savedPortfolioCatalog, parsedPortfolioGlobals());
+}
+
 function siteContentRichValue(key) {
   return catalog.siteContentRich?.[key] || savedPortfolioCatalog.siteContentRich?.[key] || null;
 }
@@ -2466,7 +2512,7 @@ function saveSelectedProjectToPortfolio() {
   const project = selectedProject();
   if (!project) return false;
   const parsedProject = parseProjectForPortfolio(project);
-  savedPortfolioCatalog.categories = clone(catalog.categories);
+  syncParsedPortfolioGlobalsIntoSaved();
   const nextProjects = (savedPortfolioCatalog.projects || []).filter((item) => item.id !== project.id);
   const workingIds = new Set((catalog.projects || []).map((item) => item.id));
   savedPortfolioCatalog.projects = nextProjects.filter((item) => workingIds.has(item.id));
@@ -2911,18 +2957,7 @@ async function commitActiveProjectEdits() {
 async function saveAllSections(options = {}) {
   const settings = options && options.currentTarget ? {} : options;
   if (!(await commitActiveProjectEdits())) return false;
-  if (funFactsInput) syncFunFactsFromInput();
-  if (siteHeroTitleInput || siteHeroCopyInput || siteHeroEyebrowInput) syncSiteContentFromInputs();
-  if (profileDisplayNameInput || profileEmailInput || profilePhoneInput) syncProfileFromInputs();
-  savedPortfolioCatalog.categories = clone(catalog.categories || []);
-  savedPortfolioCatalog.fieldStyles = clone(normalizeFieldStyles(catalog.fieldStyles || {}));
-  savedPortfolioCatalog.funFacts = normalizeFunFacts(catalog.funFacts || []);
-  savedPortfolioCatalog.funFactsRich = clone(catalog.funFactsRich || null);
-  savedPortfolioCatalog.profile = clone(normalizeProfile(catalog.profile || {}));
-  savedPortfolioCatalog.siteContent = clone(normalizeSiteContent(catalog.siteContent || {}));
-  savedPortfolioCatalog.siteContentRich = clone(catalog.siteContentRich || {});
-  savedPortfolioCatalog.profileRich = clone(catalog.profileRich || {});
-  savedPortfolioCatalog.siteSections = (catalog.siteSections || []).filter(siteSectionRenderable).map(clone);
+  syncParsedPortfolioGlobalsIntoSaved();
   savedPortfolioCatalog.projects = (catalog.projects || []).map((project) => parseProjectForPortfolio(project));
   markDraftNeedsSave();
   if (projectDialog?.open) closeDialogElement(projectDialog);
@@ -3257,16 +3292,17 @@ function fullProjectPreviewHtmlExact(project) {
     id: parsedProject.category || "project",
     label: displayTitle(parsedProject.category || "Project", "Project")
   });
+  const parsedGlobals = parsedPortfolioGlobals();
   const previewDataObject = {
     categories: [previewCategory],
-    fieldStyles: normalizeFieldStyles(catalog.fieldStyles || savedPortfolioCatalog.fieldStyles || {}),
+    fieldStyles: parsedGlobals.fieldStyles,
     funFacts: [],
     funFactsRich: null,
-    profile: normalizeProfile(catalog.profile || savedPortfolioCatalog.profile || {}),
-    profileRich: clone(catalog.profileRich || savedPortfolioCatalog.profileRich || {}),
+    profile: parsedGlobals.profile,
+    profileRich: parsedGlobals.profileRich,
     projects: [parsedProject],
-    siteContent: normalizeSiteContent(catalog.siteContent || savedPortfolioCatalog.siteContent || {}),
-    siteContentRich: clone(catalog.siteContentRich || savedPortfolioCatalog.siteContentRich || {}),
+    siteContent: parsedGlobals.siteContent,
+    siteContentRich: parsedGlobals.siteContentRich,
     siteSections: []
   };
   const previewData = JSON.stringify(previewDataObject).replaceAll("</", "<\\/");
@@ -6477,24 +6513,25 @@ function previewValue(source, key, fallback) {
 
 function fullPortfolioPreviewHtmlExact(dataOverride = null) {
   const baseHref = `${window.location.origin}/`;
-  const siteContent = normalizeSiteContent(previewValue(dataOverride, "siteContent", catalog.siteContent || savedPortfolioCatalog.siteContent || {}));
-  const profile = normalizeProfile(previewValue(dataOverride, "profile", catalog.profile || savedPortfolioCatalog.profile || {}));
-  const fieldStyles = normalizeFieldStyles(previewValue(dataOverride, "fieldStyles", catalog.fieldStyles || savedPortfolioCatalog.fieldStyles || {}));
-  const profileRich = previewValue(dataOverride, "profileRich", catalog.profileRich || savedPortfolioCatalog.profileRich || {});
-  const siteContentRich = previewValue(dataOverride, "siteContentRich", catalog.siteContentRich || savedPortfolioCatalog.siteContentRich || {});
+  const parsedGlobals = dataOverride ? null : parsedPortfolioGlobals();
+  const siteContent = normalizeSiteContent(previewValue(dataOverride, "siteContent", parsedGlobals?.siteContent || {}));
+  const profile = normalizeProfile(previewValue(dataOverride, "profile", parsedGlobals?.profile || {}));
+  const fieldStyles = normalizeFieldStyles(previewValue(dataOverride, "fieldStyles", parsedGlobals?.fieldStyles || {}));
+  const profileRich = previewValue(dataOverride, "profileRich", parsedGlobals?.profileRich || {});
+  const siteContentRich = previewValue(dataOverride, "siteContentRich", parsedGlobals?.siteContentRich || {});
   const ownerName = profile.displayName || "Portfolio";
   const portfolioLabel = profile.portfolioLabel || "Portfolio";
   const previewDataObject = {
-    categories: previewValue(dataOverride, "categories", savedPortfolioCatalog.categories || []),
+    categories: previewValue(dataOverride, "categories", parsedGlobals?.categories || []),
     fieldStyles,
-    funFacts: previewValue(dataOverride, "funFacts", normalizeFunFacts(catalog.funFacts || savedPortfolioCatalog.funFacts || [])),
-    funFactsRich: previewValue(dataOverride, "funFactsRich", catalog.funFactsRich || savedPortfolioCatalog.funFactsRich || null),
+    funFacts: previewValue(dataOverride, "funFacts", parsedGlobals?.funFacts || []),
+    funFactsRich: previewValue(dataOverride, "funFactsRich", parsedGlobals?.funFactsRich || null),
     profile,
     profileRich,
     projects: previewValue(dataOverride, "projects", savedPortfolioCatalog.projects || []),
     siteContent,
     siteContentRich,
-    siteSections: previewValue(dataOverride, "siteSections", savedPortfolioCatalog.siteSections || [])
+    siteSections: previewValue(dataOverride, "siteSections", parsedGlobals?.siteSections || [])
   };
   const previewData = JSON.stringify(previewDataObject).replaceAll("</", "<\\/");
 
@@ -7343,23 +7380,27 @@ function editCustomItem(sectionId, index) {
 }
 
 function catalogForSave(endpoint) {
-  if (funFactsInput) syncFunFactsFromInput();
-  if (siteHeroTitleInput || siteHeroCopyInput || siteHeroEyebrowInput) syncSiteContentFromInputs();
-  if (profileDisplayNameInput || profileEmailInput || profilePhoneInput) syncProfileFromInputs();
+  const parsedGlobals = parsedPortfolioGlobals();
   if (endpoint === "/api/apply-catalog") {
     return {
       ...savedPortfolioCatalog,
-      fieldStyles: clone(normalizeFieldStyles(catalog.fieldStyles || savedPortfolioCatalog.fieldStyles || {})),
-      funFacts: normalizeFunFacts(catalog.funFacts || savedPortfolioCatalog.funFacts || []),
-      funFactsRich: clone(catalog.funFactsRich || savedPortfolioCatalog.funFactsRich || null),
-      profile: clone(normalizeProfile(catalog.profile || savedPortfolioCatalog.profile || {})),
-      profileRich: clone(catalog.profileRich || savedPortfolioCatalog.profileRich || {}),
-      siteContent: clone(normalizeSiteContent(catalog.siteContent || savedPortfolioCatalog.siteContent || {})),
-      siteContentRich: clone(catalog.siteContentRich || savedPortfolioCatalog.siteContentRich || {}),
-      siteSections: (catalog.siteSections || []).filter(siteSectionRenderable).map(clone)
+      ...parsedGlobals,
+      projects: clone(savedPortfolioCatalog.projects || [])
     };
   }
-  return catalog;
+  return {
+    ...catalog,
+    categories: parsedGlobals.categories,
+    fieldStyles: parsedGlobals.fieldStyles,
+    funFacts: parsedGlobals.funFacts,
+    funFactsRich: parsedGlobals.funFactsRich,
+    profile: parsedGlobals.profile,
+    profileRich: parsedGlobals.profileRich,
+    siteContent: parsedGlobals.siteContent,
+    siteContentRich: parsedGlobals.siteContentRich,
+    siteSections: clone(catalog.siteSections || []),
+    projects: clone(catalog.projects || [])
+  };
 }
 
 async function saveCatalog(endpoint, message) {
