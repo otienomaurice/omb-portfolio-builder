@@ -72,6 +72,8 @@ Project and portfolio-area overview editors support rich text editing with selec
 
 Front-page, profile, contact, fun facts, and project overview fields use the same selection-level text behavior: highlight the exact words to edit, then use the right-click menu or floating selection inspector to change font family, font size, text color, bold, italic, or underline. Identity and contact fields are text-only, so image and formula insertion is intentionally disabled there while copy, paste, cut, select all, links, and text formatting still work.
 
+The portfolio parser carries those rich text fields into project previews, full portfolio previews, saved drafts, and generated website catalogs. Use **Save project** or **Save all sections** before previewing or publishing so the parsed site output includes the latest front-page, profile, contact, fun fact, and project text formatting.
+
 ## Publishing
 
 Publishing is controlled by Git repository write access. The builder does not embed owner passwords or private credentials.
