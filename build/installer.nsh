@@ -319,30 +319,17 @@ Function OMBUninstallExistingInstallIfPresent
   StrCpy $R5 ""
 
   SetRegView 64
-  ReadRegStr $R7 HKLM "Software\${APP_GUID}" InstallLocation
-  ReadRegStr $R6 HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${UNINSTALL_APP_KEY}" DisplayVersion
-  ReadRegStr $R5 HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${UNINSTALL_APP_KEY}" QuietUninstallString
+  ReadRegStr $R7 HKCU "Software\${APP_GUID}" InstallLocation
+  ReadRegStr $R6 HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${UNINSTALL_APP_KEY}" DisplayVersion
+  ReadRegStr $R5 HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${UNINSTALL_APP_KEY}" QuietUninstallString
   ${If} $R5 == ""
-    ReadRegStr $R5 HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${UNINSTALL_APP_KEY}" UninstallString
+    ReadRegStr $R5 HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${UNINSTALL_APP_KEY}" UninstallString
   ${EndIf}
   ${If} $R7 == ""
-    ReadRegStr $R7 HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${UNINSTALL_APP_KEY}" InstallLocation
-  ${EndIf}
-
-  ${If} $R7 == ""
-    ReadRegStr $R7 HKCU "Software\${APP_GUID}" InstallLocation
-    ReadRegStr $R6 HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${UNINSTALL_APP_KEY}" DisplayVersion
-    ReadRegStr $R5 HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${UNINSTALL_APP_KEY}" QuietUninstallString
-    ${If} $R5 == ""
-      ReadRegStr $R5 HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${UNINSTALL_APP_KEY}" UninstallString
-    ${EndIf}
-    ${If} $R7 == ""
-      ReadRegStr $R7 HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${UNINSTALL_APP_KEY}" InstallLocation
-    ${EndIf}
+    ReadRegStr $R7 HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${UNINSTALL_APP_KEY}" InstallLocation
   ${EndIf}
 
   ${If} $R7 == ""
-    SetRegView 32
     ReadRegStr $R7 HKLM "Software\${APP_GUID}" InstallLocation
     ReadRegStr $R6 HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${UNINSTALL_APP_KEY}" DisplayVersion
     ReadRegStr $R5 HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${UNINSTALL_APP_KEY}" QuietUninstallString
@@ -352,9 +339,38 @@ Function OMBUninstallExistingInstallIfPresent
     ${If} $R7 == ""
       ReadRegStr $R7 HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${UNINSTALL_APP_KEY}" InstallLocation
     ${EndIf}
+  ${EndIf}
+
+  ${If} $R7 == ""
+    SetRegView 32
+    ReadRegStr $R7 HKCU "Software\${APP_GUID}" InstallLocation
+    ReadRegStr $R6 HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${UNINSTALL_APP_KEY}" DisplayVersion
+    ReadRegStr $R5 HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${UNINSTALL_APP_KEY}" QuietUninstallString
+    ${If} $R5 == ""
+      ReadRegStr $R5 HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${UNINSTALL_APP_KEY}" UninstallString
+    ${EndIf}
+    ${If} $R7 == ""
+      ReadRegStr $R7 HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${UNINSTALL_APP_KEY}" InstallLocation
+    ${EndIf}
+    ${If} $R7 == ""
+      ReadRegStr $R7 HKLM "Software\${APP_GUID}" InstallLocation
+      ReadRegStr $R6 HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${UNINSTALL_APP_KEY}" DisplayVersion
+      ReadRegStr $R5 HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${UNINSTALL_APP_KEY}" QuietUninstallString
+      ${If} $R5 == ""
+        ReadRegStr $R5 HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${UNINSTALL_APP_KEY}" UninstallString
+      ${EndIf}
+      ${If} $R7 == ""
+        ReadRegStr $R7 HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${UNINSTALL_APP_KEY}" InstallLocation
+      ${EndIf}
+    ${EndIf}
     SetRegView lastused
   ${EndIf}
 
+  ${If} $R7 == ""
+    IfFileExists "$LOCALAPPDATA\Programs\OMB Portfolio Builder\Uninstall OMB Portfolio Builder.exe" 0 +3
+      StrCpy $R7 "$LOCALAPPDATA\Programs\OMB Portfolio Builder"
+      StrCpy $R5 '"$LOCALAPPDATA\Programs\OMB Portfolio Builder\Uninstall OMB Portfolio Builder.exe" /S'
+  ${EndIf}
   ${If} $R7 == ""
     IfFileExists "$PROGRAMFILES64\OMB Portfolio Builder\Uninstall OMB Portfolio Builder.exe" 0 +3
       StrCpy $R7 "$PROGRAMFILES64\OMB Portfolio Builder"
@@ -366,14 +382,21 @@ Function OMBUninstallExistingInstallIfPresent
       StrCpy $R5 '"$PROGRAMFILES\OMB Portfolio Builder\Uninstall OMB Portfolio Builder.exe" /S'
   ${EndIf}
   ${If} $R7 == ""
-    IfFileExists "$LOCALAPPDATA\Programs\OMB Portfolio Builder\Uninstall OMB Portfolio Builder.exe" 0 +3
-      StrCpy $R7 "$LOCALAPPDATA\Programs\OMB Portfolio Builder"
-      StrCpy $R5 '"$LOCALAPPDATA\Programs\OMB Portfolio Builder\Uninstall OMB Portfolio Builder.exe" /S'
+    IfFileExists "$PROFILE\OMB\application\OMB Portfolio Builder\OMB Portfolio Builder.exe" 0 +4
+      StrCpy $R7 "$PROFILE\OMB\application\OMB Portfolio Builder"
+      StrCpy $R6 "a legacy app-folder copy"
+      StrCpy $OMB_ManualApplicationInstall "1"
   ${EndIf}
   ${If} $R7 == ""
     IfFileExists "$PROFILE\OMB\application\OMB Portfolio Builder.exe" 0 +4
       StrCpy $R7 "$PROFILE\OMB\application"
       StrCpy $R6 "a standalone app-folder copy"
+      StrCpy $OMB_ManualApplicationInstall "1"
+  ${EndIf}
+  ${If} $R7 == ""
+    IfFileExists "$PROFILE\OneDrive\Documents\OMB\application\OMB Portfolio Builder\OMB Portfolio Builder.exe" 0 +4
+      StrCpy $R7 "$PROFILE\OneDrive\Documents\OMB\application\OMB Portfolio Builder"
+      StrCpy $R6 "a legacy app-folder copy"
       StrCpy $OMB_ManualApplicationInstall "1"
   ${EndIf}
   ${If} $R7 == ""

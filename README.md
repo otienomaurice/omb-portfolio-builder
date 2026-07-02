@@ -17,19 +17,19 @@ Use:
 - `OMB-Portfolio-Builder-Setup-latest-x64.exe` for the Windows installer.
 - `OMB-Portfolio-Builder-Portable-latest-x64.exe` when you want to run without installing.
 
-The normal installer default is:
+The normal installer default is a per-user Windows app location:
 
 ```text
-C:\Program Files\OMB Portfolio Builder
+C:\Users\<you>\AppData\Local\Programs\OMB Portfolio Builder
 ```
 
 The installed application executable is:
 
 ```text
-C:\Program Files\OMB Portfolio Builder\OMB Portfolio Builder.exe
+C:\Users\<you>\AppData\Local\Programs\OMB Portfolio Builder\OMB Portfolio Builder.exe
 ```
 
-The installer uses a Windows wizard with Back, Next, Cancel, progress, and Finish. It can create Desktop and Start Menu shortcuts, and it writes a normal Windows uninstall entry.
+The installer uses a Windows wizard with Back, Next, Cancel, progress, and Finish. It can create Desktop and Start Menu shortcuts, and it writes a normal Windows uninstall entry. The default per-user install does not write into `C:\Program Files`, so normal app updates can run without a Windows administrator prompt.
 
 Installed users do not need Node.js or pnpm. The packaged desktop app includes its runtime. Git for Windows with Git Credential Manager is needed only for publishing to a Git repository. If Git or Git Credential Manager is missing, setup can install Git for Windows; compatible existing tools are skipped rather than removed.
 
@@ -37,7 +37,7 @@ Installed users do not need Node.js or pnpm. The packaged desktop app includes i
 
 The app checks GitHub Releases for newer builder versions. When a newer release exists, the app shows an update dialog. Choosing **Update** downloads the installer, closes the running builder, updates the existing installation in place, and reopens the updated app.
 
-Setup treats an existing install as an update target, not a second installation. It uses the detected install location, avoids creating duplicate builder copies, and stops when the installed version is already current or newer.
+Setup treats an existing install as an update target, not a second installation. It checks the current user's install first, then legacy machine-wide records, uses the detected install location for updates, avoids creating duplicate builder copies, and stops when the installed version is already current or newer.
 
 Older releases remain available at:
 
@@ -49,7 +49,7 @@ https://github.com/otienomaurice/omb-portfolio-builder/releases
 
 On Windows, the app separates application files from editable content:
 
-- `C:\Users\<you>\OMB\application` stores the standalone app-folder executable when the app is used from the local app-folder layout.
+- `C:\Users\<you>\AppData\Local\Programs\OMB Portfolio Builder` stores the installed desktop application.
 - `C:\Users\<you>\OMB\builder` stores the builder workspace, local drafts, uploaded files, templates, previews, and editing tools.
 - `C:\Users\<you>\OMB\portfolio` stores the publish mirror used by Git-based publishing.
 
@@ -186,6 +186,7 @@ Use the workflow in [BRANCHING.md](BRANCHING.md):
 | `codex/uniform-rich-text-controls` | Makes right-click text formatting consistent for front-page, profile, and contact fields, persists field styles into previews and published portfolios, and expands common color choices. | `development` | `development` | Active |
 | `codex/code-block-preferences` | Adds code-block authoring with syntax highlighting, source/basic paste modes, parser rendering, and builder Preferences for light/dark mode. | `codex/rich-profile-frontpage-editors` | `development` | Active |
 | `codex/full-builder-dark-mode` | Expands builder dark mode across panels, dialogs, menus, status chips, and icon controls while preserving input-field colors and project appearance templates. | `codex/code-block-preferences` | `development` | Active |
+| `codex/per-user-update-migration` | Moves the installer/update model to the current user's app location and prefers per-user install records over stale machine-wide records. | `codex/full-builder-dark-mode` | `development` | Active |
 
 ## Uninstall
 
