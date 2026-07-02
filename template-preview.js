@@ -1037,15 +1037,20 @@ function showUpdateDialog(update = {}, options = {}) {
   if (!appUpdateDialog || (!force && !shouldShowUpdateDialog(update))) return;
   pendingAppUpdate = update;
   const hasInstaller = Boolean(update.installerUrl);
+  const updateBlocked = Boolean(update.updateBlocked);
   const hasUpdate = Boolean(update.updateAvailable && update.latestVersion);
-  appUpdateTitle.textContent = hasUpdate ? "Update available" : "Builder is up to date";
-  appUpdateMessage.textContent = hasUpdate
+  appUpdateTitle.textContent = updateBlocked ? "Update paused" : hasUpdate ? "Update available" : "Builder is up to date";
+  appUpdateMessage.textContent = updateBlocked
+    ? `OMB Portfolio Builder ${update.latestVersion || "this release"} is available, but this version is paused for automatic updates.`
+    : hasUpdate
     ? `OMB Portfolio Builder ${update.latestVersion} is available. You are running ${update.currentVersion || "an older version"}.`
     : `You are running OMB Portfolio Builder ${update.currentVersion || "the current installed version"}.`;
-  appUpdateDetails.textContent = hasUpdate
+  appUpdateDetails.textContent = updateBlocked
+    ? (update.blockedReason || "This release is temporarily blocked from automatic updates. Check again after the next release is available.")
+    : hasUpdate
     ? "Choose Update to download the latest installer, close this app, and install the new version automatically. Remind me later postpones the prompt; Skip this version ignores this release."
     : "No newer released builder was found on GitHub Releases.";
-  appUpdateReleaseMeta.innerHTML = hasUpdate
+  appUpdateReleaseMeta.innerHTML = (hasUpdate || updateBlocked)
     ? [
       `<span>Current version: ${escapeHtml(update.currentVersion || "unknown")}</span>`,
       `<span>Available version: ${escapeHtml(update.latestVersion || "unknown")}</span>`,

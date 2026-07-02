@@ -56,6 +56,7 @@ const publishAuthExtendedTtlMs = 30 * 24 * 60 * 60 * 1000;
 const publishAuthHistoryWindowMs = 7 * 24 * 60 * 60 * 1000;
 const publishAuthExtendedThreshold = 3;
 const defaultSiteRepository = process.env.OMB_BUILDER_REPOSITORY || "";
+const blockedAppUpdateVersions = new Set(["0.2.16"]);
 const publishAuthorizationHelp = [
   "Publishing was blocked before live website files were applied.",
   "Open Publishing target, enter the repository URL, click Save target, then click Authenticate with GitHub.",
@@ -1596,11 +1597,16 @@ async function getUpdateInfo() {
     const latestVersion = String(release.tag_name || "").replace(/^builder-v/i, "");
     const installer = (release.assets || []).find((asset) => /Setup-.*\.exe$/i.test(asset.name));
     const portable = (release.assets || []).find((asset) => /Portable-.*\.exe$/i.test(asset.name));
+    const updateBlocked = blockedAppUpdateVersions.has(latestVersion);
     return {
       ok: true,
       currentVersion,
       latestVersion,
-      updateAvailable: compareVersions(latestVersion, currentVersion) > 0,
+      updateAvailable: !updateBlocked && compareVersions(latestVersion, currentVersion) > 0,
+      updateBlocked,
+      blockedReason: updateBlocked
+        ? `Builder ${latestVersion} is skipped because its installer can hang while running the old uninstaller during in-app updates. Wait for builder 0.2.17 or newer, then run Update again.`
+        : "",
       releaseUrl: release.html_url || "",
       installerUrl: installer?.browser_download_url || "",
       installerName: installer?.name || "",
@@ -1631,6 +1637,9 @@ function powershellSingleQuoted(value = "") {
 async function downloadAndLaunchAppUpdate() {
   const update = await getUpdateInfo();
   if (!update.ok) throw new Error(update.error || "Could not check for updates.");
+  if (update.updateBlocked) {
+    throw new Error(update.blockedReason || `Builder ${update.latestVersion} is temporarily blocked from automatic updates.`);
+  }
   if (!update.updateAvailable) {
     throw new Error(`OMB Portfolio Builder ${update.currentVersion || ""} is already up to date.`);
   }
@@ -1710,6 +1719,23 @@ async function downloadAndLaunchAppUpdate() {
     "    Start-Sleep -Seconds 2",
     "  } catch { Write-UpdateLog ('Could not stop previous builder processes: ' + $_.Exception.Message) }",
     "}",
+    "function Run-Installer([switch]$Elevated) {",
+    "  $process = $null",
+    "  if ($Elevated) {",
+    "    Write-UpdateLog 'Starting installer with Windows elevation prompt.'",
+    "    $process = Start-Process -FilePath $installer -ArgumentList @('/S') -Verb RunAs -PassThru",
+    "  } else {",
+    "    Write-UpdateLog 'Starting installer silently.'",
+    "    $process = Start-Process -FilePath $installer -ArgumentList @('/S') -WindowStyle Hidden -PassThru",
+    "  }",
+    "  if (-not $process) { return 0 }",
+    "  if (-not $process.WaitForExit(900000)) {",
+    "    Write-UpdateLog ('Installer timed out after 15 minutes. PID: ' + $process.Id)",
+    "    try { Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue } catch { Write-UpdateLog ('Could not stop timed-out installer: ' + $_.Exception.Message) }",
+    "    return 124",
+    "  }",
+    "  return $process.ExitCode",
+    "}",
     "Write-UpdateLog 'Update launcher started.'",
     "Start-Sleep -Seconds 3",
     "try { Wait-Process -Id $parentPid -Timeout 8; Write-UpdateLog 'Previous app process exited.' } catch { Write-UpdateLog ('Previous app wait finished: ' + $_.Exception.Message) }",
@@ -1719,8 +1745,7 @@ async function downloadAndLaunchAppUpdate() {
     "$installerExit = 1",
     "try {",
     "  Write-UpdateLog ('Starting installer: ' + $installer)",
-    "  $installerProcess = Start-Process -FilePath $installer -ArgumentList @('/S') -Wait -PassThru",
-    "  $installerExit = if ($installerProcess) { $installerProcess.ExitCode } else { 0 }",
+    "  $installerExit = Run-Installer",
     "  Write-UpdateLog ('Installer exit code: ' + $installerExit)",
     "} catch {",
     "  Write-UpdateLog ('Installer launch failed: ' + $_.Exception.Message)",
@@ -1729,8 +1754,7 @@ async function downloadAndLaunchAppUpdate() {
     "if ($installerExit -ne 0) {",
     "  try {",
     "    Write-UpdateLog 'Installer did not finish cleanly; retrying with Windows elevation prompt.'",
-    "    $installerProcess = Start-Process -FilePath $installer -ArgumentList @('/S') -Verb RunAs -Wait -PassThru",
-    "    $installerExit = if ($installerProcess) { $installerProcess.ExitCode } else { 0 }",
+    "    $installerExit = Run-Installer -Elevated",
     "    Write-UpdateLog ('Elevated installer exit code: ' + $installerExit)",
     "  } catch { Write-UpdateLog ('Elevated installer launch failed: ' + $_.Exception.Message) }",
     "}",
