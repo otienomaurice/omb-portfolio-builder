@@ -4,6 +4,10 @@ const builderGuideClose = document.querySelector("#builder-guide-close");
 const builderGuideSearch = document.querySelector("#builder-guide-search");
 const builderGuideResults = document.querySelector("#builder-guide-results");
 const builderGuideSections = document.querySelector("#builder-guide-sections");
+const builderGuideTopicDialog = document.querySelector("#builder-guide-topic-dialog");
+const builderGuideTopicTitle = document.querySelector("#builder-guide-topic-title");
+const builderGuideTopicBody = document.querySelector("#builder-guide-topic-body");
+const builderGuideTopicClose = document.querySelector("#builder-guide-topic-close");
 const templateSelect = document.querySelector("#template-select");
 const newCategorySelect = document.querySelector("#new-category-select");
 const placementSelect = document.querySelector("#placement-select");
@@ -6936,6 +6940,18 @@ templatePreviewClose.addEventListener("click", () => {
 
 let activeBuilderGuideTopic = "all";
 
+function prepareBuilderGuideTopicLinks() {
+  builderGuideSections?.querySelectorAll("[data-guide-section]").forEach((section) => {
+    const summary = section.querySelector("summary");
+    if (!summary) return;
+    summary.setAttribute("role", "link");
+    summary.setAttribute("tabindex", "0");
+    summary.setAttribute("aria-label", `Open ${summary.textContent.trim()}`);
+    summary.title = "Open this guide topic";
+    section.open = false;
+  });
+}
+
 function updateBuilderGuideStats() {
   if (!builderGuideDialog) return;
   const projectCount = catalog.projects?.length || 0;
@@ -6976,7 +6992,7 @@ function filterBuilderGuide() {
     section.hidden = !visible;
     if (visible) {
       visibleCount += 1;
-      if (query || activeBuilderGuideTopic !== "all") section.open = true;
+      section.open = false;
     }
   });
   if (builderGuideResults) {
@@ -7022,14 +7038,47 @@ function handleBuilderGuideAction(action = "") {
   }
 }
 
+function openBuilderGuideTopic(section) {
+  if (!section || !builderGuideTopicDialog || !builderGuideTopicTitle || !builderGuideTopicBody) return;
+  const summary = section.querySelector("summary");
+  const source = section.querySelector(":scope > div");
+  const title = summary?.textContent?.trim() || "Builder guide topic";
+  builderGuideTopicTitle.textContent = title;
+  builderGuideTopicBody.replaceChildren();
+  if (source) {
+    const copy = source.cloneNode(true);
+    copy.classList.add("builder-guide-topic-copy");
+    builderGuideTopicBody.append(copy);
+  } else {
+    const empty = document.createElement("p");
+    empty.textContent = "This guide topic does not have written instructions yet.";
+    builderGuideTopicBody.append(empty);
+  }
+  if (!builderGuideTopicDialog.open) builderGuideTopicDialog.showModal();
+  requestAnimationFrame(() => {
+    builderGuideTopicBody.scrollTop = 0;
+    builderGuideTopicBody.focus({ preventScroll: true });
+    updateDialogWindowButtons(builderGuideTopicDialog);
+  });
+}
+
 builderGuideOpen.addEventListener("click", () => {
   updateBuilderGuideStats();
+  prepareBuilderGuideTopicLinks();
   filterBuilderGuide();
   builderGuideDialog.showModal();
 });
 
 builderGuideClose.addEventListener("click", () => {
   closeDialogElement(builderGuideDialog);
+});
+
+builderGuideTopicClose?.addEventListener("click", () => {
+  closeDialogElement(builderGuideTopicDialog);
+});
+
+builderGuideTopicDialog?.addEventListener("close", () => {
+  builderGuideTopicBody?.replaceChildren();
 });
 
 builderGuideSearch?.addEventListener("input", filterBuilderGuide);
@@ -7041,6 +7090,19 @@ builderGuideDialog?.addEventListener("click", (event) => {
   }
   const action = event.target.closest("[data-guide-action]");
   if (action) handleBuilderGuideAction(action.dataset.guideAction || "");
+  const guideSummary = event.target.closest(".builder-guide-section > summary");
+  if (guideSummary && builderGuideSections?.contains(guideSummary)) {
+    event.preventDefault();
+    openBuilderGuideTopic(guideSummary.parentElement);
+  }
+});
+
+builderGuideDialog?.addEventListener("keydown", (event) => {
+  if (event.key !== "Enter" && event.key !== " ") return;
+  const guideSummary = event.target.closest(".builder-guide-section > summary");
+  if (!guideSummary || !builderGuideSections?.contains(guideSummary)) return;
+  event.preventDefault();
+  openBuilderGuideTopic(guideSummary.parentElement);
 });
 
 projectWindowTitle.addEventListener("dblclick", (event) => {

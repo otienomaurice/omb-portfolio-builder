@@ -165,6 +165,7 @@ Use the workflow in [BRANCHING.md](BRANCHING.md):
 | `codex/fix-editor-installer-update-flow` | Fixes rich-editor context menus, prevents pasted links from rendering as formulas, adds safe fullscreen exit behavior, and lets installers update in place when old uninstallers fail. | `development` | `development` | Active |
 | `codex/populate-builder-guide` | Populates the in-app Builder Guide with detailed setup, project, editor, preview, publishing, mobile, update, and safety workflows. | `development` | `development` | Active |
 | `codex/fix-builder-guide-layout` | Fixes clipped Builder Guide rows so guide topics are readable and expandable inside the builder dialog. | `development` | `development` | Active |
+| `codex/guide-topic-windows` | Converts Builder Guide rows into clickable guide topics that open separate explanation windows. | `development` | `development` | Active |
 
 ## Uninstall
 
