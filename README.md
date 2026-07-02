@@ -78,6 +78,8 @@ The portfolio parser carries those rich text fields into project previews, full 
 
 The top application menu includes **Preferences**. Use it to open builder preferences or switch the builder between light and dark mode. This changes the builder workspace only; public portfolio appearance still comes from the selected site and project appearances.
 
+Dark mode applies to builder panels, dialogs, guide windows, menus, status chips, and window/icon controls. Editing fields and selected project appearances keep their own colors so typed content, field formatting, and project templates remain predictable.
+
 ## Publishing
 
 Publishing is controlled by Git repository write access. The builder does not embed owner passwords or private credentials.
@@ -183,6 +185,7 @@ Use the workflow in [BRANCHING.md](BRANCHING.md):
 | `codex/security-and-context-menu-reporting` | Improves text-field context menus, adds builder security/download reporting, and prepares publishable website security headers. | `development` | `development` | Active |
 | `codex/uniform-rich-text-controls` | Makes right-click text formatting consistent for front-page, profile, and contact fields, persists field styles into previews and published portfolios, and expands common color choices. | `development` | `development` | Active |
 | `codex/code-block-preferences` | Adds code-block authoring with syntax highlighting, source/basic paste modes, parser rendering, and builder Preferences for light/dark mode. | `codex/rich-profile-frontpage-editors` | `development` | Active |
+| `codex/full-builder-dark-mode` | Expands builder dark mode across panels, dialogs, menus, status chips, and icon controls while preserving input-field colors and project appearance templates. | `codex/code-block-preferences` | `development` | Active |
 
 ## Uninstall
 
