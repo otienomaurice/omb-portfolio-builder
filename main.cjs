@@ -90,6 +90,15 @@ function quitForBuilderUpdate() {
 
 process.on("omb-builder-update-started", quitForBuilderUpdate);
 
+function setBuilderFullScreen(nextState = null) {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  const shouldFullscreen = typeof nextState === "boolean" ? nextState : !mainWindow.isFullScreen();
+  mainWindow.setFullScreen(shouldFullscreen);
+  mainWindow.setMenuBarVisibility(true);
+  mainWindow.setAutoHideMenuBar(false);
+  mainWindow.setMenu(createAppMenu(builderOrigin));
+}
+
 function createAppMenu(origin) {
   return Menu.buildFromTemplate([
     {
@@ -129,7 +138,11 @@ function createAppMenu(origin) {
         { label: "Portfolio Preview", click: () => dispatchBuilderMenuAction({ type: "portfolio-preview" }) },
         { label: "Check Updates", click: () => dispatchBuilderMenuAction({ type: "check-updates" }) },
         { type: "separator" },
-        { role: "togglefullscreen" }
+        {
+          label: mainWindow?.isFullScreen?.() ? "Exit Full Screen" : "Toggle Full Screen",
+          accelerator: "F11",
+          click: () => setBuilderFullScreen()
+        }
       ]
     },
     {
@@ -265,6 +278,7 @@ async function preparePackagedWorkspace() {
   for (const fileName of portfolioFilesToSeed) {
     await copyFileIfAvailable(path.join(bundledSiteRoot, fileName), path.join(portfolioRoot, fileName), false);
   }
+  await copyFileIfAvailable(path.join(bundledSiteRoot, "portfolio-README.md"), path.join(portfolioRoot, "README.md"), false);
   for (const directoryName of portfolioDirectoriesToSeed) {
     await copyDirectoryMissingFiles(path.join(bundledSiteRoot, directoryName), path.join(portfolioRoot, directoryName));
   }
@@ -344,6 +358,29 @@ function createWindow(workspaceRoot, origin) {
   });
   mainWindow.setMenu(createAppMenu(origin));
   mainWindow.setMenuBarVisibility(true);
+  mainWindow.setAutoHideMenuBar(false);
+
+  const refreshFullscreenMenu = () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.setMenuBarVisibility(true);
+      mainWindow.setAutoHideMenuBar(false);
+      mainWindow.setMenu(createAppMenu(origin));
+    }
+  };
+  mainWindow.on("enter-full-screen", refreshFullscreenMenu);
+  mainWindow.on("leave-full-screen", refreshFullscreenMenu);
+
+  mainWindow.webContents.on("before-input-event", (event, input) => {
+    if (input.key === "F11") {
+      event.preventDefault();
+      setBuilderFullScreen();
+      return;
+    }
+    if (input.key === "Escape" && mainWindow.isFullScreen()) {
+      event.preventDefault();
+      setBuilderFullScreen(false);
+    }
+  });
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith(origin)) return { action: "allow" };

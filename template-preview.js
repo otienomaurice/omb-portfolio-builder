@@ -1,6 +1,13 @@
 const builderGuideOpen = document.querySelector("#builder-guide-open");
 const builderGuideDialog = document.querySelector("#builder-guide-dialog");
 const builderGuideClose = document.querySelector("#builder-guide-close");
+const builderGuideSearch = document.querySelector("#builder-guide-search");
+const builderGuideResults = document.querySelector("#builder-guide-results");
+const builderGuideSections = document.querySelector("#builder-guide-sections");
+const builderGuideTopicDialog = document.querySelector("#builder-guide-topic-dialog");
+const builderGuideTopicTitle = document.querySelector("#builder-guide-topic-title");
+const builderGuideTopicBody = document.querySelector("#builder-guide-topic-body");
+const builderGuideTopicClose = document.querySelector("#builder-guide-topic-close");
 const templateSelect = document.querySelector("#template-select");
 const newCategorySelect = document.querySelector("#new-category-select");
 const placementSelect = document.querySelector("#placement-select");
@@ -1791,7 +1798,7 @@ function unwrapFormula(value) {
 function isFormulaOnly(value) {
   const text = String(value || "").trim();
   if (!text) return false;
-  if (/\b(?:https?:\/\/|www\.)[^\s<>"']+/i.test(text) || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(text) || looksLikeBareWebAddress(text)) return false;
+  if (looksLikeWebOrContactText(text)) return false;
   if (/^\$\$[\s\S]+\$\$$/.test(text) || /^\\\[[\s\S]+\\\]$/.test(text) || /^\\\([\s\S]+\\\)$/.test(text)) return true;
   const mathSignals = /\\frac|\\sqrt|\\sum|\\int|\\Delta|\\omega|\\pi|[=^_√∫ΣπΩμ]/;
   return text.length <= 180 && mathSignals.test(text) && !/[.!?]\s*$/.test(text);
@@ -1800,7 +1807,7 @@ function isFormulaOnly(value) {
 function renderInlineMath(text) {
   const escaped = escapeHtml(text);
   const withMath = escaped.replace(/\$([^$]+)\$/g, '<span class="rich-inline-formula">$1</span>');
-  return withMath.replace(/\b(https?:\/\/[^\s<]+|www\.[^\s<]+)/g, (match) => {
+  return withMath.replace(/\b(https?:\/\/[^\s<]+|www\.[^\s<]+|(?:github|linkedin|gitlab|bitbucket|drive|docs)\.com\/[^\s<]+)/gi, (match) => {
     const trailing = match.match(/[),.;:!?]+$/)?.[0] || "";
     const clean = trailing ? match.slice(0, -trailing.length) : match;
     const href = normalizeLinkTarget(clean, { assumeWeb: true });
@@ -1819,6 +1826,16 @@ function looksLikeBareWebAddress(value = "") {
   const host = clean.split(/[/?#]/)[0].toLowerCase();
   if (!/^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(host)) return false;
   return !/\.(pdf|docx?|xlsx?|pptx?|zip|7z|rar|png|jpe?g|gif|svg|webp|txt|md|csv|json|xml|log|c|h|cpp|hpp|py|js|mjs|ts|v|sv|vhdl?|spice|cir|net|asc|sch|kicad_sch|kicad_pcb)$/i.test(host);
+}
+
+function looksLikeWebOrContactText(value = "") {
+  const clean = String(value || "").trim();
+  if (!clean) return false;
+  if (/\b(?:https?:\/\/|www\.)[^\s<>"']+/i.test(clean)) return true;
+  if (/\b[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}\b/i.test(clean)) return true;
+  if (/\b(?:github|linkedin|gitlab|bitbucket|drive|docs)\.com\/[^\s<>"']+/i.test(clean)) return true;
+  if (looksLikeBareWebAddress(clean)) return true;
+  return clean.split(/\s+/).some((word) => looksLikeBareWebAddress(word.replace(/^[("']+|[)"'.,;:!?]+$/g, "")));
 }
 
 function normalizeLinkTarget(target = "", options = {}) {
@@ -1897,7 +1914,7 @@ function displayNameFromUrl(value = "", fallback = "Linked asset") {
 function linkifyRichTextNodes(root) {
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
     acceptNode(node) {
-      if (!node.textContent || !/(https?:\/\/|www\.)/i.test(node.textContent)) return NodeFilter.FILTER_REJECT;
+      if (!node.textContent || !/(https?:\/\/|www\.|(?:github|linkedin|gitlab|bitbucket|drive|docs)\.com\/)/i.test(node.textContent)) return NodeFilter.FILTER_REJECT;
       return node.parentElement?.closest("a") ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT;
     }
   });
@@ -1912,7 +1929,7 @@ function linkifyRichTextNodes(root) {
     const text = textNode.textContent || "";
     const fragment = document.createDocumentFragment();
     let cursor = 0;
-    text.replace(/\b(https?:\/\/[^\s<]+|www\.[^\s<]+)/gi, (match, _url, offset) => {
+    text.replace(/\b(https?:\/\/[^\s<]+|www\.[^\s<]+|(?:github|linkedin|gitlab|bitbucket|drive|docs)\.com\/[^\s<]+)/gi, (match, _url, offset) => {
       if (offset > cursor) fragment.append(document.createTextNode(text.slice(cursor, offset)));
       const trailing = match.match(/[),.;:!?]+$/)?.[0] || "";
       const clean = trailing ? match.slice(0, -trailing.length) : match;
@@ -2129,7 +2146,11 @@ function renderRichContent(rich, fallbackText = "") {
           `;
         }
         if (block.type === "formula") {
-          return `<div class="rich-formula justify-${align}">${escapeHtml(unwrapFormula(block.formula))}</div>`;
+          const formula = unwrapFormula(block.formula);
+          if (looksLikeWebOrContactText(formula)) {
+            return `<p class="rich-paragraph rich-text-normal text-${align}">${renderInlineMath(formula)}</p>`;
+          }
+          return `<div class="rich-formula justify-${align}">${escapeHtml(formula)}</div>`;
         }
         const size = ["small", "normal", "large"].includes(block.fontSize) ? block.fontSize : "normal";
         const content = block.html
@@ -4050,6 +4071,38 @@ function rangeBelongsToEditor(range, editor) {
   return Boolean(container && editor.contains(container));
 }
 
+function editorFromRange(range) {
+  if (!range || range.collapsed) return null;
+  const container = range.commonAncestorContainer.nodeType === Node.TEXT_NODE
+    ? range.commonAncestorContainer.parentElement
+    : range.commonAncestorContainer;
+  return container?.closest?.("[data-rich-editor]") || null;
+}
+
+function pointInsideRange(range, x, y) {
+  if (!range || range.collapsed) return false;
+  return [...range.getClientRects()].some((rect) =>
+    rect.width > 0 &&
+    rect.height > 0 &&
+    x >= rect.left &&
+    x <= rect.right &&
+    y >= rect.top &&
+    y <= rect.bottom
+  );
+}
+
+function richEditorFromContextEvent(event) {
+  const directEditor = event.target.closest?.("[data-rich-editor]");
+  if (directEditor) return directEditor;
+  const savedRange = rangeBelongsToEditor(activeTextSelectionRange, activeSummaryEditor)
+    ? activeTextSelectionRange
+    : activeRichSelectionRange;
+  if (pointInsideRange(savedRange, event.clientX, event.clientY)) {
+    return editorFromRange(savedRange);
+  }
+  return null;
+}
+
 function displayRichFontName(value = "") {
   return String(value || "")
     .split(",")[0]
@@ -4795,6 +4848,20 @@ async function handleRichAction(action, editor) {
             cleanupEmptyRichTextBlocks(editor);
             saveRichEditorToProject(editor);
         }
+        return;
+    }
+    if (action === "select-all-text") {
+        const block = selectedRichBlock(editor);
+        const target = block?.dataset.type === "paragraph" ? block : editor;
+        const range = document.createRange();
+        range.selectNodeContents(target);
+        const selection = window.getSelection();
+        selection.removeAllRanges();
+        selection.addRange(range);
+        activeRichSelectionRange = range.cloneRange();
+        activeTextSelectionRange = range.cloneRange();
+        showPersistentTextSelection(range);
+        showTextSelectionInspector(editor, range);
         return;
     }
   if (action === "add-image") {
@@ -6871,12 +6938,171 @@ templatePreviewClose.addEventListener("click", () => {
   closeDialogElement(templateDialog);
 });
 
+let activeBuilderGuideTopic = "all";
+
+function prepareBuilderGuideTopicLinks() {
+  builderGuideSections?.querySelectorAll("[data-guide-section]").forEach((section) => {
+    const summary = section.querySelector("summary");
+    if (!summary) return;
+    summary.setAttribute("role", "link");
+    summary.setAttribute("tabindex", "0");
+    summary.setAttribute("aria-label", `Open ${summary.textContent.trim()}`);
+    summary.title = "Open this guide topic";
+    section.open = false;
+  });
+}
+
+function updateBuilderGuideStats() {
+  if (!builderGuideDialog) return;
+  const projectCount = catalog.projects?.length || 0;
+  const categoryCount = catalog.categories?.length || 0;
+  const parsedCount = savedPortfolioCatalog.projects?.length || 0;
+  const targetLabel = currentPublishTarget?.remote
+    ? `Target: ${currentPublishTarget.remote.replace(/^https:\/\/github\.com\//i, "")}`
+    : "Target: not connected";
+  const values = {
+    projects: `Projects: ${projectCount} (${parsedCount} parsed)`,
+    categories: `Categories: ${categoryCount}`,
+    draft: draftSavedSinceChanges ? "Draft: saved" : "Draft: unsaved changes",
+    target: targetLabel
+  };
+  Object.entries(values).forEach(([key, value]) => {
+    const node = builderGuideDialog.querySelector(`[data-guide-stat='${key}']`);
+    if (node) node.textContent = value;
+  });
+}
+
+function guideSectionText(section) {
+  return [
+    section.querySelector("summary")?.textContent || "",
+    section.textContent || "",
+    section.dataset.guideSection || ""
+  ].join(" ").toLowerCase();
+}
+
+function filterBuilderGuide() {
+  if (!builderGuideSections) return;
+  const query = String(builderGuideSearch?.value || "").trim().toLowerCase();
+  const sections = [...builderGuideSections.querySelectorAll("[data-guide-section]")];
+  let visibleCount = 0;
+  sections.forEach((section) => {
+    const topicMatch = activeBuilderGuideTopic === "all" || (section.dataset.guideSection || "").split(/\s+/).includes(activeBuilderGuideTopic);
+    const queryMatch = !query || guideSectionText(section).includes(query);
+    const visible = topicMatch && queryMatch;
+    section.hidden = !visible;
+    if (visible) {
+      visibleCount += 1;
+      section.open = false;
+    }
+  });
+  if (builderGuideResults) {
+    const topicText = activeBuilderGuideTopic === "all" ? "all topics" : activeBuilderGuideTopic;
+    builderGuideResults.textContent = visibleCount
+      ? `Showing ${visibleCount} guide topic${visibleCount === 1 ? "" : "s"} for ${topicText}${query ? ` matching "${query}"` : ""}.`
+      : `No guide topics match "${query}".`;
+  }
+}
+
+function setBuilderGuideTopic(topic = "all") {
+  activeBuilderGuideTopic = topic || "all";
+  builderGuideDialog?.querySelectorAll("[data-guide-topic]").forEach((button) => {
+    button.setAttribute("aria-pressed", button.dataset.guideTopic === activeBuilderGuideTopic ? "true" : "false");
+  });
+  filterBuilderGuide();
+}
+
+function closeGuideAndFocus(target) {
+  closeDialogElement(builderGuideDialog);
+  requestAnimationFrame(() => {
+    target?.scrollIntoView?.({ behavior: "smooth", block: "center" });
+    if (target?.focus) target.focus({ preventScroll: true });
+  });
+}
+
+function handleBuilderGuideAction(action = "") {
+  if (action === "profile") closeGuideAndFocus(profileDisplayNameInput);
+  if (action === "site-content") closeGuideAndFocus(siteHeroTitleInput);
+  if (action === "fun-facts") closeGuideAndFocus(funFactsInput);
+  if (action === "projects") closeGuideAndFocus(projectTree);
+  if (action === "preview") {
+    closeDialogElement(builderGuideDialog);
+    openPortfolioPreviewButton?.click();
+  }
+  if (action === "target") {
+    closeDialogElement(builderGuideDialog);
+    publishTargetOpen?.click();
+  }
+  if (action === "updates") {
+    closeDialogElement(builderGuideDialog);
+    appUpdateCheckButton?.click();
+  }
+}
+
+function openBuilderGuideTopic(section) {
+  if (!section || !builderGuideTopicDialog || !builderGuideTopicTitle || !builderGuideTopicBody) return;
+  const summary = section.querySelector("summary");
+  const source = section.querySelector(":scope > div");
+  const title = summary?.textContent?.trim() || "Builder guide topic";
+  builderGuideTopicTitle.textContent = title;
+  builderGuideTopicBody.replaceChildren();
+  if (source) {
+    const copy = source.cloneNode(true);
+    copy.classList.add("builder-guide-topic-copy");
+    builderGuideTopicBody.append(copy);
+  } else {
+    const empty = document.createElement("p");
+    empty.textContent = "This guide topic does not have written instructions yet.";
+    builderGuideTopicBody.append(empty);
+  }
+  if (!builderGuideTopicDialog.open) builderGuideTopicDialog.showModal();
+  requestAnimationFrame(() => {
+    builderGuideTopicBody.scrollTop = 0;
+    builderGuideTopicBody.focus({ preventScroll: true });
+    updateDialogWindowButtons(builderGuideTopicDialog);
+  });
+}
+
 builderGuideOpen.addEventListener("click", () => {
+  updateBuilderGuideStats();
+  prepareBuilderGuideTopicLinks();
+  filterBuilderGuide();
   builderGuideDialog.showModal();
 });
 
 builderGuideClose.addEventListener("click", () => {
   closeDialogElement(builderGuideDialog);
+});
+
+builderGuideTopicClose?.addEventListener("click", () => {
+  closeDialogElement(builderGuideTopicDialog);
+});
+
+builderGuideTopicDialog?.addEventListener("close", () => {
+  builderGuideTopicBody?.replaceChildren();
+});
+
+builderGuideSearch?.addEventListener("input", filterBuilderGuide);
+builderGuideDialog?.addEventListener("click", (event) => {
+  const topic = event.target.closest("[data-guide-topic]");
+  if (topic) {
+    setBuilderGuideTopic(topic.dataset.guideTopic || "all");
+    return;
+  }
+  const action = event.target.closest("[data-guide-action]");
+  if (action) handleBuilderGuideAction(action.dataset.guideAction || "");
+  const guideSummary = event.target.closest(".builder-guide-section > summary");
+  if (guideSummary && builderGuideSections?.contains(guideSummary)) {
+    event.preventDefault();
+    openBuilderGuideTopic(guideSummary.parentElement);
+  }
+});
+
+builderGuideDialog?.addEventListener("keydown", (event) => {
+  if (event.key !== "Enter" && event.key !== " ") return;
+  const guideSummary = event.target.closest(".builder-guide-section > summary");
+  if (!guideSummary || !builderGuideSections?.contains(guideSummary)) return;
+  event.preventDefault();
+  openBuilderGuideTopic(guideSummary.parentElement);
 });
 
 projectWindowTitle.addEventListener("dblclick", (event) => {
@@ -7235,8 +7461,8 @@ projectFields.addEventListener("click", async (event) => {
 });
 
 function handleRichEditorContextMenu(event) {
-    const editor = event.target.closest("[data-rich-editor]");
-    const textBlock = event.target.closest(".rich-text-block");
+    const editor = richEditorFromContextEvent(event);
+    const textBlock = event.target.closest?.(".rich-text-block");
 
     if (!editor && !textBlock) return;
 
@@ -7264,7 +7490,7 @@ function handleRichEditorContextMenu(event) {
     } else {
       captureRichSelection(activeSummaryEditor);
     }
-    selectRichBlock(event.target.closest(".rich-block") || currentRichBlock(activeSummaryEditor));
+    selectRichBlock(event.target.closest?.(".rich-block") || currentRichBlock(activeSummaryEditor));
     syncRichContextMenuControls(activeSummaryBlock);
 
     const menuHost = activeSummaryEditor.closest("dialog") || document.body;
@@ -7504,9 +7730,14 @@ document.addEventListener("selectionchange", () => {
 document.addEventListener("pointerdown", (event) => {
   if (event.target.closest("#text-selection-inspector, #summary-context-menu")) return;
 
-  const editor = event.target.closest("[data-rich-editor]");
+  const editor = event.button === 2
+    ? richEditorFromContextEvent(event)
+    : event.target.closest("[data-rich-editor]");
   if (event.button === 2 && editor) {
-    const range = selectionRangeInsideEditor(editor);
+    const savedRange = rangeBelongsToEditor(activeTextSelectionRange, editor)
+      ? activeTextSelectionRange.cloneRange()
+      : null;
+    const range = selectionRangeInsideEditor(editor) || savedRange;
     activeSummaryEditor = editor;
     if (range && !range.collapsed) {
       activeRichSelectionRange = range.cloneRange();
@@ -7959,7 +8190,7 @@ summaryContextMenu.addEventListener("click", async (event) => {
   if (!actionButton) return;
   const action = actionButton.dataset.richAction;
   await handleRichAction(action, activeSummaryEditor);
-  if (["add-image", "add-formula", "copy-text", "paste-text", "cut-text", "edit-block", "delete-block"].includes(action)) {
+  if (["add-image", "add-formula", "copy-text", "paste-text", "cut-text", "select-all-text", "edit-block", "delete-block"].includes(action)) {
     hideSummaryContextMenu();
   }
 });

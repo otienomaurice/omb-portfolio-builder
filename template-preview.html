@@ -215,68 +215,253 @@
                   </div>
                   <button class="project-window-close" id="builder-guide-close" type="button" aria-label="Close builder guide">&times;</button>
               </div>
-              <ol class="builder-guide-steps">
-                  <li>
-                      <strong>Create projects from Add new project.</strong>
-                      <p>Click Add new project, choose a category, then complete the separate create-project window. The category controls where the project lives; appearance choices are selected from one shared library. Use Add category when you need a project track beyond the default Analog and Mixed Signal, Digital, and Embedded groups.</p>
-                  </li>
-                  <li>
-                      <strong>Select appearance, placement, and title.</strong>
-                      <p>Appearance only controls background, accent color, hover behavior, click response, and preview styling. It does not add text, tools, files, tests, or placeholder project content. Placement controls where the project appears in the project list.</p>
-                  </li>
-                  <li>
-                      <strong>Edit the default project areas.</strong>
-                      <p>Overview and Design are default areas. Analog projects also include Simulation as a separate default area. Overview uses the rich editor for text, images, and formulas. Analog Design includes Design Overview, Documentation, References, Math / Analysis, PCB evidence, and images.</p>
-                  </li>
-                  <li>
-                      <strong>Add files and custom sections.</strong>
-                      <p>Use Add file, Add image, direct web URLs, or supported share links inside the correct subsection. The builder checks file types so visible images remain real image files, PDFs and documents become downloadable files, and normal website links open as web pages. Custom sections can hold extra subsections, files, links, and notes.</p>
-                  </li>
-                  <li>
-                      <strong>Add top-page fun facts.</strong>
-                      <p>Use the Fun facts panel to type up to three short lines. They render near the top of the website, just below the hero, so recruiters see a bit of personality before scrolling into projects.</p>
-                  </li>
-                  <li>
-                      <strong>Build rich summaries deliberately.</strong>
-                      <p>Click Create overview before typing. The default typing font is Arial. Highlight specific text before changing bold, color, font, or size so formatting applies only to that selection. Right-click in the editor to cut, copy, paste, add local images, add direct image URLs, add formulas, adjust font sizing, and set alignment. Pasted images land below the cursor line, direct image URLs must point to an image file, and PDFs are rejected as visible images.</p>
-                  </li>
-                  <li>
-                      <strong>Move images cleanly inside overviews.</strong>
-                      <p>Drag an inserted image to reposition the existing image instead of creating a duplicate. A blue placement marker shows the cursor-like drop location, and text around that point is split and reflowed around the image so the final website reads like one clean document instead of separate chunks.</p>
-                  </li>
-                  <li>
-                      <strong>Save staged editor changes.</strong>
-                      <p>When a small edit form opens, typed content is staged first. It is not committed to the project until the Save button inside that form is clicked. Cancel leaves the previous content unchanged.</p>
-                  </li>
-                  <li>
-                      <strong>Save the project to run the parser.</strong>
-                      <p>Click Save or Save and close in the project window. This invokes the project parser, which reads the typed inputs and files, then builds the recruiter-facing project with Overview shown by default and other sections opening only when they contain real content. The parser also prepares responsive layout settings for section card density, image width, touch targets, and full-screen project windows so the same project works on phones and PCs.</p>
-                  </li>
-                  <li>
-                      <strong>Use Save all sections before previewing the whole site.</strong>
-                      <p>Save all sections runs the parser across all current projects and closes the active project editor. It prepares the projects area for the full portfolio preview.</p>
-                  </li>
-                  <li>
-                      <strong>Inspect Portfolio preview.</strong>
-                      <p>Portfolio preview opens a full website replica with the header, OMB mark, background, resume, process section, contact section, and parsed projects. Search, filters, and navigation links work inside the preview.</p>
-                  </li>
-                  <li>
-                      <strong>Autosave protects builder work.</strong>
-                      <p>The builder autosaves local edits to the draft catalog so closing the builder should not lose work. Save draft is still available when you want to manually write the current local draft. Editing files stay in the builder workspace; public website files are prepared separately when you publish.</p>
-                  </li>
-                  <li>
-                      <strong>Connect a publishing target before going live.</strong>
-                      <p>Use Publishing target to choose the website repository and custom domain. Click Save target and authenticate so GitHub verifies write access before the target is kept. A successful authorization is remembered for the same repository and branch for the day, and frequent successful authorizations can extend that trust window to 30 days. After authentication succeeds, the builder immediately loads the latest compatible website copy from that target into this local builder; if authentication fails, the previous target remains in place and the builder stays local.</p>
-                  </li>
-                  <li>
-                      <strong>Apply to site publishes when ready.</strong>
-                      <p>Apply to site writes the website data, copies only public website files into the portfolio workspace, commits the site changes, and pushes to GitHub automatically without a prompt. After the push finishes, a result window shows whether it succeeded and displays the Git output.</p>
-                  </li>
-                  <li>
-                      <strong>Install builder updates when prompted.</strong>
-                      <p>When a newer released builder is available, the app opens an update window. Choose Update to download the installer, close the builder, install the new release, and reopen the updated app automatically. Choose Remind me later to postpone it, or Skip this version if you do not want that release. Use Check updates in the top bar when you want to check manually.</p>
-                  </li>
-              </ol>
+              <div class="builder-guide-live" aria-label="Current builder status">
+                  <span data-guide-stat="projects">Projects: 0</span>
+                  <span data-guide-stat="categories">Categories: 0</span>
+                  <span data-guide-stat="draft">Draft: checking</span>
+                  <span data-guide-stat="target">Target: checking</span>
+              </div>
+              <div class="builder-guide-tools">
+                  <label>
+                      <span>Search guide</span>
+                      <input id="builder-guide-search" type="search" placeholder="Try images, save, publish, links, mobile..." autocomplete="off" />
+                  </label>
+                  <div class="builder-guide-topic-bar" aria-label="Guide topics">
+                      <button type="button" data-guide-topic="all" aria-pressed="true">All</button>
+                      <button type="button" data-guide-topic="setup">Setup</button>
+                      <button type="button" data-guide-topic="projects">Projects</button>
+                      <button type="button" data-guide-topic="editor">Editor</button>
+                      <button type="button" data-guide-topic="preview">Preview</button>
+                  <button type="button" data-guide-topic="publish">Publish</button>
+                  <button type="button" data-guide-topic="mobile">Mobile</button>
+                  <button type="button" data-guide-topic="security">Security</button>
+                  <button type="button" data-guide-topic="update">Updates</button>
+                  </div>
+                  <p class="builder-guide-results" id="builder-guide-results">Showing all guide topics.</p>
+              </div>
+              <div class="builder-guide-actions" aria-label="Open builder areas">
+                  <button type="button" data-guide-action="profile">Profile</button>
+                  <button type="button" data-guide-action="site-content">Front page text</button>
+                  <button type="button" data-guide-action="fun-facts">Fun facts</button>
+                  <button type="button" data-guide-action="projects">Projects</button>
+                  <button type="button" data-guide-action="preview">Portfolio preview</button>
+                  <button type="button" data-guide-action="target">Publishing target</button>
+                  <button type="button" data-guide-action="updates">Check updates</button>
+              </div>
+              <div class="builder-guide-sections" id="builder-guide-sections">
+                  <details class="builder-guide-section" data-guide-section="setup profile" open>
+                      <summary>1. First setup: identity, branding, and contact details</summary>
+                      <div>
+                          <p>Start here when the builder is blank or when you are setting up a new machine. These fields establish who owns the portfolio before projects are added.</p>
+                          <ol>
+                              <li>Open Profile and contact.</li>
+                              <li>Add display name, portfolio label, contact intro, email, phone, GitHub, LinkedIn, and website links.</li>
+                              <li>Add the profile image, brand/trademark image, resume PDF, and main page background.</li>
+                              <li>Check that email opens a compose window and phone uses a call link on supported devices.</li>
+                              <li>Click Save draft after the profile looks correct.</li>
+                          </ol>
+                          <p>Good profile text is short and recruiter-facing. Put personality in Fun facts and personal sections, not in the contact labels.</p>
+                      </div>
+                  </details>
+                  <details class="builder-guide-section" data-guide-section="setup">
+                      <summary>2. Front page text and Fun facts</summary>
+                      <div>
+                          <p>Front page text controls the first message recruiters see. Fun facts sit near the top of the site and make the portfolio feel human without interrupting the engineering content.</p>
+                          <ol>
+                              <li>Use the eyebrow as a short label, such as Hardware Engineering Portfolio.</li>
+                              <li>Use the main title for the strongest one-line identity statement.</li>
+                              <li>Use the supporting copy to explain what the portfolio contains.</li>
+                              <li>Keep Fun facts to one to three short lines.</li>
+                              <li>Save draft, then open Portfolio preview to verify the top of the page.</li>
+                          </ol>
+                          <p>Example Fun facts: I built a builder to build this portfolio. I enjoy a good argument about soccer tactics, culture, and refereeing.</p>
+                      </div>
+                  </details>
+                  <details class="builder-guide-section" data-guide-section="projects" open>
+                      <summary>3. Project categories and project creation</summary>
+                      <div>
+                          <p>All project creation starts from the main Add project control. Do not add projects from inside a category row.</p>
+                          <ol>
+                              <li>Click Add project.</li>
+                              <li>Choose the category or create a new category if the project does not fit the existing ones.</li>
+                              <li>Select appearance. Appearance controls visual style only; it must not insert fake project text.</li>
+                              <li>Choose placement: top or bottom of the selected category.</li>
+                              <li>Type a realistic project title, then create the project.</li>
+                          </ol>
+                          <p>Only categories that contain projects show project rows. Empty categories stay as clean category headers until a project is added.</p>
+                      </div>
+                  </details>
+                  <details class="builder-guide-section" data-guide-section="projects editor">
+                      <summary>4. Project structure and parser rules</summary>
+                      <div>
+                          <p>Projects are built by the parser from the sections you save. The website should show only valid, populated project content.</p>
+                          <ol>
+                              <li>New projects include Overview and Design by default.</li>
+                              <li>Additional sections such as Tests, Tools, PCB Builds, Documentation, Simulation, References, or Results must be added manually.</li>
+                              <li>Design and Simulation are separate major sections.</li>
+                              <li>An overview appears automatically when it exists; it is not shown as a separate clickable Overview icon.</li>
+                              <li>Empty sections, empty subsections, and empty files do not render on the website.</li>
+                          </ol>
+                          <p>Use Save to parse the project and update its project preview. Use Save and close when you are done editing that project window.</p>
+                      </div>
+                  </details>
+                  <details class="builder-guide-section" data-guide-section="editor">
+                      <summary>5. Rich text editing and right-click menu</summary>
+                      <div>
+                          <p>Rich text fields behave like document editors. Click where you want to type. Highlight exact text before applying formatting.</p>
+                          <ol>
+                              <li>Right-click highlighted text to copy, cut, paste, select all, change font, change size, change color, and apply bold, italic, or underline.</li>
+                              <li>The default typing font is Arial.</li>
+                              <li>If selected text has mixed font, size, or color, the inspector fields are blank so you know the selection is mixed.</li>
+                              <li>Use Enter for a new paragraph. Pasted line breaks remain line breaks.</li>
+                              <li>Typing and wrapping should not create fake new paragraphs; only hard enters and pasted line breaks do.</li>
+                          </ol>
+                          <p>If the selection menu disappears, click back inside the rich editor and highlight the text again.</p>
+                      </div>
+                  </details>
+                  <details class="builder-guide-section" data-guide-section="editor">
+                      <summary>6. Links, formulas, and pasted content</summary>
+                      <div>
+                          <p>The builder distinguishes normal links from mathematical formulas.</p>
+                          <ol>
+                              <li>URLs such as linkedin.com, github.com, www links, and https links are treated as links.</li>
+                              <li>Use Add mathematical formula only when you intentionally want a formula block.</li>
+                              <li>Links in rich text open as websites on the portfolio unless you attach them as downloadable files.</li>
+                              <li>PDFs, spreadsheets, code files, archives, and documents are saved as downloadable resources.</li>
+                              <li>Image files can be visible on the website or hidden as downloadable evidence.</li>
+                          </ol>
+                          <p>When pasting from ChatGPT, review formulas before saving. If the content is a link, it should render as a link, not as a formula.</p>
+                      </div>
+                  </details>
+                  <details class="builder-guide-section" data-guide-section="editor projects">
+                      <summary>7. Images and file evidence</summary>
+                      <div>
+                          <p>Add evidence where it belongs so the final portfolio reads like a technical record, not a file dump.</p>
+                          <ol>
+                              <li>Paste an image into a rich editor to place it below the cursor line.</li>
+                              <li>Use Add image when you need source selection, rename, caption, alignment, crop, or visible/download-only control.</li>
+                              <li>Drag an inserted image to move the same image; the editor should not duplicate it.</li>
+                              <li>Add PDFs under documents, lab reports, design notes, or references.</li>
+                              <li>Add simulation files under Simulation files and screenshots/plots under Results.</li>
+                              <li>Add source repositories as links, not downloadable text files.</li>
+                          </ol>
+                          <p>Use titles that explain the evidence: Oscilloscope capture, KiCad PCB layout, LTspice transient result, VCO test handout, and so on.</p>
+                      </div>
+                  </details>
+                  <details class="builder-guide-section" data-guide-section="preview">
+                      <summary>8. Project preview and full portfolio preview</summary>
+                      <div>
+                          <p>Preview is the checkpoint before anything is published.</p>
+                          <ol>
+                              <li>Project preview shows only the current project in the exact style it will use inside the website.</li>
+                              <li>Full portfolio preview shows the whole generated website: header, brand, background, personal sections, fun facts, projects, AI area, and contact area.</li>
+                              <li>Save all sections before opening the full preview so every project parser runs first.</li>
+                              <li>Click sections in preview to verify navigation, back arrows, close buttons, collapsible overviews, and file links.</li>
+                              <li>Do not publish until the preview matches what you want recruiters to see.</li>
+                          </ol>
+                          <p>The preview should match the public website output. If it does not, fix the builder/parser before using Apply to site.</p>
+                      </div>
+                  </details>
+                  <details class="builder-guide-section" data-guide-section="mobile preview">
+                      <summary>9. Mobile and desktop output</summary>
+                      <div>
+                          <p>The parser saves responsive layout instructions when projects are saved.</p>
+                          <ol>
+                              <li>Project windows and section windows should fill the website area on mobile.</li>
+                              <li>Clickable panels wrap to new rows when their names are too long.</li>
+                              <li>Images resize within their section without covering text.</li>
+                              <li>Section titles should be shorter than project titles and should not dominate the page.</li>
+                              <li>Contact should remain the last section, with AI placed above it on mobile when needed.</li>
+                          </ol>
+                          <p>Before publishing, check at least one narrow/mobile-sized preview and one desktop-sized preview.</p>
+                      </div>
+                  </details>
+                  <details class="builder-guide-section" data-guide-section="publish security">
+                      <summary>10. Publishing target and authentication</summary>
+                      <div>
+                          <p>Publishing target controls where Apply to site can push. A target is saved only after write access is verified.</p>
+                          <ol>
+                              <li>Open Publishing target.</li>
+                              <li>Enter the GitHub repository URL or owner/repository target.</li>
+                              <li>Add a custom domain only if that website should use one.</li>
+                              <li>Authenticate with GitHub when prompted.</li>
+                              <li>Use Load from target only after authentication succeeds.</li>
+                          </ol>
+                          <p>GitHub authorization is cached per repository and branch. Daily reuse avoids repeated prompts, and repeated successful authorization can extend trust for that exact target.</p>
+                      </div>
+                  </details>
+                  <details class="builder-guide-section" data-guide-section="publish">
+                      <summary>11. Save draft, Apply to site, and offline work</summary>
+                      <div>
+                          <p>These buttons do different jobs.</p>
+                          <ol>
+                              <li>Save draft writes the current local builder catalog and assets.</li>
+                              <li>Save all sections runs project and section saves before previewing or publishing.</li>
+                              <li>Apply to site requires a saved draft, copies public files into the portfolio mirror, commits, and pushes.</li>
+                              <li>Builder-only files stay in the builder workspace.</li>
+                              <li>If offline, keep editing and saving drafts. Publish when the network and Git target are available.</li>
+                          </ol>
+                          <p>If Apply to site says Save draft is required, click Save draft first, then try again.</p>
+                      </div>
+                  </details>
+                  <details class="builder-guide-section" data-guide-section="update">
+                      <summary>12. App updates and troubleshooting</summary>
+                      <div>
+                          <p>Use Check updates to manually look for a newer builder.</p>
+                          <ol>
+                              <li>When an update is available, click Update.</li>
+                              <li>The app downloads the installer, closes the current builder, updates the existing install, and reopens the app.</li>
+                              <li>Updates are treated as in-place repairs of the detected app.</li>
+                              <li>If an old uninstaller fails, setup stops the builder process and continues updating the same folder.</li>
+                              <li>F11 toggles fullscreen. Press F11 again or press Escape to exit fullscreen.</li>
+                          </ol>
+                          <p>If the app cannot update, close any old OMB Builder process in Task Manager and reopen the app from the desktop shortcut.</p>
+                      </div>
+                  </details>
+                  <details class="builder-guide-section" data-guide-section="security publish">
+                      <summary>13. Safety rules for public websites</summary>
+                      <div>
+                          <p>Anything pushed to the portfolio repository can become public.</p>
+                          <ol>
+                              <li>Do not upload private keys, passwords, private tokens, or private lab data.</li>
+                              <li>Use public GitHub repository links only when the repository is safe for recruiters to inspect.</li>
+                              <li>Remove hidden drafts or old files before publishing if they should not be public.</li>
+                              <li>Keep authentication local. The builder should not commit credentials.</li>
+                              <li>Use the portfolio preview to inspect every public link before publishing.</li>
+                          </ol>
+                          <p>If another user installs the builder, they should connect their own target unless you explicitly authorize access to your target.</p>
+                      </div>
+                  </details>
+                  <details class="builder-guide-section" data-guide-section="setup projects editor preview publish update mobile security">
+                      <summary>14. Recommended build routine</summary>
+                      <div>
+                          <p>Use this simple routine when you sit down to add or edit portfolio content.</p>
+                          <ol>
+                              <li>Open the builder and check the current target.</li>
+                              <li>Edit profile, sections, or projects.</li>
+                              <li>For each project, click Save or Save and close.</li>
+                              <li>Click Save all sections.</li>
+                              <li>Open Portfolio preview and test links, files, mobile layout, and section navigation.</li>
+                              <li>Click Save draft.</li>
+                              <li>Click Apply to site only when the preview is correct.</li>
+                          </ol>
+                          <p>This keeps the local draft, parsed project previews, full preview, and public website aligned.</p>
+                      </div>
+                  </details>
+              </div>
+          </div>
+      </dialog>
+
+      <dialog class="asset-dialog builder-guide-topic-dialog" id="builder-guide-topic-dialog">
+          <div class="builder-guide-dialog-content builder-guide-topic-content">
+              <div class="project-preview-heading">
+                  <div>
+                      <p class="eyebrow">Builder guide topic</p>
+                      <h2 id="builder-guide-topic-title">Guide topic</h2>
+                  </div>
+                  <button class="project-window-close" id="builder-guide-topic-close" type="button" aria-label="Close guide topic">&times;</button>
+              </div>
+              <div class="builder-guide-topic-body" id="builder-guide-topic-body" tabindex="0"></div>
           </div>
       </dialog>
 
@@ -753,10 +938,11 @@
       <div class="summary-context-menu" id="summary-context-menu" hidden>
           <button type="button" data-rich-action="add-image">Add image</button>
           <button type="button" data-rich-action="add-formula">Add mathematical formula</button>
-          <button type="button" data-rich-action="copy-text">Copy</button>
-          <button type="button" data-rich-action="paste-text">Paste</button>
-          <button type="button" data-rich-action="cut-text">Cut</button>
-          <button type="button" data-rich-action="toggle-bold" data-rich-bold>Bold</button>
+            <button type="button" data-rich-action="copy-text">Copy</button>
+            <button type="button" data-rich-action="paste-text">Paste</button>
+            <button type="button" data-rich-action="cut-text">Cut</button>
+            <button type="button" data-rich-action="select-all-text">Select all</button>
+            <button type="button" data-rich-action="toggle-bold" data-rich-bold>Bold</button>
           <button type="button" data-rich-action="toggle-italic">Italic</button>
           <button type="button" data-rich-action="toggle-underline">Underline</button>
 
