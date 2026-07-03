@@ -1919,6 +1919,7 @@ body.rich-image-dragging * {
 .code-token-comment { color: #94a3b8; font-style: italic; }
 .code-token-number { color: #fdba74; }
 .code-token-tag { color: #c4b5fd; }
+.code-token-preprocessor { color: #f0abfc; font-weight: 800; }
 
 .summary-code-preview {
   min-height: 120px;
@@ -1930,6 +1931,226 @@ body.rich-image-dragging * {
 
 .summary-code-preview .rich-code-block {
   margin: 0;
+}
+
+.compile-code-workspace {
+  display: grid;
+  grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.compile-code-sidebar,
+.compile-code-main,
+.compile-terminal-panel,
+.compile-code-preview-panel,
+.compile-code-empty {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.compile-code-sidebar {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+}
+
+.compile-code-sidebar-heading h3,
+.compile-code-empty h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.compile-code-sidebar-heading small,
+.compile-code-file span,
+.compile-code-file small,
+.compile-code-preview-heading,
+.compile-terminal-heading {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.compile-code-actions,
+.compile-code-command-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.compile-code-actions button,
+.compile-code-command-bar button {
+  min-height: 34px;
+  padding: 7px 10px;
+  border: 1px solid rgba(14, 116, 144, 0.2);
+  border-radius: 7px;
+  color: #0f2f3d;
+  background: #d8f3fb;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 850;
+}
+
+.compile-code-actions button:hover,
+.compile-code-command-bar button:hover {
+  border-color: #38bdf8;
+  background: #b9e9f8;
+}
+
+.compile-code-command-bar .danger-icon:hover {
+  border-color: #dc2626;
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.compile-code-file-list {
+  display: grid;
+  gap: 6px;
+}
+
+.compile-code-file {
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  padding: 9px 10px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  color: var(--ink);
+  background: transparent;
+  text-align: left;
+  font: inherit;
+}
+
+.compile-code-file:hover,
+.compile-code-file.is-active {
+  border-color: #93c5fd;
+  background: #dbeafe;
+}
+
+.compile-code-file strong {
+  font-size: 0.88rem;
+}
+
+.compile-code-main {
+  display: grid;
+  gap: 14px;
+  padding: 14px;
+  min-width: 0;
+}
+
+.compile-code-meta-grid {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(160px, 0.8fr) minmax(150px, 0.6fr);
+  gap: 10px;
+}
+
+.compile-code-meta-grid label,
+.compile-code-source-field,
+.compile-stdin-field {
+  display: grid;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 850;
+}
+
+.compile-code-meta-grid input,
+.compile-code-meta-grid select,
+.compile-code-source-field textarea,
+.compile-stdin-field textarea {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #ffffff;
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.92rem;
+}
+
+.compile-code-meta-grid input,
+.compile-code-meta-grid select {
+  min-height: 38px;
+  padding: 8px 10px;
+}
+
+.compile-code-editor-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
+}
+
+.compile-code-source-field textarea,
+.compile-stdin-field textarea {
+  resize: vertical;
+  min-height: 220px;
+  padding: 12px;
+  font-family: Consolas, "Courier New", monospace;
+  line-height: 1.55;
+  tab-size: 2;
+}
+
+.compile-stdin-field textarea {
+  min-height: 86px;
+}
+
+.compile-code-preview-panel,
+.compile-terminal-panel {
+  overflow: hidden;
+}
+
+.compile-code-preview-heading,
+.compile-terminal-heading {
+  display: flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--line);
+  background: #f8fbfd;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.compile-code-preview,
+.compile-terminal {
+  min-height: 220px;
+  max-height: 420px;
+  margin: 0;
+  padding: 12px 14px;
+  overflow: auto;
+  background: #0f172a;
+  color: #e5edf6;
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 0.86rem;
+  line-height: 1.55;
+  white-space: pre;
+  tab-size: 2;
+}
+
+.compile-terminal {
+  min-height: 150px;
+  white-space: pre-wrap;
+}
+
+.compile-code-empty {
+  padding: 18px;
+}
+
+.compile-code-empty p {
+  margin-bottom: 0;
+  color: var(--muted);
+}
+
+@media (max-width: 900px) {
+  .compile-code-workspace,
+  .compile-code-editor-grid,
+  .compile-code-meta-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .compile-code-preview,
+  .compile-terminal {
+    max-height: 320px;
+  }
 }
 
 .code-menu-item {
@@ -4839,6 +5060,45 @@ body[data-builder-theme="dark"] .front-rich-field .rich-text-block,
 body[data-builder-theme="dark"] .main-builder-rich-input .rich-text-block,
 body[data-builder-theme="dark"] .dialog-rich-input .rich-text-block {
   color: #17202a;
+}
+
+body[data-builder-theme="dark"] .compile-code-sidebar,
+body[data-builder-theme="dark"] .compile-code-main,
+body[data-builder-theme="dark"] .compile-terminal-panel,
+body[data-builder-theme="dark"] .compile-code-preview-panel,
+body[data-builder-theme="dark"] .compile-code-empty {
+  border-color: var(--builder-dark-line);
+  background: #111827;
+}
+
+body[data-builder-theme="dark"] .compile-code-preview-heading,
+body[data-builder-theme="dark"] .compile-terminal-heading {
+  border-color: var(--builder-dark-line);
+  background: #0f172a;
+  color: #cbd5e1;
+}
+
+body[data-builder-theme="dark"] .compile-code-file {
+  color: #e5edf6;
+}
+
+body[data-builder-theme="dark"] .compile-code-file:hover,
+body[data-builder-theme="dark"] .compile-code-file.is-active {
+  border-color: #38bdf8;
+  background: #1e3a5f;
+}
+
+body[data-builder-theme="dark"] .compile-code-actions button,
+body[data-builder-theme="dark"] .compile-code-command-bar button {
+  border-color: #164e63;
+  color: #dff7ff;
+  background: #155e75;
+}
+
+body[data-builder-theme="dark"] .compile-code-actions button:hover,
+body[data-builder-theme="dark"] .compile-code-command-bar button:hover {
+  border-color: #67e8f9;
+  background: #0e7490;
 }
 
 body[data-builder-theme="dark"] .builder-panel select:hover,
