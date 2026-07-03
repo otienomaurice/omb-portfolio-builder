@@ -194,6 +194,7 @@ Use the workflow in [BRANCHING.md](BRANCHING.md):
 | `codex/per-user-update-migration` | Moves the installer/update model to the current user's app location and prefers per-user install records over stale machine-wide records. | `codex/full-builder-dark-mode` | `development` | Active |
 | `codex/appdata-workspace-root` | Standardizes future installs and managed builder/portfolio workspaces under AppData and migrates legacy OMB app-folder installs forward. | `codex/per-user-update-migration` | `development` | Active |
 | `codex/project-code-compile-workspace` | Adds a project-local Compile Code workspace with source import, beautify, compiler detection, save, and terminal-style compile/run output. | `codex/appdata-workspace-root` | `development` | Active |
+| `codex/fix-public-ai-worker-endpoint` | Adds the missing Cloudflare Worker backend files and wires the generated website to `/api/portfolio-ai`. | `development` | `development` | Active |
 
 ## Uninstall
 

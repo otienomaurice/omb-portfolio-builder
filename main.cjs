@@ -35,6 +35,7 @@ const rootFilesToSeed = [
   "robots.txt"
 ];
 
+const directoryRefreshes = ["cloudflare"];
 const directorySeeds = ["assets", "Backgrounds", "docs", ".well-known"];
 const portfolioFilesToSeed = [
   "projects.json",
@@ -205,6 +206,13 @@ async function copyDirectoryMissingFiles(source, target) {
   }
 }
 
+async function copyDirectoryRefresh(source, target) {
+  if (!fileExists(source)) return;
+  await fsp.rm(target, { recursive: true, force: true });
+  await fsp.mkdir(path.dirname(target), { recursive: true });
+  await fsp.cp(source, target, { recursive: true, force: true });
+}
+
 async function directoryIsEmpty(directory) {
   try {
     const entries = await fsp.readdir(directory);
@@ -284,6 +292,9 @@ async function preparePackagedWorkspace() {
   }
   for (const fileName of rootFilesToSeed) {
     await copyFileIfAvailable(path.join(bundledSiteRoot, fileName), path.join(workspaceRoot, fileName), false);
+  }
+  for (const directoryName of directoryRefreshes) {
+    await copyDirectoryRefresh(path.join(bundledSiteRoot, directoryName), path.join(workspaceRoot, directoryName));
   }
   for (const directoryName of directorySeeds) {
     await copyDirectoryMissingFiles(path.join(bundledSiteRoot, directoryName), path.join(workspaceRoot, directoryName));
