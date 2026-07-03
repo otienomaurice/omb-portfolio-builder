@@ -7024,7 +7024,7 @@ function fullPortfolioPreviewHtmlExact(dataOverride = null) {
     <meta name="description" content="A portfolio website built with OMB Portfolio Builder for projects, documents, diagrams, source code, tests, links, and profile information." />
     <meta name="robots" content="index, follow" />
     <meta name="author" content="${escapeHtml(ownerName)}" />
-    <meta name="portfolio-ai-endpoint" content="/api/portfolio-ai" />
+    <meta name="portfolio-ai-endpoint" content="https://omb-portfolio-ai.maurice-baraza-otieno.workers.dev/api/portfolio-ai" />
     <title>${escapeHtml(ownerName)} | ${escapeHtml(portfolioLabel)}</title>
     <link rel="stylesheet" href="styles.css" />
   </head>
