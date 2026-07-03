@@ -99,7 +99,7 @@ const compileLanguageProfiles = {
     extensions: [".sv", ".svh", ".v"],
     label: "SystemVerilog",
     primaryTools: ["iverilog", "vvp"],
-    winget: []
+    winget: ["Icarus.Verilog"]
   },
   ltspice: {
     defaultFile: "simulation.cir",
@@ -161,8 +161,8 @@ const compileToolCandidates = {
   ],
   node: [process.execPath, "node"],
   python: [process.env.PYTHON, "python", "py"],
-  iverilog: ["iverilog"],
-  vvp: ["vvp"],
+  iverilog: ["iverilog", "C:\\iverilog\\bin\\iverilog.exe"],
+  vvp: ["vvp", "C:\\iverilog\\bin\\vvp.exe"],
   ltspice: [
     process.env.LTSPICE_EXE,
     "C:\\Program Files\\ADI\\LTspice\\LTspice.exe",
@@ -171,6 +171,7 @@ const compileToolCandidates = {
     process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, "Programs", "ADI", "LTspice", "LTspice.exe") : ""
   ]
 };
+const compileToolCache = new Map();
 
 const portfolioAiInstructions = [
   "You are the AI assistant for the portfolio website described by the supplied portfolio context.",
@@ -359,10 +360,14 @@ async function findExecutableUnder(folder, names = [], maxDepth = 5) {
 }
 
 async function findTool(toolName) {
+  if (compileToolCache.has(toolName)) return compileToolCache.get(toolName);
   const candidates = (compileToolCandidates[toolName] || [toolName]).filter(Boolean);
   for (const candidate of candidates) {
     if (path.isAbsolute(candidate)) {
-      if (await pathExists(candidate)) return candidate;
+      if (await pathExists(candidate)) {
+        compileToolCache.set(toolName, candidate);
+        return candidate;
+      }
       continue;
     }
     try {
@@ -370,24 +375,32 @@ async function findTool(toolName) {
       const args = process.platform === "win32" ? [candidate] : ["-v", candidate];
       const result = await execFileAsync(command, args, { timeout: 5000, windowsHide: true });
       const found = String(result.stdout || "").split(/\r?\n/).map((line) => line.trim()).find(Boolean);
-      if (found) return found;
+      if (found) {
+        compileToolCache.set(toolName, found);
+        return found;
+      }
     } catch {
       // Try the next candidate.
     }
   }
 
   if (["gcc", "g++"].includes(toolName) && process.env.LOCALAPPDATA) {
-    return findExecutableUnder(
+    const found = await findExecutableUnder(
       path.join(process.env.LOCALAPPDATA, "Microsoft", "WinGet", "Packages"),
       [toolName === "gcc" ? "gcc.exe" : "g++.exe"],
       7
     );
+    compileToolCache.set(toolName, found || "");
+    return found || "";
   }
 
   if (["javac", "java"].includes(toolName)) {
-    return findExecutableUnder("C:\\Program Files\\Eclipse Adoptium", [`${toolName}.exe`], 5);
+    const found = await findExecutableUnder("C:\\Program Files\\Eclipse Adoptium", [`${toolName}.exe`], 5);
+    compileToolCache.set(toolName, found || "");
+    return found || "";
   }
 
+  compileToolCache.set(toolName, "");
   return "";
 }
 
@@ -395,10 +408,21 @@ function terminalLine(label, text = "") {
   return [`$ ${label}`, String(text || "").trim()].filter(Boolean).join("\n");
 }
 
+function processTerminalText(result = {}) {
+  const elapsedSeconds = Number.isFinite(result.elapsedMs) ? (result.elapsedMs / 1000).toFixed(2) : "";
+  const elapsed = elapsedSeconds ? ` in ${elapsedSeconds}s` : "";
+  const status = result.timedOut
+    ? `Timed out after ${elapsedSeconds ? `${elapsedSeconds}s` : "the configured timeout"}`
+    : `Exit code ${result.code ?? "unknown"}${elapsed}`;
+  const output = [result.stdout, result.stderr].map((part) => String(part || "").trimEnd()).filter(Boolean).join("\n");
+  return [status, output || (result.ok ? "Completed without diagnostic output." : "No compiler output was returned.")].join("\n");
+}
+
 async function runProcess(command, args = [], options = {}) {
   const timeoutMs = options.timeoutMs || 20000;
   const cwd = options.cwd || compileRoot;
   return new Promise((resolve) => {
+    const startedAt = Date.now();
     const child = spawn(command, args, {
       cwd,
       env: { ...process.env, ...(options.env || {}) },
@@ -410,6 +434,9 @@ async function runProcess(command, args = [], options = {}) {
     let timedOut = false;
     const timer = setTimeout(() => {
       timedOut = true;
+      if (process.platform === "win32" && child.pid) {
+        execFile("taskkill", ["/pid", String(child.pid), "/T", "/F"], { windowsHide: true }, () => {});
+      }
       child.kill("SIGKILL");
     }, timeoutMs);
     child.stdout?.on("data", (chunk) => {
@@ -420,15 +447,15 @@ async function runProcess(command, args = [], options = {}) {
     });
     if (Object.prototype.hasOwnProperty.call(options, "input")) {
       child.stdin?.write(String(options.input || ""));
-      child.stdin?.end();
     }
+    child.stdin?.end();
     child.on("error", (error) => {
       clearTimeout(timer);
-      resolve({ ok: false, code: -1, stdout, stderr: `${stderr}\n${error.message}`.trim(), timedOut });
+      resolve({ ok: false, code: -1, stdout, stderr: `${stderr}\n${error.message}`.trim(), timedOut, elapsedMs: Date.now() - startedAt });
     });
     child.on("close", (code) => {
       clearTimeout(timer);
-      resolve({ ok: !timedOut && code === 0, code, stdout, stderr, timedOut });
+      resolve({ ok: !timedOut && code === 0, code, stdout, stderr, timedOut, elapsedMs: Date.now() - startedAt });
     });
   });
 }
@@ -498,7 +525,7 @@ async function compileAndRunCode(payload = {}) {
   const stdin = String(payload.stdin || "");
   const terminal = [];
   const append = (label, result) => {
-    terminal.push(terminalLine(label, [result.stdout, result.stderr].filter(Boolean).join("\n")));
+    terminal.push(terminalLine(label, processTerminalText(result)));
   };
   const missing = async (tools) => {
     const found = {};
@@ -557,6 +584,7 @@ async function compileAndRunCode(payload = {}) {
     const compile = await runProcess(found[toolName], args, { cwd: runDir, timeoutMs: 30000 });
     append(`${path.basename(found[toolName])} ${args.slice(1).join(" ")}`, compile);
     if (compile.ok) {
+      terminal.push(`Generated binary: ${output}`);
       const toolPath = found[toolName];
       const run = await runProcess(output, [], {
         cwd: runDir,
@@ -578,6 +606,7 @@ async function compileAndRunCode(payload = {}) {
     const compile = await runProcess(found.javac, [javaPath], { cwd: runDir, timeoutMs: 30000 });
     append(`${path.basename(found.javac)} ${path.basename(javaPath)}`, compile);
     if (compile.ok) {
+      terminal.push(`Generated class: ${path.join(runDir, `${className}.class`)}`);
       const run = await runProcess(found.java, ["-cp", runDir, className], { cwd: runDir, timeoutMs: 20000, ...stdinOptions });
       append(`${path.basename(found.java)} ${className}`, run);
       ok = run.ok;
@@ -641,9 +670,10 @@ async function installCompilerTools(language = "") {
       "--exact"
     ];
     const result = await runProcess(winget, args, { cwd: root, timeoutMs: 600000 });
-    terminal.push(terminalLine(`winget ${args.join(" ")}`, [result.stdout, result.stderr].filter(Boolean).join("\n")));
+    terminal.push(terminalLine(`winget ${args.join(" ")}`, processTerminalText(result)));
     ok = ok && result.ok;
   }
+  compileToolCache.clear();
   return { ok, language: lang, terminal: terminal.join("\n\n"), tools: await compileToolStatus() };
 }
 
