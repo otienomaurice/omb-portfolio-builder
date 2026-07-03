@@ -164,10 +164,6 @@ Function OMBStopIfExistingInstallIsCurrent
 FunctionEnd
 
 Function OMBCheckKnownBuilderWorkspace
-  IfFileExists "$PROFILE\OMB\builder\package.json" 0 +3
-    MessageBox MB_OK|MB_ICONSTOP "Setup found an existing local OMB Portfolio Builder workspace:$\r$\n$\r$\n$PROFILE\OMB\builder$\r$\n$\r$\nRemove, uninstall, or rename that copy before installing this release. This prevents an older working builder from staying on the machine beside the installed app."
-    Quit
-
   IfFileExists "$PROFILE\OMB\builder\desktop-builder\package.json" 0 +3
     MessageBox MB_OK|MB_ICONSTOP "Setup found an existing local OMB Portfolio Builder workspace:$\r$\n$\r$\n$PROFILE\OMB\builder\desktop-builder$\r$\n$\r$\nRemove, uninstall, or rename that copy before installing this release. This prevents an older working builder from staying on the machine beside the installed app."
     Quit
@@ -221,6 +217,13 @@ Function OMBWriteDuplicateScanScript
   FileWrite $0 "}$\r$\n"
   FileWrite $0 "function Should-SkipDirectory([string]$$Directory) {$\r$\n"
   FileWrite $0 "  $$name = Split-Path -Leaf $$Directory$\r$\n"
+  FileWrite $0 "  $$managedRoot = Join-Path $$env:LOCALAPPDATA 'OMB Portfolio Builder'$\r$\n"
+  FileWrite $0 "  $$legacyRoot = Join-Path $$env:USERPROFILE 'OMB'$\r$\n"
+  FileWrite $0 "  $$managedBuilder = Join-Path $$managedRoot 'builder'$\r$\n"
+  FileWrite $0 "  $$managedPortfolio = Join-Path $$managedRoot 'portfolio'$\r$\n"
+  FileWrite $0 "  $$legacyBuilder = Join-Path $$legacyRoot 'builder'$\r$\n"
+  FileWrite $0 "  $$legacyPortfolio = Join-Path $$legacyRoot 'portfolio'$\r$\n"
+  FileWrite $0 "  if ($$Directory -ieq $$managedBuilder -or $$Directory -ieq $$managedPortfolio -or $$Directory -ieq $$legacyBuilder -or $$Directory -ieq $$legacyPortfolio) { return $$true }$\r$\n"
   FileWrite $0 "  if ($$name -in @('node_modules','.git','dist','.vs','$$Recycle.Bin','System Volume Information','WinSxS')) { return $$true }$\r$\n"
   FileWrite $0 "  if ($$Directory -match '\\\\Windows(\\\\|$$)') { return $$true }$\r$\n"
   FileWrite $0 "  return $$false$\r$\n"
@@ -428,6 +431,16 @@ Function OMBUninstallExistingInstallIfPresent
     ${Else}
       StrCpy $OMB_ExistingInstallVersion $R6
     ${EndIf}
+    ${If} $R7 == "$PROFILE\OMB\application\OMB Portfolio Builder"
+    ${OrIf} $R7 == "$PROFILE\OMB\application"
+    ${OrIf} $R7 == "$PROFILE\OneDrive\Documents\OMB\application\OMB Portfolio Builder"
+    ${OrIf} $R7 == "$PROFILE\OneDrive\Documents\OMB\application"
+    ${OrIf} $R7 == "$PROFILE\OneDrive\Desktop\OMB\application"
+    ${OrIf} $R7 == "$DOCUMENTS\OMB\application"
+      DetailPrint "Migrating legacy OMB application install to the AppData per-user install location."
+      StrCpy $R7 "$LOCALAPPDATA\Programs\OMB Portfolio Builder"
+      StrCpy $R5 ""
+    ${EndIf}
     Call OMBStopIfExistingInstallIsCurrent
     StrCpy $OMB_ExistingInstallLocation $R7
     StrCpy $OMB_IsUpdateInstall "1"
@@ -517,6 +530,12 @@ FunctionEnd
     Call OMBInstallGitIfNeeded
   ${Else}
     DetailPrint "Publishing tool installation was skipped by the user."
+  ${EndIf}
+
+  ${If} $INSTDIR != "$PROFILE\OMB\application\OMB Portfolio Builder"
+    RMDir /r "$PROFILE\OMB\application\OMB Portfolio Builder"
+    Delete "$PROFILE\OMB\application\OMB Portfolio Builder.exe"
+    RMDir "$PROFILE\OMB\application"
   ${EndIf}
 !macroend
 !endif

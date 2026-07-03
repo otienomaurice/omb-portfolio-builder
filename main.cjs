@@ -12,7 +12,7 @@ let builderOrigin = "";
 let updateShutdownStarted = false;
 const execFileAsync = promisify(execFile);
 const defaultRepositoryUrl = process.env.OMB_BUILDER_REPOSITORY || "";
-const defaultWorkspaceHomeName = "OMB";
+const defaultWorkspaceHomeName = "OMB Portfolio Builder";
 
 const rootFilesToRefresh = [
   "server.mjs",
@@ -268,7 +268,10 @@ async function cloneWorkspaceIfPossible(workspaceRoot) {
 
 async function preparePackagedWorkspace() {
   const bundledSiteRoot = path.join(process.resourcesPath, "site");
-  const workspaceHome = process.env.OMB_WORKSPACE_HOME || path.join(app.getPath("home"), defaultWorkspaceHomeName);
+  const defaultWorkspaceHome = process.platform === "win32" && process.env.LOCALAPPDATA
+    ? path.join(process.env.LOCALAPPDATA, defaultWorkspaceHomeName)
+    : path.join(app.getPath("userData"), "workspace");
+  const workspaceHome = process.env.OMB_WORKSPACE_HOME || defaultWorkspaceHome;
   const workspaceRoot = path.join(workspaceHome, "builder");
   const portfolioRoot = process.env.OMB_PORTFOLIO_WORKSPACE || path.join(workspaceHome, "portfolio");
 

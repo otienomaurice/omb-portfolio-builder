@@ -184,6 +184,7 @@ const summaryCodeLanguage = document.querySelector("#summary-code-language");
 const summaryCodePasteMode = document.querySelector("#summary-code-paste-mode");
 const summaryCodeInput = document.querySelector("#summary-code-input");
 const summaryCodePreview = document.querySelector("#summary-code-preview");
+const summaryCodeBeautify = document.querySelector("#summary-code-beautify");
 const summaryCodeCancel = document.querySelector("#summary-code-cancel");
 const preferencesDialog = document.querySelector("#preferences-dialog");
 const preferencesForm = document.querySelector("#preferences-form");
@@ -216,7 +217,8 @@ const templatePreviewClose = document.querySelector("#template-preview-close");
 const standardSections = [
   { id: "brief", label: "Overview", folder: "" },
   { id: "design", label: "Design", folder: "documents" },
-  { id: "simulation", label: "Simulation", folder: "simulations", analogOnly: true }
+  { id: "simulation", label: "Simulation", folder: "simulations", analogOnly: true },
+  { id: "compile-code", label: "Compile Code", folder: "compile-code" }
 ];
 
 const preferenceStorageKey = "omb-builder-preferences";
@@ -224,14 +226,14 @@ const defaultBuilderPreferences = { theme: "light" };
 let builderPreferences = { ...defaultBuilderPreferences };
 
 const supportedCodeLanguages = [
-  { id: "c", label: "C", aliases: ["c"] },
-  { id: "cpp", label: "C++", aliases: ["cpp", "c++", "cplusplus"] },
-  { id: "systemverilog", label: "SystemVerilog", aliases: ["systemverilog", "system verilog", "sv"] },
-  { id: "ltspice", label: "LTspice", aliases: ["ltspice", "spice", "cir", "net", "asc"] },
-  { id: "java", label: "Java", aliases: ["java"] },
-  { id: "javascript", label: "JavaScript", aliases: ["javascript", "js", "mjs"] },
-  { id: "python", label: "Python", aliases: ["python", "py"] },
-  { id: "html", label: "HTML", aliases: ["html", "htm"] }
+  { id: "c", label: "C", aliases: ["c"], extensions: [".c"], defaultFile: "main.c" },
+  { id: "cpp", label: "C++", aliases: ["cpp", "c++", "cplusplus"], extensions: [".cpp", ".cc", ".cxx", ".hpp", ".h"], defaultFile: "main.cpp" },
+  { id: "systemverilog", label: "SystemVerilog", aliases: ["systemverilog", "system verilog", "sv", "verilog"], extensions: [".sv", ".svh", ".v"], defaultFile: "design.sv" },
+  { id: "ltspice", label: "LTspice", aliases: ["ltspice", "spice", "cir", "net", "asc"], extensions: [".cir", ".net", ".sp", ".asc"], defaultFile: "simulation.cir" },
+  { id: "java", label: "Java", aliases: ["java"], extensions: [".java"], defaultFile: "Main.java" },
+  { id: "javascript", label: "JavaScript", aliases: ["javascript", "js", "mjs", "node"], extensions: [".js", ".mjs", ".cjs"], defaultFile: "main.js" },
+  { id: "python", label: "Python", aliases: ["python", "py"], extensions: [".py"], defaultFile: "main.py" },
+  { id: "html", label: "HTML", aliases: ["html", "htm"], extensions: [".html", ".htm"], defaultFile: "index.html" }
 ];
 
 const defaultFunFacts = [];
@@ -476,6 +478,7 @@ let activeDialogResize = null;
 let projectWindowBackStack = [];
 let projectWindowForwardStack = [];
 let suppressProjectWindowHistory = false;
+let compileTerminalStatus = "";
 
 function setStatus(message) {
   builderStatus.textContent = message;
@@ -520,7 +523,8 @@ function projectSearchHaystack(project = {}, category = {}) {
     JSON.stringify(project.tests || []),
     JSON.stringify(project.tools || []),
     JSON.stringify(project.links || []),
-    JSON.stringify(project.media || [])
+    JSON.stringify(project.media || []),
+    JSON.stringify(project.compileCode || {})
   ].filter(Boolean).join(" "));
 }
 
@@ -1970,6 +1974,33 @@ function ensureDesignModel(project) {
   return project.design;
 }
 
+function ensureCompileCode(project) {
+  if (!project) return null;
+  project.compileCode = project.compileCode || {};
+  project.compileCode.files = Array.isArray(project.compileCode.files) ? project.compileCode.files : [];
+  project.compileCode.files = project.compileCode.files.map((file, index) => {
+    const language = normalizeCodeLanguage(file.language || detectCodeLanguage(file.code || "", file.fileName || ""));
+    const fileName = safeClientCodeFileName(file.fileName || defaultCodeFileName(language), language);
+    return {
+      id: file.id || slugify(`${fileName}-${index}-${Date.now()}`),
+      title: file.title || fileName,
+      fileName,
+      language,
+      code: String(file.code || ""),
+      stdin: String(file.stdin || ""),
+      savedPath: file.savedPath || file.workspacePath || "",
+      savedAt: file.savedAt || "",
+      lastResult: file.lastResult || null,
+      dirty: Boolean(file.dirty)
+    };
+  });
+  if (!project.compileCode.activeFileId || !project.compileCode.files.some((file) => file.id === project.compileCode.activeFileId)) {
+    project.compileCode.activeFileId = project.compileCode.files[0]?.id || "";
+  }
+  project.compileCode.terminal = String(project.compileCode.terminal || "");
+  return project.compileCode;
+}
+
 function escapeHtml(value) {
   return String(value || "")
     .replaceAll("&", "&amp;")
@@ -1987,8 +2018,32 @@ function normalizeCodeLanguage(value = "") {
   return match?.id || "javascript";
 }
 
+function codeLanguageProfile(value = "") {
+  return supportedCodeLanguages.find((language) => language.id === normalizeCodeLanguage(value)) || supportedCodeLanguages.find((language) => language.id === "javascript");
+}
+
 function codeLanguageLabel(value = "") {
   return supportedCodeLanguages.find((language) => language.id === normalizeCodeLanguage(value))?.label || "Code";
+}
+
+function languageFromFileName(fileName = "") {
+  const clean = String(fileName || "").toLowerCase();
+  const extension = clean.includes(".") ? `.${clean.split(".").pop()}` : "";
+  return supportedCodeLanguages.find((language) => language.extensions?.includes(extension))?.id || "";
+}
+
+function defaultCodeFileName(language = "javascript") {
+  return codeLanguageProfile(language)?.defaultFile || "main.js";
+}
+
+function safeClientCodeFileName(fileName = "", language = "javascript") {
+  const profile = codeLanguageProfile(language);
+  const fallback = profile.defaultFile || "main.js";
+  const clean = String(fileName || fallback).trim().replace(/[\\/:*?"<>|]+/g, "-");
+  const namePart = clean.replace(/\.[^.]+$/, "").replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || fallback.replace(/\.[^.]+$/, "");
+  const extMatch = clean.match(/(\.[a-zA-Z0-9_+-]+)$/);
+  const ext = (extMatch?.[1] || fallback.match(/(\.[^.]+)$/)?.[1] || ".js").toLowerCase();
+  return `${namePart}${profile.extensions?.includes(ext) ? ext : fallback.match(/(\.[^.]+)$/)?.[1] || ".js"}`;
 }
 
 function normalizeCodePasteMode(value = "") {
@@ -2006,7 +2061,9 @@ function normalizeCodeText(value = "", pasteMode = "source") {
     .trim();
 }
 
-function detectCodeLanguage(value = "") {
+function detectCodeLanguage(value = "", fileName = "") {
+  const byFile = languageFromFileName(fileName);
+  if (byFile) return byFile;
   const code = String(value || "");
   if (/<\/?[a-z][\s\S]*?>/i.test(code) || /<!doctype\s+html/i.test(code)) return "html";
   if (/\b(module|endmodule|always_ff|always_comb|logic|reg|wire|assign)\b/.test(code)) return "systemverilog";
@@ -2040,6 +2097,9 @@ function tokenizedCodeHtml(code = "", language = "javascript") {
       : /\/\*[\s\S]*?\*\/|\/\/[^\n]*/g;
     protect(commentPattern, "code-token-comment");
     protect(/"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`/g, "code-token-string");
+    if (["c", "cpp"].includes(normalizeCodeLanguage(language))) {
+      protect(/^#\s*\w+[^\n]*/gm, "code-token-preprocessor");
+    }
   }
 
   protect(/\b(?:0x[\da-f]+|\d+(?:\.\d+)?(?:e[+-]?\d+)?)\b/gi, "code-token-number");
@@ -4049,6 +4109,7 @@ function buildTemplateProject() {
     languages: [],
     links: [],
     sections: [],
+    compileCode: { files: [], activeFileId: "", terminal: "" },
     design: category === "analog-mixed-signal" ? defaultDesignModel() : undefined
   };
 }
@@ -5442,6 +5503,49 @@ function refreshSummaryCodeDialogPreview() {
     : `<p class="evidence-empty">Code preview appears here.</p>`;
 }
 
+function beautifyCodeClient(code = "", language = "javascript") {
+  const normalized = String(code || "").replace(/\r\n?/g, "\n").replace(/\t/g, "  ");
+  const lang = normalizeCodeLanguage(language);
+  if (["c", "cpp", "java", "javascript", "systemverilog"].includes(lang)) {
+    let depth = 0;
+    return normalized.split("\n").map((rawLine) => {
+      const line = rawLine.trim();
+      if (!line) return "";
+      if (/^[}\])]/.test(line)) depth = Math.max(0, depth - 1);
+      const nextLine = `${"  ".repeat(depth)}${line}`;
+      const opens = (line.match(/[{\[(]/g) || []).length;
+      const closes = (line.match(/[}\])]/g) || []).length;
+      depth = Math.max(0, depth + opens - closes);
+      return nextLine;
+    }).join("\n").trimEnd();
+  }
+  if (lang === "html") {
+    return normalized.replace(/>\s+</g, ">\n<").split("\n").map((line) => line.trim()).join("\n").trim();
+  }
+  return normalized.split("\n").map((line) => line.trimEnd()).join("\n").trimEnd();
+}
+
+async function beautifySummaryCodeDialog() {
+  if (!summaryCodeInput) return;
+  const language = summaryCodeLanguage?.value === "auto"
+    ? detectCodeLanguage(summaryCodeInput.value || "")
+    : normalizeCodeLanguage(summaryCodeLanguage?.value || "javascript");
+  try {
+    const response = await fetch(`/api/code/beautify?t=${Date.now()}`, {
+      method: "POST",
+      cache: "no-store",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ language, code: summaryCodeInput.value || "" })
+    });
+    const result = await response.json();
+    if (!response.ok || !result.ok) throw new Error(result.error || "Beautifier failed.");
+    summaryCodeInput.value = result.code || summaryCodeInput.value;
+  } catch {
+    summaryCodeInput.value = beautifyCodeClient(summaryCodeInput.value || "", language);
+  }
+  refreshSummaryCodeDialogPreview();
+}
+
 async function openSummaryCodeDialog(existingBlock = null, options = {}) {
   const heading = summaryCodeDialog.querySelector("h2");
   const submitButton = summaryCodeDialog.querySelector("button[type='submit']");
@@ -6708,6 +6812,110 @@ function renderCustomSection(project, sectionId) {
   `;
 }
 
+function compileLanguageOptions(selected = "javascript") {
+  const normalized = normalizeCodeLanguage(selected);
+  return supportedCodeLanguages.map((language) => `
+    <option value="${escapeHtml(language.id)}"${language.id === normalized ? " selected" : ""}>${escapeHtml(language.label)}</option>
+  `).join("");
+}
+
+function activeCompileFile(project) {
+  const workspace = ensureCompileCode(project);
+  return workspace.files.find((file) => file.id === workspace.activeFileId) || workspace.files[0] || null;
+}
+
+function compileFileDirtyLabel(file) {
+  if (!file) return "";
+  if (file.dirty) return "Unsaved";
+  if (file.lastResult?.ok === true) return "Compiled";
+  if (file.lastResult?.ok === false) return "Needs fix";
+  if (file.savedAt) return "Saved";
+  return "Draft";
+}
+
+function renderCompileCodeSection(project) {
+  const workspace = ensureCompileCode(project);
+  const activeFile = activeCompileFile(project);
+  const terminal = activeFile?.lastResult?.terminal || workspace.terminal || compileTerminalStatus || "Compiler output will appear here after you save or run a source file.";
+  return `
+    <div class="compile-code-workspace">
+      <aside class="compile-code-sidebar" aria-label="Compile code files">
+        <div class="compile-code-sidebar-heading">
+          <h3>Compile Code</h3>
+          <small>${workspace.files.length} source file${workspace.files.length === 1 ? "" : "s"}</small>
+        </div>
+        <div class="compile-code-actions">
+          <button type="button" data-compile-add>Add code file</button>
+          <button type="button" data-compile-import>Import file</button>
+          <button type="button" data-compile-tools>Check compilers</button>
+        </div>
+        <div class="compile-code-file-list" role="list">
+          ${workspace.files.map((file) => `
+            <button class="compile-code-file${file.id === workspace.activeFileId ? " is-active" : ""}" type="button" data-compile-select="${escapeHtml(file.id)}" role="listitem">
+              <strong>${escapeHtml(file.title || file.fileName)}</strong>
+              <span>${escapeHtml(file.fileName)} · ${escapeHtml(codeLanguageLabel(file.language))}</span>
+              <small>${escapeHtml(compileFileDirtyLabel(file))}</small>
+            </button>
+          `).join("") || `<p class="evidence-empty">No compile files yet. Add a code file or import source.</p>`}
+        </div>
+      </aside>
+
+      <section class="compile-code-main" aria-label="Compile code editor">
+        ${activeFile ? `
+          <div class="compile-code-meta-grid">
+            <label>
+              <span>Title</span>
+              <input type="text" data-compile-field="title" value="${escapeHtml(activeFile.title || "")}" placeholder="Source title" />
+            </label>
+            <label>
+              <span>File name</span>
+              <input type="text" data-compile-field="fileName" value="${escapeHtml(activeFile.fileName || "")}" placeholder="${escapeHtml(defaultCodeFileName(activeFile.language))}" />
+            </label>
+            <label>
+              <span>Language</span>
+              <select data-compile-field="language">${compileLanguageOptions(activeFile.language)}</select>
+            </label>
+          </div>
+          <div class="compile-code-editor-grid">
+            <label class="compile-code-source-field">
+              <span>Source</span>
+              <textarea data-compile-field="code" spellcheck="false" rows="18" placeholder="Type or paste code here">${escapeHtml(activeFile.code || "")}</textarea>
+            </label>
+            <section class="compile-code-preview-panel" aria-label="Syntax highlighted preview">
+              <div class="compile-code-preview-heading">
+                <span>${escapeHtml(codeLanguageLabel(activeFile.language))} preview</span>
+              </div>
+              <pre class="compile-code-preview"><code data-compile-preview>${tokenizedCodeHtml(activeFile.code || "", activeFile.language)}</code></pre>
+            </section>
+          </div>
+          <label class="compile-stdin-field">
+            <span>Program input, optional</span>
+            <textarea data-compile-field="stdin" rows="4" placeholder="Input passed to stdin when the code runs">${escapeHtml(activeFile.stdin || "")}</textarea>
+          </label>
+          <div class="compile-code-command-bar">
+            <button type="button" data-compile-save>Save source</button>
+            <button type="button" data-compile-beautify>Beautify</button>
+            <button type="button" data-compile-run>Compile / run</button>
+            <button type="button" data-compile-install>Install tools</button>
+            <button class="danger-icon" type="button" data-compile-delete>Delete source</button>
+          </div>
+        ` : `
+          <div class="compile-code-empty">
+            <h3>No compile file selected</h3>
+            <p>Add a source file for C, C++, SystemVerilog, LTspice, Java, JavaScript, Python, or HTML.</p>
+          </div>
+        `}
+        <section class="compile-terminal-panel" aria-label="Compiler terminal output">
+          <div class="compile-terminal-heading">
+            <span>Terminal output</span>
+          </div>
+          <pre class="compile-terminal">${escapeHtml(terminal)}</pre>
+        </section>
+      </section>
+    </div>
+  `;
+}
+
 function renderSectionContent(project) {
   if (!project) {
     sectionContent.hidden = true;
@@ -6750,6 +6958,7 @@ function renderSectionContent(project) {
       </div>
     `,
     simulation: () => isAnalogProject(project) ? renderAnalogSimulationWorkspace(project) : "",
+    "compile-code": () => renderCompileCodeSection(project),
     tests: () => `${renderObjectSection(project, "tests", "tests", "Tests")}${renderPendingEditor()}`,
     tools: () => `
       <div class="section-stack">
@@ -7221,6 +7430,195 @@ function chooseFile() {
     filePicker.onchange = () => resolve(filePicker.files[0] || null);
     filePicker.click();
   });
+}
+
+function newCompileFile(language = "javascript", seed = {}) {
+  const normalized = normalizeCodeLanguage(language);
+  const fileName = safeClientCodeFileName(seed.fileName || defaultCodeFileName(normalized), normalized);
+  return {
+    id: slugify(`${fileName}-${Date.now()}-${Math.random().toString(16).slice(2)}`),
+    title: seed.title || fileName,
+    fileName,
+    language: normalized,
+    code: String(seed.code || ""),
+    stdin: "",
+    savedPath: "",
+    savedAt: "",
+    lastResult: null,
+    dirty: true
+  };
+}
+
+function activeCompileWorkspaceAndFile(project = selectedProject()) {
+  const workspace = ensureCompileCode(project);
+  return { workspace, file: activeCompileFile(project) };
+}
+
+function updateCompilePreview(file) {
+  const preview = sectionContent.querySelector("[data-compile-preview]");
+  if (preview && file) preview.innerHTML = tokenizedCodeHtml(file.code || "", file.language);
+}
+
+function compilePayload(project, file) {
+  return {
+    projectId: project.id,
+    fileId: file.id,
+    title: file.title,
+    fileName: file.fileName,
+    language: file.language,
+    code: file.code,
+    stdin: file.stdin || ""
+  };
+}
+
+async function saveCompileFile(project, file) {
+  if (!project || !file) return null;
+  const response = await fetch(`/api/code/save?t=${Date.now()}`, {
+    method: "POST",
+    cache: "no-store",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(compilePayload(project, file))
+  });
+  const result = await response.json();
+  if (!response.ok || !result.ok) throw new Error(result.error || "Code could not be saved.");
+  file.savedPath = result.saved?.sourcePath || "";
+  file.savedAt = result.saved?.savedAt || new Date().toISOString();
+  file.fileName = result.saved?.fileName || file.fileName;
+  file.language = result.saved?.language || file.language;
+  file.dirty = false;
+  return result.saved;
+}
+
+async function importCompileFile(project) {
+  const workspace = ensureCompileCode(project);
+  const file = await chooseFile();
+  if (!file) return;
+  const language = detectCodeLanguage("", file.name);
+  const profile = codeLanguageProfile(language);
+  const allowedExtensions = supportedCodeLanguages.flatMap((item) => item.extensions || []);
+  const extension = `.${String(file.name || "").split(".").pop().toLowerCase()}`;
+  if (!allowedExtensions.includes(extension)) {
+    setStatus("Choose a supported source file: C, C++, SystemVerilog, LTspice, Java, JavaScript, Python, or HTML.");
+    return;
+  }
+  const code = await file.text();
+  const sourceFile = newCompileFile(profile.id, {
+    fileName: file.name,
+    title: file.name.replace(/\.[^.]+$/, ""),
+    code
+  });
+  workspace.files.push(sourceFile);
+  workspace.activeFileId = sourceFile.id;
+  setStatus(`Imported ${file.name}. Click Save source before compiling.`);
+  scheduleAutosave();
+  renderSectionContent(project);
+}
+
+async function beautifyCompileFile(project, file) {
+  if (!file) return;
+  try {
+    const response = await fetch(`/api/code/beautify?t=${Date.now()}`, {
+      method: "POST",
+      cache: "no-store",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(compilePayload(project, file))
+    });
+    const result = await response.json();
+    if (!response.ok || !result.ok) throw new Error(result.error || "Beautifier failed.");
+    file.code = result.code || file.code;
+    file.language = result.language || file.language;
+    file.dirty = true;
+    setStatus("Code beautified. Review it, then save source.");
+    scheduleAutosave();
+    renderSectionContent(project);
+  } catch (error) {
+    setStatus(error.message || "Code beautifier failed.");
+  }
+}
+
+async function compileActiveFile(project, file) {
+  if (!file) return;
+  file.lastResult = {
+    ok: null,
+    terminal: "Compiling and running. Please wait..."
+  };
+  renderSectionContent(project);
+  try {
+    await saveCompileFile(project, file);
+    const response = await fetch(`/api/code/compile?t=${Date.now()}`, {
+      method: "POST",
+      cache: "no-store",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(compilePayload(project, file))
+    });
+    const result = await response.json();
+    const compileResult = result.result || {};
+    file.lastResult = {
+      ok: Boolean(result.ok),
+      language: compileResult.language || file.language,
+      terminal: compileResult.terminal || result.error || "No compiler output was returned.",
+      finishedAt: new Date().toISOString()
+    };
+    if (compileResult.saved) {
+      file.savedPath = compileResult.saved.sourcePath || file.savedPath;
+      file.savedAt = compileResult.saved.savedAt || file.savedAt;
+    }
+    file.dirty = false;
+    ensureCompileCode(project).terminal = file.lastResult.terminal;
+    setStatus(result.ok ? "Compile/run succeeded." : "Compile/run completed with errors.");
+    scheduleAutosave();
+    renderSectionContent(project);
+  } catch (error) {
+    file.lastResult = {
+      ok: false,
+      terminal: error.message || "Compile/run failed.",
+      finishedAt: new Date().toISOString()
+    };
+    setStatus(error.message || "Compile/run failed.");
+    renderSectionContent(project);
+  }
+}
+
+async function checkCompileTools(project) {
+  try {
+    const response = await fetch(`/api/code/tools?t=${Date.now()}`, { cache: "no-store" });
+    const result = await response.json();
+    if (!response.ok || !result.ok) throw new Error(result.error || "Compiler status failed.");
+    const lines = Object.entries(result.tools?.languages || {}).map(([id, status]) => {
+      const toolText = Object.entries(status.tools || {}).map(([tool, value]) => `${tool}: ${value}`).join(", ") || "no compiler required";
+      return `${status.ready ? "READY" : "MISSING"} ${status.label} (${id}) - ${toolText}`;
+    });
+    compileTerminalStatus = [`Compile workspace: ${result.tools?.compileRoot || ""}`, ...lines].join("\n");
+    ensureCompileCode(project).terminal = compileTerminalStatus;
+    renderSectionContent(project);
+  } catch (error) {
+    setStatus(error.message || "Compiler status failed.");
+  }
+}
+
+async function installCompileTools(project, file) {
+  if (!file) return;
+  file.lastResult = { ok: null, terminal: `Installing tools for ${codeLanguageLabel(file.language)}. This can take several minutes...` };
+  renderSectionContent(project);
+  try {
+    const response = await fetch(`/api/code/install-tools?t=${Date.now()}`, {
+      method: "POST",
+      cache: "no-store",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ language: file.language })
+    });
+    const result = await response.json();
+    file.lastResult = {
+      ok: Boolean(result.ok),
+      terminal: result.terminal || result.error || "Tool installation finished.",
+      finishedAt: new Date().toISOString()
+    };
+    setStatus(result.ok ? "Compiler tool installation finished." : "Compiler tool installation could not complete.");
+    renderSectionContent(project);
+  } catch (error) {
+    file.lastResult = { ok: false, terminal: error.message || "Tool installation failed." };
+    renderSectionContent(project);
+  }
 }
 
 function readFileAsDataUrl(file) {
@@ -7760,6 +8158,7 @@ async function loadData() {
   catalog.projects = (catalog.projects || []).filter((project) => !starterProjectIds.has(project.id));
   catalog.projects.forEach((project) => {
     if (isAnalogProject(project)) ensureDesignModel(project);
+    ensureCompileCode(project);
   });
   savedPortfolioCatalog = {
     categories: clone(catalog.categories || []),
@@ -9366,6 +9765,68 @@ sectionContent.addEventListener("click", async (event) => {
   const project = selectedProject();
   if (!button || !project) return;
 
+  const hasDataset = (key) => Object.prototype.hasOwnProperty.call(button.dataset, key);
+  if (hasDataset("compileAdd")) {
+    const workspace = ensureCompileCode(project);
+    const file = newCompileFile("javascript");
+    workspace.files.push(file);
+    workspace.activeFileId = file.id;
+    setStatus("New compile source created. Type or paste code, then save source.");
+    scheduleAutosave();
+    renderSectionContent(project);
+    return;
+  }
+  if (hasDataset("compileImport")) {
+    await importCompileFile(project);
+    return;
+  }
+  if (button.dataset.compileSelect) {
+    ensureCompileCode(project).activeFileId = button.dataset.compileSelect;
+    renderSectionContent(project);
+    return;
+  }
+  if (hasDataset("compileTools")) {
+    await checkCompileTools(project);
+    return;
+  }
+  const { workspace: compileWorkspace, file: compileFile } = activeCompileWorkspaceAndFile(project);
+  if (hasDataset("compileSave")) {
+    try {
+      await saveCompileFile(project, compileFile);
+      setStatus("Compile source saved.");
+      scheduleAutosave();
+      renderSectionContent(project);
+    } catch (error) {
+      setStatus(error.message || "Compile source could not be saved.");
+    }
+    return;
+  }
+  if (hasDataset("compileBeautify")) {
+    await beautifyCompileFile(project, compileFile);
+    return;
+  }
+  if (hasDataset("compileRun")) {
+    await compileActiveFile(project, compileFile);
+    return;
+  }
+  if (hasDataset("compileInstall")) {
+    await installCompileTools(project, compileFile);
+    return;
+  }
+  if (hasDataset("compileDelete")) {
+    openDeleteConfirm({
+      title: "Delete source file",
+      message: `Are you sure you want to delete "${compileFile?.title || compileFile?.fileName || "this source file"}"?`,
+      onConfirm: () => {
+        compileWorkspace.files = compileWorkspace.files.filter((file) => file.id !== compileFile?.id);
+        compileWorkspace.activeFileId = compileWorkspace.files[0]?.id || "";
+        scheduleAutosave();
+        renderSectionContent(project);
+      }
+    });
+    return;
+  }
+
   if (button.dataset.openEditor) openEditorFromButton(button);
   if (button.dataset.upload) await uploadToSection(button.dataset.upload, button.dataset.folder);
   if (button.dataset.uploadDesign) await uploadToDesignSection(button.dataset.uploadDesign, button.dataset.folder, button.dataset.designKind);
@@ -9491,6 +9952,31 @@ sectionContent.addEventListener("input", (event) => {
   const project = selectedProject();
   if (!project) return;
 
+  if (event.target.dataset.compileField) {
+    const { file } = activeCompileWorkspaceAndFile(project);
+    if (!file) return;
+    const field = event.target.dataset.compileField;
+    if (field === "language") {
+      file.language = normalizeCodeLanguage(event.target.value);
+      file.fileName = safeClientCodeFileName(file.fileName || defaultCodeFileName(file.language), file.language);
+      const fileNameInput = sectionContent.querySelector("[data-compile-field='fileName']");
+      if (fileNameInput) fileNameInput.value = file.fileName;
+      const heading = sectionContent.querySelector(".compile-code-preview-heading span");
+      if (heading) heading.textContent = `${codeLanguageLabel(file.language)} preview`;
+      updateCompilePreview(file);
+    } else if (field === "fileName") {
+      file.fileName = safeClientCodeFileName(event.target.value, file.language);
+    } else {
+      file[field] = event.target.value;
+    }
+    if (field === "code") updateCompilePreview(file);
+    file.dirty = true;
+    file.lastResult = field === "code" ? null : file.lastResult;
+    setStatus("Unsaved compile source changes.");
+    scheduleAutosave(field === "code" ? 1600 : 900);
+    return;
+  }
+
   if (event.target.dataset.array) {
     project[event.target.dataset.array][Number(event.target.dataset.index)] = event.target.value;
     setStatus("Unsaved local changes.");
@@ -9606,6 +10092,7 @@ summaryCodeCancel?.addEventListener("click", () => {
 summaryCodeInput?.addEventListener("input", refreshSummaryCodeDialogPreview);
 summaryCodeLanguage?.addEventListener("change", refreshSummaryCodeDialogPreview);
 summaryCodePasteMode?.addEventListener("change", refreshSummaryCodeDialogPreview);
+summaryCodeBeautify?.addEventListener("click", beautifySummaryCodeDialog);
 summaryCodeForm?.addEventListener("submit", (event) => {
   event.preventDefault();
   closeDialogElement(summaryCodeDialog, "save");
