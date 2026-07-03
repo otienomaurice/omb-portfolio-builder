@@ -34,6 +34,7 @@
         "filter": [
           "assets/**",
           "Backgrounds/**",
+          "cloudflare/**",
           "docs/**",
           "server.mjs",
           "index.html",
