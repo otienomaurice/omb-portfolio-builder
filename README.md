@@ -52,6 +52,7 @@ On Windows, the app keeps application files and editable content under AppData:
 - `C:\Users\<you>\AppData\Local\Programs\OMB Portfolio Builder` stores the installed desktop application.
 - `C:\Users\<you>\AppData\Local\OMB Portfolio Builder\builder` stores the builder workspace, local drafts, uploaded files, templates, previews, and editing tools.
 - `C:\Users\<you>\AppData\Local\OMB Portfolio Builder\portfolio` stores the publish mirror used by Git-based publishing.
+- `C:\Users\<you>\AppData\Local\OMB Portfolio Builder\compile-code` stores project compile-workspace source files and run folders created by the Compile Code tool.
 
 The installer and updater treat the AppData builder and portfolio folders as managed workspaces, not duplicate app installs.
 
@@ -75,6 +76,8 @@ Project and portfolio-area overview editors support rich text editing with selec
 Front-page, profile, contact, fun facts, and project overview fields use the same selection-level text behavior: highlight the exact words to edit, then use the right-click menu or floating selection inspector to change font family, font size, text color, bold, italic, or underline. Identity and contact fields are text-only, so image, formula, and code-block insertion is intentionally disabled there while copy, paste, cut, select all, links, and text formatting still work.
 
 Code support is available from the rich editor right-click menu. Use **Code block** or **Paste as code** for C, C++, SystemVerilog, LTspice, Java, JavaScript, Python, and HTML. Code blocks store the selected language, preserve source spacing when requested, highlight common language keywords, and render as code in project previews and published portfolios.
+
+Projects also include a separate **Compile Code** workspace. This is local builder tooling, not a portfolio text block. Add or import source files, choose the language, save the source, run the beautifier, check compiler availability, and compile or run code with terminal-style output. JavaScript uses Node.js, Python uses the installed Python runtime, Java uses a JDK, C/C++ use a MinGW/WinLibs-style compiler when available, and SystemVerilog/LTspice report clear missing-tool messages unless compatible command-line tools are installed.
 
 The portfolio parser carries those rich text fields into project previews, full portfolio previews, saved drafts, and generated website catalogs. Use **Save project** or **Save all sections** before previewing or publishing so the parsed site output includes the latest front-page, profile, contact, fun fact, and project text formatting.
 
@@ -190,6 +193,7 @@ Use the workflow in [BRANCHING.md](BRANCHING.md):
 | `codex/full-builder-dark-mode` | Expands builder dark mode across panels, dialogs, menus, status chips, and icon controls while preserving input-field colors and project appearance templates. | `codex/code-block-preferences` | `development` | Active |
 | `codex/per-user-update-migration` | Moves the installer/update model to the current user's app location and prefers per-user install records over stale machine-wide records. | `codex/full-builder-dark-mode` | `development` | Active |
 | `codex/appdata-workspace-root` | Standardizes future installs and managed builder/portfolio workspaces under AppData and migrates legacy OMB app-folder installs forward. | `codex/per-user-update-migration` | `development` | Active |
+| `codex/project-code-compile-workspace` | Adds a project-local Compile Code workspace with source import, beautify, compiler detection, save, and terminal-style compile/run output. | `codex/appdata-workspace-root` | `development` | Active |
 
 ## Uninstall
 

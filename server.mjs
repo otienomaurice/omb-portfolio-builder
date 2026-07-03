@@ -1,7 +1,7 @@
 import { createServer } from "node:http";
 import { execFile, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { access as fsAccess, chmod, cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { access as fsAccess, chmod, cp, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -9,6 +9,7 @@ import { fileURLToPath } from "node:url";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const portfolioRoot = path.resolve(process.env.OMB_PORTFOLIO_WORKSPACE || root);
+const compileRoot = path.resolve(process.env.OMB_CODE_WORKSPACE || path.join(path.dirname(root), "compile-code"));
 const port = Number(process.env.PORT || 8080);
 const host = process.env.HOST || "0.0.0.0";
 const execFileAsync = promisify(execFile);
@@ -78,6 +79,99 @@ const gitCandidates = [
   process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, "Programs", "Git", "bin", "git.exe") : ""
 ].filter(Boolean);
 
+const compileLanguageProfiles = {
+  c: {
+    defaultFile: "main.c",
+    extensions: [".c"],
+    label: "C",
+    primaryTools: ["gcc"],
+    winget: ["BrechtSanders.WinLibs.POSIX.UCRT"]
+  },
+  cpp: {
+    defaultFile: "main.cpp",
+    extensions: [".cpp", ".cc", ".cxx", ".hpp", ".h"],
+    label: "C++",
+    primaryTools: ["g++"],
+    winget: ["BrechtSanders.WinLibs.POSIX.UCRT"]
+  },
+  systemverilog: {
+    defaultFile: "design.sv",
+    extensions: [".sv", ".svh", ".v"],
+    label: "SystemVerilog",
+    primaryTools: ["iverilog", "vvp"],
+    winget: []
+  },
+  ltspice: {
+    defaultFile: "simulation.cir",
+    extensions: [".cir", ".net", ".sp", ".asc"],
+    label: "LTspice",
+    primaryTools: ["ltspice"],
+    winget: []
+  },
+  java: {
+    defaultFile: "Main.java",
+    extensions: [".java"],
+    label: "Java",
+    primaryTools: ["javac", "java"],
+    winget: ["EclipseAdoptium.Temurin.21.JDK"]
+  },
+  javascript: {
+    defaultFile: "main.js",
+    extensions: [".js", ".mjs", ".cjs"],
+    label: "JavaScript",
+    primaryTools: ["node"],
+    winget: []
+  },
+  python: {
+    defaultFile: "main.py",
+    extensions: [".py"],
+    label: "Python",
+    primaryTools: ["python"],
+    winget: []
+  },
+  html: {
+    defaultFile: "index.html",
+    extensions: [".html", ".htm"],
+    label: "HTML",
+    primaryTools: [],
+    winget: []
+  }
+};
+
+const compileToolCandidates = {
+  gcc: [
+    "gcc",
+    process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, "Microsoft", "WinGet", "Packages", "BrechtSanders.WinLibs.POSIX.UCRT_Microsoft.Winget.Source_8wekyb3d8bbwe", "mingw64", "bin", "gcc.exe") : ""
+  ],
+  "g++": [
+    "g++",
+    "c++",
+    process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, "Microsoft", "WinGet", "Packages", "BrechtSanders.WinLibs.POSIX.UCRT_Microsoft.Winget.Source_8wekyb3d8bbwe", "mingw64", "bin", "g++.exe") : ""
+  ],
+  clang: ["clang"],
+  "clang++": ["clang++"],
+  cl: ["cl"],
+  javac: [
+    "javac",
+    "C:\\Program Files\\Eclipse Adoptium\\jdk-21.0.11.10-hotspot\\bin\\javac.exe"
+  ],
+  java: [
+    "java",
+    "C:\\Program Files\\Eclipse Adoptium\\jdk-21.0.11.10-hotspot\\bin\\java.exe"
+  ],
+  node: [process.execPath, "node"],
+  python: [process.env.PYTHON, "python", "py"],
+  iverilog: ["iverilog"],
+  vvp: ["vvp"],
+  ltspice: [
+    process.env.LTSPICE_EXE,
+    "C:\\Program Files\\ADI\\LTspice\\LTspice.exe",
+    "C:\\Program Files\\LTC\\LTspiceXVII\\XVIIx64.exe",
+    "C:\\Program Files\\Analog Devices\\LTspice\\LTspice.exe",
+    process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, "Programs", "ADI", "LTspice", "LTspice.exe") : ""
+  ]
+};
+
 const portfolioAiInstructions = [
   "You are the AI assistant for the portfolio website described by the supplied portfolio context.",
   "Behave like a careful senior electrical and computer engineering mentor who can also navigate the saved portfolio.",
@@ -143,6 +237,414 @@ function stripHtmlToText(value = "") {
     .replace(/&#39;/g, "'")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function normalizeCodeLanguage(value = "") {
+  const clean = String(value || "").trim().toLowerCase().replace(/[_\s-]+/g, "");
+  const aliases = {
+    c: "c",
+    cpp: "cpp",
+    cplusplus: "cpp",
+    "c++": "cpp",
+    systemverilog: "systemverilog",
+    sv: "systemverilog",
+    verilog: "systemverilog",
+    ltspice: "ltspice",
+    spice: "ltspice",
+    cir: "ltspice",
+    java: "java",
+    javascript: "javascript",
+    js: "javascript",
+    node: "javascript",
+    python: "python",
+    py: "python",
+    html: "html",
+    htm: "html"
+  };
+  return aliases[clean] || (compileLanguageProfiles[clean] ? clean : "javascript");
+}
+
+function languageFromFileName(fileName = "") {
+  const ext = path.extname(String(fileName || "").toLowerCase());
+  return Object.entries(compileLanguageProfiles).find(([, profile]) => profile.extensions.includes(ext))?.[0] || "";
+}
+
+function detectCodeLanguageFromSource(code = "", fileName = "") {
+  const byName = languageFromFileName(fileName);
+  if (byName) return byName;
+  const source = String(code || "");
+  if (/<\/?[a-z][\s\S]*?>/i.test(source) || /<!doctype\s+html/i.test(source)) return "html";
+  if (/\b(module|endmodule|always_ff|always_comb|logic|reg|wire|assign)\b/.test(source)) return "systemverilog";
+  if (/^\s*\.?(tran|ac|dc|op|model|subckt|ends|param)\b/im.test(source) || /\bV\w+\s+\w+\s+\w+\s+(?:DC|SIN|PULSE)?/i.test(source)) return "ltspice";
+  if (/\b(def|elif|from\s+\w+\s+import|self|None|True|False)\b/.test(source)) return "python";
+  if (/\b(public\s+class|static\s+void\s+main|System\.out)\b/.test(source)) return "java";
+  if (/\b(#include|printf|scanf|malloc|free|std::|cout|cin|namespace|template\s*<)\b/.test(source)) {
+    return /\b(std::|cout|cin|namespace|template\s*<|class\s+\w+)/.test(source) ? "cpp" : "c";
+  }
+  if (/\b(const|let|var|function|=>|console\.log|document\.|window\.)\b/.test(source)) return "javascript";
+  return "javascript";
+}
+
+function safeCodeFileName(value = "", language = "javascript") {
+  const profile = compileLanguageProfiles[normalizeCodeLanguage(language)] || compileLanguageProfiles.javascript;
+  const fallback = profile.defaultFile;
+  const parsed = path.parse(String(value || fallback));
+  const safeName = safeSegment(parsed.name, path.parse(fallback).name);
+  let ext = String(parsed.ext || path.extname(fallback)).toLowerCase();
+  if (!profile.extensions.includes(ext)) ext = path.extname(fallback);
+  return `${safeName}${ext}`;
+}
+
+function indentBraceCode(code = "") {
+  let depth = 0;
+  return String(code || "")
+    .replace(/\r\n?/g, "\n")
+    .split("\n")
+    .map((rawLine) => {
+      const line = rawLine.trim();
+      if (!line) return "";
+      if (/^[}\])]/.test(line)) depth = Math.max(0, depth - 1);
+      const formatted = `${"  ".repeat(depth)}${line}`;
+      const opens = (line.match(/[{\[(]/g) || []).length;
+      const closes = (line.match(/[}\])]/g) || []).length;
+      depth = Math.max(0, depth + opens - closes);
+      return formatted;
+    })
+    .join("\n")
+    .trimEnd();
+}
+
+function beautifyCode(code = "", language = "javascript") {
+  const normalized = String(code || "").replace(/\r\n?/g, "\n").replace(/\t/g, "  ");
+  const lang = normalizeCodeLanguage(language);
+  if (["c", "cpp", "java", "javascript", "systemverilog"].includes(lang)) {
+    return indentBraceCode(normalized)
+      .replace(/[ \t]+$/gm, "")
+      .replace(/\n{4,}/g, "\n\n\n");
+  }
+  if (lang === "html") {
+    return normalized
+      .replace(/>\s+</g, ">\n<")
+      .split("\n")
+      .map((line) => line.trim())
+      .join("\n")
+      .trim();
+  }
+  return normalized
+    .split("\n")
+    .map((line) => line.trimEnd())
+    .join("\n")
+    .replace(/\n{4,}/g, "\n\n\n")
+    .trimEnd();
+}
+
+async function findExecutableUnder(folder, names = [], maxDepth = 5) {
+  if (!folder || maxDepth < 0 || !(await pathExists(folder))) return "";
+  let entries = [];
+  try {
+    entries = await readdir(folder, { withFileTypes: true });
+  } catch {
+    return "";
+  }
+  for (const entry of entries) {
+    const fullPath = path.join(folder, entry.name);
+    if (entry.isFile() && names.some((name) => entry.name.toLowerCase() === name.toLowerCase())) return fullPath;
+  }
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    const found = await findExecutableUnder(path.join(folder, entry.name), names, maxDepth - 1);
+    if (found) return found;
+  }
+  return "";
+}
+
+async function findTool(toolName) {
+  const candidates = (compileToolCandidates[toolName] || [toolName]).filter(Boolean);
+  for (const candidate of candidates) {
+    if (path.isAbsolute(candidate)) {
+      if (await pathExists(candidate)) return candidate;
+      continue;
+    }
+    try {
+      const command = process.platform === "win32" ? "where" : "command";
+      const args = process.platform === "win32" ? [candidate] : ["-v", candidate];
+      const result = await execFileAsync(command, args, { timeout: 5000, windowsHide: true });
+      const found = String(result.stdout || "").split(/\r?\n/).map((line) => line.trim()).find(Boolean);
+      if (found) return found;
+    } catch {
+      // Try the next candidate.
+    }
+  }
+
+  if (["gcc", "g++"].includes(toolName) && process.env.LOCALAPPDATA) {
+    return findExecutableUnder(
+      path.join(process.env.LOCALAPPDATA, "Microsoft", "WinGet", "Packages"),
+      [toolName === "gcc" ? "gcc.exe" : "g++.exe"],
+      7
+    );
+  }
+
+  if (["javac", "java"].includes(toolName)) {
+    return findExecutableUnder("C:\\Program Files\\Eclipse Adoptium", [`${toolName}.exe`], 5);
+  }
+
+  return "";
+}
+
+function terminalLine(label, text = "") {
+  return [`$ ${label}`, String(text || "").trim()].filter(Boolean).join("\n");
+}
+
+async function runProcess(command, args = [], options = {}) {
+  const timeoutMs = options.timeoutMs || 20000;
+  const cwd = options.cwd || compileRoot;
+  return new Promise((resolve) => {
+    const child = spawn(command, args, {
+      cwd,
+      env: { ...process.env, ...(options.env || {}) },
+      shell: false,
+      windowsHide: true
+    });
+    let stdout = "";
+    let stderr = "";
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      child.kill("SIGKILL");
+    }, timeoutMs);
+    child.stdout?.on("data", (chunk) => {
+      stdout += chunk.toString();
+    });
+    child.stderr?.on("data", (chunk) => {
+      stderr += chunk.toString();
+    });
+    if (Object.prototype.hasOwnProperty.call(options, "input")) {
+      child.stdin?.write(String(options.input || ""));
+      child.stdin?.end();
+    }
+    child.on("error", (error) => {
+      clearTimeout(timer);
+      resolve({ ok: false, code: -1, stdout, stderr: `${stderr}\n${error.message}`.trim(), timedOut });
+    });
+    child.on("close", (code) => {
+      clearTimeout(timer);
+      resolve({ ok: !timedOut && code === 0, code, stdout, stderr, timedOut });
+    });
+  });
+}
+
+async function compileToolStatus() {
+  const tools = {};
+  const uniqueTools = [...new Set(Object.values(compileLanguageProfiles).flatMap((profile) => profile.primaryTools))];
+  for (const tool of uniqueTools) {
+    tools[tool] = await findTool(tool);
+  }
+  const languages = {};
+  for (const [id, profile] of Object.entries(compileLanguageProfiles)) {
+    const required = profile.primaryTools;
+    languages[id] = {
+      label: profile.label,
+      defaultFile: profile.defaultFile,
+      extensions: profile.extensions,
+      ready: required.every((tool) => tools[tool]),
+      tools: Object.fromEntries(required.map((tool) => [tool, tools[tool] || "missing"])),
+      installHints: profile.winget || []
+    };
+  }
+  return { compileRoot, languages, tools };
+}
+
+async function saveCompileSource({ projectId, fileId, title, fileName, language, code, stdin = "" }) {
+  const lang = normalizeCodeLanguage(language || detectCodeLanguageFromSource(code, fileName));
+  const projectFolder = safeSegment(projectId, "project");
+  const codeFileName = safeCodeFileName(fileName, lang);
+  const fileFolder = safeSegment(fileId || path.parse(codeFileName).name, path.parse(codeFileName).name);
+  const folder = resolveInsideCompileRoot(projectFolder, fileFolder);
+  const sourcePath = resolveInsideCompileRoot(projectFolder, fileFolder, codeFileName);
+  await mkdir(folder, { recursive: true });
+  await writeFile(sourcePath, String(code || ""), "utf8");
+  if (stdin) await writeFile(resolveInsideCompileRoot(projectFolder, fileFolder, "stdin.txt"), String(stdin), "utf8");
+  const metadata = {
+    id: fileFolder,
+    title: clampText(title || codeFileName, 180),
+    fileName: codeFileName,
+    language: lang,
+    sourcePath,
+    savedAt: new Date().toISOString()
+  };
+  await writeFile(resolveInsideCompileRoot(projectFolder, fileFolder, "compile-meta.json"), `${JSON.stringify(metadata, null, 2)}\n`, "utf8");
+  return metadata;
+}
+
+function javaMainClassName(code = "", fileName = "Main.java") {
+  const source = String(code || "");
+  const publicMatch = source.match(/\bpublic\s+class\s+([A-Za-z_$][\w$]*)/);
+  if (publicMatch) return publicMatch[1];
+  const classMatch = source.match(/\bclass\s+([A-Za-z_$][\w$]*)/);
+  return classMatch?.[1] || path.parse(fileName).name || "Main";
+}
+
+async function compileAndRunCode(payload = {}) {
+  const language = normalizeCodeLanguage(payload.language || detectCodeLanguageFromSource(payload.code, payload.fileName));
+  const profile = compileLanguageProfiles[language] || compileLanguageProfiles.javascript;
+  const fileName = safeCodeFileName(payload.fileName, language);
+  const saved = await saveCompileSource({ ...payload, language, fileName });
+  const runId = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  const runDir = resolveInsideCompileRoot(safeSegment(payload.projectId, "project"), ".runs", runId);
+  await mkdir(runDir, { recursive: true });
+  const sourcePath = resolveInsideCompileRoot(safeSegment(payload.projectId, "project"), safeSegment(saved.id), saved.fileName);
+  const runSourcePath = path.join(runDir, saved.fileName);
+  await cp(sourcePath, runSourcePath, { force: true });
+  const stdin = String(payload.stdin || "");
+  const terminal = [];
+  const append = (label, result) => {
+    terminal.push(terminalLine(label, [result.stdout, result.stderr].filter(Boolean).join("\n")));
+  };
+  const missing = async (tools) => {
+    const found = {};
+    for (const tool of tools) found[tool] = await findTool(tool);
+    const missingTools = tools.filter((tool) => !found[tool]);
+    return { found, missingTools };
+  };
+
+  if (language === "html") {
+    const openTags = (String(payload.code || "").match(/<([a-z][\w:-]*)\b[^>]*>/gi) || []).length;
+    const closeTags = (String(payload.code || "").match(/<\/([a-z][\w:-]*)>/gi) || []).length;
+    const ok = openTags >= closeTags;
+    return {
+      ok,
+      language,
+      saved,
+      terminal: [
+        "HTML validation pass",
+        ok ? "No obvious tag-balance issue was detected." : "The file may have more closing tags than opening tags.",
+        `Saved source: ${saved.sourcePath}`
+      ].join("\n")
+    };
+  }
+
+  const stdinOptions = stdin ? { input: stdin } : {};
+  let ok = false;
+
+  if (language === "javascript") {
+    const node = await findTool("node");
+    if (!node) return { ok: false, language, saved, terminal: "Node.js was not found. Install Node.js to run JavaScript." };
+    const check = await runProcess(node, ["--check", runSourcePath], { cwd: runDir, timeoutMs: 15000 });
+    append(`${path.basename(node)} --check ${saved.fileName}`, check);
+    if (check.ok) {
+      const run = await runProcess(node, [runSourcePath], { cwd: runDir, timeoutMs: 20000, ...stdinOptions });
+      append(`${path.basename(node)} ${saved.fileName}`, run);
+      ok = run.ok;
+    }
+  } else if (language === "python") {
+    const python = await findTool("python");
+    if (!python) return { ok: false, language, saved, terminal: "Python was not found. Install Python to run Python code." };
+    const check = await runProcess(python, ["-m", "py_compile", runSourcePath], { cwd: runDir, timeoutMs: 15000 });
+    append(`${path.basename(python)} -m py_compile ${saved.fileName}`, check);
+    if (check.ok) {
+      const run = await runProcess(python, [runSourcePath], { cwd: runDir, timeoutMs: 20000, ...stdinOptions });
+      append(`${path.basename(python)} ${saved.fileName}`, run);
+      ok = run.ok;
+    }
+  } else if (language === "c" || language === "cpp") {
+    const toolName = language === "cpp" ? "g++" : "gcc";
+    const { found, missingTools } = await missing([toolName]);
+    if (missingTools.length) {
+      return { ok: false, language, saved, terminal: `${profile.label} compiler missing: ${missingTools.join(", ")}. Install WinLibs/MinGW or add it to PATH.` };
+    }
+    const output = path.join(runDir, "program.exe");
+    const args = [runSourcePath, "-o", output, language === "cpp" ? "-std=c++20" : "-std=c17", "-Wall", "-Wextra"];
+    const compile = await runProcess(found[toolName], args, { cwd: runDir, timeoutMs: 30000 });
+    append(`${path.basename(found[toolName])} ${args.slice(1).join(" ")}`, compile);
+    if (compile.ok) {
+      const toolPath = found[toolName];
+      const run = await runProcess(output, [], {
+        cwd: runDir,
+        timeoutMs: 20000,
+        env: { PATH: `${path.dirname(toolPath)}${path.delimiter}${process.env.PATH || ""}` },
+        ...stdinOptions
+      });
+      append("program.exe", run);
+      ok = run.ok;
+    }
+  } else if (language === "java") {
+    const { found, missingTools } = await missing(["javac", "java"]);
+    if (missingTools.length) {
+      return { ok: false, language, saved, terminal: `Java tools missing: ${missingTools.join(", ")}. Install a JDK or add it to PATH.` };
+    }
+    const className = javaMainClassName(payload.code, saved.fileName);
+    const javaPath = path.join(runDir, `${className}.java`);
+    if (path.basename(runSourcePath) !== `${className}.java`) await writeFile(javaPath, String(payload.code || ""), "utf8");
+    const compile = await runProcess(found.javac, [javaPath], { cwd: runDir, timeoutMs: 30000 });
+    append(`${path.basename(found.javac)} ${path.basename(javaPath)}`, compile);
+    if (compile.ok) {
+      const run = await runProcess(found.java, ["-cp", runDir, className], { cwd: runDir, timeoutMs: 20000, ...stdinOptions });
+      append(`${path.basename(found.java)} ${className}`, run);
+      ok = run.ok;
+    }
+  } else if (language === "systemverilog") {
+    const { found, missingTools } = await missing(["iverilog", "vvp"]);
+    if (missingTools.length) {
+      return { ok: false, language, saved, terminal: `SystemVerilog tools missing: ${missingTools.join(", ")}. Install Icarus Verilog and add iverilog/vvp to PATH.` };
+    }
+    const output = path.join(runDir, "simulation.vvp");
+    const compile = await runProcess(found.iverilog, ["-g2012", "-o", output, runSourcePath], { cwd: runDir, timeoutMs: 30000 });
+    append(`${path.basename(found.iverilog)} -g2012`, compile);
+    if (compile.ok) {
+      const run = await runProcess(found.vvp, [output], { cwd: runDir, timeoutMs: 20000 });
+      append(`${path.basename(found.vvp)} simulation.vvp`, run);
+      ok = run.ok;
+    }
+  } else if (language === "ltspice") {
+    const ltspice = await findTool("ltspice");
+    if (!ltspice) {
+      return { ok: false, language, saved, terminal: "LTspice executable was not found. Install LTspice or set LTSPICE_EXE to the executable path." };
+    }
+    const run = await runProcess(ltspice, ["-b", runSourcePath], { cwd: runDir, timeoutMs: 45000 });
+    append(`${path.basename(ltspice)} -b ${saved.fileName}`, run);
+    const logPath = runSourcePath.replace(/\.[^.]+$/, ".log");
+    if (await pathExists(logPath)) terminal.push(await readFile(logPath, "utf8"));
+    ok = run.ok;
+  }
+
+  return {
+    ok,
+    language,
+    saved,
+    terminal: terminal.join("\n\n").trim() || "No compiler output was returned."
+  };
+}
+
+async function installCompilerTools(language = "") {
+  const lang = normalizeCodeLanguage(language);
+  const profile = compileLanguageProfiles[lang] || compileLanguageProfiles.javascript;
+  if (!profile.winget?.length) {
+    return {
+      ok: false,
+      language: lang,
+      terminal: `${profile.label} does not have an automatic Winget compiler install configured. Install the required tools manually, then restart the builder.`
+    };
+  }
+  const winget = await findTool("winget") || "winget";
+  const terminal = [];
+  let ok = true;
+  for (const packageId of profile.winget) {
+    const args = [
+      "install",
+      "--source",
+      "winget",
+      "--accept-source-agreements",
+      "--accept-package-agreements",
+      "--silent",
+      "--id",
+      packageId,
+      "--exact"
+    ];
+    const result = await runProcess(winget, args, { cwd: root, timeoutMs: 600000 });
+    terminal.push(terminalLine(`winget ${args.join(" ")}`, [result.stdout, result.stderr].filter(Boolean).join("\n")));
+    ok = ok && result.ok;
+  }
+  return { ok, language: lang, terminal: terminal.join("\n\n"), tools: await compileToolStatus() };
 }
 
 function sourceLooksTextual(source = {}) {
@@ -576,6 +1078,15 @@ function resolveInsidePortfolioRoot(...segments) {
   const relative = path.relative(portfolioRoot, target);
   if (relative.startsWith("..") || path.isAbsolute(relative)) {
     throw new Error("Resolved path is outside the portfolio workspace.");
+  }
+  return target;
+}
+
+function resolveInsideCompileRoot(...segments) {
+  const target = path.resolve(compileRoot, ...segments);
+  const relative = path.relative(compileRoot, target);
+  if (relative.startsWith("..") || path.isAbsolute(relative)) {
+    throw new Error("Resolved path is outside the compile workspace.");
   }
   return target;
 }
@@ -2103,6 +2614,15 @@ async function handleApi(request, response, url) {
     return true;
   }
 
+  if (request.method === "GET" && url.pathname === "/api/code/tools") {
+    if (!isLocalRequest(request)) {
+      sendJson(response, 403, { error: "Compiler details are only available from this computer." });
+      return true;
+    }
+    sendJson(response, 200, { ok: true, tools: await compileToolStatus() });
+    return true;
+  }
+
   if (request.method !== "POST") return false;
 
   if (!isLocalRequest(request)) {
@@ -2112,6 +2632,54 @@ async function handleApi(request, response, url) {
 
   if (url.pathname === "/api/portfolio-ai") {
     await handlePortfolioAi(request, response);
+    return true;
+  }
+
+  if (url.pathname === "/api/code/beautify") {
+    try {
+      const body = await readRequestJson(request);
+      const language = normalizeCodeLanguage(body.language || detectCodeLanguageFromSource(body.code, body.fileName));
+      sendJson(response, 200, {
+        ok: true,
+        language,
+        code: beautifyCode(body.code || "", language)
+      });
+    } catch (error) {
+      sendJson(response, 400, { ok: false, error: error.message || "Code could not be beautified." });
+    }
+    return true;
+  }
+
+  if (url.pathname === "/api/code/save") {
+    try {
+      const body = await readRequestJson(request);
+      const saved = await saveCompileSource(body);
+      sendJson(response, 200, { ok: true, saved });
+    } catch (error) {
+      sendJson(response, 400, { ok: false, error: error.message || "Code could not be saved." });
+    }
+    return true;
+  }
+
+  if (url.pathname === "/api/code/compile") {
+    try {
+      const body = await readRequestJson(request);
+      const result = await compileAndRunCode(body);
+      sendJson(response, 200, { ok: result.ok, result });
+    } catch (error) {
+      sendJson(response, 400, { ok: false, error: error.message || "Code could not be compiled.", result: null });
+    }
+    return true;
+  }
+
+  if (url.pathname === "/api/code/install-tools") {
+    try {
+      const body = await readRequestJson(request);
+      const result = await installCompilerTools(body.language || "");
+      sendJson(response, 200, result);
+    } catch (error) {
+      sendJson(response, 400, { ok: false, error: error.message || "Compiler tools could not be installed." });
+    }
     return true;
   }
 
