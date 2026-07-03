@@ -159,7 +159,12 @@ const compileToolCandidates = {
     "java",
     "C:\\Program Files\\Eclipse Adoptium\\jdk-21.0.11.10-hotspot\\bin\\java.exe"
   ],
-  node: [process.execPath, "node"],
+  node: [
+    /(?:^|[\\/])node(?:\.exe)?$/i.test(process.execPath || "") ? process.execPath : "",
+    "node",
+    "C:\\Program Files\\nodejs\\node.exe",
+    process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, "Programs", "nodejs", "node.exe") : ""
+  ],
   python: [process.env.PYTHON, "python", "py"],
   iverilog: ["iverilog", "C:\\iverilog\\bin\\iverilog.exe"],
   vvp: ["vvp", "C:\\iverilog\\bin\\vvp.exe"],
