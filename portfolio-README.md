@@ -35,6 +35,27 @@ Manual edits inside this folder can be overwritten by the next publish. Keep las
 
 If the website uses the AI assistant, its backend belongs to the Cloudflare Worker in `cloudflare/`. That Worker is part of the website runtime. It is separate from the Windows builder application.
 
+The public page should include:
+
+```html
+<meta name="portfolio-ai-endpoint" content="/api/portfolio-ai" />
+```
+
+For `mauriceotieno.com`, deploy the Worker from `cloudflare/` and keep DNS proxied through Cloudflare so the route `mauriceotieno.com/api/portfolio-ai` reaches the Worker. Configure the Worker secret with:
+
+```powershell
+npx wrangler secret put OPENAI_API_KEY
+```
+
+Then deploy:
+
+```powershell
+cd cloudflare
+npx wrangler deploy
+```
+
+If the AI widget falls back to local/canned answers on the public site, check three things first: the meta endpoint exists in `index.html`, the Cloudflare Worker route exists for `/api/portfolio-ai`, and the Worker has the `OPENAI_API_KEY` secret.
+
 ## Public Safety
 
 Only public files should be stored here. Before publishing, confirm that resumes, documents, images, project files, source links, and downloadable artifacts are intended for public viewing.
