@@ -63,6 +63,21 @@ function extractOpenAiText(data = {}) {
   return parts.join("\n").trim();
 }
 
+function extractWorkersAiText(data = {}) {
+  if (typeof data.response === "string" && data.response.trim()) return data.response.trim();
+  if (typeof data.result?.response === "string" && data.result.response.trim()) return data.result.response.trim();
+  if (typeof data.output_text === "string" && data.output_text.trim()) return data.output_text.trim();
+  if (Array.isArray(data.output)) {
+    return data.output.map((item) => {
+      if (typeof item === "string") return item;
+      if (typeof item?.text === "string") return item.text;
+      if (typeof item?.content === "string") return item.content;
+      return "";
+    }).filter(Boolean).join("\n").trim();
+  }
+  return "";
+}
+
 function buildInstructions() {
   return [
     "You are the AI assistant for a public engineering portfolio website.",
@@ -75,6 +90,18 @@ function buildInstructions() {
     "If a requested detail is not in the context, say what is missing and give a useful next step.",
     "Keep answers concise, readable, and specific. Use bullets when they make the answer easier to scan."
   ].join("\n");
+}
+
+function buildMessages(body = {}) {
+  const messages = [{ role: "system", content: buildInstructions() }];
+  for (const item of cleanConversation(body.conversation)) {
+    messages.push({
+      role: item.role === "assistant" ? "assistant" : "user",
+      content: item.content
+    });
+  }
+  messages.push({ role: "user", content: buildUserPrompt(body) });
+  return messages;
 }
 
 function buildUserPrompt(body = {}) {
@@ -131,6 +158,27 @@ async function callOpenAi(body, env) {
   };
 }
 
+async function callWorkersAi(body, env) {
+  if (!env.AI || typeof env.AI.run !== "function") {
+    return {
+      ok: false,
+      status: 503,
+      error: "Cloudflare Workers AI binding is not available for this Worker."
+    };
+  }
+
+  const model = env.WORKERS_AI_MODEL || "@cf/meta/llama-3.2-3b-instruct";
+  const data = await env.AI.run(model, {
+    messages: buildMessages(body),
+    max_tokens: Number(env.OPENAI_MAX_OUTPUT_TOKENS || 1000)
+  });
+  return {
+    ok: true,
+    answer: extractWorkersAiText(data),
+    model
+  };
+}
+
 export default {
   async fetch(request, env) {
     const cors = corsHeaders(request, env);
@@ -139,12 +187,6 @@ export default {
     const url = new URL(request.url);
     if (request.method !== "POST" || !url.pathname.endsWith("/api/portfolio-ai")) {
       return json({ error: "Portfolio AI endpoint not found." }, 404, cors);
-    }
-
-    if (!env.OPENAI_API_KEY) {
-      return json({
-        error: "Portfolio AI backend is deployed, but OPENAI_API_KEY is not configured in Cloudflare Worker secrets."
-      }, 503, cors);
     }
 
     let body = {};
@@ -158,11 +200,14 @@ export default {
     if (!question) return json({ error: "Question is required." }, 400, cors);
 
     try {
-      const result = await callOpenAi({ ...body, question }, env);
+      const result = env.OPENAI_API_KEY
+        ? await callOpenAi({ ...body, question }, env)
+        : await callWorkersAi({ ...body, question }, env);
       if (!result.ok) return json({ error: result.error }, result.status || 502, cors);
       return json({
         answer: result.answer || "I could not generate a useful answer from the available context.",
         model: result.model,
+        provider: env.OPENAI_API_KEY ? "openai" : "cloudflare-workers-ai",
         usedWebSearch: false
       }, 200, cors);
     } catch (error) {
