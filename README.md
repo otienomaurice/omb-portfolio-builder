@@ -196,6 +196,7 @@ Use the workflow in [BRANCHING.md](BRANCHING.md):
 | `codex/project-code-compile-workspace` | Adds a project-local Compile Code workspace with source import, beautify, compiler detection, save, and terminal-style compile/run output. | `codex/appdata-workspace-root` | `development` | Active |
 | `codex/fix-public-ai-worker-endpoint` | Adds the missing Cloudflare Worker backend files and wires the generated website to `/api/portfolio-ai`. | `development` | `development` | Active |
 | `codex/fix-ai-worker-cloudflare-fallback` | Lets the website AI answer through Cloudflare Workers AI when no OpenAI Worker secret is configured. | `development` | `development` | Active |
+| `codex/bump-builder-version-0.2.26` | Bumps the builder release version so the next approved `development` to `main` release creates a fresh installer tag. | `development` | `development` | Active |
 
 ## Uninstall
 
