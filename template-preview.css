@@ -2004,6 +2004,23 @@ body.rich-image-dragging * {
   background: #b9e9f8;
 }
 
+.compile-output-button,
+.compile-command-icon {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.compile-command-icon {
+  min-width: 24px;
+  justify-content: center;
+  border-radius: 5px;
+  background: #0f172a;
+  color: #e5edf6;
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 0.78rem;
+}
+
 .compile-code-command-bar .danger-icon:hover {
   border-color: #dc2626;
   background: #fee2e2;
@@ -2149,6 +2166,22 @@ body.rich-image-dragging * {
   gap: 10px;
 }
 
+.compile-terminal-title,
+.compile-terminal-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.terminal-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #22c55e;
+  box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.12);
+}
+
 .compile-terminal-heading button {
   min-height: 28px;
   padding: 5px 8px;
@@ -2174,6 +2207,18 @@ body.rich-image-dragging * {
 .compile-terminal {
   min-height: 150px;
   white-space: pre-wrap;
+  outline: none;
+  border-top: 1px solid rgba(148, 163, 184, 0.12);
+}
+
+.compile-terminal::selection {
+  background: #38bdf8;
+  color: #07111f;
+}
+
+.compile-terminal-panel.is-focused {
+  border-color: #0284c7;
+  box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.18), 0 16px 40px rgba(15, 23, 42, 0.12);
 }
 
 .compile-messages-log {
@@ -5199,6 +5244,11 @@ body[data-builder-theme="dark"] .compile-append-actions button:hover,
 body[data-builder-theme="dark"] .compile-terminal-heading button:hover {
   border-color: #67e8f9;
   background: #0e7490;
+}
+
+body[data-builder-theme="dark"] .compile-terminal-panel.is-focused {
+  border-color: #67e8f9;
+  box-shadow: 0 0 0 3px rgba(103, 232, 249, 0.2), 0 18px 44px rgba(0, 0, 0, 0.32);
 }
 
 body[data-builder-theme="dark"] .compile-append-panel > div:first-child span,
