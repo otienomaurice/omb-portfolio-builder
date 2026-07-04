@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 import subprocess
 import textwrap
 from pathlib import Path
@@ -693,6 +694,175 @@ SYSTEM_LAYER_SECTIONS = [
     ),
 ]
 
+FLOW_WALKTHROUGHS = [
+    (
+        "Builder Startup Flow",
+        "electron-runtime",
+        [
+            ("User action", "The user double-clicks OMB Portfolio Builder.exe or a desktop shortcut that points to it."),
+            ("Windows loads Electron", "The packaged executable starts the Electron runtime and reads package.json to find main.cjs."),
+            ("main.cjs boots", "boot waits for app readiness, resolves workspace folders, starts the backend, and creates the BrowserWindow."),
+            ("server.mjs starts", "The local backend binds to a free localhost port and exposes local /api routes."),
+            ("Builder HTML loads", "The BrowserWindow opens template-preview.html from the local backend origin."),
+            ("Frontend initializes", "template-preview.js loads catalog/templates, restores local data, prepares rich editors, and draws the builder screen."),
+            ("User sees app", "At this point the app behaves like a desktop app even though its UI is web technology."),
+        ],
+        "If startup fails, separate the problem into executable launch, Electron main process, backend server, port binding, and frontend load.",
+    ),
+    (
+        "Edit, Save, Parse, Preview Flow",
+        "builder-to-site-files",
+        [
+            ("User edits", "The owner types text, adds images, creates projects, attaches files, or changes appearance in the builder."),
+            ("Frontend state changes", "template-preview.js updates in-memory builder/project state and marks affected content dirty."),
+            ("Autosave or explicit save", "Save project, Save all sections, or Save draft sends data to server.mjs."),
+            ("Backend writes local draft", "server.mjs writes local JSON and asset files into the managed builder workspace."),
+            ("Parser normalizes", "The parser removes builder-only controls, decides what is public, and creates clean project/section data."),
+            ("Preview renders", "The builder reads parsed output and renders a preview that should match the public website."),
+            ("Publish mirror updates", "Generated public-safe files are copied into the portfolio publish workspace when ready."),
+        ],
+        "The key idea is that raw editing data and public parsed data are different. The parser is the boundary.",
+    ),
+    (
+        "Apply To Site Flow",
+        "release-pipeline",
+        [
+            ("Save requirement", "The builder should require Save draft before Apply to site so local data and parsed output are current."),
+            ("Target check", "server.mjs reads the publishing target, branch, repository URL, custom domain, and cached auth state."),
+            ("Authorization check", "If a fresh scoped authorization cache exists, it is reused; otherwise GitHub write access is verified."),
+            ("Sync or stage", "The publish mirror is synchronized with generated website files."),
+            ("Git status", "Git determines which public files changed."),
+            ("Commit", "The builder creates a commit with the changed website files."),
+            ("Push", "Git pushes to the target repository branch."),
+            ("Host serves", "GitHub Pages or another host serves the updated static files."),
+        ],
+        "Publishing is intentionally stricter than saving. Saving is local. Apply to site changes the public website.",
+    ),
+    (
+        "Compile Code Flow",
+        "compile-code-flow",
+        [
+            ("Create/import source", "The user creates a compile source file or imports one from disk."),
+            ("Choose language", "The builder stores a language profile such as C, C++, Java, JavaScript, Python, Verilog, or SystemVerilog."),
+            ("Save source", "server.mjs writes source into the compile-code workspace."),
+            ("Detect tools", "server.mjs finds compiler/runtime tools and caches their paths."),
+            ("Build cache key", "The backend hashes source, language, compiler, runtime, and relevant flags."),
+            ("Compile if needed", "If a matching artifact exists and Rebuild was not requested, the builder reuses it."),
+            ("Run", "The runtime executes the binary/class/simulation/script and captures stdout/stderr."),
+            ("Show output", "template-preview.js displays terminal text immediately and records messages in the log."),
+        ],
+        "Compile Code has two purposes: prove code runs locally and optionally append clean source evidence into a project section.",
+    ),
+    (
+        "AI Chat Flow",
+        "cloudflare-ai-flow",
+        [
+            ("Visitor asks", "A recruiter or visitor types a question in the portfolio AI panel."),
+            ("Frontend classifies context", "script.js collects available site context and sends the question to the configured endpoint."),
+            ("Worker receives", "cloudflare/portfolio-ai-worker.js receives the POST request."),
+            ("Secrets stay hidden", "The Worker reads API keys from Cloudflare environment secrets, not from browser code."),
+            ("Context is prepared", "Portfolio data, project snippets, public files, or public links can be included where useful."),
+            ("Model answers", "The Worker calls OpenAI or Cloudflare Worker AI and receives a response."),
+            ("Website renders answer", "script.js displays the answer in the chat, with related links only when relevant."),
+        ],
+        "The AI layer should not be a generic link sprinkler. It should answer the question first, then cite relevant portfolio locations when they match the conversation.",
+    ),
+    (
+        "Installer Update Flow",
+        "release-pipeline",
+        [
+            ("App checks release", "The builder checks GitHub Releases for a newer version."),
+            ("User chooses Update", "The app starts the update handoff instead of acting like a fresh install."),
+            ("Installer downloads", "server.mjs downloads the latest installer to a safe update folder."),
+            ("App closes", "Electron emits the update-started event and quits so files can be replaced."),
+            ("Updater script runs", "A detached PowerShell/cmd handoff runs the installer even after the app exits."),
+            ("Installer detects current install", "NSIS finds the existing AppData install and updates it in place."),
+            ("App reopens", "The updater waits for the executable and relaunches the updated app."),
+        ],
+        "Update problems usually mean one of three things: the old app did not close, the installer treated it as a new install, or the relaunch handoff failed.",
+    ),
+]
+
+
+DATA_CONTRACTS = [
+    (
+        "Compile Code Request",
+        "Sent by template-preview.js to server.mjs when saving, beautifying, compiling, or running code.",
+        "{\n  \"projectId\": \"project-id\",\n  \"fileId\": \"source-id\",\n  \"title\": \"Main program\",\n  \"fileName\": \"main.cpp\",\n  \"language\": \"cpp\",\n  \"code\": \"#include <iostream>\\nint main(){...}\",\n  \"stdin\": \"optional input\",\n  \"forceRebuild\": false\n}",
+        "The backend must validate language, safe file name, safe project folder, and whether rebuild is requested.",
+    ),
+    (
+        "Compile Code Response",
+        "Returned by server.mjs after compile/run.",
+        "{\n  \"ok\": true,\n  \"result\": {\n    \"language\": \"cpp\",\n    \"terminal\": \"C++ binary cache hit...\\nProgram output...\",\n    \"saved\": { \"sourcePath\": \"...\", \"savedAt\": \"...\" }\n  }\n}",
+        "template-preview.js stores result.terminal in file.lastResult and workspace.terminal, then repaints the terminal panel.",
+    ),
+    (
+        "Publish Target",
+        "Stored locally so the builder knows which repository can receive generated website files.",
+        "{\n  \"remote\": \"https://github.com/user/user.github.io.git\",\n  \"branch\": \"main\",\n  \"customDomain\": \"example.com\",\n  \"authorizationChecked\": true,\n  \"expiresAt\": \"2026-07-05T...Z\"\n}",
+        "This data is local control data, not public portfolio content. Authentication must be verified before writing to the website target.",
+    ),
+    (
+        "Publishing Authorization Cache",
+        "Written to .omb-publish-session.json after successful verification.",
+        "{\n  \"remote\": \"https://github.com/...\",\n  \"branch\": \"main\",\n  \"repository\": \"owner/repo\",\n  \"scope\": \"machine/user scope\",\n  \"checkedAt\": \"...\",\n  \"expiresAt\": \"...\",\n  \"successHistory\": [\"...\"]\n}",
+        "Freshness requires same remote, branch, repository, scope, and valid expiration time.",
+    ),
+    (
+        "Project Catalog Item",
+        "Public website data consumed by script.js from projects.json.",
+        "{\n  \"id\": \"vco-project\",\n  \"title\": \"Voltage Controlled Oscillator\",\n  \"category\": \"Analog and Mixed Signal\",\n  \"overview\": { \"blocks\": [...] },\n  \"sections\": [...],\n  \"assets\": [...]\n}",
+        "The public catalog should contain only content intended for visitors. Builder-only controls and private fields should not appear.",
+    ),
+    (
+        "Rich Text Block",
+        "Internal content unit used by builder editors and parser rendering.",
+        "{\n  \"type\": \"paragraph | image | formula | code | link\",\n  \"text\": \"optional text\",\n  \"html\": \"optional formatted html\",\n  \"src\": \"optional asset path\",\n  \"language\": \"optional code language\"\n}",
+        "Blocks let the parser preserve text formatting, hard line breaks, images, formulas, and code without treating everything as plain text.",
+    ),
+    (
+        "AI Chat Request",
+        "Sent by the public website to the AI endpoint.",
+        "{\n  \"question\": \"What embedded projects does Maurice have?\",\n  \"history\": [...],\n  \"portfolioContext\": {...}\n}",
+        "The frontend should send enough context for a good answer, but secrets and private files must stay out of the browser.",
+    ),
+    (
+        "AI Chat Response",
+        "Returned by Cloudflare Worker or local AI handler.",
+        "{\n  \"answer\": \"Maurice has embedded work involving...\",\n  \"links\": [\n    { \"label\": \"PWM VCO\", \"href\": \"#projects\" }\n  ]\n}",
+        "The answer should be conversational first. Links should be specific to the prompt, not generic portfolio shortcuts.",
+    ),
+]
+
+
+DEEP_DETAIL_TOPICS = [
+    (
+        "How To Read The Repository Like A Map",
+        "Start with package.json to learn what the app is and what scripts exist. Then open main.cjs to understand desktop startup. Then open server.mjs to understand local backend capabilities. Then open template-preview.html/css/js to understand the builder UI. Finally open index.html/styles.css/script.js/projects.json to understand the public website.",
+    ),
+    (
+        "How Files Communicate Without Directly Importing Each Other",
+        "Some files communicate by imports or requires, but many communicate through files and HTTP requests. template-preview.js does not directly edit server internals; it calls /api endpoints. server.mjs writes projects.json. script.js later reads projects.json. This loose coupling keeps the public site simpler.",
+    ),
+    (
+        "How To Debug A Feature From Button To File",
+        "Find the button text in template-preview.html or generated template-preview.js markup. Find the data-* attribute on the button. Search template-preview.js for that dataset key. Follow the handler to the fetch call or state update. If it calls /api, find that route in server.mjs. Then inspect what file is read or written.",
+    ),
+    (
+        "Why Generated Files Need Discipline",
+        "A generated file can be overwritten. For example, projects.json should come from the parser, not from hand edits. If you hand edit generated output, the builder may replace your changes during the next Save draft or Apply to site.",
+    ),
+    (
+        "How To Think About Errors",
+        "Errors usually name the layer that failed. A JavaScript console error points toward frontend code. A terminal compile error points toward compiler/tool/source code. A Git error points toward branch, remote, credentials, or repository state. A 404/500 from /api points toward route or backend logic.",
+    ),
+    (
+        "How To Decide Where A New Feature Belongs",
+        "If the feature changes what the user sees while editing, start in template-preview.js/css/html. If it writes files, runs commands, authenticates, or publishes, start in server.mjs. If it changes recruiter-facing behavior, start in script.js/styles.css/index.html. If it changes install/update, start in package.json and build/installer.nsh.",
+    ),
+]
+
 
 def tracked_files() -> list[str]:
     result = subprocess.run(["git", "ls-files"], cwd=REPO, text=True, capture_output=True, check=True)
@@ -990,6 +1160,196 @@ def add_entry_points(doc: Document) -> None:
         "If you are debugging releases, start with .github/workflows/build-windows-builder.yml.",
     ])
     doc.add_page_break()
+
+
+def add_flow_walkthroughs(doc: Document, diagrams: dict[str, Path]) -> None:
+    for title, diagram_name, steps, debug_note in FLOW_WALKTHROUGHS:
+        doc.add_heading(f"Detailed Walkthrough: {title}", level=1)
+        add_diagram(doc, diagrams[diagram_name], f"Context diagram for {title}.")
+        doc.add_paragraph("This walkthrough follows the real direction of work through the system. Read it slowly: each line is one handoff from one layer to another.")
+        add_table(doc, steps)
+        doc.add_heading("Debug note", level=2)
+        doc.add_paragraph(debug_note)
+        doc.add_page_break()
+
+
+def add_data_contracts(doc: Document) -> None:
+    for title, purpose, example, note in DATA_CONTRACTS:
+        doc.add_heading(f"Data Contract: {title}", level=1)
+        doc.add_paragraph(purpose)
+        doc.add_heading("Example shape", level=2)
+        add_code(doc, example)
+        doc.add_heading("How to read this", level=2)
+        doc.add_paragraph(note)
+        doc.add_heading("Why contracts matter", level=2)
+        doc.add_paragraph("A data contract is an agreement between two pieces of software. If the frontend sends one shape and the backend expects another shape, the feature breaks even if both files are individually valid code.")
+        doc.add_page_break()
+
+
+def endpoint_purpose(endpoint: str) -> str:
+    if "code/compile" in endpoint:
+        return "Compiles or runs a source file and returns terminal output."
+    if "code/save" in endpoint:
+        return "Saves source code into the local compile workspace."
+    if "code/beautify" in endpoint:
+        return "Formats source code for cleaner display and editing."
+    if "code/tools" in endpoint:
+        return "Checks compiler/runtime availability."
+    if "code/install" in endpoint:
+        return "Attempts to install missing compiler tools."
+    if "publish-target" in endpoint:
+        return "Reads or writes the Git publishing target and authorization state."
+    if "publish" in endpoint:
+        return "Publishes generated website files to the target repository."
+    if "catalog" in endpoint:
+        return "Loads project/catalog data for the builder."
+    if "templates" in endpoint:
+        return "Loads appearance template definitions."
+    if "app-update" in endpoint:
+        return "Checks or starts builder app update behavior."
+    if "security-report" in endpoint:
+        return "Returns security/download/auth reporting for the builder."
+    if "portfolio-ai" in endpoint:
+        return "Handles AI assistant questions."
+    if "system-check" in endpoint:
+        return "Checks local tool/system readiness."
+    return "Project-specific local API endpoint. Inspect server.mjs and the fetch caller for exact behavior."
+
+
+def extract_api_endpoints() -> list[tuple[str, str, str]]:
+    endpoints: dict[tuple[str, str], int] = {}
+    for file_name in ["template-preview.js", "script.js", "server.mjs", "index.html"]:
+        path = REPO / file_name
+        if not path.exists():
+            continue
+        for line_no, line in enumerate(path.read_text(encoding="utf-8", errors="replace").splitlines(), start=1):
+            for match in re.findall(r"['\"](/api/[A-Za-z0-9_./-]+)", line):
+                clean = match.rstrip("/")
+                endpoints[(clean, file_name)] = min(line_no, endpoints.get((clean, file_name), line_no))
+    return [(endpoint, file_name, str(line_no)) for (endpoint, file_name), line_no in sorted(endpoints.items())]
+
+
+def add_api_endpoint_catalog(doc: Document) -> None:
+    endpoints = extract_api_endpoints()
+    doc.add_heading("API Endpoint Catalog", level=1)
+    doc.add_paragraph("This catalog is generated from strings found in the source files. It tells you which /api paths are used and where to start reading when a request fails.")
+    if not endpoints:
+        doc.add_paragraph("No /api endpoints were found by the scanner.")
+        doc.add_page_break()
+        return
+    rows = [(endpoint, f"Seen in {file_name} near line {line_no}. Purpose: {endpoint_purpose(endpoint)}") for endpoint, file_name, line_no in endpoints]
+    add_table(doc, rows)
+    doc.add_page_break()
+    for endpoint, file_name, line_no in endpoints:
+        doc.add_heading(f"API Detail: {endpoint}", level=1)
+        add_table(doc, [
+            ("Where seen", f"{file_name} near line {line_no}"),
+            ("Purpose", endpoint_purpose(endpoint)),
+            ("Frontend question", "Which button, form, or page action sends this request?"),
+            ("Backend question", "Which handler in server.mjs receives this path and what files/tools does it touch?"),
+            ("Debugging", "Check browser network status, response JSON, server logs, and whether stale cache was avoided with no-store or a timestamp."),
+        ])
+        doc.add_page_break()
+
+
+def function_purpose(file_name: str, function_name: str) -> str:
+    name = function_name.lower()
+    if name.startswith("render"):
+        return "Renders UI, markup, or display output."
+    if name.startswith("handle"):
+        return "Handles an event, request, command, or user action."
+    if name.startswith("update"):
+        return "Updates UI, state, cache, or stored data."
+    if name.startswith("save") or name.startswith("write") or name.startswith("store"):
+        return "Persists data to local state, disk, credentials, or browser storage."
+    if name.startswith("read") or name.startswith("load") or name.startswith("fetch"):
+        return "Loads data from disk, network, browser storage, or a service."
+    if "compile" in name or "compiler" in name:
+        return "Part of the Compile Code language/tool/build/run flow."
+    if "publish" in name or "git" in name or "remote" in name:
+        return "Part of publishing, Git, target repository, or authorization behavior."
+    if "auth" in name or "credential" in name or "access" in name:
+        return "Part of authentication, authorization, or credential checking."
+    if "cache" in name:
+        return "Reads, writes, or validates cached state."
+    if name.startswith("validate") or name.startswith("normalize") or name.startswith("safe") or name.startswith("sanitize"):
+        return "Validates or normalizes input so later code receives safe predictable values."
+    if name.startswith("create") or name.startswith("new") or name.startswith("build"):
+        return "Creates an object, UI structure, process, payload, or generated artifact."
+    if name.startswith("open") or name.startswith("close") or name.startswith("show") or name.startswith("hide"):
+        return "Controls a window, dialog, panel, menu, or visible state."
+    if name.startswith("sync"):
+        return "Keeps two places aligned, such as local data and target files."
+    if file_name == "main.cjs":
+        return "Part of Electron desktop startup, window control, workspace setup, menu behavior, or update handoff."
+    if file_name == "server.mjs":
+        return "Part of the local backend API, filesystem, compiler, Git, AI, update, or publish workflow."
+    if file_name == "template-preview.js":
+        return "Part of the private builder frontend and editing experience."
+    if file_name == "script.js":
+        return "Part of the public website runtime."
+    return "Named function in the repository. Inspect the surrounding lines to learn its exact inputs and outputs."
+
+
+def extract_functions() -> list[tuple[str, int, str, str]]:
+    function_rows: list[tuple[str, int, str, str]] = []
+    patterns = [
+        re.compile(r"^\s*(?:async\s+)?function\s+([A-Za-z_$][\w$]*)\s*\("),
+        re.compile(r"^\s*const\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?\([^=]*\)\s*=>"),
+        re.compile(r"^\s*const\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s+)?function\b"),
+    ]
+    for file_name in ["main.cjs", "server.mjs", "template-preview.js", "script.js"]:
+        path = REPO / file_name
+        if not path.exists():
+            continue
+        for line_no, line in enumerate(path.read_text(encoding="utf-8", errors="replace").splitlines(), start=1):
+            for pattern in patterns:
+                match = pattern.search(line)
+                if match:
+                    name = match.group(1)
+                    function_rows.append((file_name, line_no, name, function_purpose(file_name, name)))
+                    break
+    return function_rows
+
+
+def add_complete_function_inventory(doc: Document) -> None:
+    rows = extract_functions()
+    doc.add_heading("Generated Function Inventory", level=1)
+    doc.add_paragraph("This section is generated from the real source files. It does not replace reading the code, but it gives you a map of where functions live and what their names suggest they own.")
+    add_table(doc, [
+        ("Files scanned", "main.cjs, server.mjs, template-preview.js, script.js"),
+        ("Functions found", str(len(rows))),
+        ("How descriptions are made", "Descriptions are heuristic based on file name and function naming patterns. For exact behavior, inspect the source around the listed line."),
+    ])
+    doc.add_page_break()
+
+    by_file: dict[str, list[tuple[str, int, str, str]]] = {}
+    for row in rows:
+        by_file.setdefault(row[0], []).append(row)
+    for file_name, file_rows in by_file.items():
+        doc.add_heading(f"Function Inventory: {file_name}", level=1)
+        doc.add_paragraph(f"{file_name} contains {len(file_rows)} named functions discovered by the guide generator.")
+        chunk_size = 45
+        for index in range(0, len(file_rows), chunk_size):
+            chunk = file_rows[index:index + chunk_size]
+            add_table(doc, [(f"{name} (line {line_no})", purpose) for _, line_no, name, purpose in chunk])
+            if index + chunk_size < len(file_rows):
+                doc.add_paragraph("Continued on the next table.")
+        doc.add_page_break()
+
+
+def add_deep_detail_topics(doc: Document) -> None:
+    for title, body in DEEP_DETAIL_TOPICS:
+        doc.add_heading(f"Deep Detail: {title}", level=1)
+        doc.add_paragraph(body)
+        doc.add_heading("How to use this detail", level=2)
+        bullets(doc, [
+            "Start with the user-visible behavior.",
+            "Find the file that owns that behavior.",
+            "Trace the data handoff to the next file, endpoint, cache, or generated artifact.",
+            "Change the smallest responsible piece and test the flow end to end.",
+        ])
+        doc.add_page_break()
 
 
 def add_programming_syntax(doc: Document) -> None:
@@ -1362,15 +1722,20 @@ def main() -> None:
     add_reading_map(doc)
     add_entry_points(doc)
     add_architecture(doc, diagrams)
+    add_flow_walkthroughs(doc, diagrams)
     add_file_communication(doc, diagrams)
     add_tool_build_map(doc, diagrams)
     add_software_decisions(doc)
     add_system_layers(doc, diagrams)
+    add_data_contracts(doc)
+    add_api_endpoint_catalog(doc)
     add_programming_syntax(doc)
     add_shell_syntax(doc)
     add_caching_methods(doc, diagrams)
     add_installer_details(doc, diagrams)
     add_function_maps(doc, diagrams)
+    add_complete_function_inventory(doc)
+    add_deep_detail_topics(doc)
     add_workflows(doc, files, diagrams)
     add_files(doc, files)
     add_commands(doc)
