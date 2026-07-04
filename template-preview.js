@@ -6948,6 +6948,48 @@ function updateCompileMessagesPanel(project) {
   log.innerHTML = renderCompileMessages(workspace);
 }
 
+function showCompileOutput(project, file = activeCompileFile(project)) {
+  updateCompileTerminalPanel(project, file);
+  const panel = sectionContent.querySelector("[data-compile-terminal-panel]");
+  const terminal = sectionContent.querySelector("[data-compile-terminal]");
+  if (!panel || !terminal) return;
+  panel.classList.add("is-focused");
+  panel.scrollIntoView({ behavior: "smooth", block: "center" });
+  requestAnimationFrame(() => {
+    terminal.focus?.({ preventScroll: true });
+    terminal.scrollTop = terminal.scrollHeight;
+  });
+  window.setTimeout(() => panel.classList.remove("is-focused"), 1400);
+}
+
+async function copyCompileOutput(project, file = activeCompileFile(project)) {
+  const workspace = ensureCompileCode(project);
+  const text = file?.lastResult?.terminal || workspace?.terminal || compileTerminalStatus || "";
+  if (!text.trim()) {
+    addCompileMessage(project, "There is no terminal output to copy yet.", "warning");
+    return;
+  }
+  try {
+    await navigator.clipboard.writeText(text);
+    addCompileMessage(project, "Terminal output copied to the clipboard.", "success");
+    setStatus("Terminal output copied.");
+  } catch {
+    addCompileMessage(project, "Terminal output could not be copied by this browser.", "warning");
+    setStatus("Terminal output could not be copied.");
+  }
+}
+
+function clearCompileOutput(project, file = activeCompileFile(project)) {
+  const workspace = ensureCompileCode(project);
+  if (file?.lastResult) file.lastResult.terminal = "";
+  if (workspace) workspace.terminal = "";
+  compileTerminalStatus = "";
+  updateCompileTerminalPanel(project, file);
+  addCompileMessage(project, "Terminal output cleared.", "info");
+  setStatus("Terminal output cleared.");
+  scheduleAutosave();
+}
+
 function visibleEditorForCompileDestination(destination) {
   if (!destination) return null;
   const editors = [...document.querySelectorAll("[data-rich-editor]")];
@@ -7048,6 +7090,7 @@ function renderCompileCodeSection(project) {
             <button type="button" data-compile-beautify>Beautify</button>
             <button type="button" data-compile-run>Compile / run</button>
             <button type="button" data-compile-rebuild>Rebuild / run</button>
+            <button class="compile-output-button" type="button" data-compile-show-output title="Open the terminal output for this source"><span class="compile-command-icon" aria-hidden="true">&gt;_</span><span>Show output</span></button>
             <button type="button" data-compile-install>Install tools</button>
             <button class="danger-icon" type="button" data-compile-delete>Delete source</button>
           </div>
@@ -7071,11 +7114,15 @@ function renderCompileCodeSection(project) {
             <p>Add a source file for C, C++, SystemVerilog, LTspice, Java, JavaScript, Python, or HTML.</p>
           </div>
         `}
-        <section class="compile-terminal-panel" aria-label="Compiler terminal output">
+        <section class="compile-terminal-panel" data-compile-terminal-panel aria-label="Compiler terminal output">
           <div class="compile-terminal-heading">
-            <span>Terminal output</span>
+            <span class="compile-terminal-title"><span aria-hidden="true" class="terminal-dot"></span> OMB Local Terminal</span>
+            <span class="compile-terminal-controls">
+              <button type="button" data-compile-copy-output>Copy output</button>
+              <button type="button" data-compile-clear-output>Clear output</button>
+            </span>
           </div>
-          <pre class="compile-terminal" data-compile-terminal>${escapeHtml(terminal)}</pre>
+          <pre class="compile-terminal" data-compile-terminal tabindex="0" role="log" aria-live="polite">${escapeHtml(terminal)}</pre>
         </section>
         <section class="compile-messages-panel" aria-label="Compile messages log">
           <div class="compile-terminal-heading">
@@ -10044,6 +10091,21 @@ sectionContent.addEventListener("click", async (event) => {
   }
   if (hasDataset("compileRebuild")) {
     await compileActiveFile(project, compileFile, { forceRebuild: true });
+    return;
+  }
+  if (hasDataset("compileShowOutput")) {
+    showCompileOutput(project, compileFile);
+    addCompileMessage(project, `Displayed terminal output for ${compileFile?.fileName || "the active source"}.`, "info");
+    return;
+  }
+  if (hasDataset("compileCopyOutput")) {
+    await copyCompileOutput(project, compileFile);
+    updateCompileMessagesPanel(project);
+    return;
+  }
+  if (hasDataset("compileClearOutput")) {
+    clearCompileOutput(project, compileFile);
+    updateCompileMessagesPanel(project);
     return;
   }
   if (hasDataset("compileAppendCode")) {

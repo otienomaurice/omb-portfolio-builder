@@ -2,6 +2,12 @@
 
 This repository/folder contains the generated portfolio website files. It is the public site output, not the Windows builder application source.
 
+For the full beginner explanation of how the builder creates this website, how the files communicate, how GitHub/Cloudflare publishing works, and what each build tool does, open:
+
+```text
+docs/OMB_Portfolio_Builder_Complete_Guide.docx
+```
+
 ## What Belongs Here
 
 - `index.html` for the public page shell.
