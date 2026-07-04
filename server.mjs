@@ -94,9 +94,16 @@ const compileLanguageProfiles = {
     primaryTools: ["g++"],
     winget: ["BrechtSanders.WinLibs.POSIX.UCRT"]
   },
+  verilog: {
+    defaultFile: "design.v",
+    extensions: [".v"],
+    label: "Verilog",
+    primaryTools: ["iverilog", "vvp"],
+    winget: ["Icarus.Verilog"]
+  },
   systemverilog: {
     defaultFile: "design.sv",
-    extensions: [".sv", ".svh", ".v"],
+    extensions: [".sv", ".svh"],
     label: "SystemVerilog",
     primaryTools: ["iverilog", "vvp"],
     winget: ["Icarus.Verilog"]
@@ -254,7 +261,8 @@ function normalizeCodeLanguage(value = "") {
     "c++": "cpp",
     systemverilog: "systemverilog",
     sv: "systemverilog",
-    verilog: "systemverilog",
+    verilog: "verilog",
+    v: "verilog",
     ltspice: "ltspice",
     spice: "ltspice",
     cir: "ltspice",
@@ -280,7 +288,8 @@ function detectCodeLanguageFromSource(code = "", fileName = "") {
   if (byName) return byName;
   const source = String(code || "");
   if (/<\/?[a-z][\s\S]*?>/i.test(source) || /<!doctype\s+html/i.test(source)) return "html";
-  if (/\b(module|endmodule|always_ff|always_comb|logic|reg|wire|assign)\b/.test(source)) return "systemverilog";
+  if (/\b(always_ff|always_comb|always_latch|logic|interface|covergroup|assert\s+property|typedef\s+enum|class\s+\w+)\b/.test(source)) return "systemverilog";
+  if (/\b(module|endmodule|always|assign|reg|wire|initial|posedge|negedge)\b/.test(source)) return "verilog";
   if (/^\s*\.?(tran|ac|dc|op|model|subckt|ends|param)\b/im.test(source) || /\bV\w+\s+\w+\s+\w+\s+(?:DC|SIN|PULSE)?/i.test(source)) return "ltspice";
   if (/\b(def|elif|from\s+\w+\s+import|self|None|True|False)\b/.test(source)) return "python";
   if (/\b(public\s+class|static\s+void\s+main|System\.out)\b/.test(source)) return "java";
@@ -323,7 +332,7 @@ function indentBraceCode(code = "") {
 function beautifyCode(code = "", language = "javascript") {
   const normalized = String(code || "").replace(/\r\n?/g, "\n").replace(/\t/g, "  ");
   const lang = normalizeCodeLanguage(language);
-  if (["c", "cpp", "java", "javascript", "systemverilog"].includes(lang)) {
+  if (["c", "cpp", "java", "javascript", "verilog", "systemverilog"].includes(lang)) {
     return indentBraceCode(normalized)
       .replace(/[ \t]+$/gm, "")
       .replace(/\n{4,}/g, "\n\n\n");
@@ -421,6 +430,33 @@ function processTerminalText(result = {}) {
     : `Exit code ${result.code ?? "unknown"}${elapsed}`;
   const output = [result.stdout, result.stderr].map((part) => String(part || "").trimEnd()).filter(Boolean).join("\n");
   return [status, output || (result.ok ? "Completed without diagnostic output." : "No compiler output was returned.")].join("\n");
+}
+
+function cleanHdlSimulationOutput(result = {}) {
+  const raw = [result.stdout, result.stderr].map((part) => String(part || "").trimEnd()).filter(Boolean).join("\n");
+  const lines = raw.split(/\r?\n/).map((line) => line.trimEnd()).filter(Boolean);
+  const finishLines = [];
+  const signalLines = [];
+  for (const line of lines) {
+    if (/\$finish called at/i.test(line)) {
+      finishLines.push(line.replace(/^.*?:\d+:\s*/, ""));
+    } else {
+      signalLines.push(line);
+    }
+  }
+  const elapsedSeconds = Number.isFinite(result.elapsedMs) ? (result.elapsedMs / 1000).toFixed(2) : "";
+  const status = result.timedOut
+    ? `Simulation timed out after ${elapsedSeconds ? `${elapsedSeconds}s` : "the configured timeout"}`
+    : `Simulation exit code ${result.code ?? "unknown"}${elapsedSeconds ? ` in ${elapsedSeconds}s` : ""}`;
+  const body = signalLines.length
+    ? signalLines.join("\n")
+    : finishLines.length
+      ? finishLines.join("\n")
+      : result.ok
+        ? "Simulation completed without printed output."
+        : "No simulator output was returned.";
+  const suffix = signalLines.length && finishLines.length ? `\n${finishLines.join("\n")}` : "";
+  return `${status}\n${body}${suffix}`;
 }
 
 async function runProcess(command, args = [], options = {}) {
@@ -532,7 +568,10 @@ function cachedBuildLine(type, outputPath) {
 }
 
 async function compileAndRunCode(payload = {}) {
-  const language = normalizeCodeLanguage(payload.language || detectCodeLanguageFromSource(payload.code, payload.fileName));
+  const requestedLanguage = String(payload.language || "").trim().toLowerCase();
+  const language = requestedLanguage && requestedLanguage !== "auto"
+    ? normalizeCodeLanguage(requestedLanguage)
+    : detectCodeLanguageFromSource(payload.code, payload.fileName);
   const profile = compileLanguageProfiles[language] || compileLanguageProfiles.javascript;
   const fileName = safeCodeFileName(payload.fileName, language);
   const saved = await saveCompileSource({ ...payload, language, fileName });
@@ -663,27 +702,30 @@ async function compileAndRunCode(payload = {}) {
       append(`${path.basename(found.java)} ${className}`, run);
       ok = run.ok;
     }
-  } else if (language === "systemverilog") {
+  } else if (language === "verilog" || language === "systemverilog") {
     const { found, missingTools } = await missing(["iverilog", "vvp"]);
     if (missingTools.length) {
-      return { ok: false, language, saved, terminal: `SystemVerilog tools missing: ${missingTools.join(", ")}. Install Icarus Verilog and add iverilog/vvp to PATH.` };
+      return { ok: false, language, saved, terminal: `${profile.label} simulator tools missing: ${missingTools.join(", ")}. Install Icarus Verilog and add iverilog/vvp to PATH.` };
     }
-    const cacheKey = compileCacheKey({ language, fileName: saved.fileName, sourceCode, compiler: found.iverilog, runtime: found.vvp, flags: ["-g2012"] });
+    const flags = language === "systemverilog" ? ["-g2012", "-Wall"] : ["-g2005-sv", "-Wall"];
+    const cacheKey = compileCacheKey({ language, fileName: saved.fileName, sourceCode, compiler: found.iverilog, runtime: found.vvp, flags });
     const cacheDir = compileCacheDirectory(payload.projectId, language, cacheKey);
     await mkdir(cacheDir, { recursive: true });
     const output = path.join(cacheDir, "simulation.vvp");
     const cached = !forceRebuild && await pathExists(output);
     if (cached) {
-      terminal.push(cachedBuildLine("SystemVerilog simulation", output));
+      terminal.push(cachedBuildLine(`${profile.label} simulation`, output));
     } else {
       const runSource = await ensureRunSource();
-      const compile = await runProcess(found.iverilog, ["-g2012", "-o", output, runSource.runSourcePath], { cwd: runSource.runDir, timeoutMs: 30000 });
-      append(`${path.basename(found.iverilog)} -g2012`, compile);
+      const compileArgs = [...flags, "-o", output, runSource.runSourcePath];
+      const compile = await runProcess(found.iverilog, compileArgs, { cwd: runSource.runDir, timeoutMs: 30000 });
+      append(`${path.basename(found.iverilog)} ${flags.join(" ")}`, compile);
       ok = compile.ok;
     }
     if (cached || ok) {
+      terminal.push(`Generated simulation: ${output}`);
       const run = await runProcess(found.vvp, [output], { cwd: cacheDir, timeoutMs: 20000 });
-      append(`${path.basename(found.vvp)} simulation.vvp`, run);
+      terminal.push(terminalLine(`${path.basename(found.vvp)} simulation.vvp`, cleanHdlSimulationOutput(run)));
       ok = run.ok;
     }
   } else if (language === "ltspice") {
