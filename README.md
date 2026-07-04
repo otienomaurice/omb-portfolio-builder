@@ -199,6 +199,9 @@ Use the workflow in [BRANCHING.md](BRANCHING.md):
 | `codex/bump-builder-version-0.2.26` | Bumps the builder release version so the next approved `development` to `main` release creates a fresh installer tag. | `development` | `development` | Active |
 | `codex/speed-up-compile-runner` | Speeds compiler detection, closes stdin cleanly, reports elapsed compile/run times, shows generated binaries/classes, and wires Icarus Verilog for SystemVerilog simulation. | `development` | `development` | Active |
 | `codex/fix-node-compiler-detection` | Prevents the packaged Electron executable from being mistaken for Node.js in the Compile Code workspace. | `development` | `development` | Active |
+| `codex/optimize-code-run-cache` | Adds cached compiled artifacts and a separate Rebuild / run command so repeated Java, C, C++, and SystemVerilog runs do not recompile unchanged source. | `development` | `development` | Active |
+| `codex/add-verilog-simulator` | Adds Verilog as a first-class compile/simulate language using Icarus Verilog and vvp, with Verilog-specific highlighting, file detection, and cleaner simulator output. | `development` | `development` | Active |
+| `codex/improve-c-cpp-compiler` | Improves C and C++ compile/run behavior with C17/C++20 profiles, stronger warnings, cleaner diagnostics, named binaries, header syntax checks, and better C/C++ detection. | `development` | `development` | Active |
 
 ## Uninstall
 
