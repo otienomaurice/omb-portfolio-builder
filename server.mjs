@@ -82,7 +82,7 @@ const gitCandidates = [
 const compileLanguageProfiles = {
   c: {
     defaultFile: "main.c",
-    extensions: [".c"],
+    extensions: [".c", ".h"],
     label: "C",
     primaryTools: ["gcc"],
     winget: ["BrechtSanders.WinLibs.POSIX.UCRT"]
@@ -184,6 +184,7 @@ const compileToolCandidates = {
   ]
 };
 const compileToolCache = new Map();
+const compileToolVersionCache = new Map();
 
 const portfolioAiInstructions = [
   "You are the AI assistant for the portfolio website described by the supplied portfolio context.",
@@ -278,13 +279,30 @@ function normalizeCodeLanguage(value = "") {
   return aliases[clean] || (compileLanguageProfiles[clean] ? clean : "javascript");
 }
 
-function languageFromFileName(fileName = "") {
+function sourceLooksCpp(source = "") {
+  const text = String(source || "");
+  return /#include\s*<(?:iostream|string|vector|array|map|unordered_map|memory|algorithm|optional|variant)>/.test(text) ||
+    /\b(std::|cout|cin|cerr|namespace|template\s*<|class\s+\w+|new\s+\w|delete\s+|constexpr|nullptr|using\s+namespace)\b/.test(text);
+}
+
+function sourceLooksC(source = "") {
+  const text = String(source || "");
+  return /#include\s*<(?:stdio|stdlib|string|stdint|stdbool|math)\.h>/.test(text) ||
+    /\b(printf|scanf|malloc|calloc|realloc|free|struct\s+\w+|typedef\s+struct)\b/.test(text);
+}
+
+function languageFromFileName(fileName = "", code = "") {
   const ext = path.extname(String(fileName || "").toLowerCase());
+  if (ext === ".h") {
+    if (sourceLooksCpp(code)) return "cpp";
+    if (sourceLooksC(code)) return "c";
+    return "c";
+  }
   return Object.entries(compileLanguageProfiles).find(([, profile]) => profile.extensions.includes(ext))?.[0] || "";
 }
 
 function detectCodeLanguageFromSource(code = "", fileName = "") {
-  const byName = languageFromFileName(fileName);
+  const byName = languageFromFileName(fileName, code);
   if (byName) return byName;
   const source = String(code || "");
   if (/<\/?[a-z][\s\S]*?>/i.test(source) || /<!doctype\s+html/i.test(source)) return "html";
@@ -293,8 +311,8 @@ function detectCodeLanguageFromSource(code = "", fileName = "") {
   if (/^\s*\.?(tran|ac|dc|op|model|subckt|ends|param)\b/im.test(source) || /\bV\w+\s+\w+\s+\w+\s+(?:DC|SIN|PULSE)?/i.test(source)) return "ltspice";
   if (/\b(def|elif|from\s+\w+\s+import|self|None|True|False)\b/.test(source)) return "python";
   if (/\b(public\s+class|static\s+void\s+main|System\.out)\b/.test(source)) return "java";
-  if (/\b(#include|printf|scanf|malloc|free|std::|cout|cin|namespace|template\s*<)\b/.test(source)) {
-    return /\b(std::|cout|cin|namespace|template\s*<|class\s+\w+)/.test(source) ? "cpp" : "c";
+  if (sourceLooksCpp(source) || sourceLooksC(source) || /\b(#include|main\s*\(|puts\s*\(|fprintf|sizeof\s*\()\b/.test(source)) {
+    return sourceLooksCpp(source) ? "cpp" : "c";
   }
   if (/\b(const|let|var|function|=>|console\.log|document\.|window\.)\b/.test(source)) return "javascript";
   return "javascript";
@@ -430,6 +448,85 @@ function processTerminalText(result = {}) {
     : `Exit code ${result.code ?? "unknown"}${elapsed}`;
   const output = [result.stdout, result.stderr].map((part) => String(part || "").trimEnd()).filter(Boolean).join("\n");
   return [status, output || (result.ok ? "Completed without diagnostic output." : "No compiler output was returned.")].join("\n");
+}
+
+function pathVariantsForReplacement(value = "") {
+  const clean = String(value || "");
+  return Array.from(new Set([
+    clean,
+    path.normalize(clean),
+    clean.replace(/\\/g, "/"),
+    path.normalize(clean).replace(/\\/g, "/")
+  ].filter(Boolean)));
+}
+
+function replacePathReferences(text = "", replacements = []) {
+  let output = String(text || "");
+  for (const replacement of replacements) {
+    const from = replacement?.from || "";
+    const to = replacement?.to || "";
+    if (!from || !to) continue;
+    for (const variant of pathVariantsForReplacement(from)) {
+      output = output.split(variant).join(to);
+    }
+  }
+  return output;
+}
+
+function processTerminalTextWithPaths(result = {}, replacements = []) {
+  return replacePathReferences(processTerminalText(result), replacements);
+}
+
+function cFamilyCompileProfile(language = "c", fileName = "main.c") {
+  const isCpp = language === "cpp";
+  const ext = path.extname(String(fileName || "").toLowerCase());
+  const header = [".h", ".hpp", ".hh", ".hxx"].includes(ext);
+  return {
+    compiler: isCpp ? "g++" : "gcc",
+    standard: isCpp ? "-std=c++20" : "-std=c17",
+    languageFlag: isCpp ? "c++" : "c",
+    label: isCpp ? "C++" : "C",
+    header,
+    flags: [
+      isCpp ? "-std=c++20" : "-std=c17",
+      "-Wall",
+      "-Wextra",
+      "-Wpedantic",
+      "-Wshadow",
+      "-O0",
+      "-g3",
+      "-fdiagnostics-color=never"
+    ]
+  };
+}
+
+function cFamilyBinaryName(fileName = "program") {
+  const parsed = path.parse(String(fileName || "program"));
+  return `${safeSegment(parsed.name, "program")}.exe`;
+}
+
+async function toolVersionLine(toolPath = "") {
+  if (!toolPath) return "";
+  if (compileToolVersionCache.has(toolPath)) return compileToolVersionCache.get(toolPath);
+  const result = await runProcess(toolPath, ["--version"], { timeoutMs: 7000 });
+  const version = [result.stdout, result.stderr]
+    .map((part) => String(part || "").trim())
+    .filter(Boolean)
+    .join("\n")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find(Boolean) || path.basename(toolPath);
+  compileToolVersionCache.set(toolPath, version);
+  return version;
+}
+
+function cFamilyRunOutput(result = {}) {
+  const elapsedSeconds = Number.isFinite(result.elapsedMs) ? (result.elapsedMs / 1000).toFixed(2) : "";
+  const status = result.timedOut
+    ? `Program timed out after ${elapsedSeconds ? `${elapsedSeconds}s` : "the configured timeout"}`
+    : `Program exit code ${result.code ?? "unknown"}${elapsedSeconds ? ` in ${elapsedSeconds}s` : ""}`;
+  const output = [result.stdout, result.stderr].map((part) => String(part || "").trimEnd()).filter(Boolean).join("\n");
+  return [status, output || (result.ok ? "Program completed without output." : "No program output was returned.")].join("\n");
 }
 
 function cleanHdlSimulationOutput(result = {}) {
@@ -644,27 +741,57 @@ async function compileAndRunCode(payload = {}) {
       ok = run.ok;
     }
   } else if (language === "c" || language === "cpp") {
-    const toolName = language === "cpp" ? "g++" : "gcc";
+    const cProfile = cFamilyCompileProfile(language, saved.fileName);
+    const toolName = cProfile.compiler;
     const { found, missingTools } = await missing([toolName]);
     if (missingTools.length) {
       return { ok: false, language, saved, terminal: `${profile.label} compiler missing: ${missingTools.join(", ")}. Install WinLibs/MinGW or add it to PATH.` };
     }
-    const flags = [language === "cpp" ? "-std=c++20" : "-std=c17", "-Wall", "-Wextra"];
-    const cacheKey = compileCacheKey({ language, fileName: saved.fileName, sourceCode, compiler: found[toolName], flags });
+    const compilerVersion = await toolVersionLine(found[toolName]);
+    const cacheKey = compileCacheKey({
+      language,
+      fileName: saved.fileName,
+      sourceCode,
+      compiler: found[toolName],
+      compilerVersion,
+      flags: cProfile.flags,
+      header: cProfile.header
+    });
     const cacheDir = compileCacheDirectory(payload.projectId, language, cacheKey);
     await mkdir(cacheDir, { recursive: true });
-    const output = path.join(cacheDir, "program.exe");
+    const binaryName = cFamilyBinaryName(saved.fileName);
+    const output = path.join(cacheDir, binaryName);
+    const outputMarker = path.join(cacheDir, "syntax-ok.txt");
     const cached = !forceRebuild && await pathExists(output);
-    if (cached) {
-      terminal.push(cachedBuildLine("Compiler", output));
+    const cachedHeader = cProfile.header && !forceRebuild && await pathExists(outputMarker);
+    terminal.push(`${cProfile.label} build profile: ${cProfile.standard}, warnings enabled, debug symbols enabled`);
+    if (compilerVersion) terminal.push(`Compiler: ${compilerVersion}`);
+    if (cached || cachedHeader) {
+      terminal.push(cachedBuildLine(cProfile.header ? `${cProfile.label} header syntax check` : `${cProfile.label} binary`, cProfile.header ? outputMarker : output));
     } else {
       const runSource = await ensureRunSource();
-      const args = [runSource.runSourcePath, "-o", output, ...flags];
+      const args = cProfile.header
+        ? ["-x", cProfile.languageFlag, "-fsyntax-only", ...cProfile.flags, runSource.runSourcePath]
+        : [runSource.runSourcePath, "-o", output, ...cProfile.flags];
       const compile = await runProcess(found[toolName], args, { cwd: runSource.runDir, timeoutMs: 30000 });
-      append(`${path.basename(found[toolName])} ${args.slice(1).join(" ")}`, compile);
+      const replacements = [
+        { from: runSource.runSourcePath, to: saved.fileName },
+        { from: sourcePath, to: saved.fileName },
+        { from: output, to: binaryName }
+      ];
+      terminal.push(terminalLine(
+        `${path.basename(found[toolName])} ${saved.fileName} ${cProfile.header ? "-fsyntax-only" : `-o ${binaryName}`} ${cProfile.flags.join(" ")}`,
+        processTerminalTextWithPaths(compile, replacements)
+      ));
       ok = compile.ok;
+      if (ok && cProfile.header) {
+        await writeFile(outputMarker, `${cProfile.label} header syntax check passed for ${saved.fileName}\n`, "utf8");
+      }
     }
-    if (cached || ok) {
+    if (cProfile.header && (cachedHeader || ok)) {
+      terminal.push(`Header syntax check passed: ${saved.fileName}`);
+      ok = true;
+    } else if (cached || ok) {
       terminal.push(`Generated binary: ${output}`);
       const toolPath = found[toolName];
       const run = await runProcess(output, [], {
@@ -673,7 +800,7 @@ async function compileAndRunCode(payload = {}) {
         env: { PATH: `${path.dirname(toolPath)}${path.delimiter}${process.env.PATH || ""}` },
         ...stdinOptions
       });
-      append("program.exe", run);
+      terminal.push(terminalLine(binaryName, cFamilyRunOutput(run)));
       ok = run.ok;
     }
   } else if (language === "java") {

@@ -226,7 +226,7 @@ const defaultBuilderPreferences = { theme: "light" };
 let builderPreferences = { ...defaultBuilderPreferences };
 
 const supportedCodeLanguages = [
-  { id: "c", label: "C", aliases: ["c"], extensions: [".c"], defaultFile: "main.c" },
+  { id: "c", label: "C", aliases: ["c"], extensions: [".c", ".h"], defaultFile: "main.c" },
   { id: "cpp", label: "C++", aliases: ["cpp", "c++", "cplusplus"], extensions: [".cpp", ".cc", ".cxx", ".hpp", ".h"], defaultFile: "main.cpp" },
   { id: "verilog", label: "Verilog", aliases: ["verilog", "v"], extensions: [".v"], defaultFile: "design.v" },
   { id: "systemverilog", label: "SystemVerilog", aliases: ["systemverilog", "system verilog", "sv"], extensions: [".sv", ".svh"], defaultFile: "design.sv" },
@@ -2027,9 +2027,26 @@ function codeLanguageLabel(value = "") {
   return supportedCodeLanguages.find((language) => language.id === normalizeCodeLanguage(value))?.label || "Code";
 }
 
-function languageFromFileName(fileName = "") {
+function sourceLooksCpp(source = "") {
+  const text = String(source || "");
+  return /#include\s*<(?:iostream|string|vector|array|map|unordered_map|memory|algorithm|optional|variant)>/.test(text) ||
+    /\b(std::|cout|cin|cerr|namespace|template\s*<|class\s+\w+|new\s+\w|delete\s+|constexpr|nullptr|using\s+namespace)\b/.test(text);
+}
+
+function sourceLooksC(source = "") {
+  const text = String(source || "");
+  return /#include\s*<(?:stdio|stdlib|string|stdint|stdbool|math)\.h>/.test(text) ||
+    /\b(printf|scanf|malloc|calloc|realloc|free|struct\s+\w+|typedef\s+struct)\b/.test(text);
+}
+
+function languageFromFileName(fileName = "", source = "") {
   const clean = String(fileName || "").toLowerCase();
   const extension = clean.includes(".") ? `.${clean.split(".").pop()}` : "";
+  if (extension === ".h") {
+    if (sourceLooksCpp(source)) return "cpp";
+    if (sourceLooksC(source)) return "c";
+    return "c";
+  }
   return supportedCodeLanguages.find((language) => language.extensions?.includes(extension))?.id || "";
 }
 
@@ -2063,7 +2080,7 @@ function normalizeCodeText(value = "", pasteMode = "source") {
 }
 
 function detectCodeLanguage(value = "", fileName = "") {
-  const byFile = languageFromFileName(fileName);
+  const byFile = languageFromFileName(fileName, value);
   if (byFile) return byFile;
   const code = String(value || "");
   if (/<\/?[a-z][\s\S]*?>/i.test(code) || /<!doctype\s+html/i.test(code)) return "html";
@@ -2072,10 +2089,10 @@ function detectCodeLanguage(value = "", fileName = "") {
   if (/^\s*\.?(tran|ac|dc|op|model|subckt|ends|param)\b/im.test(code) || /\bV\w+\s+\w+\s+\w+\s+(?:DC|SIN|PULSE)?/i.test(code)) return "ltspice";
   if (/\b(def|elif|import\s+\w+|from\s+\w+\s+import|self|None|True|False)\b/.test(code)) return "python";
   if (/\b(public\s+class|private\s+|protected\s+|static\s+void\s+main|System\.out)\b/.test(code)) return "java";
-  if (/\b(const|let|var|function|=>|console\.log|document\.|window\.)\b/.test(code)) return "javascript";
-  if (/\b(#include|printf|scanf|malloc|free|std::|cout|cin|namespace|template\s*<)\b/.test(code)) {
-    return /\b(std::|cout|cin|namespace|template\s*<|class\s+\w+)/.test(code) ? "cpp" : "c";
+  if (sourceLooksCpp(code) || sourceLooksC(code) || /\b(#include|main\s*\(|puts\s*\(|fprintf|sizeof\s*\()\b/.test(code)) {
+    return sourceLooksCpp(code) ? "cpp" : "c";
   }
+  if (/\b(const|let|var|function|=>|console\.log|document\.|window\.)\b/.test(code)) return "javascript";
   return "javascript";
 }
 
@@ -2107,8 +2124,8 @@ function tokenizedCodeHtml(code = "", language = "javascript") {
   protect(/\b(?:0x[\da-f]+|\d+(?:\.\d+)?(?:e[+-]?\d+)?)\b/gi, "code-token-number");
 
   const keywordMap = {
-    c: "auto|break|case|char|const|continue|default|do|double|else|enum|extern|float|for|goto|if|inline|int|long|register|return|short|signed|sizeof|static|struct|switch|typedef|union|unsigned|void|volatile|while",
-    cpp: "alignas|alignof|auto|bool|break|case|catch|char|class|const|constexpr|continue|default|delete|do|double|else|enum|explicit|export|extern|false|float|for|friend|if|inline|int|long|namespace|new|nullptr|operator|private|protected|public|return|short|signed|sizeof|static|struct|switch|template|this|throw|true|try|typedef|typename|union|unsigned|using|virtual|void|volatile|while",
+    c: "_Alignas|_Alignof|_Atomic|_Bool|_Complex|_Generic|_Imaginary|_Noreturn|_Static_assert|_Thread_local|auto|break|case|char|const|continue|default|do|double|else|enum|extern|float|for|goto|if|inline|int|long|register|restrict|return|short|signed|sizeof|static|struct|switch|typedef|union|unsigned|void|volatile|while",
+    cpp: "alignas|alignof|and|and_eq|asm|auto|bitand|bitor|bool|break|case|catch|char|char8_t|char16_t|char32_t|class|compl|concept|const|consteval|constexpr|constinit|const_cast|continue|co_await|co_return|co_yield|decltype|default|delete|do|double|dynamic_cast|else|enum|explicit|export|extern|false|float|for|friend|if|inline|int|long|mutable|namespace|new|noexcept|not|not_eq|nullptr|operator|or|or_eq|private|protected|public|register|reinterpret_cast|requires|return|short|signed|sizeof|static|static_assert|static_cast|struct|switch|template|this|thread_local|throw|true|try|typedef|typeid|typename|union|unsigned|using|virtual|void|volatile|wchar_t|while|xor|xor_eq",
     verilog: "always|and|assign|begin|buf|case|casex|casez|deassign|default|defparam|disable|edge|else|end|endcase|endfunction|endmodule|endprimitive|endspecify|endtable|endtask|event|for|force|forever|fork|function|generate|genvar|if|initial|inout|input|integer|join|module|nand|negedge|nor|not|or|output|parameter|posedge|primitive|reg|release|repeat|signed|specify|supply0|supply1|table|task|tri|wand|while|wire|wor|xnor|xor",
     systemverilog: "always|always_comb|always_ff|always_latch|assign|automatic|begin|bit|case|class|clocking|covergroup|default|disable|do|else|end|endcase|endclass|endclocking|endfunction|endmodule|endpackage|endtask|enum|for|forever|function|generate|genvar|if|initial|input|int|interface|logic|module|negedge|output|package|parameter|posedge|reg|return|signed|task|typedef|wire",
     ltspice: "ac|dc|end|ends|four|func|global|ic|include|lib|meas|model|nodeset|op|options|param|plot|probe|save|step|subckt|temp|tran",
@@ -7499,15 +7516,15 @@ async function importCompileFile(project) {
   const workspace = ensureCompileCode(project);
   const file = await chooseFile();
   if (!file) return;
-  const language = detectCodeLanguage("", file.name);
-  const profile = codeLanguageProfile(language);
   const allowedExtensions = supportedCodeLanguages.flatMap((item) => item.extensions || []);
   const extension = `.${String(file.name || "").split(".").pop().toLowerCase()}`;
   if (!allowedExtensions.includes(extension)) {
-    setStatus("Choose a supported source file: C, C++, SystemVerilog, LTspice, Java, JavaScript, Python, or HTML.");
+    setStatus("Choose a supported source file: C, C++, Verilog, SystemVerilog, LTspice, Java, JavaScript, Python, or HTML.");
     return;
   }
   const code = await file.text();
+  const language = detectCodeLanguage(code, file.name);
+  const profile = codeLanguageProfile(language);
   const sourceFile = newCompileFile(profile.id, {
     fileName: file.name,
     title: file.name.replace(/\.[^.]+$/, ""),
