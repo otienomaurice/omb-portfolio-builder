@@ -228,7 +228,8 @@ let builderPreferences = { ...defaultBuilderPreferences };
 const supportedCodeLanguages = [
   { id: "c", label: "C", aliases: ["c"], extensions: [".c"], defaultFile: "main.c" },
   { id: "cpp", label: "C++", aliases: ["cpp", "c++", "cplusplus"], extensions: [".cpp", ".cc", ".cxx", ".hpp", ".h"], defaultFile: "main.cpp" },
-  { id: "systemverilog", label: "SystemVerilog", aliases: ["systemverilog", "system verilog", "sv", "verilog"], extensions: [".sv", ".svh", ".v"], defaultFile: "design.sv" },
+  { id: "verilog", label: "Verilog", aliases: ["verilog", "v"], extensions: [".v"], defaultFile: "design.v" },
+  { id: "systemverilog", label: "SystemVerilog", aliases: ["systemverilog", "system verilog", "sv"], extensions: [".sv", ".svh"], defaultFile: "design.sv" },
   { id: "ltspice", label: "LTspice", aliases: ["ltspice", "spice", "cir", "net", "asc"], extensions: [".cir", ".net", ".sp", ".asc"], defaultFile: "simulation.cir" },
   { id: "java", label: "Java", aliases: ["java"], extensions: [".java"], defaultFile: "Main.java" },
   { id: "javascript", label: "JavaScript", aliases: ["javascript", "js", "mjs", "node"], extensions: [".js", ".mjs", ".cjs"], defaultFile: "main.js" },
@@ -2066,7 +2067,8 @@ function detectCodeLanguage(value = "", fileName = "") {
   if (byFile) return byFile;
   const code = String(value || "");
   if (/<\/?[a-z][\s\S]*?>/i.test(code) || /<!doctype\s+html/i.test(code)) return "html";
-  if (/\b(module|endmodule|always_ff|always_comb|logic|reg|wire|assign)\b/.test(code)) return "systemverilog";
+  if (/\b(always_ff|always_comb|always_latch|logic|interface|covergroup|assert\s+property|typedef\s+enum|class\s+\w+)\b/.test(code)) return "systemverilog";
+  if (/\b(module|endmodule|always|assign|reg|wire|initial|posedge|negedge)\b/.test(code)) return "verilog";
   if (/^\s*\.?(tran|ac|dc|op|model|subckt|ends|param)\b/im.test(code) || /\bV\w+\s+\w+\s+\w+\s+(?:DC|SIN|PULSE)?/i.test(code)) return "ltspice";
   if (/\b(def|elif|import\s+\w+|from\s+\w+\s+import|self|None|True|False)\b/.test(code)) return "python";
   if (/\b(public\s+class|private\s+|protected\s+|static\s+void\s+main|System\.out)\b/.test(code)) return "java";
@@ -2107,6 +2109,7 @@ function tokenizedCodeHtml(code = "", language = "javascript") {
   const keywordMap = {
     c: "auto|break|case|char|const|continue|default|do|double|else|enum|extern|float|for|goto|if|inline|int|long|register|return|short|signed|sizeof|static|struct|switch|typedef|union|unsigned|void|volatile|while",
     cpp: "alignas|alignof|auto|bool|break|case|catch|char|class|const|constexpr|continue|default|delete|do|double|else|enum|explicit|export|extern|false|float|for|friend|if|inline|int|long|namespace|new|nullptr|operator|private|protected|public|return|short|signed|sizeof|static|struct|switch|template|this|throw|true|try|typedef|typename|union|unsigned|using|virtual|void|volatile|while",
+    verilog: "always|and|assign|begin|buf|case|casex|casez|deassign|default|defparam|disable|edge|else|end|endcase|endfunction|endmodule|endprimitive|endspecify|endtable|endtask|event|for|force|forever|fork|function|generate|genvar|if|initial|inout|input|integer|join|module|nand|negedge|nor|not|or|output|parameter|posedge|primitive|reg|release|repeat|signed|specify|supply0|supply1|table|task|tri|wand|while|wire|wor|xnor|xor",
     systemverilog: "always|always_comb|always_ff|always_latch|assign|automatic|begin|bit|case|class|clocking|covergroup|default|disable|do|else|end|endcase|endclass|endclocking|endfunction|endmodule|endpackage|endtask|enum|for|forever|function|generate|genvar|if|initial|input|int|interface|logic|module|negedge|output|package|parameter|posedge|reg|return|signed|task|typedef|wire",
     ltspice: "ac|dc|end|ends|four|func|global|ic|include|lib|meas|model|nodeset|op|options|param|plot|probe|save|step|subckt|temp|tran",
     java: "abstract|assert|boolean|break|byte|case|catch|char|class|const|continue|default|do|double|else|enum|extends|final|finally|float|for|if|implements|import|instanceof|int|interface|long|native|new|null|package|private|protected|public|return|short|static|strictfp|super|switch|synchronized|this|throw|throws|transient|try|void|volatile|while",
@@ -5506,7 +5509,7 @@ function refreshSummaryCodeDialogPreview() {
 function beautifyCodeClient(code = "", language = "javascript") {
   const normalized = String(code || "").replace(/\r\n?/g, "\n").replace(/\t/g, "  ");
   const lang = normalizeCodeLanguage(language);
-  if (["c", "cpp", "java", "javascript", "systemverilog"].includes(lang)) {
+  if (["c", "cpp", "java", "javascript", "verilog", "systemverilog"].includes(lang)) {
     let depth = 0;
     return normalized.split("\n").map((rawLine) => {
       const line = rawLine.trim();
