@@ -516,18 +516,42 @@ function javaMainClassName(code = "", fileName = "Main.java") {
   return classMatch?.[1] || path.parse(fileName).name || "Main";
 }
 
+function compileCacheKey(parts = {}) {
+  return createHash("sha256")
+    .update(JSON.stringify(parts))
+    .digest("hex")
+    .slice(0, 24);
+}
+
+function compileCacheDirectory(projectId, language, key) {
+  return resolveInsideCompileRoot(safeSegment(projectId, "project"), ".build-cache", safeSegment(language, "language"), key);
+}
+
+function cachedBuildLine(type, outputPath) {
+  return `${type} cache hit: using existing artifact\n${outputPath}`;
+}
+
 async function compileAndRunCode(payload = {}) {
   const language = normalizeCodeLanguage(payload.language || detectCodeLanguageFromSource(payload.code, payload.fileName));
   const profile = compileLanguageProfiles[language] || compileLanguageProfiles.javascript;
   const fileName = safeCodeFileName(payload.fileName, language);
   const saved = await saveCompileSource({ ...payload, language, fileName });
-  const runId = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-  const runDir = resolveInsideCompileRoot(safeSegment(payload.projectId, "project"), ".runs", runId);
-  await mkdir(runDir, { recursive: true });
-  const sourcePath = resolveInsideCompileRoot(safeSegment(payload.projectId, "project"), safeSegment(saved.id), saved.fileName);
-  const runSourcePath = path.join(runDir, saved.fileName);
-  await cp(sourcePath, runSourcePath, { force: true });
+  const projectFolder = safeSegment(payload.projectId, "project");
+  const sourcePath = resolveInsideCompileRoot(projectFolder, safeSegment(saved.id), saved.fileName);
+  let runDir = "";
+  let runSourcePath = "";
+  const ensureRunSource = async () => {
+    if (runDir && runSourcePath) return { runDir, runSourcePath };
+    const runId = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    runDir = resolveInsideCompileRoot(projectFolder, ".runs", runId);
+    await mkdir(runDir, { recursive: true });
+    runSourcePath = path.join(runDir, saved.fileName);
+    await cp(sourcePath, runSourcePath, { force: true });
+    return { runDir, runSourcePath };
+  };
   const stdin = String(payload.stdin || "");
+  const sourceCode = String(payload.code || "");
+  const forceRebuild = payload.forceRebuild === true;
   const terminal = [];
   const append = (label, result) => {
     terminal.push(terminalLine(label, processTerminalText(result)));
@@ -561,20 +585,22 @@ async function compileAndRunCode(payload = {}) {
   if (language === "javascript") {
     const node = await findTool("node");
     if (!node) return { ok: false, language, saved, terminal: "Node.js was not found. Install Node.js to run JavaScript." };
-    const check = await runProcess(node, ["--check", runSourcePath], { cwd: runDir, timeoutMs: 15000 });
+    const runSource = await ensureRunSource();
+    const check = await runProcess(node, ["--check", runSource.runSourcePath], { cwd: runSource.runDir, timeoutMs: 15000 });
     append(`${path.basename(node)} --check ${saved.fileName}`, check);
     if (check.ok) {
-      const run = await runProcess(node, [runSourcePath], { cwd: runDir, timeoutMs: 20000, ...stdinOptions });
+      const run = await runProcess(node, [runSource.runSourcePath], { cwd: runSource.runDir, timeoutMs: 20000, ...stdinOptions });
       append(`${path.basename(node)} ${saved.fileName}`, run);
       ok = run.ok;
     }
   } else if (language === "python") {
     const python = await findTool("python");
     if (!python) return { ok: false, language, saved, terminal: "Python was not found. Install Python to run Python code." };
-    const check = await runProcess(python, ["-m", "py_compile", runSourcePath], { cwd: runDir, timeoutMs: 15000 });
+    const runSource = await ensureRunSource();
+    const check = await runProcess(python, ["-m", "py_compile", runSource.runSourcePath], { cwd: runSource.runDir, timeoutMs: 15000 });
     append(`${path.basename(python)} -m py_compile ${saved.fileName}`, check);
     if (check.ok) {
-      const run = await runProcess(python, [runSourcePath], { cwd: runDir, timeoutMs: 20000, ...stdinOptions });
+      const run = await runProcess(python, [runSource.runSourcePath], { cwd: runSource.runDir, timeoutMs: 20000, ...stdinOptions });
       append(`${path.basename(python)} ${saved.fileName}`, run);
       ok = run.ok;
     }
@@ -584,15 +610,26 @@ async function compileAndRunCode(payload = {}) {
     if (missingTools.length) {
       return { ok: false, language, saved, terminal: `${profile.label} compiler missing: ${missingTools.join(", ")}. Install WinLibs/MinGW or add it to PATH.` };
     }
-    const output = path.join(runDir, "program.exe");
-    const args = [runSourcePath, "-o", output, language === "cpp" ? "-std=c++20" : "-std=c17", "-Wall", "-Wextra"];
-    const compile = await runProcess(found[toolName], args, { cwd: runDir, timeoutMs: 30000 });
-    append(`${path.basename(found[toolName])} ${args.slice(1).join(" ")}`, compile);
-    if (compile.ok) {
+    const flags = [language === "cpp" ? "-std=c++20" : "-std=c17", "-Wall", "-Wextra"];
+    const cacheKey = compileCacheKey({ language, fileName: saved.fileName, sourceCode, compiler: found[toolName], flags });
+    const cacheDir = compileCacheDirectory(payload.projectId, language, cacheKey);
+    await mkdir(cacheDir, { recursive: true });
+    const output = path.join(cacheDir, "program.exe");
+    const cached = !forceRebuild && await pathExists(output);
+    if (cached) {
+      terminal.push(cachedBuildLine("Compiler", output));
+    } else {
+      const runSource = await ensureRunSource();
+      const args = [runSource.runSourcePath, "-o", output, ...flags];
+      const compile = await runProcess(found[toolName], args, { cwd: runSource.runDir, timeoutMs: 30000 });
+      append(`${path.basename(found[toolName])} ${args.slice(1).join(" ")}`, compile);
+      ok = compile.ok;
+    }
+    if (cached || ok) {
       terminal.push(`Generated binary: ${output}`);
       const toolPath = found[toolName];
       const run = await runProcess(output, [], {
-        cwd: runDir,
+        cwd: cacheDir,
         timeoutMs: 20000,
         env: { PATH: `${path.dirname(toolPath)}${path.delimiter}${process.env.PATH || ""}` },
         ...stdinOptions
@@ -606,13 +643,23 @@ async function compileAndRunCode(payload = {}) {
       return { ok: false, language, saved, terminal: `Java tools missing: ${missingTools.join(", ")}. Install a JDK or add it to PATH.` };
     }
     const className = javaMainClassName(payload.code, saved.fileName);
-    const javaPath = path.join(runDir, `${className}.java`);
-    if (path.basename(runSourcePath) !== `${className}.java`) await writeFile(javaPath, String(payload.code || ""), "utf8");
-    const compile = await runProcess(found.javac, [javaPath], { cwd: runDir, timeoutMs: 30000 });
-    append(`${path.basename(found.javac)} ${path.basename(javaPath)}`, compile);
-    if (compile.ok) {
-      terminal.push(`Generated class: ${path.join(runDir, `${className}.class`)}`);
-      const run = await runProcess(found.java, ["-cp", runDir, className], { cwd: runDir, timeoutMs: 20000, ...stdinOptions });
+    const cacheKey = compileCacheKey({ language, fileName: saved.fileName, sourceCode, compiler: found.javac, runtime: found.java, className });
+    const cacheDir = compileCacheDirectory(payload.projectId, language, cacheKey);
+    await mkdir(cacheDir, { recursive: true });
+    const javaPath = path.join(cacheDir, `${className}.java`);
+    const classPath = path.join(cacheDir, `${className}.class`);
+    const cached = !forceRebuild && await pathExists(classPath);
+    if (cached) {
+      terminal.push(cachedBuildLine("Java class", classPath));
+    } else {
+      await writeFile(javaPath, sourceCode, "utf8");
+      const compile = await runProcess(found.javac, [javaPath], { cwd: cacheDir, timeoutMs: 30000 });
+      append(`${path.basename(found.javac)} ${path.basename(javaPath)}`, compile);
+      ok = compile.ok;
+    }
+    if (cached || ok) {
+      terminal.push(`Generated class: ${classPath}`);
+      const run = await runProcess(found.java, ["-cp", cacheDir, className], { cwd: cacheDir, timeoutMs: 20000, ...stdinOptions });
       append(`${path.basename(found.java)} ${className}`, run);
       ok = run.ok;
     }
@@ -621,11 +668,21 @@ async function compileAndRunCode(payload = {}) {
     if (missingTools.length) {
       return { ok: false, language, saved, terminal: `SystemVerilog tools missing: ${missingTools.join(", ")}. Install Icarus Verilog and add iverilog/vvp to PATH.` };
     }
-    const output = path.join(runDir, "simulation.vvp");
-    const compile = await runProcess(found.iverilog, ["-g2012", "-o", output, runSourcePath], { cwd: runDir, timeoutMs: 30000 });
-    append(`${path.basename(found.iverilog)} -g2012`, compile);
-    if (compile.ok) {
-      const run = await runProcess(found.vvp, [output], { cwd: runDir, timeoutMs: 20000 });
+    const cacheKey = compileCacheKey({ language, fileName: saved.fileName, sourceCode, compiler: found.iverilog, runtime: found.vvp, flags: ["-g2012"] });
+    const cacheDir = compileCacheDirectory(payload.projectId, language, cacheKey);
+    await mkdir(cacheDir, { recursive: true });
+    const output = path.join(cacheDir, "simulation.vvp");
+    const cached = !forceRebuild && await pathExists(output);
+    if (cached) {
+      terminal.push(cachedBuildLine("SystemVerilog simulation", output));
+    } else {
+      const runSource = await ensureRunSource();
+      const compile = await runProcess(found.iverilog, ["-g2012", "-o", output, runSource.runSourcePath], { cwd: runSource.runDir, timeoutMs: 30000 });
+      append(`${path.basename(found.iverilog)} -g2012`, compile);
+      ok = compile.ok;
+    }
+    if (cached || ok) {
+      const run = await runProcess(found.vvp, [output], { cwd: cacheDir, timeoutMs: 20000 });
       append(`${path.basename(found.vvp)} simulation.vvp`, run);
       ok = run.ok;
     }
@@ -634,9 +691,10 @@ async function compileAndRunCode(payload = {}) {
     if (!ltspice) {
       return { ok: false, language, saved, terminal: "LTspice executable was not found. Install LTspice or set LTSPICE_EXE to the executable path." };
     }
-    const run = await runProcess(ltspice, ["-b", runSourcePath], { cwd: runDir, timeoutMs: 45000 });
+    const runSource = await ensureRunSource();
+    const run = await runProcess(ltspice, ["-b", runSource.runSourcePath], { cwd: runSource.runDir, timeoutMs: 45000 });
     append(`${path.basename(ltspice)} -b ${saved.fileName}`, run);
-    const logPath = runSourcePath.replace(/\.[^.]+$/, ".log");
+    const logPath = runSource.runSourcePath.replace(/\.[^.]+$/, ".log");
     if (await pathExists(logPath)) terminal.push(await readFile(logPath, "utf8"));
     ok = run.ok;
   }

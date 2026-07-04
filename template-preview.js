@@ -6896,6 +6896,7 @@ function renderCompileCodeSection(project) {
             <button type="button" data-compile-save>Save source</button>
             <button type="button" data-compile-beautify>Beautify</button>
             <button type="button" data-compile-run>Compile / run</button>
+            <button type="button" data-compile-rebuild>Rebuild / run</button>
             <button type="button" data-compile-install>Install tools</button>
             <button class="danger-icon" type="button" data-compile-delete>Delete source</button>
           </div>
@@ -7460,7 +7461,7 @@ function updateCompilePreview(file) {
   if (preview && file) preview.innerHTML = tokenizedCodeHtml(file.code || "", file.language);
 }
 
-function compilePayload(project, file) {
+function compilePayload(project, file, options = {}) {
   return {
     projectId: project.id,
     fileId: file.id,
@@ -7468,7 +7469,8 @@ function compilePayload(project, file) {
     fileName: file.fileName,
     language: file.language,
     code: file.code,
-    stdin: file.stdin || ""
+    stdin: file.stdin || "",
+    forceRebuild: options.forceRebuild === true
   };
 }
 
@@ -7537,11 +7539,13 @@ async function beautifyCompileFile(project, file) {
   }
 }
 
-async function compileActiveFile(project, file) {
+async function compileActiveFile(project, file, options = {}) {
   if (!file) return;
   file.lastResult = {
     ok: null,
-    terminal: "Compiling and running. Please wait..."
+    terminal: options.forceRebuild
+      ? "Rebuilding from source, then running. Please wait..."
+      : "Running code. Cached compiled output will be reused when possible..."
   };
   renderSectionContent(project);
   try {
@@ -7550,7 +7554,7 @@ async function compileActiveFile(project, file) {
       method: "POST",
       cache: "no-store",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(compilePayload(project, file))
+      body: JSON.stringify(compilePayload(project, file, { forceRebuild: options.forceRebuild === true }))
     });
     const result = await response.json();
     const compileResult = result.result || {};
@@ -9808,6 +9812,10 @@ sectionContent.addEventListener("click", async (event) => {
   }
   if (hasDataset("compileRun")) {
     await compileActiveFile(project, compileFile);
+    return;
+  }
+  if (hasDataset("compileRebuild")) {
+    await compileActiveFile(project, compileFile, { forceRebuild: true });
     return;
   }
   if (hasDataset("compileInstall")) {
