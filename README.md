@@ -12,7 +12,7 @@ A long beginner-oriented Word guide is included at:
 docs/OMB_Portfolio_Builder_Complete_Guide.docx
 ```
 
-It explains the high-level design, generated block diagrams, software-engineering decisions, shell commands, how the important files communicate, what each build tool owns, GitHub workflows, Electron, the installer, the website, the parser, publishing, Cloudflare AI, compiler tools, and file-by-file repository notes.
+It explains the high-level design, generated block diagrams, software-engineering decisions, shell commands, programming syntax, how the important files communicate, what each build tool owns, GitHub workflows, Electron, the installer, caching, API endpoints, data contracts, frontend/backend/AI/Cloudflare layers, the website, the parser, publishing, compiler tools, generated function inventories, and file-by-file repository notes.
 
 ## Install
 
@@ -216,6 +216,7 @@ Use the workflow in [BRANCHING.md](BRANCHING.md):
 | `codex/improve-c-cpp-compiler` | Improves C and C++ compile/run behavior with C17/C++20 profiles, stronger warnings, cleaner diagnostics, named binaries, header syntax checks, and better C/C++ detection. | `development` | `development` | Active |
 | `codex/compile-terminal-log-append` | Makes compile terminal output repaint immediately, adds a Compile Code messages log, and lets source code be appended into selected project overview sections as formatted code blocks. | `development` | `development` | Active |
 | `codex/terminal-output-and-complete-guide` | Adds explicit Compile Code output controls and generates the full beginner guide with diagrams, engineering decisions, command explanations, file communication maps, and tool-build ownership notes. | `development` | `development` | Merged into `development` |
+| `codex/expand-complete-guide-detail` | Expands the complete guide with deeper flow walkthroughs, API endpoint details, data contracts, caching detail, installer internals, generated function inventory, and additional beginner debugging notes. | `development` | `development` | Merged into `development` |
 
 ## Uninstall
 
