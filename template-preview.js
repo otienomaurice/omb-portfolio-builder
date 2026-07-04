@@ -1999,6 +1999,18 @@ function ensureCompileCode(project) {
     project.compileCode.activeFileId = project.compileCode.files[0]?.id || "";
   }
   project.compileCode.terminal = String(project.compileCode.terminal || "");
+  const appendDestinations = compileAppendDestinations(project);
+  if (!project.compileCode.appendTargetId || !appendDestinations.some((destination) => destination.id === project.compileCode.appendTargetId)) {
+    project.compileCode.appendTargetId = appendDestinations[0]?.id || "";
+  }
+  project.compileCode.messages = Array.isArray(project.compileCode.messages)
+    ? project.compileCode.messages.map((message) => ({
+      id: message.id || slugify(`message-${Date.now()}-${Math.random().toString(16).slice(2)}`),
+      at: message.at || new Date().toISOString(),
+      level: ["info", "success", "warning", "error"].includes(message.level) ? message.level : "info",
+      text: String(message.text || "")
+    })).filter((message) => message.text)
+    : [];
   return project.compileCode;
 }
 
@@ -6839,9 +6851,128 @@ function compileLanguageOptions(selected = "javascript") {
   `).join("");
 }
 
+function compileAppendDestinations(project) {
+  if (!project) return [];
+  const destinations = [{
+    id: "project-overview",
+    label: "Project overview",
+    richPath: "summaryRich",
+    textPath: "summary"
+  }];
+
+  if (isAnalogProject(project)) {
+    ensureDesignModel(project);
+    [
+      ["design-overview", "Design overview", "design.brief.summary"],
+      ["documentation-overview", "Documentation overview", "design.documentation.summary"],
+      ["simulation-overview", "Simulation overview", "design.simulation.summary"]
+    ].forEach(([id, label, textPath]) => {
+      destinations.push({ id, label, richPath: summaryRichPathFromTextPath(textPath), textPath });
+    });
+  }
+
+  (project.sections || []).forEach((section, index) => {
+    destinations.push({
+      id: `custom-${section.id || index}`,
+      label: `${section.title || `Custom section ${index + 1}`} overview`,
+      richPath: `sections.${index}.richDescription`,
+      textPath: `sections.${index}.description`
+    });
+  });
+
+  return destinations;
+}
+
+function compileAppendDestinationOptions(project, selectedId = "") {
+  const destinations = compileAppendDestinations(project);
+  const selected = destinations.some((destination) => destination.id === selectedId)
+    ? selectedId
+    : destinations[0]?.id || "";
+  return destinations.map((destination) => `
+    <option value="${escapeHtml(destination.id)}"${destination.id === selected ? " selected" : ""}>${escapeHtml(destination.label)}</option>
+  `).join("");
+}
+
 function activeCompileFile(project) {
   const workspace = ensureCompileCode(project);
   return workspace.files.find((file) => file.id === workspace.activeFileId) || workspace.files[0] || null;
+}
+
+function compileLogTimestamp(value = new Date().toISOString()) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+}
+
+function addCompileMessage(project, text, level = "info") {
+  const workspace = ensureCompileCode(project);
+  if (!workspace || !text) return;
+  workspace.messages = [
+    {
+      id: slugify(`message-${Date.now()}-${Math.random().toString(16).slice(2)}`),
+      at: new Date().toISOString(),
+      level: ["info", "success", "warning", "error"].includes(level) ? level : "info",
+      text: String(text)
+    },
+    ...(workspace.messages || [])
+  ].slice(0, 80);
+  updateCompileMessagesPanel(project);
+}
+
+function renderCompileMessages(workspace) {
+  const messages = Array.isArray(workspace?.messages) ? workspace.messages : [];
+  if (!messages.length) return `<p class="compile-message-empty">No messages yet.</p>`;
+  return messages.map((message) => `
+    <div class="compile-message compile-message-${escapeHtml(message.level || "info")}">
+      <time>${escapeHtml(compileLogTimestamp(message.at))}</time>
+      <span>${escapeHtml(message.text)}</span>
+    </div>
+  `).join("");
+}
+
+function updateCompileTerminalPanel(project, file = activeCompileFile(project)) {
+  const workspace = ensureCompileCode(project);
+  const terminal = file?.lastResult?.terminal || workspace?.terminal || compileTerminalStatus || "Compiler output will appear here after you save or run a source file.";
+  const terminalElement = sectionContent.querySelector("[data-compile-terminal]");
+  if (!terminalElement) return;
+  terminalElement.textContent = terminal;
+  requestAnimationFrame(() => {
+    terminalElement.scrollTop = terminalElement.scrollHeight;
+  });
+}
+
+function updateCompileMessagesPanel(project) {
+  const workspace = ensureCompileCode(project);
+  const log = sectionContent.querySelector("[data-compile-messages]");
+  if (!log) return;
+  log.innerHTML = renderCompileMessages(workspace);
+}
+
+function visibleEditorForCompileDestination(destination) {
+  if (!destination) return null;
+  const editors = [...document.querySelectorAll("[data-rich-editor]")];
+  if (destination.richPath === "summaryRich") {
+    return editors.find((editor) => editor.dataset.richEditor === "summary" && !editor.dataset.richPath) || null;
+  }
+  return editors.find((editor) => editor.dataset.richPath === destination.richPath) || null;
+}
+
+function richBlocksForCompileAppend(project, destination) {
+  const existingRich = getByPath(project, destination.richPath);
+  const existingText = getByPath(project, destination.textPath) || "";
+  return richBlocksFromValue(existingRich, existingText).filter((block) => {
+    if (block.type !== "paragraph") return true;
+    return Boolean(String(block.text || "").trim() || block.html);
+  });
+}
+
+function codeBlockForCompileFile(file) {
+  return {
+    code: normalizeCodeText(file?.code || "", "source"),
+    language: normalizeCodeLanguage(file?.language || detectCodeLanguage(file?.code || "", file?.fileName || "")),
+    pasteMode: "source",
+    type: "code"
+  };
 }
 
 function compileFileDirtyLabel(file) {
@@ -6920,6 +7051,20 @@ function renderCompileCodeSection(project) {
             <button type="button" data-compile-install>Install tools</button>
             <button class="danger-icon" type="button" data-compile-delete>Delete source</button>
           </div>
+          <section class="compile-append-panel" aria-label="Append code to project section">
+            <div>
+              <strong>Append code to project</strong>
+              <span>Insert the active source as a formatted code block into this project.</span>
+            </div>
+            <label>
+              <span>Destination</span>
+              <select data-compile-append-target>${compileAppendDestinationOptions(project, workspace.appendTargetId)}</select>
+            </label>
+            <div class="compile-append-actions">
+              <button type="button" data-compile-append-code>Append code to project</button>
+              <button type="button" data-compile-insert-cursor>Insert at active cursor</button>
+            </div>
+          </section>
         ` : `
           <div class="compile-code-empty">
             <h3>No compile file selected</h3>
@@ -6930,7 +7075,14 @@ function renderCompileCodeSection(project) {
           <div class="compile-terminal-heading">
             <span>Terminal output</span>
           </div>
-          <pre class="compile-terminal">${escapeHtml(terminal)}</pre>
+          <pre class="compile-terminal" data-compile-terminal>${escapeHtml(terminal)}</pre>
+        </section>
+        <section class="compile-messages-panel" aria-label="Compile messages log">
+          <div class="compile-terminal-heading">
+            <span>Messages log</span>
+            <button type="button" data-compile-clear-messages>Clear log</button>
+          </div>
+          <div class="compile-messages-log" data-compile-messages>${renderCompileMessages(workspace)}</div>
         </section>
       </section>
     </div>
@@ -7494,6 +7646,52 @@ function compilePayload(project, file, options = {}) {
   };
 }
 
+function selectedCompileAppendDestination(project) {
+  const workspace = ensureCompileCode(project);
+  const destinations = compileAppendDestinations(project);
+  return destinations.find((destination) => destination.id === workspace.appendTargetId) || destinations[0] || null;
+}
+
+function appendCompileCodeToProject(project, file, options = {}) {
+  const block = codeBlockForCompileFile(file);
+  if (!block.code.trim()) {
+    setStatus("Type or import code before appending it to the project.");
+    addCompileMessage(project, "Append stopped because the active source is empty.", "warning");
+    return false;
+  }
+
+  const destination = selectedCompileAppendDestination(project);
+  if (!destination) {
+    setStatus("No project destination is available for this code block.");
+    addCompileMessage(project, "Append stopped because no destination section is available.", "warning");
+    return false;
+  }
+
+  const visibleEditor = visibleEditorForCompileDestination(destination);
+  const insertAtCursor = options.atCursor === true && visibleEditor;
+  if (insertAtCursor) {
+    insertRichBlockAtCursor(visibleEditor, createRichCodeBlock(block));
+    saveRichEditorToProject(visibleEditor);
+  } else {
+    if (options.atCursor === true) {
+      addCompileMessage(project, `No active visible cursor was found for ${destination.label}; appended to the end instead.`, "warning");
+    }
+    const blocks = richBlocksForCompileAppend(project, destination);
+    blocks.push(block);
+    setByPath(project, destination.richPath, { blocks });
+    setByPath(project, destination.textPath, plainTextFromRich({ blocks }));
+  }
+
+  const mode = insertAtCursor ? "inserted at the active cursor" : "appended";
+  file.lastAppendedAt = new Date().toISOString();
+  addCompileMessage(project, `${file.fileName || file.title || "Source code"} ${mode} to ${destination.label}.`, "success");
+  setStatus(`Code ${mode} to ${destination.label}. Save project to include it in the portfolio preview.`);
+  scheduleAutosave();
+  schedulePreviewRender();
+  updateCompileMessagesPanel(project);
+  return true;
+}
+
 async function saveCompileFile(project, file) {
   if (!project || !file) return null;
   const response = await fetch(`/api/code/save?t=${Date.now()}`, {
@@ -7509,6 +7707,7 @@ async function saveCompileFile(project, file) {
   file.fileName = result.saved?.fileName || file.fileName;
   file.language = result.saved?.language || file.language;
   file.dirty = false;
+  addCompileMessage(project, `Saved ${file.fileName || "source file"}.`, "info");
   return result.saved;
 }
 
@@ -7561,13 +7760,17 @@ async function beautifyCompileFile(project, file) {
 
 async function compileActiveFile(project, file, options = {}) {
   if (!file) return;
+  const workspace = ensureCompileCode(project);
   file.lastResult = {
     ok: null,
     terminal: options.forceRebuild
       ? "Rebuilding from source, then running. Please wait..."
       : "Running code. Cached compiled output will be reused when possible..."
   };
-  renderSectionContent(project);
+  workspace.terminal = file.lastResult.terminal;
+  addCompileMessage(project, `${options.forceRebuild ? "Rebuild" : "Compile/run"} started for ${file.fileName || file.title || "source file"}.`, "info");
+  updateCompileTerminalPanel(project, file);
+  updateCompileMessagesPanel(project);
   try {
     await saveCompileFile(project, file);
     const response = await fetch(`/api/code/compile?t=${Date.now()}`, {
@@ -7590,6 +7793,8 @@ async function compileActiveFile(project, file, options = {}) {
     }
     file.dirty = false;
     ensureCompileCode(project).terminal = file.lastResult.terminal;
+    updateCompileTerminalPanel(project, file);
+    addCompileMessage(project, result.ok ? `Compile/run succeeded for ${file.fileName}.` : `Compile/run completed with errors for ${file.fileName}.`, result.ok ? "success" : "error");
     setStatus(result.ok ? "Compile/run succeeded." : "Compile/run completed with errors.");
     scheduleAutosave();
     renderSectionContent(project);
@@ -7599,6 +7804,9 @@ async function compileActiveFile(project, file, options = {}) {
       terminal: error.message || "Compile/run failed.",
       finishedAt: new Date().toISOString()
     };
+    ensureCompileCode(project).terminal = file.lastResult.terminal;
+    updateCompileTerminalPanel(project, file);
+    addCompileMessage(project, `Compile/run failed for ${file.fileName || "source file"}.`, "error");
     setStatus(error.message || "Compile/run failed.");
     renderSectionContent(project);
   }
@@ -9838,6 +10046,23 @@ sectionContent.addEventListener("click", async (event) => {
     await compileActiveFile(project, compileFile, { forceRebuild: true });
     return;
   }
+  if (hasDataset("compileAppendCode")) {
+    appendCompileCodeToProject(project, compileFile);
+    updateCompileMessagesPanel(project);
+    return;
+  }
+  if (hasDataset("compileInsertCursor")) {
+    appendCompileCodeToProject(project, compileFile, { atCursor: true });
+    updateCompileMessagesPanel(project);
+    return;
+  }
+  if (hasDataset("compileClearMessages")) {
+    compileWorkspace.messages = [];
+    updateCompileMessagesPanel(project);
+    setStatus("Compile messages log cleared.");
+    scheduleAutosave();
+    return;
+  }
   if (hasDataset("compileInstall")) {
     await installCompileTools(project, compileFile);
     return;
@@ -9975,6 +10200,18 @@ sectionContent.addEventListener("submit", (event) => {
   if (event.target.id !== "pending-editor") return;
   event.preventDefault();
   savePendingEditor(event.target);
+});
+
+sectionContent.addEventListener("change", (event) => {
+  const project = selectedProject();
+  if (!project) return;
+  if (event.target.dataset.compileAppendTarget !== undefined) {
+    const workspace = ensureCompileCode(project);
+    workspace.appendTargetId = event.target.value;
+    addCompileMessage(project, `Append destination set to ${selectedCompileAppendDestination(project)?.label || "project overview"}.`, "info");
+    setStatus("Compile append destination updated.");
+    scheduleAutosave();
+  }
 });
 
 sectionContent.addEventListener("input", (event) => {
