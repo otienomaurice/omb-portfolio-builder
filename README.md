@@ -4,6 +4,16 @@ OMB Portfolio Builder is a Windows desktop application for creating, editing, pr
 
 This README is for the builder application only. Website-specific content, domain notes, public page layout, and generated portfolio assets belong in the portfolio site's own README.
 
+## Complete Beginner Guide
+
+A long beginner-oriented Word guide is included at:
+
+```text
+docs/OMB_Portfolio_Builder_Complete_Guide.docx
+```
+
+It explains the high-level design, generated block diagrams, software-engineering decisions, shell commands, programming syntax, how the important files communicate, what each build tool owns, GitHub workflows, Electron, the installer, caching, API endpoints, data contracts, frontend/backend/AI/Cloudflare layers, the website, the parser, publishing, compiler tools, generated function inventories, and file-by-file repository notes.
+
 ## Install
 
 Download the latest Windows installer or portable executable from:
@@ -78,6 +88,8 @@ Front-page, profile, contact, fun facts, and project overview fields use the sam
 Code support is available from the rich editor right-click menu. Use **Code block** or **Paste as code** for C, C++, SystemVerilog, LTspice, Java, JavaScript, Python, and HTML. Code blocks store the selected language, preserve source spacing when requested, highlight common language keywords, and render as code in project previews and published portfolios.
 
 Projects also include a separate **Compile Code** workspace. This is local builder tooling, not a portfolio text block. Add or import source files, choose the language, save the source, run the beautifier, check compiler availability, and compile or run code with terminal-style output. JavaScript uses Node.js, Python uses the installed Python runtime, Java uses a JDK, C/C++ use a MinGW/WinLibs-style compiler when available, and SystemVerilog/LTspice report clear missing-tool messages unless compatible command-line tools are installed.
+
+The Compile Code workspace includes an explicit **Show output** control. Use it to jump directly to the local terminal output for the active source file. The terminal panel also supports copying output and clearing output, while the Messages log keeps user-facing compile/save/append status entries.
 
 The portfolio parser carries those rich text fields into project previews, full portfolio previews, saved drafts, and generated website catalogs. Use **Save project** or **Save all sections** before previewing or publishing so the parsed site output includes the latest front-page, profile, contact, fun fact, and project text formatting.
 
@@ -202,6 +214,9 @@ Use the workflow in [BRANCHING.md](BRANCHING.md):
 | `codex/optimize-code-run-cache` | Adds cached compiled artifacts and a separate Rebuild / run command so repeated Java, C, C++, and SystemVerilog runs do not recompile unchanged source. | `development` | `development` | Active |
 | `codex/add-verilog-simulator` | Adds Verilog as a first-class compile/simulate language using Icarus Verilog and vvp, with Verilog-specific highlighting, file detection, and cleaner simulator output. | `development` | `development` | Active |
 | `codex/improve-c-cpp-compiler` | Improves C and C++ compile/run behavior with C17/C++20 profiles, stronger warnings, cleaner diagnostics, named binaries, header syntax checks, and better C/C++ detection. | `development` | `development` | Active |
+| `codex/compile-terminal-log-append` | Makes compile terminal output repaint immediately, adds a Compile Code messages log, and lets source code be appended into selected project overview sections as formatted code blocks. | `development` | `development` | Active |
+| `codex/terminal-output-and-complete-guide` | Adds explicit Compile Code output controls and generates the full beginner guide with diagrams, engineering decisions, command explanations, file communication maps, and tool-build ownership notes. | `development` | `development` | Merged into `development` |
+| `codex/expand-complete-guide-detail` | Expands the complete guide with deeper flow walkthroughs, API endpoint details, data contracts, caching detail, installer internals, generated function inventory, and additional beginner debugging notes. | `development` | `development` | Merged into `development` |
 
 ## Uninstall
 
