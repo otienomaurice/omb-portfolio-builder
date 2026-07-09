@@ -491,6 +491,8 @@
                               <li>Use Code block or Paste as code for C, C++, SystemVerilog, LTspice, Java, JavaScript, Python, and HTML snippets.</li>
                               <li>Choose Basic paste when you want the builder to clean extra trailing whitespace, or Keep source spacing when indentation is important.</li>
                               <li>Use the project Compile Code section when you want to save a source file, import a source file, beautify it, check compiler tools, and run it inside the builder.</li>
+                              <li>For Verilog and SystemVerilog simulation, mark design files as Design and mark the stimulus file as Testbench. The simulator requires a testbench before it will run the design.</li>
+                              <li>Use Add testbench to create a starter testbench with $dumpfile and $dumpvars. Those waveform calls feed the signal scope, where HDL signals can be viewed over time.</li>
                               <li>Add Code is for presentation snippets in the portfolio. Compile Code is a separate local workspace for buildable source files and terminal output.</li>
                               <li>Links in rich text open as websites on the portfolio unless you attach them as downloadable files.</li>
                               <li>PDFs, spreadsheets, code files, archives, and documents are saved as downloadable resources.</li>
@@ -501,7 +503,8 @@
                               <li>Use link text that explains the destination, such as GitHub repository, LinkedIn profile, test report, or schematic PDF.</li>
                               <li>Use formulas for equations, transfer functions, gain expressions, timing relationships, or component calculations.</li>
                               <li>Use code blocks for short code examples that should be readable on the website; use files or GitHub links for long source trees.</li>
-                              <li>Use Compile Code to test C, C++, Java, JavaScript, Python, HTML checks, and any installed SystemVerilog or LTspice command-line tools before deciding what to publish later.</li>
+                              <li>Use Compile Code to test C, C++, Java, JavaScript, Python, HTML checks, and any installed Verilog, SystemVerilog, or LTspice command-line tools before deciding what to publish later.</li>
+                              <li>Use Show output for terminal logs and Show scope for HDL timing waveforms after a successful testbench simulation.</li>
                               <li>If a link is accidentally treated as a formula, remove the formula block and paste it again as normal text or link content.</li>
                           </ul>
                           <p>When pasting from ChatGPT, review formulas and code before saving. If the content is a link, it should render as a clickable link, not as a formula. If the content is source code, it should render inside a dark code block with language coloring instead of becoming ordinary paragraph text.</p>

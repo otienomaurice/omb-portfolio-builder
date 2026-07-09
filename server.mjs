@@ -619,7 +619,26 @@ async function compileToolStatus() {
   return { compileRoot, languages, tools };
 }
 
-async function saveCompileSource({ projectId, fileId, title, fileName, language, code, stdin = "" }) {
+function isHdlLanguage(language = "") {
+  return ["verilog", "systemverilog"].includes(normalizeCodeLanguage(language));
+}
+
+function inferCompileFileRole(fileName = "", code = "", language = "") {
+  if (!isHdlLanguage(language)) return "source";
+  const haystack = `${fileName}\n${code}`.toLowerCase();
+  if (/\b(tb|testbench)\b|(^|[_-])tb([_-]|\.)|test[_-]?bench|\$dumpfile|\$dumpvars|module\s+tb[_a-z0-9]*/i.test(haystack)) {
+    return "testbench";
+  }
+  return "design";
+}
+
+function normalizeCompileFileRole(value = "", language = "") {
+  if (!isHdlLanguage(language)) return "source";
+  const clean = String(value || "").trim().toLowerCase().replace(/[_\s-]+/g, "");
+  return ["tb", "testbench", "bench"].includes(clean) ? "testbench" : "design";
+}
+
+async function saveCompileSource({ projectId, fileId, title, fileName, language, role = "", code, stdin = "" }) {
   const lang = normalizeCodeLanguage(language || detectCodeLanguageFromSource(code, fileName));
   const projectFolder = safeSegment(projectId, "project");
   const codeFileName = safeCodeFileName(fileName, lang);
@@ -634,6 +653,7 @@ async function saveCompileSource({ projectId, fileId, title, fileName, language,
     title: clampText(title || codeFileName, 180),
     fileName: codeFileName,
     language: lang,
+    role: normalizeCompileFileRole(role || inferCompileFileRole(codeFileName, code, lang), lang),
     sourcePath,
     savedAt: new Date().toISOString()
   };
@@ -662,6 +682,192 @@ function compileCacheDirectory(projectId, language, key) {
 
 function cachedBuildLine(type, outputPath) {
   return `${type} cache hit: using existing artifact\n${outputPath}`;
+}
+
+function hdlModuleNames(code = "") {
+  return [...String(code || "").matchAll(/\bmodule\s+([A-Za-z_$][\w$]*)/g)].map((match) => match[1]);
+}
+
+function hdlHasWaveDump(code = "") {
+  const source = String(code || "");
+  return /\$dumpfile\s*\(/.test(source) && /\$dumpvars\s*\(/.test(source);
+}
+
+function hdlFilesFromPayload(payload = {}, activeFileName = "", activeLanguage = "verilog") {
+  const incoming = Array.isArray(payload.workspaceFiles) ? payload.workspaceFiles : [];
+  const byId = new Map();
+  const addFile = (item = {}, fallbackId = "") => {
+    const code = String(item.code || "");
+    const language = normalizeCodeLanguage(item.language || detectCodeLanguageFromSource(code, item.fileName));
+    if (!isHdlLanguage(language) || !code.trim()) return;
+    const fileName = safeCodeFileName(item.fileName || activeFileName || compileLanguageProfiles[language].defaultFile, language);
+    const id = safeSegment(item.id || fallbackId || fileName, path.parse(fileName).name);
+    byId.set(id, {
+      id,
+      title: clampText(item.title || fileName, 180),
+      fileName,
+      language,
+      role: normalizeCompileFileRole(item.role || inferCompileFileRole(fileName, code, language), language),
+      code
+    });
+  };
+  incoming.forEach((item, index) => addFile(item, `hdl-${index + 1}`));
+  addFile({
+    id: payload.fileId,
+    title: payload.title,
+    fileName: activeFileName,
+    language: activeLanguage,
+    role: payload.role,
+    code: payload.code
+  }, "active");
+  return [...byId.values()].sort((a, b) => {
+    if (a.role === b.role) return a.fileName.localeCompare(b.fileName);
+    return a.role === "testbench" ? 1 : -1;
+  });
+}
+
+async function writeHdlSimulationSources(files = [], cacheDir = "") {
+  const sourceDir = path.join(cacheDir, "sources");
+  await rm(sourceDir, { recursive: true, force: true });
+  await mkdir(sourceDir, { recursive: true });
+  const seen = new Map();
+  const written = [];
+  for (const file of files) {
+    const parsed = path.parse(file.fileName);
+    const count = seen.get(file.fileName) || 0;
+    seen.set(file.fileName, count + 1);
+    const uniqueName = count ? `${parsed.name}_${count}${parsed.ext}` : file.fileName;
+    const sourcePath = path.join(sourceDir, uniqueName);
+    await writeFile(sourcePath, file.code, "utf8");
+    written.push({ ...file, uniqueName, sourcePath });
+  }
+  return written;
+}
+
+async function findFilesByExtension(folder = "", extension = ".vcd", maxDepth = 3) {
+  if (!folder || maxDepth < 0 || !(await pathExists(folder))) return [];
+  const entries = await readdir(folder, { withFileTypes: true }).catch(() => []);
+  const matches = [];
+  for (const entry of entries) {
+    const fullPath = path.join(folder, entry.name);
+    if (entry.isDirectory()) {
+      matches.push(...await findFilesByExtension(fullPath, extension, maxDepth - 1));
+    } else if (entry.isFile() && entry.name.toLowerCase().endsWith(extension.toLowerCase())) {
+      matches.push(fullPath);
+    }
+  }
+  return matches;
+}
+
+function normalizeVcdValue(raw = "") {
+  const clean = String(raw || "").trim();
+  if (!clean) return "x";
+  if (/^[01xz]$/i.test(clean)) return clean.toLowerCase();
+  if (/^[br][01xz_]+$/i.test(clean)) return clean.slice(1).replace(/_/g, "").toLowerCase();
+  return clean.toLowerCase();
+}
+
+function parseVcdScopeText(text = "", source = "waveform.vcd") {
+  const lines = String(text || "").split(/\r?\n/);
+  const scopes = [];
+  const signalsByCode = new Map();
+  const timeScaleParts = [];
+  let inTimescale = false;
+  let time = 0;
+  let maxTime = 0;
+  let definitionDone = false;
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line) continue;
+    if (line.startsWith("$timescale")) {
+      inTimescale = true;
+      const inline = line.replace("$timescale", "").replace("$end", "").trim();
+      if (inline) timeScaleParts.push(inline);
+      continue;
+    }
+    if (inTimescale) {
+      if (line === "$end") {
+        inTimescale = false;
+      } else {
+        timeScaleParts.push(line.replace("$end", "").trim());
+        if (line.includes("$end")) inTimescale = false;
+      }
+      continue;
+    }
+    const scopeMatch = line.match(/^\$scope\s+\S+\s+(.+?)\s+\$end$/);
+    if (scopeMatch) {
+      scopes.push(scopeMatch[1]);
+      continue;
+    }
+    if (/^\$upscope\b/.test(line)) {
+      scopes.pop();
+      continue;
+    }
+    const varMatch = line.match(/^\$var\s+\S+\s+(\d+)\s+(\S+)\s+(.+?)\s+\$end$/);
+    if (varMatch) {
+      const [, width, code, reference] = varMatch;
+      if (!signalsByCode.has(code) && signalsByCode.size < 64) {
+        const cleanReference = reference.replace(/\s+\[[^\]]+\]$/, "");
+        signalsByCode.set(code, {
+          code,
+          name: [...scopes, cleanReference].filter(Boolean).join("."),
+          reference: cleanReference,
+          width: Number(width) || 1,
+          changes: []
+        });
+      }
+      continue;
+    }
+    if (line.startsWith("$enddefinitions")) {
+      definitionDone = true;
+      continue;
+    }
+    if (!definitionDone) continue;
+    if (line.startsWith("#")) {
+      time = Number(line.slice(1)) || 0;
+      maxTime = Math.max(maxTime, time);
+      continue;
+    }
+    let code = "";
+    let value = "";
+    const vectorMatch = line.match(/^([br][01xz_]+)\s+(\S+)$/i);
+    if (vectorMatch) {
+      value = normalizeVcdValue(vectorMatch[1]);
+      code = vectorMatch[2];
+    } else if (/^[01xz]/i.test(line)) {
+      value = normalizeVcdValue(line[0]);
+      code = line.slice(1).trim();
+    }
+    const signal = signalsByCode.get(code);
+    if (!signal || !value) continue;
+    const previous = signal.changes[signal.changes.length - 1];
+    if (!previous || previous.value !== value || previous.time !== time) {
+      if (signal.changes.length < 600) signal.changes.push({ time, value });
+    }
+  }
+  const signals = [...signalsByCode.values()]
+    .filter((signal) => signal.changes.length)
+    .slice(0, 32);
+  return {
+    source: path.basename(source),
+    timeScale: timeScaleParts.join(" ").replace(/\s+/g, " ").trim() || "ticks",
+    maxTime,
+    signals
+  };
+}
+
+async function readHdlWaveform(cacheDir = "") {
+  const vcdFiles = await findFilesByExtension(cacheDir, ".vcd", 4);
+  if (!vcdFiles.length) return null;
+  const selected = vcdFiles.sort((a, b) => a.length - b.length)[0];
+  const text = await readFile(selected, "utf8");
+  const limited = text.length > 6_000_000 ? text.slice(0, 6_000_000) : text;
+  return parseVcdScopeText(limited, selected);
+}
+
+async function clearHdlWaveforms(cacheDir = "") {
+  const vcdFiles = await findFilesByExtension(cacheDir, ".vcd", 4);
+  await Promise.all(vcdFiles.map((filePath) => rm(filePath, { force: true }).catch(() => {})));
 }
 
 async function compileAndRunCode(payload = {}) {
@@ -834,26 +1040,94 @@ async function compileAndRunCode(payload = {}) {
     if (missingTools.length) {
       return { ok: false, language, saved, terminal: `${profile.label} simulator tools missing: ${missingTools.join(", ")}. Install Icarus Verilog and add iverilog/vvp to PATH.` };
     }
-    const flags = language === "systemverilog" ? ["-g2012", "-Wall"] : ["-g2005-sv", "-Wall"];
-    const cacheKey = compileCacheKey({ language, fileName: saved.fileName, sourceCode, compiler: found.iverilog, runtime: found.vvp, flags });
+    const hdlFiles = hdlFilesFromPayload(payload, saved.fileName, language);
+    const testbenchFiles = hdlFiles.filter((file) => file.role === "testbench");
+    if (!testbenchFiles.length) {
+      return {
+        ok: false,
+        language,
+        saved,
+        terminal: [
+          `${profile.label} simulation requires a testbench.`,
+          "Mark one HDL file as Testbench or click Add testbench, connect it to the design under test, then run again.",
+          "A design-only file can be saved and appended to the portfolio, but simulation needs stimulus from a testbench."
+        ].join("\n")
+      };
+    }
+    if (!testbenchFiles.some((file) => hdlHasWaveDump(file.code))) {
+      return {
+        ok: false,
+        language,
+        saved,
+        terminal: [
+          "HDL scope requires waveform dump calls in the testbench.",
+          'Add $dumpfile("waveform.vcd"); and $dumpvars(0, tb_module_name); inside an initial block.',
+          "The simulator will not run without a waveform dump because there would be no signal-over-time data for the scope."
+        ].join("\n")
+      };
+    }
+    const usesSystemVerilog = hdlFiles.some((file) => normalizeCodeLanguage(file.language) === "systemverilog");
+    const flags = usesSystemVerilog ? ["-g2012", "-Wall"] : ["-g2005-sv", "-Wall"];
+    const topModule = testbenchFiles.flatMap((file) => hdlModuleNames(file.code)).find(Boolean) || "";
+    const cacheKey = compileCacheKey({
+      language: usesSystemVerilog ? "systemverilog" : "verilog",
+      files: hdlFiles.map((file) => ({
+        fileName: file.fileName,
+        language: file.language,
+        role: file.role,
+        code: file.code
+      })),
+      compiler: found.iverilog,
+      runtime: found.vvp,
+      flags,
+      topModule
+    });
     const cacheDir = compileCacheDirectory(payload.projectId, language, cacheKey);
     await mkdir(cacheDir, { recursive: true });
     const output = path.join(cacheDir, "simulation.vvp");
+    const sourceFiles = await writeHdlSimulationSources(hdlFiles, cacheDir);
+    const designCount = sourceFiles.filter((file) => file.role !== "testbench").length;
+    terminal.push(`${profile.label} simulation set: ${designCount} design file${designCount === 1 ? "" : "s"}, ${testbenchFiles.length} testbench file${testbenchFiles.length === 1 ? "" : "s"}`);
+    if (topModule) terminal.push(`Testbench top: ${topModule}`);
     const cached = !forceRebuild && await pathExists(output);
     if (cached) {
       terminal.push(cachedBuildLine(`${profile.label} simulation`, output));
     } else {
-      const runSource = await ensureRunSource();
-      const compileArgs = [...flags, "-o", output, runSource.runSourcePath];
-      const compile = await runProcess(found.iverilog, compileArgs, { cwd: runSource.runDir, timeoutMs: 30000 });
-      append(`${path.basename(found.iverilog)} ${flags.join(" ")}`, compile);
+      const compileArgs = [
+        ...flags,
+        ...(topModule ? ["-s", topModule] : []),
+        "-o",
+        output,
+        ...sourceFiles.map((file) => file.sourcePath)
+      ];
+      const compile = await runProcess(found.iverilog, compileArgs, { cwd: cacheDir, timeoutMs: 30000 });
+      const replacements = sourceFiles.map((file) => ({ from: file.sourcePath, to: file.uniqueName }));
+      terminal.push(terminalLine(
+        `${path.basename(found.iverilog)} ${flags.join(" ")}${topModule ? ` -s ${topModule}` : ""} -o simulation.vvp`,
+        processTerminalTextWithPaths(compile, replacements)
+      ));
       ok = compile.ok;
     }
+    let waveform = null;
     if (cached || ok) {
       terminal.push(`Generated simulation: ${output}`);
+      await clearHdlWaveforms(cacheDir);
       const run = await runProcess(found.vvp, [output], { cwd: cacheDir, timeoutMs: 20000 });
       terminal.push(terminalLine(`${path.basename(found.vvp)} simulation.vvp`, cleanHdlSimulationOutput(run)));
-      ok = run.ok;
+      waveform = run.ok ? await readHdlWaveform(cacheDir) : null;
+      if (waveform?.signals?.length) {
+        terminal.push(`Scope waveform: ${waveform.source} (${waveform.signals.length} signals, 0 to ${waveform.maxTime} ${waveform.timeScale})`);
+      } else {
+        terminal.push("Scope waveform was not generated. Confirm the testbench executes $dumpfile and $dumpvars before $finish.");
+      }
+      ok = run.ok && Boolean(waveform?.signals?.length);
+      return {
+        ok,
+        language,
+        saved,
+        waveform,
+        terminal: terminal.join("\n\n").trim() || "No compiler output was returned."
+      };
     }
   } else if (language === "ltspice") {
     const ltspice = await findTool("ltspice");

@@ -130,7 +130,7 @@ COMMAND_LESSONS = [
 
 
 FEATURE_TOPICS = [
-    "Profile identity and contact details", "Front-page hero text", "Fun facts block", "Portfolio areas", "Project categories", "Project creation flow", "Project overview", "Design sections", "Simulation sections", "Files and downloadable evidence", "Images and captions", "Links and external URLs", "Resume viewing", "Project preview", "Full portfolio preview", "Save project", "Save all sections", "Save draft", "Apply to site", "Publishing target", "GitHub authorization", "Local draft recovery", "Mobile rendering", "Desktop rendering", "Search engine behavior", "Website search", "AI chat", "Cloudflare AI worker", "Code block insertion", "Compile Code workspace", "Terminal output", "Messages log", "Append code to project", "Dark mode", "Preferences menu", "Window controls", "Builder guide windows", "Installer workflow", "Updater workflow", "Uninstaller behavior", "Branch protection", "Release tags", "Security headers", "DNS and custom domain", "Offline editing", "Public/private boundary", "Asset synchronization", "Project parser", "Template appearance library", "Browser back and refresh support", "Error messages", "Troubleshooting logs",
+    "Profile identity and contact details", "Front-page hero text", "Fun facts block", "Portfolio areas", "Project categories", "Project creation flow", "Project overview", "Design sections", "Simulation sections", "Files and downloadable evidence", "Images and captions", "Links and external URLs", "Resume viewing", "Project preview", "Full portfolio preview", "Save project", "Save all sections", "Save draft", "Apply to site", "Publishing target", "GitHub authorization", "Local draft recovery", "Mobile rendering", "Desktop rendering", "Search engine behavior", "Website search", "AI chat", "Cloudflare AI worker", "Code block insertion", "Compile Code workspace", "HDL testbench requirement", "HDL signal scope", "Terminal output", "Messages log", "Append code to project", "Dark mode", "Preferences menu", "Window controls", "Builder guide windows", "Installer workflow", "Updater workflow", "Uninstaller behavior", "Branch protection", "Release tags", "Security headers", "DNS and custom domain", "Offline editing", "Public/private boundary", "Asset synchronization", "Project parser", "Template appearance library", "Browser back and refresh support", "Error messages", "Troubleshooting logs",
 ]
 
 
@@ -266,8 +266,9 @@ DIAGRAM_SPECS = [
             ("source", "Add or import\nsource code", 75, 150, 250, 125, "#DBEAFE"),
             ("save", "Save source\ncompile-code folder", 390, 150, 250, 125, "#DCFCE7"),
             ("lang", "Language profile\nC, C++, Java,\nPython, JS, HDL", 705, 150, 260, 145, "#FEF3C7"),
-            ("runner", "Compiler runner\nserver.mjs", 1030, 150, 250, 125, "#CFFAFE"),
-            ("terminal", "Real terminal output\nstdout + stderr", 1030, 365, 250, 125, "#E0F2FE"),
+            ("runner", "Compiler runner\nserver.mjs", 1030, 135, 250, 125, "#CFFAFE"),
+            ("scope", "HDL testbench\n+ signal scope", 1030, 315, 250, 125, "#DCFCE7"),
+            ("terminal", "Real terminal output\nstdout + stderr", 1030, 495, 250, 125, "#E0F2FE"),
             ("messages", "Messages log\nbuilder feedback", 705, 365, 260, 125, "#FCE7F3"),
             ("append", "Append code\nto project section", 390, 365, 250, 125, "#EDE9FE"),
         ],
@@ -275,6 +276,7 @@ DIAGRAM_SPECS = [
             ("source", "save", "save"),
             ("save", "lang", "detect"),
             ("lang", "runner", "compile/run"),
+            ("runner", "scope", "VCD waveform"),
             ("runner", "terminal", "streams result"),
             ("runner", "messages", "status"),
             ("source", "append", "optional"),
@@ -747,8 +749,11 @@ FLOW_WALKTHROUGHS = [
             ("Save source", "server.mjs writes source into the compile-code workspace."),
             ("Detect tools", "server.mjs finds compiler/runtime tools and caches their paths."),
             ("Build cache key", "The backend hashes source, language, compiler, runtime, and relevant flags."),
+            ("Require HDL testbench", "For Verilog and SystemVerilog, the backend refuses to simulate a design-only file. At least one HDL file must be marked Testbench."),
+            ("Require HDL waveform dump", "The HDL testbench must call $dumpfile and $dumpvars so the builder has signal-over-time data to draw in the scope."),
             ("Compile if needed", "If a matching artifact exists and Rebuild was not requested, the builder reuses it."),
             ("Run", "The runtime executes the binary/class/simulation/script and captures stdout/stderr."),
+            ("Parse VCD scope", "For HDL simulation, server.mjs reads the generated VCD file and returns signal changes to template-preview.js."),
             ("Show output", "template-preview.js displays terminal text immediately and records messages in the log."),
         ],
         "Compile Code has two purposes: prove code runs locally and optionally append clean source evidence into a project section.",
@@ -788,14 +793,14 @@ DATA_CONTRACTS = [
     (
         "Compile Code Request",
         "Sent by template-preview.js to server.mjs when saving, beautifying, compiling, or running code.",
-        "{\n  \"projectId\": \"project-id\",\n  \"fileId\": \"source-id\",\n  \"title\": \"Main program\",\n  \"fileName\": \"main.cpp\",\n  \"language\": \"cpp\",\n  \"code\": \"#include <iostream>\\nint main(){...}\",\n  \"stdin\": \"optional input\",\n  \"forceRebuild\": false\n}",
-        "The backend must validate language, safe file name, safe project folder, and whether rebuild is requested.",
+        "{\n  \"projectId\": \"project-id\",\n  \"fileId\": \"source-id\",\n  \"title\": \"Counter design\",\n  \"fileName\": \"counter.sv\",\n  \"language\": \"systemverilog\",\n  \"role\": \"design\",\n  \"code\": \"module counter(...); ... endmodule\",\n  \"stdin\": \"optional input\",\n  \"workspaceFiles\": [\n    { \"fileName\": \"counter.sv\", \"language\": \"systemverilog\", \"role\": \"design\", \"code\": \"...\" },\n    { \"fileName\": \"tb_counter.sv\", \"language\": \"systemverilog\", \"role\": \"testbench\", \"code\": \"... $dumpfile ... $dumpvars ...\" }\n  ],\n  \"forceRebuild\": false\n}",
+        "The backend must validate language, safe file name, safe project folder, rebuild intent, and for HDL simulation whether at least one workspace file is a testbench with waveform dump calls.",
     ),
     (
         "Compile Code Response",
         "Returned by server.mjs after compile/run.",
-        "{\n  \"ok\": true,\n  \"result\": {\n    \"language\": \"cpp\",\n    \"terminal\": \"C++ binary cache hit...\\nProgram output...\",\n    \"saved\": { \"sourcePath\": \"...\", \"savedAt\": \"...\" }\n  }\n}",
-        "template-preview.js stores result.terminal in file.lastResult and workspace.terminal, then repaints the terminal panel.",
+        "{\n  \"ok\": true,\n  \"result\": {\n    \"language\": \"systemverilog\",\n    \"terminal\": \"simulation output...\",\n    \"saved\": { \"sourcePath\": \"...\", \"savedAt\": \"...\" },\n    \"waveform\": {\n      \"source\": \"waveform.vcd\",\n      \"timeScale\": \"1 ns\",\n      \"maxTime\": 100,\n      \"signals\": [{ \"name\": \"tb_counter.clk\", \"width\": 1, \"changes\": [{ \"time\": 0, \"value\": \"0\" }] }]\n    }\n  }\n}",
+        "template-preview.js stores result.terminal in file.lastResult and workspace.terminal, stores result.waveform for HDL, repaints the terminal panel, and draws the signal scope.",
     ),
     (
         "Publish Target",
@@ -1555,7 +1560,7 @@ def add_workflows(doc: Document, files: list[str], diagrams: dict[str, Path]) ->
         ("Project Creation Workflow", ["Click Add project.", "Choose category.", "Choose appearance.", "Enter title.", "Edit overview and sections.", "Add files, images, links, code blocks, and compile-code evidence.", "Save project so the parser can build the project preview."]),
         ("Publishing Workflow", ["Enter repository target.", "Authenticate GitHub write access.", "Load from target if the target already has content.", "Save draft.", "Apply to site.", "Git commits and pushes generated files.", "GitHub Pages or Cloudflare serves the updated website."]),
         ("Update Workflow", ["The installed app checks GitHub Releases.", "If a newer version exists, the app shows an update dialog.", "The updater downloads the installer.", "The app closes itself.", "The installer updates the existing AppData install.", "The app relaunches after the installer finishes."]),
-        ("Compile Code Workflow", ["Create or import a source file.", "Pick the language.", "Save source.", "Run beautifier if desired.", "Compile or run.", "Read terminal output and messages log.", "Append the source code to a project section when ready."]),
+        ("Compile Code Workflow", ["Create or import a source file.", "Pick the language.", "For Verilog/SystemVerilog, mark design files as Design and create or import a Testbench file.", "Keep $dumpfile and $dumpvars in the HDL testbench so the signal scope can draw waveforms.", "Save source.", "Run beautifier if desired.", "Compile or run.", "Read terminal output, messages log, and HDL scope when available.", "Append the source code to a project section when ready."]),
     ]
     for title, steps in workflows:
         doc.add_heading(title, level=1)
@@ -1639,7 +1644,7 @@ def add_commands(doc: Document) -> None:
 def add_features(doc: Document, diagrams: dict[str, Path]) -> None:
     for topic in FEATURE_TOPICS:
         doc.add_heading(f"Builder Feature: {topic}", level=1)
-        if topic in {"Compile Code workspace", "Terminal output", "Messages log", "Append code to project"}:
+        if topic in {"Compile Code workspace", "HDL testbench requirement", "HDL signal scope", "Terminal output", "Messages log", "Append code to project"}:
             add_diagram(doc, diagrams["compile-code-flow"], f"Context diagram for {topic}.")
         elif topic in {"AI chat", "Cloudflare AI worker"}:
             add_diagram(doc, diagrams["cloudflare-ai-flow"], f"Context diagram for {topic}.")
