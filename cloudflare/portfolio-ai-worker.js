@@ -179,6 +179,46 @@ async function callWorkersAi(body, env) {
   };
 }
 
+function fallbackWorkerAnswer(body = {}) {
+  const question = String(body.question || "").trim();
+  const clean = question.toLowerCase();
+  const context = body.context || {};
+  const projects = Array.isArray(context.projects) ? context.projects : [];
+  const owner = context.owner || context.profile?.displayName || "Maurice Otieno";
+
+  if (/^(hi|hello|hey|yo)\b/.test(clean)) {
+    return `Hi, what can I do for you? I can help with ${owner}'s projects, files, resume links, or related electronics concepts.`;
+  }
+  if (/\bembedded systems?\b/.test(clean)) {
+    return [
+      "Embedded systems is a field of engineering where software is built into dedicated hardware to control a device, measure signals, communicate with peripherals, or respond to real-time events.",
+      "",
+      "Typical embedded work combines microcontrollers or processors, firmware, timing, interrupts, communication buses, sensors, actuators, and hardware validation.",
+      "",
+      projects.length
+        ? `In this portfolio, I would connect that explanation back to saved projects such as ${projects.slice(0, 3).map((project) => project.title || project.name).filter(Boolean).join(", ")} when those projects are relevant.`
+        : "When project context is available, I connect the explanation to the saved project evidence."
+    ].join("\n");
+  }
+  if (projects.length && /\b(project|portfolio|maurice|file|github|resume|tool|design|test)\b/.test(clean)) {
+    return [
+      `I can use the portfolio context for ${owner}.`,
+      "",
+      "Relevant saved project areas include:",
+      ...projects.slice(0, 6).map((project) => `- ${project.title || project.name || "Untitled project"}`),
+      "",
+      "The full AI model is not reachable from this Worker right now, so this is a fallback answer from the available context."
+    ].join("\n");
+  }
+  return [
+    "I can answer that in a general way, but the full AI model is not reachable from this Worker right now.",
+    "",
+    "A useful answer should define the concept, explain the main parts, give a practical example, and connect it to a project artifact when portfolio context is relevant.",
+    "",
+    `Question received: ${question}`
+  ].join("\n");
+}
+
 export default {
   async fetch(request, env) {
     const cors = corsHeaders(request, env);
@@ -200,20 +240,37 @@ export default {
     if (!question) return json({ error: "Question is required." }, 400, cors);
 
     try {
-      const result = env.OPENAI_API_KEY
+      let provider = env.OPENAI_API_KEY ? "openai" : "cloudflare-workers-ai";
+      let result = env.OPENAI_API_KEY
         ? await callOpenAi({ ...body, question }, env)
         : await callWorkersAi({ ...body, question }, env);
-      if (!result.ok) return json({ error: result.error }, result.status || 502, cors);
+      if (!result.ok && env.OPENAI_API_KEY && env.AI) {
+        provider = "cloudflare-workers-ai";
+        result = await callWorkersAi({ ...body, question }, env);
+      }
+      if (!result.ok) {
+        return json({
+          answer: fallbackWorkerAnswer({ ...body, question }),
+          model: "worker-fallback",
+          provider: "worker-fallback",
+          warning: result.error,
+          usedWebSearch: false
+        }, 200, cors);
+      }
       return json({
         answer: result.answer || "I could not generate a useful answer from the available context.",
         model: result.model,
-        provider: env.OPENAI_API_KEY ? "openai" : "cloudflare-workers-ai",
+        provider,
         usedWebSearch: false
       }, 200, cors);
     } catch (error) {
       return json({
-        error: error?.message || "Portfolio AI backend failed unexpectedly."
-      }, 500, cors);
+        answer: fallbackWorkerAnswer({ ...body, question }),
+        model: "worker-fallback",
+        provider: "worker-fallback",
+        warning: error?.message || "Portfolio AI backend failed unexpectedly.",
+        usedWebSearch: false
+      }, 200, cors);
     }
   }
 };

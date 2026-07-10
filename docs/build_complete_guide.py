@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import math
 import re
+import shutil
 import subprocess
 import textwrap
 from pathlib import Path
@@ -19,6 +20,7 @@ from docx.shared import Inches, Pt, RGBColor
 REPO = Path(__file__).resolve().parents[1]
 OUTPUT = REPO / "docs" / "OMB_Portfolio_Builder_Complete_Guide.docx"
 DIAGRAM_DIR = REPO / "docs" / "guide-diagrams"
+CODE_REFERENCE_DIR = REPO / "docs" / "code-reference"
 
 
 FILE_DESCRIPTIONS = {
@@ -1317,6 +1319,252 @@ def extract_functions() -> list[tuple[str, int, str, str]]:
     return function_rows
 
 
+TEXT_CODE_EXTENSIONS = {
+    ".cjs", ".css", ".html", ".js", ".json", ".md", ".mjs", ".nsh", ".toml", ".txt", ".yaml", ".yml"
+}
+
+
+def is_text_code_file(repo_file: str) -> bool:
+    path = REPO / repo_file
+    if repo_file.startswith("docs/code-reference/"):
+        return False
+    return path.is_file() and path.suffix.lower() in TEXT_CODE_EXTENSIONS
+
+
+def source_lines(repo_file: str) -> list[str]:
+    path = REPO / repo_file
+    if not path.exists() or not path.is_file():
+        return []
+    return path.read_text(encoding="utf-8", errors="replace").splitlines()
+
+
+def extract_source_facts(repo_file: str) -> dict:
+    lines = source_lines(repo_file)
+    text = "\n".join(lines)
+    functions = []
+    variables = []
+    imports = []
+    endpoints = []
+    selectors = []
+    events = []
+    patterns = [
+        re.compile(r"^\s*(?:async\s+)?function\s+([A-Za-z_$][\w$]*)\s*\("),
+        re.compile(r"^\s*const\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?\([^=]*\)\s*=>"),
+        re.compile(r"^\s*const\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s+)?function\b"),
+    ]
+    for line_no, line in enumerate(lines, start=1):
+        stripped = line.strip()
+        for pattern in patterns:
+            match = pattern.search(line)
+            if match:
+                name = match.group(1)
+                functions.append({
+                    "line": line_no,
+                    "name": name,
+                    "purpose": function_purpose(Path(repo_file).name, name),
+                    "signature": stripped[:180],
+                })
+                break
+        var_match = re.match(r"^\s*(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=", line)
+        if var_match and len(variables) < 80:
+            variables.append({
+                "line": line_no,
+                "name": var_match.group(1),
+                "statement": stripped[:180],
+            })
+        if re.match(r"^\s*import\s+", line) or re.match(r"^\s*(?:const|let|var)\s+\S+\s*=\s*require\(", line):
+            imports.append({"line": line_no, "statement": stripped[:220]})
+        for match in re.findall(r"['\"](/api/[A-Za-z0-9_./-]+)", line):
+            endpoints.append({"line": line_no, "endpoint": match.rstrip("/")})
+        if ".addEventListener(" in line:
+            events.append({"line": line_no, "statement": stripped[:180]})
+        if repo_file.endswith(".css"):
+            selector_match = re.match(r"^\s*([.#A-Za-z0-9_\-:\[\]\(\)\s>,+.=\"']+)\s*\{", line)
+            if selector_match and len(selectors) < 80:
+                selectors.append({"line": line_no, "selector": selector_match.group(1).strip()[:160]})
+    return {
+        "repo_file": repo_file,
+        "line_count": len(lines),
+        "size_bytes": (REPO / repo_file).stat().st_size if (REPO / repo_file).exists() else 0,
+        "description": FILE_DESCRIPTIONS.get(repo_file, "Tracked source/configuration file in the OMB Portfolio Builder repository."),
+        "functions": functions,
+        "variables": variables,
+        "imports": imports,
+        "endpoints": endpoints,
+        "selectors": selectors,
+        "events": events,
+        "mentions_server": "server.mjs" in text,
+        "mentions_template_preview": "template-preview" in text,
+        "mentions_script": "script.js" in text,
+        "mentions_projects_json": "projects.json" in text,
+        "mentions_github": "github" in text.lower(),
+        "mentions_cloudflare": "cloudflare" in text.lower() or "worker" in text.lower(),
+        "snippet": "\n".join(lines[:36]) if lines else "",
+    }
+
+
+def fact_relationship_summary(facts: dict) -> str:
+    related = []
+    if facts.get("mentions_template_preview"):
+        related.append("builder frontend")
+    if facts.get("mentions_server"):
+        related.append("local backend")
+    if facts.get("mentions_script"):
+        related.append("public website runtime")
+    if facts.get("mentions_projects_json"):
+        related.append("portfolio catalog")
+    if facts.get("mentions_cloudflare"):
+        related.append("Cloudflare/AI layer")
+    if facts.get("mentions_github"):
+        related.append("GitHub/release layer")
+    return ", ".join(related) if related else "Mostly local to its own feature area."
+
+
+def code_reference_name(repo_file: str) -> str:
+    return re.sub(r"[^A-Za-z0-9_.-]+", "__", repo_file).strip("_") + ".md"
+
+
+def write_code_reference_docs(files: list[str]) -> list[Path]:
+    if CODE_REFERENCE_DIR.exists():
+        def remove_readonly(function, path, excinfo):
+            try:
+                Path(path).chmod(0o700)
+                function(path)
+            except Exception:
+                raise excinfo
+        shutil.rmtree(CODE_REFERENCE_DIR, onexc=remove_readonly)
+    CODE_REFERENCE_DIR.mkdir(parents=True, exist_ok=True)
+    code_files = [file for file in files if is_text_code_file(file)]
+    written = []
+    index_lines = [
+        "# OMB Portfolio Builder Code Reference",
+        "",
+        "Generated by `docs/build_complete_guide.py` from the current repository state.",
+        "These notes are intentionally code-focused: functions, variables, endpoints, imports, selectors, and communication paths.",
+        "",
+    ]
+    for repo_file in code_files:
+        facts = extract_source_facts(repo_file)
+        doc_path = CODE_REFERENCE_DIR / code_reference_name(repo_file)
+        rel_doc = doc_path.relative_to(REPO).as_posix()
+        index_lines.append(f"- [{repo_file}]({doc_path.name})")
+        lines = [
+            f"# {repo_file}",
+            "",
+            facts["description"],
+            "",
+            "## Quick Facts",
+            "",
+            f"- Lines: {facts['line_count']:,}",
+            f"- Size: {facts['size_bytes']:,} bytes",
+            f"- Talks to: {fact_relationship_summary(facts)}",
+            f"- API endpoints mentioned: {len(facts['endpoints'])}",
+            f"- Named functions discovered: {len(facts['functions'])}",
+            "",
+            "## Communication Role",
+            "",
+            "This section explains how the file participates in the app. If it mentions `template-preview.js`, it likely affects the private builder UI. If it mentions `server.mjs`, it likely calls or implements local backend APIs. If it mentions `script.js`, it affects the public website. If it mentions GitHub, Cloudflare, or Workers, it participates in publishing, releases, or public AI.",
+            "",
+        ]
+        if facts["imports"]:
+            lines.extend(["## Imports Or Requires", ""])
+            for item in facts["imports"][:40]:
+                lines.append(f"- Line {item['line']}: `{item['statement']}`")
+            lines.append("")
+        if facts["endpoints"]:
+            lines.extend(["## API Endpoints Mentioned", ""])
+            for item in facts["endpoints"][:80]:
+                lines.append(f"- Line {item['line']}: `{item['endpoint']}` - {endpoint_purpose(item['endpoint'])}")
+            lines.append("")
+        if facts["functions"]:
+            lines.extend(["## Functions", ""])
+            for item in facts["functions"]:
+                lines.append(f"### `{item['name']}` line {item['line']}")
+                lines.append("")
+                lines.append(item["purpose"])
+                lines.append("")
+                lines.append(f"Signature or declaration: `{item['signature']}`")
+                lines.append("")
+        if facts["variables"]:
+            lines.extend(["## Important Constants And Variables", ""])
+            for item in facts["variables"][:80]:
+                lines.append(f"- Line {item['line']}: `{item['name']}` from `{item['statement']}`")
+            lines.append("")
+        if facts["events"]:
+            lines.extend(["## Event Handlers", ""])
+            for item in facts["events"][:80]:
+                lines.append(f"- Line {item['line']}: `{item['statement']}`")
+            lines.append("")
+        if facts["selectors"]:
+            lines.extend(["## CSS Selectors", ""])
+            for item in facts["selectors"][:80]:
+                lines.append(f"- Line {item['line']}: `{item['selector']}`")
+            lines.append("")
+        lines.extend([
+            "## Representative Opening Snippet",
+            "",
+            "```",
+            facts["snippet"],
+            "```",
+            "",
+            "## Debugging Questions",
+            "",
+            "- What user action reaches this file?",
+            "- What state, file, endpoint, or DOM element does this file read?",
+            "- What state, file, endpoint, or DOM element does it write?",
+            "- If it fails, what is the smallest command or click that reproduces the failure?",
+        ])
+        doc_path.write_text("\n".join(lines), encoding="utf-8")
+        written.append(doc_path)
+    (CODE_REFERENCE_DIR / "README.md").write_text("\n".join(index_lines), encoding="utf-8")
+    written.append(CODE_REFERENCE_DIR / "README.md")
+    return written
+
+
+def add_generated_code_reference(doc: Document, files: list[str]) -> None:
+    doc.add_heading("Generated Code Reference Docs", level=1)
+    written = write_code_reference_docs(files)
+    doc.add_paragraph("The repository now includes generated Markdown code-reference pages. These are meant for source-level reading beside the actual files. They explain functions, variables, API endpoints, imports, event handlers, and file relationships.")
+    add_table(doc, [
+        ("Folder", str(CODE_REFERENCE_DIR.relative_to(REPO))),
+        ("Documents generated", str(len(written))),
+        ("Index", "docs/code-reference/README.md"),
+        ("Regeneration command", "python docs/build_complete_guide.py"),
+    ])
+    doc.add_page_break()
+
+    for repo_file in [file for file in files if is_text_code_file(file)]:
+        facts = extract_source_facts(repo_file)
+        doc.add_heading(f"Code Reference: {repo_file}", level=1)
+        doc.add_paragraph(facts["description"])
+        add_table(doc, [
+            ("Lines", f"{facts['line_count']:,}"),
+            ("Size", f"{facts['size_bytes']:,} bytes"),
+            ("Talks to", fact_relationship_summary(facts)),
+            ("Functions discovered", str(len(facts["functions"]))),
+            ("Variables discovered", str(len(facts["variables"]))),
+            ("API endpoints mentioned", str(len(facts["endpoints"]))),
+        ])
+        if facts["endpoints"]:
+            doc.add_heading("Endpoints in this file", level=2)
+            add_table(doc, [(item["endpoint"], f"Line {item['line']}. {endpoint_purpose(item['endpoint'])}") for item in facts["endpoints"][:20]])
+        if facts["functions"]:
+            doc.add_heading("Function details", level=2)
+            for item in facts["functions"][:30]:
+                doc.add_paragraph(f"{item['name']} (line {item['line']})", style="List Bullet")
+                doc.add_paragraph(item["purpose"])
+                add_code(doc, item["signature"])
+        if facts["variables"]:
+            doc.add_heading("Variables and constants", level=2)
+            add_table(doc, [(item["name"], f"Line {item['line']}: {item['statement']}") for item in facts["variables"][:20]])
+        if facts["imports"]:
+            doc.add_heading("Imports and dependencies", level=2)
+            add_table(doc, [(f"Line {item['line']}", item["statement"]) for item in facts["imports"][:20]])
+        doc.add_heading("Opening snippet", level=2)
+        add_code(doc, facts["snippet"] or "(empty file)")
+        doc.add_page_break()
+
+
 def add_complete_function_inventory(doc: Document) -> None:
     rows = extract_functions()
     doc.add_heading("Generated Function Inventory", level=1)
@@ -1740,6 +1988,7 @@ def main() -> None:
     add_installer_details(doc, diagrams)
     add_function_maps(doc, diagrams)
     add_complete_function_inventory(doc)
+    add_generated_code_reference(doc, files)
     add_deep_detail_topics(doc)
     add_workflows(doc, files, diagrams)
     add_files(doc, files)
