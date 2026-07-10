@@ -2064,7 +2064,7 @@ body.rich-image-dragging * {
 
 .compile-code-meta-grid {
   display: grid;
-  grid-template-columns: minmax(180px, 1fr) minmax(160px, 0.8fr) minmax(150px, 0.6fr);
+  grid-template-columns: minmax(170px, 1fr) minmax(150px, 0.8fr) minmax(140px, 0.6fr) minmax(130px, 0.55fr);
   gap: 10px;
 }
 
@@ -2145,6 +2145,7 @@ body.rich-image-dragging * {
 
 .compile-code-preview-panel,
 .compile-terminal-panel,
+.compile-scope-panel,
 .compile-messages-panel {
   overflow: hidden;
 }
@@ -2180,6 +2181,15 @@ body.rich-image-dragging * {
   border-radius: 999px;
   background: #22c55e;
   box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.12);
+}
+
+.scope-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #38bdf8;
+  box-shadow: 0 0 0 4px rgba(56, 189, 248, 0.14);
 }
 
 .compile-terminal-heading button {
@@ -2219,6 +2229,107 @@ body.rich-image-dragging * {
 .compile-terminal-panel.is-focused {
   border-color: #0284c7;
   box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.18), 0 16px 40px rgba(15, 23, 42, 0.12);
+}
+
+.compile-scope-panel {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.compile-scope-panel.is-focused {
+  border-color: #0284c7;
+  box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.18), 0 16px 40px rgba(15, 23, 42, 0.12);
+}
+
+.compile-scope-empty {
+  display: grid;
+  gap: 5px;
+  padding: 14px;
+  color: var(--muted);
+  font-size: 0.86rem;
+  line-height: 1.45;
+}
+
+.compile-scope-empty strong {
+  color: var(--ink);
+}
+
+.compile-scope-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 12px 0;
+}
+
+.compile-scope-meta span {
+  border: 1px solid rgba(14, 116, 144, 0.16);
+  border-radius: 999px;
+  padding: 4px 8px;
+  background: #f8fbfd;
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 850;
+}
+
+.compile-scope-scroll {
+  overflow: auto;
+  padding: 10px 12px 14px;
+}
+
+.compile-scope-svg {
+  min-width: 760px;
+  width: 100%;
+  min-height: 180px;
+  border: 1px solid rgba(148, 163, 184, 0.26);
+  border-radius: 8px;
+  background: #08111f;
+}
+
+.scope-grid {
+  stroke: rgba(148, 163, 184, 0.18);
+  stroke-width: 1;
+}
+
+.scope-time-label,
+.scope-signal-label,
+.scope-value-label {
+  fill: #cbd5e1;
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 11px;
+}
+
+.scope-signal-label {
+  fill: #e2e8f0;
+  font-weight: 800;
+}
+
+.scope-value-label {
+  fill: #fef9c3;
+}
+
+.scope-row-line {
+  stroke: rgba(148, 163, 184, 0.15);
+  stroke-width: 1;
+}
+
+.scope-wave {
+  fill: none;
+  stroke: #38bdf8;
+  stroke-width: 2.4;
+  stroke-linejoin: round;
+}
+
+.scope-bus {
+  stroke: #facc15;
+  stroke-width: 5;
+  stroke-linecap: round;
+}
+
+.scope-transition {
+  stroke: rgba(250, 204, 21, 0.45);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
 }
 
 .compile-messages-log {
@@ -5206,6 +5317,7 @@ body[data-builder-theme="dark"] .compile-code-main,
 body[data-builder-theme="dark"] .compile-terminal-panel,
 body[data-builder-theme="dark"] .compile-messages-panel,
 body[data-builder-theme="dark"] .compile-append-panel,
+body[data-builder-theme="dark"] .compile-scope-panel,
 body[data-builder-theme="dark"] .compile-code-preview-panel,
 body[data-builder-theme="dark"] .compile-code-empty {
   border-color: var(--builder-dark-line);
@@ -5249,6 +5361,22 @@ body[data-builder-theme="dark"] .compile-terminal-heading button:hover {
 body[data-builder-theme="dark"] .compile-terminal-panel.is-focused {
   border-color: #67e8f9;
   box-shadow: 0 0 0 3px rgba(103, 232, 249, 0.2), 0 18px 44px rgba(0, 0, 0, 0.32);
+}
+
+body[data-builder-theme="dark"] .compile-scope-panel.is-focused {
+  border-color: #67e8f9;
+  box-shadow: 0 0 0 3px rgba(103, 232, 249, 0.2), 0 18px 44px rgba(0, 0, 0, 0.32);
+}
+
+body[data-builder-theme="dark"] .compile-scope-meta span,
+body[data-builder-theme="dark"] .compile-scope-empty {
+  border-color: var(--builder-dark-line);
+  color: #9fb4c8;
+  background: #0f172a;
+}
+
+body[data-builder-theme="dark"] .compile-scope-empty strong {
+  color: #e5edf6;
 }
 
 body[data-builder-theme="dark"] .compile-append-panel > div:first-child span,

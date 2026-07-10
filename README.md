@@ -87,9 +87,11 @@ Front-page, profile, contact, fun facts, and project overview fields use the sam
 
 Code support is available from the rich editor right-click menu. Use **Code block** or **Paste as code** for C, C++, SystemVerilog, LTspice, Java, JavaScript, Python, and HTML. Code blocks store the selected language, preserve source spacing when requested, highlight common language keywords, and render as code in project previews and published portfolios.
 
-Projects also include a separate **Compile Code** workspace. This is local builder tooling, not a portfolio text block. Add or import source files, choose the language, save the source, run the beautifier, check compiler availability, and compile or run code with terminal-style output. JavaScript uses Node.js, Python uses the installed Python runtime, Java uses a JDK, C/C++ use a MinGW/WinLibs-style compiler when available, and SystemVerilog/LTspice report clear missing-tool messages unless compatible command-line tools are installed.
+Projects also include a separate **Compile Code** workspace. This is local builder tooling, not a portfolio text block. Add or import source files, choose the language, save the source, run the beautifier, check compiler availability, and compile or run code with terminal-style output. JavaScript uses Node.js, Python uses the installed Python runtime, Java uses a JDK, C/C++ use a MinGW/WinLibs-style compiler when available, and Verilog/SystemVerilog/LTspice report clear missing-tool messages unless compatible command-line tools are installed.
 
 The Compile Code workspace includes an explicit **Show output** control. Use it to jump directly to the local terminal output for the active source file. The terminal panel also supports copying output and clearing output, while the Messages log keeps user-facing compile/save/append status entries.
+
+Verilog and SystemVerilog simulation now requires a testbench. Mark HDL files as **Design** or **Testbench**, or use **Add testbench** to create a starter bench with `$dumpfile` and `$dumpvars`. HDL runs compile the design and testbench together through Icarus Verilog/vvp, then parse the generated VCD file into a **Signal scope** so signals can be viewed over time.
 
 The portfolio parser carries those rich text fields into project previews, full portfolio previews, saved drafts, and generated website catalogs. Use **Save project** or **Save all sections** before previewing or publishing so the parsed site output includes the latest front-page, profile, contact, fun fact, and project text formatting.
 
@@ -217,6 +219,7 @@ Use the workflow in [BRANCHING.md](BRANCHING.md):
 | `codex/compile-terminal-log-append` | Makes compile terminal output repaint immediately, adds a Compile Code messages log, and lets source code be appended into selected project overview sections as formatted code blocks. | `development` | `development` | Active |
 | `codex/terminal-output-and-complete-guide` | Adds explicit Compile Code output controls and generates the full beginner guide with diagrams, engineering decisions, command explanations, file communication maps, and tool-build ownership notes. | `development` | `development` | Merged into `development` |
 | `codex/expand-complete-guide-detail` | Expands the complete guide with deeper flow walkthroughs, API endpoint details, data contracts, caching detail, installer internals, generated function inventory, and additional beginner debugging notes. | `development` | `development` | Merged into `development` |
+| `codex/hdl-testbench-scope` | Requires HDL simulations to include a testbench, adds HDL design/testbench roles, and renders VCD waveform data in a signal scope. | `development` | `development` | Merged into `development` |
 
 ## Uninstall
 

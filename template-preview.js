@@ -237,6 +237,31 @@ const supportedCodeLanguages = [
   { id: "html", label: "HTML", aliases: ["html", "htm"], extensions: [".html", ".htm"], defaultFile: "index.html" }
 ];
 
+function isHdlLanguage(language = "") {
+  return ["verilog", "systemverilog"].includes(normalizeCodeLanguage(language));
+}
+
+function inferCompileFileRole(fileName = "", code = "", language = "") {
+  if (!isHdlLanguage(language)) return "source";
+  const haystack = `${fileName}\n${code}`.toLowerCase();
+  if (/\b(tb|testbench)\b|(^|[_-])tb([_-]|\.)|test[_-]?bench|\$dumpfile|\$dumpvars|module\s+tb[_a-z0-9]*/i.test(haystack)) {
+    return "testbench";
+  }
+  return "design";
+}
+
+function normalizeCompileFileRole(value = "", language = "") {
+  if (!isHdlLanguage(language)) return "source";
+  const clean = String(value || "").trim().toLowerCase().replace(/[_\s-]+/g, "");
+  return ["tb", "testbench", "bench"].includes(clean) ? "testbench" : "design";
+}
+
+function compileFileRoleLabel(role = "source") {
+  if (role === "testbench") return "Testbench";
+  if (role === "design") return "Design";
+  return "Program source";
+}
+
 const defaultFunFacts = [];
 
 const defaultSiteContent = {
@@ -1982,15 +2007,18 @@ function ensureCompileCode(project) {
   project.compileCode.files = project.compileCode.files.map((file, index) => {
     const language = normalizeCodeLanguage(file.language || detectCodeLanguage(file.code || "", file.fileName || ""));
     const fileName = safeClientCodeFileName(file.fileName || defaultCodeFileName(language), language);
+    const role = normalizeCompileFileRole(file.role || inferCompileFileRole(fileName, file.code || "", language), language);
     return {
       id: file.id || slugify(`${fileName}-${index}-${Date.now()}`),
       title: file.title || fileName,
       fileName,
       language,
+      role,
       code: String(file.code || ""),
       stdin: String(file.stdin || ""),
       savedPath: file.savedPath || file.workspacePath || "",
       savedAt: file.savedAt || "",
+      waveform: file.waveform || file.lastResult?.waveform || null,
       lastResult: file.lastResult || null,
       dirty: Boolean(file.dirty)
     };
@@ -6851,6 +6879,44 @@ function compileLanguageOptions(selected = "javascript") {
   `).join("");
 }
 
+function compileRoleOptions(selected = "design") {
+  const normalized = normalizeCompileFileRole(selected, "verilog");
+  return ["design", "testbench"].map((role) => `
+    <option value="${escapeHtml(role)}"${role === normalized ? " selected" : ""}>${escapeHtml(compileFileRoleLabel(role))}</option>
+  `).join("");
+}
+
+function hdlTestbenchTemplate(language = "systemverilog", designName = "design") {
+  const tbName = `tb_${slugify(designName || "design").replace(/-/g, "_") || "design"}`;
+  const dutName = slugify(designName || "design").replace(/-/g, "_") || "design";
+  const commentPrefix = language === "verilog" ? "//" : "//";
+  return [
+    "`timescale 1ns/1ps",
+    "",
+    `module ${tbName};`,
+    `  ${commentPrefix} Declare testbench signals here.`,
+    `  ${commentPrefix} Example: reg clk = 0; reg reset_n = 0; wire done;`,
+    "",
+    `  ${commentPrefix} Instantiate the design under test and connect the signals.`,
+    `  ${commentPrefix} Example: ${dutName} dut (.clk(clk), .reset_n(reset_n), .done(done));`,
+    "",
+    "  initial begin",
+    '    $dumpfile("waveform.vcd");',
+    `    $dumpvars(0, ${tbName});`,
+    "",
+    `    ${commentPrefix} Drive stimulus over time here.`,
+    "    #100;",
+    "    $finish;",
+    "  end",
+    "endmodule"
+  ].join("\n");
+}
+
+function firstHdlModuleName(code = "") {
+  const match = String(code || "").match(/\bmodule\s+([A-Za-z_$][\w$]*)/);
+  return match?.[1] || "design";
+}
+
 function compileAppendDestinations(project) {
   if (!project) return [];
   const destinations = [{
@@ -6962,6 +7028,129 @@ function showCompileOutput(project, file = activeCompileFile(project)) {
   window.setTimeout(() => panel.classList.remove("is-focused"), 1400);
 }
 
+function activeCompileWaveform(project, file = activeCompileFile(project)) {
+  const workspace = ensureCompileCode(project);
+  return file?.lastResult?.waveform || file?.waveform || workspace?.waveform || null;
+}
+
+function scopeSignalValueAt(changes = [], index = 0) {
+  const value = String(changes[index]?.value ?? "x").toLowerCase();
+  if (value === "1") return "1";
+  if (value === "0") return "0";
+  return "x";
+}
+
+function renderScalarWavePath(changes = [], maxTime = 1, rowY = 0, left = 150, width = 680) {
+  const normalized = (Array.isArray(changes) && changes.length ? changes : [{ time: 0, value: "x" }])
+    .map((change) => ({ time: Number(change.time) || 0, value: String(change.value ?? "x") }))
+    .sort((a, b) => a.time - b.time);
+  const top = rowY + 5;
+  const bottom = rowY + 23;
+  const middle = rowY + 14;
+  const yFor = (value) => value === "1" ? top : value === "0" ? bottom : middle;
+  const xFor = (time) => left + Math.max(0, Math.min(1, (Number(time) || 0) / Math.max(1, maxTime))) * width;
+  let path = "";
+  normalized.forEach((change, index) => {
+    const x = xFor(change.time);
+    const y = yFor(scopeSignalValueAt(normalized, index));
+    if (index === 0) {
+      path += `M ${x.toFixed(1)} ${y.toFixed(1)}`;
+    } else {
+      path += ` H ${x.toFixed(1)} V ${y.toFixed(1)}`;
+    }
+  });
+  path += ` H ${(left + width).toFixed(1)}`;
+  return path;
+}
+
+function renderBusWaveLabels(changes = [], maxTime = 1, rowY = 0, left = 150, width = 680) {
+  const normalized = (Array.isArray(changes) && changes.length ? changes : [{ time: 0, value: "x" }])
+    .map((change) => ({ time: Number(change.time) || 0, value: String(change.value ?? "x") }))
+    .sort((a, b) => a.time - b.time)
+    .slice(0, 12);
+  return normalized.map((change, index) => {
+    const x = left + Math.max(0, Math.min(1, change.time / Math.max(1, maxTime))) * width;
+    const value = change.value.length > 12 ? `${change.value.slice(0, 12)}...` : change.value;
+    return `<text x="${Math.min(left + width - 70, x + 4).toFixed(1)}" y="${rowY + 19}" class="scope-value-label">${escapeHtml(value)}</text>${index ? `<line x1="${x.toFixed(1)}" x2="${x.toFixed(1)}" y1="${rowY + 5}" y2="${rowY + 25}" class="scope-transition" />` : ""}`;
+  }).join("");
+}
+
+function renderHdlScope(waveform) {
+  const signals = Array.isArray(waveform?.signals) ? waveform.signals.slice(0, 16) : [];
+  if (!signals.length) {
+    return `
+      <div class="compile-scope-empty">
+        <strong>No waveform scope yet.</strong>
+        <span>Run a Verilog/SystemVerilog design with a testbench that calls <code>$dumpfile</code> and <code>$dumpvars</code>.</span>
+      </div>
+    `;
+  }
+  const left = 165;
+  const width = 760;
+  const rowHeight = 34;
+  const top = 28;
+  const height = top + signals.length * rowHeight + 28;
+  const maxTime = Math.max(1, Number(waveform.maxTime) || Math.max(...signals.flatMap((signal) => (signal.changes || []).map((change) => Number(change.time) || 0)), 1));
+  const grid = [0, 0.25, 0.5, 0.75, 1].map((ratio) => {
+    const x = left + ratio * width;
+    const label = Math.round(maxTime * ratio);
+    return `<line x1="${x.toFixed(1)}" x2="${x.toFixed(1)}" y1="18" y2="${height - 18}" class="scope-grid" /><text x="${x.toFixed(1)}" y="14" class="scope-time-label">${label}</text>`;
+  }).join("");
+  const rows = signals.map((signal, index) => {
+    const y = top + index * rowHeight;
+    const name = String(signal.name || signal.reference || `signal_${index + 1}`);
+    const changes = Array.isArray(signal.changes) ? signal.changes : [];
+    const scalar = Number(signal.width || 1) <= 1;
+    return `
+      <g class="scope-row">
+        <text x="12" y="${y + 20}" class="scope-signal-label">${escapeHtml(name.length > 24 ? `${name.slice(0, 24)}...` : name)}</text>
+        <line x1="${left}" x2="${left + width}" y1="${y + 27}" y2="${y + 27}" class="scope-row-line" />
+        ${scalar
+          ? `<path d="${renderScalarWavePath(changes, maxTime, y, left, width)}" class="scope-wave" />`
+          : `<line x1="${left}" x2="${left + width}" y1="${y + 15}" y2="${y + 15}" class="scope-bus" />${renderBusWaveLabels(changes, maxTime, y, left, width)}`}
+      </g>
+    `;
+  }).join("");
+  return `
+    <div class="compile-scope-meta">
+      <span>${escapeHtml(waveform.source || "waveform.vcd")}</span>
+      <span>${signals.length} signal${signals.length === 1 ? "" : "s"}</span>
+      <span>0 to ${escapeHtml(maxTime)} ${escapeHtml(waveform.timeScale || "ticks")}</span>
+    </div>
+    <div class="compile-scope-scroll">
+      <svg class="compile-scope-svg" viewBox="0 0 ${left + width + 20} ${height}" role="img" aria-label="HDL waveform scope">
+        ${grid}
+        ${rows}
+      </svg>
+    </div>
+  `;
+}
+
+function renderCompileScopePanel(project, file = activeCompileFile(project)) {
+  const waveform = activeCompileWaveform(project, file);
+  if (!isHdlLanguage(file?.language) && !waveform) return "";
+  return `
+    <section class="compile-scope-panel" data-compile-scope-panel aria-label="HDL signal scope">
+      <div class="compile-terminal-heading">
+        <span class="compile-terminal-title"><span aria-hidden="true" class="scope-dot"></span> Signal scope</span>
+        <button type="button" data-compile-show-scope>Show scope</button>
+      </div>
+      ${renderHdlScope(waveform)}
+    </section>
+  `;
+}
+
+function showCompileScope(project, file = activeCompileFile(project)) {
+  const panel = sectionContent.querySelector("[data-compile-scope-panel]");
+  if (!panel) {
+    addCompileMessage(project, "No HDL scope is available for the active source yet.", "warning");
+    return;
+  }
+  panel.classList.add("is-focused");
+  panel.scrollIntoView({ behavior: "smooth", block: "center" });
+  window.setTimeout(() => panel.classList.remove("is-focused"), 1400);
+}
+
 async function copyCompileOutput(project, file = activeCompileFile(project)) {
   const workspace = ensureCompileCode(project);
   const text = file?.lastResult?.terminal || workspace?.terminal || compileTerminalStatus || "";
@@ -7039,6 +7228,7 @@ function renderCompileCodeSection(project) {
         </div>
         <div class="compile-code-actions">
           <button type="button" data-compile-add>Add code file</button>
+          <button type="button" data-compile-add-testbench>Add testbench</button>
           <button type="button" data-compile-import>Import file</button>
           <button type="button" data-compile-tools>Check compilers</button>
         </div>
@@ -7046,7 +7236,7 @@ function renderCompileCodeSection(project) {
           ${workspace.files.map((file) => `
             <button class="compile-code-file${file.id === workspace.activeFileId ? " is-active" : ""}" type="button" data-compile-select="${escapeHtml(file.id)}" role="listitem">
               <strong>${escapeHtml(file.title || file.fileName)}</strong>
-              <span>${escapeHtml(file.fileName)} · ${escapeHtml(codeLanguageLabel(file.language))}</span>
+              <span>${escapeHtml(file.fileName)} - ${escapeHtml(codeLanguageLabel(file.language))}${isHdlLanguage(file.language) ? ` - ${escapeHtml(compileFileRoleLabel(file.role))}` : ""}</span>
               <small>${escapeHtml(compileFileDirtyLabel(file))}</small>
             </button>
           `).join("") || `<p class="evidence-empty">No compile files yet. Add a code file or import source.</p>`}
@@ -7067,6 +7257,12 @@ function renderCompileCodeSection(project) {
             <label>
               <span>Language</span>
               <select data-compile-field="language">${compileLanguageOptions(activeFile.language)}</select>
+            </label>
+            <label>
+              <span>${isHdlLanguage(activeFile.language) ? "HDL role" : "Source role"}</span>
+              ${isHdlLanguage(activeFile.language)
+                ? `<select data-compile-field="role">${compileRoleOptions(activeFile.role)}</select>`
+                : `<input type="text" value="Program source" disabled />`}
             </label>
           </div>
           <div class="compile-code-editor-grid">
@@ -7091,6 +7287,7 @@ function renderCompileCodeSection(project) {
             <button type="button" data-compile-run>Compile / run</button>
             <button type="button" data-compile-rebuild>Rebuild / run</button>
             <button class="compile-output-button" type="button" data-compile-show-output title="Open the terminal output for this source"><span class="compile-command-icon" aria-hidden="true">&gt;_</span><span>Show output</span></button>
+            ${isHdlLanguage(activeFile.language) ? `<button class="compile-output-button" type="button" data-compile-show-scope title="Open the HDL waveform scope"><span class="compile-command-icon" aria-hidden="true">~</span><span>Show scope</span></button>` : ""}
             <button type="button" data-compile-install>Install tools</button>
             <button class="danger-icon" type="button" data-compile-delete>Delete source</button>
           </div>
@@ -7124,6 +7321,7 @@ function renderCompileCodeSection(project) {
           </div>
           <pre class="compile-terminal" data-compile-terminal tabindex="0" role="log" aria-live="polite">${escapeHtml(terminal)}</pre>
         </section>
+        ${renderCompileScopePanel(project, activeFile)}
         <section class="compile-messages-panel" aria-label="Compile messages log">
           <div class="compile-terminal-heading">
             <span>Messages log</span>
@@ -7656,15 +7854,18 @@ function chooseFile() {
 function newCompileFile(language = "javascript", seed = {}) {
   const normalized = normalizeCodeLanguage(language);
   const fileName = safeClientCodeFileName(seed.fileName || defaultCodeFileName(normalized), normalized);
+  const role = normalizeCompileFileRole(seed.role || inferCompileFileRole(fileName, seed.code || "", normalized), normalized);
   return {
     id: slugify(`${fileName}-${Date.now()}-${Math.random().toString(16).slice(2)}`),
     title: seed.title || fileName,
     fileName,
     language: normalized,
+    role,
     code: String(seed.code || ""),
     stdin: "",
     savedPath: "",
     savedAt: "",
+    waveform: null,
     lastResult: null,
     dirty: true
   };
@@ -7681,14 +7882,24 @@ function updateCompilePreview(file) {
 }
 
 function compilePayload(project, file, options = {}) {
+  const workspace = ensureCompileCode(project);
   return {
     projectId: project.id,
     fileId: file.id,
     title: file.title,
     fileName: file.fileName,
     language: file.language,
+    role: file.role || inferCompileFileRole(file.fileName, file.code, file.language),
     code: file.code,
     stdin: file.stdin || "",
+    workspaceFiles: (workspace.files || []).map((workspaceFile) => ({
+      id: workspaceFile.id,
+      title: workspaceFile.title,
+      fileName: workspaceFile.fileName,
+      language: workspaceFile.language,
+      role: workspaceFile.role || inferCompileFileRole(workspaceFile.fileName, workspaceFile.code, workspaceFile.language),
+      code: workspaceFile.code || ""
+    })),
     forceRebuild: options.forceRebuild === true
   };
 }
@@ -7832,8 +8043,11 @@ async function compileActiveFile(project, file, options = {}) {
       ok: Boolean(result.ok),
       language: compileResult.language || file.language,
       terminal: compileResult.terminal || result.error || "No compiler output was returned.",
+      waveform: compileResult.waveform || null,
       finishedAt: new Date().toISOString()
     };
+    file.waveform = compileResult.waveform || null;
+    ensureCompileCode(project).waveform = compileResult.waveform || null;
     if (compileResult.saved) {
       file.savedPath = compileResult.saved.sourcePath || file.savedPath;
       file.savedAt = compileResult.saved.savedAt || file.savedAt;
@@ -10056,6 +10270,26 @@ sectionContent.addEventListener("click", async (event) => {
     renderSectionContent(project);
     return;
   }
+  if (hasDataset("compileAddTestbench")) {
+    const workspace = ensureCompileCode(project);
+    const activeFile = activeCompileFile(project);
+    const language = isHdlLanguage(activeFile?.language) ? normalizeCodeLanguage(activeFile.language) : "systemverilog";
+    const designName = firstHdlModuleName(activeFile?.code || "") || "design";
+    const extension = language === "verilog" ? ".v" : ".sv";
+    const file = newCompileFile(language, {
+      title: `Testbench for ${designName}`,
+      fileName: `tb_${slugify(designName).replace(/-/g, "_") || "design"}${extension}`,
+      role: "testbench",
+      code: hdlTestbenchTemplate(language, designName)
+    });
+    workspace.files.push(file);
+    workspace.activeFileId = file.id;
+    setStatus("Testbench created. Connect it to the design, keep the waveform dump calls, then run the simulation.");
+    addCompileMessage(project, "Created an HDL testbench with $dumpfile and $dumpvars for the signal scope.", "info");
+    scheduleAutosave();
+    renderSectionContent(project);
+    return;
+  }
   if (hasDataset("compileImport")) {
     await importCompileFile(project);
     return;
@@ -10096,6 +10330,11 @@ sectionContent.addEventListener("click", async (event) => {
   if (hasDataset("compileShowOutput")) {
     showCompileOutput(project, compileFile);
     addCompileMessage(project, `Displayed terminal output for ${compileFile?.fileName || "the active source"}.`, "info");
+    return;
+  }
+  if (hasDataset("compileShowScope")) {
+    showCompileScope(project, compileFile);
+    addCompileMessage(project, `Displayed HDL scope for ${compileFile?.fileName || "the active source"}.`, "info");
     return;
   }
   if (hasDataset("compileCopyOutput")) {
@@ -10285,21 +10524,38 @@ sectionContent.addEventListener("input", (event) => {
     if (!file) return;
     const field = event.target.dataset.compileField;
     if (field === "language") {
+      const wasHdl = isHdlLanguage(file.language);
       file.language = normalizeCodeLanguage(event.target.value);
+      const isNowHdl = isHdlLanguage(file.language);
       file.fileName = safeClientCodeFileName(file.fileName || defaultCodeFileName(file.language), file.language);
+      file.role = normalizeCompileFileRole(file.role || inferCompileFileRole(file.fileName, file.code, file.language), file.language);
       const fileNameInput = sectionContent.querySelector("[data-compile-field='fileName']");
       if (fileNameInput) fileNameInput.value = file.fileName;
       const heading = sectionContent.querySelector(".compile-code-preview-heading span");
       if (heading) heading.textContent = `${codeLanguageLabel(file.language)} preview`;
       updateCompilePreview(file);
+      if (wasHdl !== isNowHdl) {
+        file.dirty = true;
+        file.lastResult = null;
+        setStatus("Unsaved compile source changes.");
+        scheduleAutosave(900);
+        renderSectionContent(project);
+        return;
+      }
     } else if (field === "fileName") {
       file.fileName = safeClientCodeFileName(event.target.value, file.language);
+      file.role = normalizeCompileFileRole(file.role || inferCompileFileRole(file.fileName, file.code, file.language), file.language);
+    } else if (field === "role") {
+      file.role = normalizeCompileFileRole(event.target.value, file.language);
     } else {
       file[field] = event.target.value;
+      if (field === "code" && isHdlLanguage(file.language) && (!file.role || file.role === "source")) {
+        file.role = inferCompileFileRole(file.fileName, file.code, file.language);
+      }
     }
     if (field === "code") updateCompilePreview(file);
     file.dirty = true;
-    file.lastResult = field === "code" ? null : file.lastResult;
+    file.lastResult = ["code", "role", "language", "fileName"].includes(field) ? null : file.lastResult;
     setStatus("Unsaved compile source changes.");
     scheduleAutosave(field === "code" ? 1600 : 900);
     return;
