@@ -3,10 +3,12 @@ from __future__ import annotations
 import html
 import json
 import math
+import mimetypes
 import re
 import shutil
 import subprocess
 import textwrap
+from collections import Counter
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
@@ -38,6 +40,10 @@ CODE_REFERENCE_DOCX_DIR = REPO / "docs" / "code-reference-docx"
 CODE_REFERENCE_PDF_DIR = REPO / "docs" / "code-reference-pdf"
 CODE_REFERENCE_MASTER_DOCX = REPO / "docs" / "OMB_Portfolio_Builder_Code_Reference.docx"
 CODE_REFERENCE_MASTER_PDF = REPO / "docs" / "OMB_Portfolio_Builder_Code_Reference.pdf"
+FILE_REFERENCE_DOCX_DIR = REPO / "docs" / "important-code-reference-docx"
+FILE_REFERENCE_PDF_DIR = REPO / "docs" / "important-code-reference-pdf"
+FILE_REFERENCE_MASTER_DOCX = REPO / "docs" / "OMB_Portfolio_Builder_Important_Code_Reference.docx"
+FILE_REFERENCE_MASTER_PDF = REPO / "docs" / "OMB_Portfolio_Builder_Important_Code_Reference.pdf"
 
 
 FILE_DESCRIPTIONS = {
@@ -893,6 +899,65 @@ def tracked_files() -> list[str]:
     return [line.strip() for line in result.stdout.splitlines() if line.strip()]
 
 
+GENERATED_REFERENCE_PREFIXES = (
+    "docs/code-reference/",
+    "docs/code-reference-docx/",
+    "docs/code-reference-pdf/",
+    "docs/file-reference-docx/",
+    "docs/file-reference-pdf/",
+    "docs/important-code-reference-docx/",
+    "docs/important-code-reference-pdf/",
+    "docs/guide-diagrams/",
+)
+
+GENERATED_REFERENCE_FILES = {
+    "docs/OMB_Portfolio_Builder_Complete_Guide.docx",
+    "docs/OMB_Portfolio_Builder_Complete_Guide.pdf",
+    "docs/OMB_Portfolio_Builder_Code_Reference.docx",
+    "docs/OMB_Portfolio_Builder_Code_Reference.pdf",
+    "docs/OMB_Portfolio_Builder_File_Reference.docx",
+    "docs/OMB_Portfolio_Builder_File_Reference.pdf",
+    "docs/OMB_Portfolio_Builder_Important_Code_Reference.docx",
+    "docs/OMB_Portfolio_Builder_Important_Code_Reference.pdf",
+}
+
+
+def is_generated_reference_file(repo_file: str) -> bool:
+    return repo_file in GENERATED_REFERENCE_FILES or repo_file.startswith(GENERATED_REFERENCE_PREFIXES)
+
+
+def primary_tracked_files(files: list[str]) -> list[str]:
+    return [file for file in files if not is_generated_reference_file(file)]
+
+
+IMPORTANT_CODE_FILES = [
+    "main.cjs",
+    "server.mjs",
+    "template-preview.js",
+    "template-preview.html",
+    "template-preview.css",
+    "script.js",
+    "index.html",
+    "styles.css",
+    "cloudflare/portfolio-ai-worker.js",
+    "cloudflare/wrangler.toml",
+    "build/installer.nsh",
+    "docs/build_complete_guide.py",
+    "builder-rich-future-sections.js",
+    "electronics-search.js",
+    "package.json",
+    "project-templates.json",
+    "projects.json",
+    ".github/workflows/build-windows-builder.yml",
+    ".github/workflows/main-branch-gate.yml",
+]
+
+
+def important_code_files(files: list[str]) -> list[str]:
+    available = set(files)
+    return [file for file in IMPORTANT_CODE_FILES if file in available and not is_generated_reference_file(file)]
+
+
 def load_package() -> dict:
     try:
         return json.loads((REPO / "package.json").read_text(encoding="utf-8"))
@@ -1487,7 +1552,7 @@ TEXT_CODE_EXTENSIONS = {
 
 def is_text_code_file(repo_file: str) -> bool:
     path = REPO / repo_file
-    if repo_file.startswith(("docs/code-reference/", "docs/code-reference-docx/", "docs/code-reference-pdf/", "docs/guide-render-check/")):
+    if is_generated_reference_file(repo_file):
         return False
     if repo_file.endswith((".docx", ".pdf", ".png", ".ico")):
         return False
@@ -1576,6 +1641,169 @@ def fact_relationship_summary(facts: dict) -> str:
     if facts.get("mentions_github"):
         related.append("GitHub/release layer")
     return ", ".join(related) if related else "Mostly local to its own feature area."
+
+
+def folder_role(repo_file: str) -> str:
+    if repo_file.startswith(".github/workflows/"):
+        return "GitHub automation. GitHub Actions reads this during CI/release/branch-gate runs."
+    if repo_file.startswith(".well-known/"):
+        return "Public web metadata. Browsers, security tools, and crawlers may request this path."
+    if repo_file.startswith("assets/"):
+        return "Public and desktop visual asset. Used for favicons, app icons, branding, or install surfaces."
+    if repo_file.startswith("build/"):
+        return "Packaging and installer customization. Used while creating the Windows app installer."
+    if repo_file.startswith("cloudflare/"):
+        return "Cloudflare Worker/deployment area. Used for public AI backend and Cloudflare deployment notes."
+    if repo_file.startswith("docs/"):
+        return "Documentation and generated reference area. Used to explain the app and source structure."
+    if repo_file.startswith("Backgrounds/"):
+        return "Portfolio background asset folder placeholder."
+    return "Repository root. Usually an entry file, app config, public website file, package manifest, or top-level documentation."
+
+
+def file_category(repo_file: str, path: Path) -> str:
+    suffix = path.suffix.lower()
+    if repo_file.endswith(".gitkeep"):
+        return "Folder marker"
+    if repo_file.startswith(".github/workflows/"):
+        return "GitHub workflow"
+    if suffix in {".png", ".ico", ".jpg", ".jpeg", ".webp", ".svg"}:
+        return "Image/icon asset"
+    if suffix in {".docx", ".pdf"}:
+        return "Generated document"
+    if suffix in {".js", ".mjs", ".cjs"}:
+        return "JavaScript source"
+    if suffix in {".html", ".css"}:
+        return "Website/builder UI source"
+    if suffix in {".json", ".toml", ".yaml", ".yml"}:
+        return "Configuration or structured data"
+    if suffix in {".md", ".txt", ""}:
+        return "Documentation or text control file"
+    if suffix == ".nsh":
+        return "NSIS installer script"
+    if suffix == ".py":
+        return "Python tooling"
+    return "Repository file"
+
+
+def image_metadata(path: Path) -> dict:
+    if not path.exists() or path.suffix.lower() not in {".png", ".jpg", ".jpeg", ".webp", ".ico"}:
+        return {}
+    try:
+        with Image.open(path) as image:
+            return {
+                "format": image.format or path.suffix.lower().lstrip(".").upper(),
+                "width": image.size[0],
+                "height": image.size[1],
+                "mode": image.mode,
+                "frames": getattr(image, "n_frames", 1),
+            }
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+def file_specific_notes(repo_file: str, category: str) -> list[str]:
+    notes = []
+    if repo_file in FILE_DESCRIPTIONS:
+        notes.append(FILE_DESCRIPTIONS[repo_file])
+    if repo_file.startswith("assets/favicon"):
+        notes.append("This favicon participates in browser tab identity, mobile install surfaces, and public website branding.")
+    if repo_file.startswith("assets/omb-app-icon"):
+        notes.append("This app icon is used by the Windows desktop application, installer metadata, and shortcuts.")
+    if repo_file == "assets/omb-mark.png":
+        notes.append("This is the OMB visual mark used by the website and builder branding.")
+    if repo_file == "_headers":
+        notes.append("This file describes security and caching headers for hosts that support static `_headers` files, such as Cloudflare Pages style deployments.")
+    if repo_file == ".nojekyll":
+        notes.append("This makes GitHub Pages serve static files directly without Jekyll filtering.")
+    if repo_file == ".gitattributes":
+        notes.append("This protects binary artifacts such as DOCX, PDF, PNG, ICO, and installers from line-ending conversion.")
+    if repo_file == ".gitignore":
+        notes.append("This keeps temporary build output, local-only data, and generated noise out of version control.")
+    if repo_file.endswith(".gitkeep"):
+        notes.append("This empty marker exists so Git keeps an otherwise empty folder.")
+    if category == "Image/icon asset":
+        notes.append("Do not edit binary assets with a text editor. Replace them with properly exported image/icon files.")
+    if category == "GitHub workflow":
+        notes.append("Workflow changes should be tested on a feature branch because mistakes can block merges or releases.")
+    if not notes:
+        notes.append("Tracked repository file used by the builder, website, installer, documentation, or release process.")
+    return notes
+
+
+def extract_file_facts(repo_file: str) -> dict:
+    path = REPO / repo_file
+    suffix = path.suffix.lower()
+    category = file_category(repo_file, path)
+    text_file = is_text_code_file(repo_file) or suffix in {".gitignore", ".gitattributes", ".nojekyll", "", ".txt", ".md"}
+    lines = source_lines(repo_file) if text_file and path.exists() and path.is_file() else []
+    mime_type, _encoding = mimetypes.guess_type(str(path))
+    facts = {
+        "repo_file": repo_file,
+        "path": path,
+        "exists": path.exists(),
+        "size_bytes": path.stat().st_size if path.exists() and path.is_file() else 0,
+        "suffix": suffix or "(none)",
+        "category": category,
+        "mime_type": mime_type or "unknown",
+        "folder_role": folder_role(repo_file),
+        "description": FILE_DESCRIPTIONS.get(repo_file, "Tracked repository file used by the builder or public website."),
+        "notes": file_specific_notes(repo_file, category),
+        "is_text": bool(lines or text_file),
+        "line_count": len(lines),
+        "snippet": line_excerpt(lines, 1, min(72, len(lines)), max_lines=72) if lines else "",
+        "image": image_metadata(path),
+    }
+    if is_text_code_file(repo_file):
+        facts["source"] = extract_source_facts(repo_file)
+    else:
+        facts["source"] = None
+    return facts
+
+
+def add_file_fact_summary(doc: Document, facts: dict) -> None:
+    rows = [
+        ("File", facts["repo_file"]),
+        ("Category", facts["category"]),
+        ("Folder role", facts["folder_role"]),
+        ("Size", f"{facts['size_bytes']:,} bytes"),
+        ("Extension", facts["suffix"]),
+        ("MIME type", facts["mime_type"]),
+        ("Text lines", f"{facts['line_count']:,}" if facts["is_text"] else "Not a readable text file"),
+    ]
+    if facts["image"]:
+        image = facts["image"]
+        if "error" in image:
+            rows.append(("Image metadata", f"Could not inspect image: {image['error']}"))
+        else:
+            rows.append(("Image metadata", f"{image['format']} {image['width']}x{image['height']}, mode {image['mode']}, frames {image['frames']}"))
+    add_table(doc, rows)
+
+
+def add_file_fact_sections(doc: Document, facts: dict) -> None:
+    doc.add_heading("Why this file exists", level=2)
+    for note in facts["notes"]:
+        doc.add_paragraph(note, style="List Bullet")
+    doc.add_heading("How it is used", level=2)
+    doc.add_paragraph(facts["folder_role"])
+    if facts["source"]:
+        add_source_fact_sections(doc, facts["source"], include_excerpts=True)
+    elif facts["snippet"]:
+        doc.add_heading("Readable content snippet", level=2)
+        add_code(doc, facts["snippet"])
+    elif facts["image"]:
+        doc.add_heading("Asset handling note", level=2)
+        doc.add_paragraph("This file is documented by metadata instead of raw bytes. Binary image/icon bytes are not useful to print in a Word/PDF reference. Use an image editor or icon tool when changing it.")
+    else:
+        doc.add_heading("Binary or marker note", level=2)
+        doc.add_paragraph("This file is either binary, empty, or a marker/config file whose value comes from its presence and path rather than readable content.")
+    doc.add_heading("Safe change checklist", level=2)
+    numbers(doc, [
+        "Confirm which app, website, installer, workflow, or document consumes this file.",
+        "Change it on a feature branch from development.",
+        "Regenerate docs if the file purpose, API surface, or behavior changes.",
+        "Run the smallest relevant smoke test before merging into development.",
+    ])
 
 
 def code_reference_name(repo_file: str, suffix: str) -> str:
@@ -1893,6 +2121,162 @@ def write_master_code_reference_pdf(code_files: list[str], facts_by_file: dict[s
     SimpleDocTemplate(str(CODE_REFERENCE_MASTER_PDF), pagesize=LETTER, rightMargin=0.55 * inch, leftMargin=0.55 * inch, topMargin=0.55 * inch, bottomMargin=0.55 * inch).build(story)
 
 
+def write_single_file_reference_docx(facts: dict, output_path: Path) -> None:
+    doc = setup_code_reference_document(
+        f"Important Code Reference: {facts['repo_file']}",
+        "A focused code/control-file explanation covering purpose, owner layer, APIs, variables, implementation signals, source excerpts, and debugging rules.",
+    )
+    add_file_fact_summary(doc, facts)
+    add_file_fact_sections(doc, facts)
+    compact_generated_docx(doc, keep_first_page_break=False)
+    doc.save(output_path)
+
+
+def add_pdf_file_fact_sections(story: list, facts: dict, styles) -> None:
+    story.append(Paragraph("Why this file exists", styles["Heading2"]))
+    for note in facts["notes"]:
+        story.append(pdf_paragraph(f"- {note}", styles["SmallBody"]))
+    story.append(Paragraph("How it is used", styles["Heading2"]))
+    story.append(pdf_paragraph(facts["folder_role"], styles["SmallBody"]))
+    if facts["source"]:
+        add_pdf_source_fact_sections(story, facts["source"], styles, include_excerpts=True)
+    elif facts["snippet"]:
+        story.append(Paragraph("Readable content snippet", styles["Heading2"]))
+        story.append(pdf_code(facts["snippet"], styles))
+    elif facts["image"]:
+        story.append(Paragraph("Asset handling note", styles["Heading2"]))
+        story.append(pdf_paragraph("This file is documented by metadata instead of raw bytes. Binary image/icon bytes are not useful to print in a reference document.", styles["SmallBody"]))
+    else:
+        story.append(Paragraph("Binary or marker note", styles["Heading2"]))
+        story.append(pdf_paragraph("This file is either binary, empty, or a marker/config file whose value comes from its presence and path rather than readable content.", styles["SmallBody"]))
+    story.append(Paragraph("Safe change checklist", styles["Heading2"]))
+    for item in [
+        "Confirm which app, website, installer, workflow, or document consumes this file.",
+        "Change it on a feature branch from development.",
+        "Regenerate docs if the file purpose, API surface, or behavior changes.",
+        "Run the smallest relevant smoke test before merging into development.",
+    ]:
+        story.append(pdf_paragraph(f"- {item}", styles["SmallBody"]))
+
+
+def write_single_file_reference_pdf(facts: dict, output_path: Path) -> None:
+    if not REPORTLAB_AVAILABLE:
+        return
+    styles = pdf_styles()
+    rows = [
+        ("File", facts["repo_file"]),
+        ("Category", facts["category"]),
+        ("Folder role", facts["folder_role"]),
+        ("Size", f"{facts['size_bytes']:,} bytes"),
+        ("Extension", facts["suffix"]),
+        ("MIME type", facts["mime_type"]),
+        ("Text lines", f"{facts['line_count']:,}" if facts["is_text"] else "Not a readable text file"),
+    ]
+    if facts["image"]:
+        image = facts["image"]
+        if "error" in image:
+            rows.append(("Image metadata", f"Could not inspect image: {image['error']}"))
+        else:
+            rows.append(("Image metadata", f"{image['format']} {image['width']}x{image['height']}, mode {image['mode']}, frames {image['frames']}"))
+    story = [
+        Paragraph(f"Important Code Reference: {facts['repo_file']}", styles["Title"]),
+        pdf_paragraph("A focused code/control-file explanation covering purpose, owner layer, APIs, variables, implementation signals, source excerpts, and debugging rules.", styles["SmallBody"]),
+        pdf_table(rows, styles),
+        Spacer(1, 0.12 * inch),
+    ]
+    add_pdf_file_fact_sections(story, facts, styles)
+    SimpleDocTemplate(str(output_path), pagesize=LETTER, rightMargin=0.55 * inch, leftMargin=0.55 * inch, topMargin=0.55 * inch, bottomMargin=0.55 * inch).build(story)
+
+
+def write_master_file_reference_docx(file_facts: list[dict], diagrams: dict[str, Path]) -> None:
+    doc = setup_code_reference_document(
+        "OMB Portfolio Builder Important Code Reference",
+        "A generated Word reference for the code and control files that drive the builder, website, installer, Cloudflare AI worker, workflows, parser, compile workspace, and generated documentation.",
+    )
+    add_diagram(doc, diagrams["file-communication-map"], "Main file communication map for the builder and public website.")
+    category_counts = Counter(facts["category"] for facts in file_facts)
+    doc.add_heading("Coverage summary", level=1)
+    add_table(doc, [
+        ("Important files documented", str(len(file_facts))),
+        ("Selection rule", "Only behavior-driving code/control files are included. Favicons, binary assets, and passive marker files are intentionally skipped here."),
+        ("Categories", ", ".join(f"{name}: {count}" for name, count in sorted(category_counts.items()))),
+    ])
+    doc.add_heading("File index", level=1)
+    add_table(doc, [(facts["repo_file"], f"{facts['category']}. {facts['folder_role']}") for facts in file_facts])
+    doc.add_page_break()
+    for facts in file_facts:
+        doc.add_heading(f"Important Code Reference: {facts['repo_file']}", level=1)
+        add_file_fact_summary(doc, facts)
+        add_file_fact_sections(doc, facts)
+        doc.add_page_break()
+    compact_generated_docx(doc, keep_first_page_break=True)
+    doc.save(FILE_REFERENCE_MASTER_DOCX)
+
+
+def write_master_file_reference_pdf(file_facts: list[dict], diagrams: dict[str, Path]) -> None:
+    if not REPORTLAB_AVAILABLE:
+        return
+    styles = pdf_styles()
+    category_counts = Counter(facts["category"] for facts in file_facts)
+    story = [
+        Paragraph("OMB Portfolio Builder Important Code Reference", styles["Title"]),
+        pdf_paragraph("A generated PDF reference for the code and control files that drive the builder, website, installer, Cloudflare AI worker, workflows, parser, compile workspace, and generated documentation.", styles["SmallBody"]),
+    ]
+    file_map = diagrams.get("file-communication-map")
+    if file_map and file_map.exists():
+        story.append(PdfImage(str(file_map), width=6.6 * inch, height=3.72 * inch))
+    story.append(Paragraph("Coverage summary", styles["Heading1"]))
+    story.append(pdf_table([
+        ("Important files documented", str(len(file_facts))),
+        ("Selection rule", "Only behavior-driving code/control files are included. Favicons, binary assets, and passive marker files are intentionally skipped here."),
+        ("Categories", ", ".join(f"{name}: {count}" for name, count in sorted(category_counts.items()))),
+    ], styles))
+    story.append(Paragraph("File index", styles["Heading1"]))
+    story.append(pdf_table([(facts["repo_file"], f"{facts['category']}. {facts['folder_role']}") for facts in file_facts], styles))
+    story.append(PageBreak())
+    for facts in file_facts:
+        story.append(Paragraph(f"Important Code Reference: {facts['repo_file']}", styles["Heading1"]))
+        rows = [
+            ("File", facts["repo_file"]),
+            ("Category", facts["category"]),
+            ("Folder role", facts["folder_role"]),
+            ("Size", f"{facts['size_bytes']:,} bytes"),
+            ("Extension", facts["suffix"]),
+            ("MIME type", facts["mime_type"]),
+            ("Text lines", f"{facts['line_count']:,}" if facts["is_text"] else "Not a readable text file"),
+        ]
+        if facts["image"]:
+            image = facts["image"]
+            rows.append(("Image metadata", f"Could not inspect image: {image['error']}" if "error" in image else f"{image['format']} {image['width']}x{image['height']}, mode {image['mode']}, frames {image['frames']}"))
+        story.append(pdf_table(rows, styles))
+        add_pdf_file_fact_sections(story, facts, styles)
+        story.append(PageBreak())
+    SimpleDocTemplate(str(FILE_REFERENCE_MASTER_PDF), pagesize=LETTER, rightMargin=0.55 * inch, leftMargin=0.55 * inch, topMargin=0.55 * inch, bottomMargin=0.55 * inch).build(story)
+
+
+def write_file_reference_docs(files: list[str], diagrams: dict[str, Path]) -> list[Path]:
+    remove_directory(FILE_REFERENCE_DOCX_DIR)
+    remove_directory(FILE_REFERENCE_PDF_DIR)
+    FILE_REFERENCE_DOCX_DIR.mkdir(parents=True, exist_ok=True)
+    FILE_REFERENCE_PDF_DIR.mkdir(parents=True, exist_ok=True)
+    file_facts = [extract_file_facts(file) for file in important_code_files(files)]
+    written: list[Path] = []
+    for facts in file_facts:
+        docx_path = FILE_REFERENCE_DOCX_DIR / code_reference_name(facts["repo_file"], ".docx")
+        write_single_file_reference_docx(facts, docx_path)
+        written.append(docx_path)
+        pdf_path = FILE_REFERENCE_PDF_DIR / code_reference_name(facts["repo_file"], ".pdf")
+        write_single_file_reference_pdf(facts, pdf_path)
+        if pdf_path.exists():
+            written.append(pdf_path)
+    write_master_file_reference_docx(file_facts, diagrams)
+    written.append(FILE_REFERENCE_MASTER_DOCX)
+    write_master_file_reference_pdf(file_facts, diagrams)
+    if FILE_REFERENCE_MASTER_PDF.exists():
+        written.append(FILE_REFERENCE_MASTER_PDF)
+    return written
+
+
 def write_code_reference_docs(files: list[str], diagrams: dict[str, Path]) -> list[Path]:
     remove_directory(CODE_REFERENCE_DIR)
     remove_directory(CODE_REFERENCE_DOCX_DIR)
@@ -1967,6 +2351,30 @@ def add_generated_code_reference(doc: Document, files: list[str], diagrams: dict
         doc.add_heading("Opening snippet", level=2)
         add_code(doc, facts["snippet"] or "(empty file)")
         doc.add_page_break()
+
+
+def add_generated_file_reference(doc: Document, files: list[str], diagrams: dict[str, Path]) -> None:
+    doc.add_heading("Generated Word And PDF Important Code References", level=1)
+    written = write_file_reference_docs(files, diagrams)
+    selected_files = important_code_files(files)
+    doc.add_paragraph("The repository now includes generated file-specific Word and PDF documents for the important code and control files that explain how the system actually works. This focused set avoids passive binary assets and marker files so the documentation stays useful for learning the builder internals.")
+    add_table(doc, [
+        ("Word folder", str(FILE_REFERENCE_DOCX_DIR.relative_to(REPO))),
+        ("PDF folder", str(FILE_REFERENCE_PDF_DIR.relative_to(REPO))),
+        ("Master Word reference", str(FILE_REFERENCE_MASTER_DOCX.relative_to(REPO))),
+        ("Master PDF reference", str(FILE_REFERENCE_MASTER_PDF.relative_to(REPO)) if FILE_REFERENCE_MASTER_PDF.exists() else "PDF generation skipped because ReportLab is unavailable."),
+        ("Important files documented", str(len(selected_files))),
+        ("Artifacts generated", str(len(written))),
+        ("Skipped here", "Favicons, app icons, binary assets, passive marker files, and generated reference documents."),
+        ("Regeneration command", "python docs/build_complete_guide.py"),
+    ])
+    doc.add_heading("What this adds beyond the code reference", level=2)
+    bullets(doc, [
+        "The selected files are the places a developer actually starts when debugging app behavior.",
+        "Each selected file gets source excerpts, implementation signals, API/DOM/storage clues, and safe-change notes.",
+        "The master reference acts like a guided map of the app internals rather than a dump of every asset.",
+    ])
+    doc.add_page_break()
 
 
 def add_complete_function_inventory(doc: Document) -> None:
@@ -2393,6 +2801,7 @@ def main() -> None:
     add_function_maps(doc, diagrams)
     add_complete_function_inventory(doc)
     add_generated_code_reference(doc, files, diagrams)
+    add_generated_file_reference(doc, files, diagrams)
     add_deep_detail_topics(doc)
     add_workflows(doc, files, diagrams)
     add_files(doc, files)
