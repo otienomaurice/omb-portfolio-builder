@@ -6,13 +6,16 @@ This README is for the builder application only. Website-specific content, domai
 
 ## Complete Beginner Guide
 
-A long beginner-oriented Word guide is included at:
+A long beginner-oriented Word guide and a deeper source-code reference are included at:
 
 ```text
 docs/OMB_Portfolio_Builder_Complete_Guide.docx
+docs/OMB_Portfolio_Builder_Complete_Guide.pdf
+docs/OMB_Portfolio_Builder_Code_Reference.docx
+docs/OMB_Portfolio_Builder_Code_Reference.pdf
 ```
 
-It explains the high-level design, generated block diagrams, software-engineering decisions, shell commands, programming syntax, how the important files communicate, what each build tool owns, GitHub workflows, Electron, the installer, caching, API endpoints, data contracts, frontend/backend/AI/Cloudflare layers, the website, the parser, publishing, compiler tools, generated function inventories, and file-by-file repository notes. The generator also writes source-focused Markdown notes to `docs/code-reference`.
+It explains the high-level design, generated block diagrams, software-engineering decisions, shell commands, programming syntax, how the important files communicate, what each build tool owns, GitHub workflows, Electron, the installer, caching, API endpoints, data contracts, frontend/backend/AI/Cloudflare layers, the website, the parser, publishing, compiler tools, generated function inventories, and file-by-file repository notes. The generator also writes source-focused Word documents to `docs/code-reference-docx` and PDF documents to `docs/code-reference-pdf`.
 
 ## Install
 
@@ -229,6 +232,7 @@ Use the workflow in [BRANCHING.md](BRANCHING.md):
 | `codex/expand-complete-guide-detail` | Expands the complete guide with deeper flow walkthroughs, API endpoint details, data contracts, caching detail, installer internals, generated function inventory, and additional beginner debugging notes. | `development` | `development` | Merged into `development` |
 | `codex/hdl-testbench-scope` | Requires HDL simulations to include a testbench, adds HDL design/testbench roles, and renders VCD waveform data in a signal scope. | `development` | `development` | Merged into `development` |
 | `codex/builder-file-ai-auth-docs-cleanup` | Allows all project evidence file types, cleans publishing target authentication/loading, improves the website AI fallback, adds IDE-style compile workspace controls, and expands generated code documentation. | `development` | `development` | Merged into `development` |
+| `codex/deep-docx-pdf-code-reference` | Replaces Markdown-only code references with generated Word/PDF source references and expands function-level documentation with diagrams, endpoints, variables, implementation signals, and debugging notes. | `development` | `development` | Active |
 
 ## Uninstall
 
