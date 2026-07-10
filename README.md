@@ -11,6 +11,8 @@ A long beginner-oriented Word guide and a deeper source-code reference are inclu
 ```text
 docs/OMB_Portfolio_Builder_Complete_Guide.docx
 docs/OMB_Portfolio_Builder_Complete_Guide.pdf
+docs/OMB_Portfolio_Builder_Curated_File_Guides.docx
+docs/OMB_Portfolio_Builder_Curated_File_Guides.pdf
 docs/OMB_Portfolio_Builder_File_Reference.docx
 docs/OMB_Portfolio_Builder_File_Reference.pdf
 docs/OMB_Portfolio_Builder_Code_Reference.docx
@@ -20,6 +22,14 @@ docs/OMB_Portfolio_Builder_Important_Code_Reference.pdf
 ```
 
 The complete guide explains the whole system: high-level design, generated block diagrams, software-engineering decisions, shell commands, programming syntax, how the important files communicate, what each build tool owns, GitHub workflows, Electron, the installer, caching, API endpoints, data contracts, frontend/backend/AI/Cloudflare layers, the website, the parser, publishing, and compiler tools.
+
+Start with the curated file guides when you want to understand code like a book instead of a line-number report. The first curated pass covers:
+
+- `docs/curated-file-guides-docx/server.mjs.docx` and `docs/curated-file-guides-pdf/server.mjs.pdf`
+- `docs/curated-file-guides-docx/script.js.docx` and `docs/curated-file-guides-pdf/script.js.pdf`
+- `docs/curated-file-guides-docx/index.html.docx` and `docs/curated-file-guides-pdf/index.html.pdf`
+
+Each curated guide starts with a multi-page overview of the file before the code walkthrough. The walkthrough explains related functions by responsibility: what they accept, what important objects mean, what they call or change, why async behavior is needed, what would break without them, and how the functions work together.
 
 File-specific explanations live in generated Word/PDF references:
 
@@ -247,6 +257,7 @@ Use the workflow in [BRANCHING.md](BRANCHING.md):
 | `codex/deep-docx-pdf-code-reference` | Replaces Markdown-only code references with generated Word/PDF source references and expands function-level documentation with diagrams, endpoints, variables, implementation signals, and debugging notes. | `development` | `development` | Merged into `development` |
 | `codex/all-file-specific-docs` | Adds focused Word/PDF references for the important code and control files that drive the builder, website, installer, Cloudflare AI worker, workflows, parser, and generated documentation. | `development` | `development` | Merged into `development` |
 | `codex/narrative-important-function-docs` | Splits the documentation model so the complete guide explains the whole system while generated per-file Word/PDF references explain each file's own contents, functions, variables, calls, returns, and safe-change notes. | `development` | `development` | Merged into `development` |
+| `codex/curated-server-script-index-docs` | Adds book-style curated Word/PDF guides for `server.mjs`, `script.js`, and `index.html`, with multi-page overviews before grouped code walkthroughs. | `development` | `development` | Active |
 
 ## Uninstall
 
