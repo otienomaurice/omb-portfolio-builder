@@ -3,6 +3,9 @@ from __future__ import annotations
 import shutil
 import subprocess
 import tempfile
+import re
+from collections import Counter
+from dataclasses import dataclass
 from pathlib import Path
 
 from docx import Document
@@ -19,6 +22,889 @@ MASTER_PDF = REPO / "docs" / "OMB_Portfolio_Builder_Curated_File_Guides.pdf"
 
 def paragraph(text: str) -> str:
     return " ".join(str(text).strip().split())
+
+
+@dataclass
+class FunctionDoc:
+    name: str
+    signature: str
+    params: str
+    body: str
+    is_async: bool
+    occurrence: int = 1
+
+
+@dataclass
+class VariableDoc:
+    kind: str
+    name: str
+    initializer: str
+    scope: str = "top-level"
+
+
+def split_top_level_commas(value: str) -> list[str]:
+    parts: list[str] = []
+    current: list[str] = []
+    depth = 0
+    quote = ""
+    for char in value:
+        if quote:
+            current.append(char)
+            if char == quote:
+                quote = ""
+            elif char == "\\":
+                current.append(char)
+            continue
+        if char in {"'", '"', "`"}:
+            quote = char
+            current.append(char)
+            continue
+        if char in "([{":
+            depth += 1
+        elif char in ")]}" and depth:
+            depth -= 1
+        if char == "," and depth == 0:
+            part = "".join(current).strip()
+            if part:
+                parts.append(part)
+            current = []
+        else:
+            current.append(char)
+    part = "".join(current).strip()
+    if part:
+        parts.append(part)
+    return parts
+
+
+def function_ranges(source: str) -> list[FunctionDoc]:
+    """Extract top-level function blocks without relying on line numbers."""
+    pattern = re.compile(r"(?m)^(async\s+)?function\s+([A-Za-z_$][\w$]*)\s*\(")
+    results: list[FunctionDoc] = []
+    counts: Counter[str] = Counter()
+    matches = list(pattern.finditer(source))
+    for match_index, match in enumerate(matches):
+        is_async = bool(match.group(1))
+        name = match.group(2)
+        params_start = match.end()
+        depth = 1
+        index = params_start
+        quote = ""
+        while index < len(source) and depth:
+            char = source[index]
+            if quote:
+                if char == "\\":
+                    index += 2
+                    continue
+                if char == quote:
+                    quote = ""
+            else:
+                if char in {"'", '"', "`"}:
+                    quote = char
+                elif char == "(":
+                    depth += 1
+                elif char == ")":
+                    depth -= 1
+            index += 1
+        params = source[params_start : index - 1].strip()
+        brace_index = source.find("{", index)
+        if brace_index == -1:
+            continue
+        next_start = matches[match_index + 1].start() if match_index + 1 < len(matches) else len(source)
+        body = source[brace_index + 1 : next_start]
+        counts[name] += 1
+        signature = f"{'async ' if is_async else ''}function {name}({params})"
+        results.append(FunctionDoc(name=name, signature=signature, params=params, body=body, is_async=is_async, occurrence=counts[name]))
+    return results
+
+
+def brace_depth_before(source: str, position: int) -> int:
+    depth = 0
+    quote = ""
+    index = 0
+    while index < position:
+        char = source[index]
+        if quote:
+            if char == "\\":
+                index += 2
+                continue
+            if char == quote:
+                quote = ""
+        else:
+            if char in {"'", '"', "`"}:
+                quote = char
+            elif char == "{":
+                depth += 1
+            elif char == "}":
+                depth = max(0, depth - 1)
+        index += 1
+    return depth
+
+
+def top_level_variables(source: str) -> list[VariableDoc]:
+    results: list[VariableDoc] = []
+    pattern = re.compile(r"(?m)^(const|let|var)\s+([A-Za-z_$][\w$]*|\{[^=]+?\}|\[[^=]+?\])\s*=\s*")
+    for match in pattern.finditer(source):
+        if brace_depth_before(source, match.start()) != 0:
+            continue
+        kind = match.group(1)
+        raw_name = match.group(2).strip()
+        name = raw_name
+        if raw_name.startswith("{") or raw_name.startswith("["):
+            name = "destructured " + raw_name[:54].replace("\n", " ")
+        start = match.end()
+        index = start
+        depth = 0
+        quote = ""
+        while index < len(source):
+            char = source[index]
+            if quote:
+                if char == "\\":
+                    index += 2
+                    continue
+                if char == quote:
+                    quote = ""
+            else:
+                if char in {"'", '"', "`"}:
+                    quote = char
+                elif char in "{[(":
+                    depth += 1
+                elif char in "}])" and depth:
+                    depth -= 1
+                elif char == ";" and depth == 0:
+                    break
+                elif char == "\n" and depth == 0:
+                    next_text = source[index + 1 : index + 24].lstrip()
+                    if next_text.startswith(("const ", "let ", "var ", "function ", "async function ")):
+                        break
+            index += 1
+        initializer = source[start:index].strip()
+        results.append(VariableDoc(kind=kind, name=name, initializer=initializer))
+    return results
+
+
+def local_variables(func: FunctionDoc) -> list[VariableDoc]:
+    results: list[VariableDoc] = []
+    pattern = re.compile(r"(?m)\b(const|let|var)\s+([A-Za-z_$][\w$]*|\{[^=]+?\}|\[[^=]+?\])\s*(?:=\s*([^;\n]+))?")
+    for match in pattern.finditer(func.body):
+        raw_name = match.group(2).strip()
+        name = raw_name
+        if raw_name.startswith("{") or raw_name.startswith("["):
+            name = "destructured " + raw_name[:60].replace("\n", " ")
+        initializer = (match.group(3) or "").strip()
+        results.append(VariableDoc(kind=match.group(1), name=name, initializer=initializer, scope=func.name))
+    return results
+
+
+def initializer_shape(initializer: str) -> str:
+    value = initializer.strip()
+    if not value:
+        return "no explicit initializer"
+    if value.startswith("{"):
+        return "object literal"
+    if value.startswith("["):
+        return "array literal"
+    if value.startswith("new "):
+        return "constructed object"
+    if value.startswith("async ") or "=>" in value or value.startswith("("):
+        return "function or callback value"
+    if value.startswith(("'", '"', "`")):
+        return "string value"
+    if re.match(r"^-?\d", value):
+        return "numeric value"
+    if value in {"true", "false"}:
+        return "boolean value"
+    if "process.env" in value:
+        return "environment-derived value"
+    if "Path" in value or "path." in value or ".join" in value:
+        return "path-derived value"
+    if "document." in value or "querySelector" in value or "getElementById" in value:
+        return "DOM reference"
+    if "fetch(" in value:
+        return "network result"
+    if "await " in value:
+        return "awaited asynchronous result"
+    return "computed value"
+
+
+def object_keys(initializer: str, limit: int = 18) -> list[str]:
+    text = initializer.strip()
+    if not text.startswith("{"):
+        return []
+    keys: list[str] = []
+    for match in re.finditer(r"(?m)^\s*([A-Za-z_$][\w$-]*|['\"][^'\"]+['\"])\s*:", text):
+        key = match.group(1).strip("'\"")
+        if key not in keys:
+            keys.append(key)
+        if len(keys) >= limit:
+            break
+    return keys
+
+
+TOP_LEVEL_VARIABLE_DETAILS: dict[str, dict[str, str]] = {
+    "server.mjs": {
+        "root": "root is the absolute folder that contains server.mjs. Every local static-file lookup starts from this folder unless the app is deliberately publishing or compiling somewhere else. It is calculated from import.meta.url instead of the current shell directory so the backend behaves the same whether Electron, PowerShell, or another launcher starts it.",
+        "portfolioRoot": "portfolioRoot is the folder treated as the publishable website mirror. It normally equals root, but OMB_PORTFOLIO_WORKSPACE can redirect it to a separate portfolio folder. Publishing functions use this boundary when copying and staging public website files.",
+        "compileRoot": "compileRoot is the separate workspace for Compile Code projects. It is deliberately outside the public site folder so temporary source files, binaries, VCD waveforms, and compiler output do not get mixed into the portfolio website.",
+        "port": "port is the TCP port used by the local HTTP server. PORT can override it for development or packaging, while the default supports the local builder preview without requiring a user to choose a port.",
+        "host": "host is the network interface binding for the server. The default allows the local runtime to listen broadly, but write operations still rely on isLocalRequest so privilege is not granted merely because a browser can reach the server.",
+        "execFileAsync": "execFileAsync is the Promise-based wrapper around Node's execFile. It lets Git, version checks, and other short commands use async/await instead of nested callbacks.",
+        "packageJson": "packageJson holds metadata from package.json, especially the current builder version used by update checks, release comparisons, and status messages.",
+        "types": "types maps file extensions to HTTP Content-Type headers. Static serving uses it so browsers interpret CSS as CSS, JavaScript as JavaScript, PDFs as PDFs, icons as icons, and uploaded assets as the right media type.",
+        "draftPath": "draftPath is the private local draft catalog path. It stores builder-side edits that have not necessarily been applied to the public projects.json file.",
+        "catalogPath": "catalogPath is the public portfolio catalog path. The website runtime reads this file to render the public project list, profile, sections, fun facts, links, and rich content.",
+        "publishAuthCachePath": "publishAuthCachePath is the local file that remembers recent publishing authorization. It is intentionally local to the machine and target so GitHub verification does not have to repeat on every Apply to site click.",
+        "publishPaths": "publishPaths is the allowlist of files and folders that can be copied and staged during publishing. This is a critical safety object: it prevents builder-only files, temp compiler output, credentials, and internal docs from being pushed as website content.",
+        "publishAuthCacheTtlMs": "publishAuthCacheTtlMs is the normal one-day authorization window. It implements the rule that GitHub publishing should not ask again every time the app opens, but also should not trust an old session forever.",
+        "publishAuthExtendedTtlMs": "publishAuthExtendedTtlMs is the thirty-day extended authorization window. It is used after repeated successful authorizations prove the same device and target are consistently owned by the same publisher.",
+        "publishAuthHistoryWindowMs": "publishAuthHistoryWindowMs is the seven-day window used to count successful authorizations. The cache logic uses it to decide whether the user qualifies for extended trust.",
+        "publishAuthExtendedThreshold": "publishAuthExtendedThreshold is the number of successful authorizations required before the builder extends trust. It turns the user's requested security rule into a concrete number.",
+        "defaultSiteRepository": "defaultSiteRepository stores the optional repository configured through the environment. It gives packaged or developer-launched builds a default target without hardcoding one into the code.",
+        "blockedAppUpdateVersions": "blockedAppUpdateVersions is a Set of release versions the updater must skip. It exists so a known bad release can be blocked without deleting every release artifact from GitHub.",
+        "publishAuthorizationHelp": "publishAuthorizationHelp is the human-readable troubleshooting text shown when publishing is blocked. It explains the sequence the user should follow: configure target, authenticate, load if needed, then apply.",
+        "gitCandidates": "gitCandidates lists command names and likely Windows Git paths. Git operations use this list to find Git even when PATH is incomplete, which is common on Windows installs.",
+        "compileLanguageProfiles": "compileLanguageProfiles is the language rulebook for the IDE feature. Each language entry defines the default filename, valid extensions, display label, required tools, and installer hints. Compile, build, run, simulate, and beautify operations all depend on this map.",
+        "compileToolCandidates": "compileToolCandidates maps compiler tool names to possible executable locations. It lets the app find gcc, g++, javac, java, iverilog, vvp, python, node, and LTspice even when a normal terminal cannot.",
+        "compileToolCache": "compileToolCache remembers the resolved path for compiler tools. It prevents every compile click from scanning the filesystem again.",
+        "compileToolVersionCache": "compileToolVersionCache remembers version strings for tools after they have been checked. This makes status panels faster and keeps repeated diagnostics from slowing the UI.",
+        "portfolioAiInstructions": "portfolioAiInstructions is the system prompt for the portfolio assistant. It defines how the model should distinguish greetings, general electronics questions, portfolio-specific questions, public GitHub code requests, and uncertain answers.",
+        "githubTextFilePattern": "githubTextFilePattern tells the AI source reader which GitHub files are worth fetching as text. It includes code, README, HDL, schematic-like text formats, scripts, and engineering project files.",
+        "githubSkipFilePattern": "githubSkipFilePattern tells the AI source reader which GitHub files to skip because they are binary, huge, media-oriented, or not useful as prompt text.",
+    },
+    "script.js": {
+        "grid": "grid points at the project-grid container. renderProjects writes category sections and project cards into this element, making it the public project's visible mounting point.",
+        "searchInput": "searchInput points at the project search box. Search handlers read its value, build dropdown results, apply highlights, and decide which projects remain visible.",
+        "projectFilters": "projectFilters points at the category filter container. renderCategoryFilters fills it with filter buttons derived from the actual catalog categories.",
+        "filterButtons": "filterButtons stores the current filter button elements. It is updated after dynamic filters are rendered because the original NodeList would not include newly created buttons.",
+        "projectCount": "projectCount displays the number of visible or total projects. It is updated after catalog load and render operations so the summary band matches the data.",
+        "projectTrackCount": "projectTrackCount displays how many project categories/tracks exist. It is derived from the saved categories rather than hardcoded.",
+        "projectTrackLabels": "projectTrackLabels displays the category names. It helps the top summary reflect Analog, Digital, Embedded, or any custom categories the builder creates.",
+        "year": "year points at the footer year span. Startup code can set it from the current date so the footer remains current without manual HTML edits.",
+        "funFactsCallout": "funFactsCallout is the near-top personality callout. renderFunFacts only reveals it when saved fun facts exist.",
+        "heroEyebrow": "heroEyebrow is the small label above the hero title. renderSiteContent can replace it from the builder's front page settings.",
+        "heroTitle": "heroTitle is the main public headline. It receives the owner-controlled front-page title instead of forcing a fixed sentence into every portfolio.",
+        "heroCopy": "heroCopy is the supporting paragraph in the hero section. It is one of the fields affected by rich text and plain text styling choices.",
+        "brandName": "brandName is the bold brand text in the header. renderProfile updates it to match the portfolio owner or site title.",
+        "brandSubtitle": "brandSubtitle is the small subtitle beside the brand. It usually communicates local builder/public portfolio context or a tagline.",
+        "brandIcon": "brandIcon is the image element for the OMB visual mark. Profile settings can change it when the builder is generalized for other users.",
+        "brandText": "brandText is the OMB engraving text in the header logo area. It carries the small trademark-like label.",
+        "headerAvatar": "headerAvatar is the clickable top-right profile image container. renderProfile reveals it only when a profile image exists.",
+        "headerAvatarImage": "headerAvatarImage is the actual img element inside the avatar link. It receives the saved profile picture URL.",
+        "heroImage": "heroImage is the main hero/background image element. Site content settings decide whether it is displayed.",
+        "resumeSection": "resumeSection is the public resume panel. renderProfile hides or shows it depending on whether a resume URL exists.",
+        "contactBand": "contactBand is the final dark contact area. It also contains the AI assistant panel, so layout code must keep chat growth from distorting contact information.",
+        "profilePhoto": "profilePhoto is the large contact-section profile image. It is separate from the header avatar so desktop/mobile layouts can size them differently.",
+        "contactTitle": "contactTitle is the heading for the contact panel. renderProfile updates it from the owner identity.",
+        "contactIntro": "contactIntro is the contact-section introduction text. It can be empty, plain text, or rich content depending on saved profile data.",
+        "contactDetails": "contactDetails is the list of direct contact methods such as email and phone. renderProfile builds clickable mailto and tel links inside it.",
+        "contactLinks": "contactLinks is the container for external profile links such as GitHub, LinkedIn, resume, or custom websites.",
+        "footerOwner": "footerOwner is the footer ownership text. It lets the footer follow the current profile owner rather than remaining generic.",
+        "searchWrap": "searchWrap is the parent around the search box. The search dropdown attaches near it so results appear where the user is typing.",
+        "aiAssistantForm": "aiAssistantForm is the chat form. Its submit handler starts answerAssistantQuestion.",
+        "aiAssistantPanel": "aiAssistantPanel is the whole Ask My Portfolio panel. Growth and layout code use it to keep the assistant right-justified and scrollable.",
+        "aiAssistantInput": "aiAssistantInput is the question field. It is cleared/focused by chat handlers and intentionally does not keep long instructional text inside the typed value.",
+        "aiAssistantLog": "aiAssistantLog is the scrollable message history. appendAssistantMessage and replaceAssistantMessage write user and assistant messages into it.",
+        "aiAssistantStatus": "aiAssistantStatus is the small status line used for ready/thinking/error states.",
+        "aiClearChatButton": "aiClearChatButton is the explicit Clear chat control. It resets conversation history, source maps, and the visible log.",
+        "categories": "categories is the runtime copy of project categories loaded from the catalog. It can include more than the original Analog, Digital, and Embedded groups.",
+        "projects": "projects is the runtime project array. Rendering, search, assistant context, and project windows all read from it.",
+        "siteSections": "siteSections stores custom main-page sections such as personal profile, hobbies, sports, social media, or professional material.",
+        "funFacts": "funFacts stores simple fun fact strings. renderFunFacts turns at most a few lines into a near-top callout.",
+        "funFactsRich": "funFactsRich stores rich-format fun facts when the builder saves styled content instead of plain strings.",
+        "fieldStyles": "fieldStyles stores plain-field font, size, and color choices. It lets front-page, profile, and contact fields render consistently with builder formatting.",
+        "siteContent": "siteContent stores front-page text and site-level settings such as hero copy and titles.",
+        "siteContentRich": "siteContentRich stores rich versions of site-level text fields.",
+        "profile": "profile stores owner identity: name, email, phone, images, resume, GitHub, LinkedIn, and other public contact details.",
+        "profileRich": "profileRich stores rich versions of profile/contact fields so styled text can survive from builder to website.",
+        "activeFilter": "activeFilter stores the currently selected project category filter.",
+        "activeSectionDialogDrag": "activeSectionDialogDrag stores the drag state while a project window is being moved.",
+        "activeSectionDialogResize": "activeSectionDialogResize stores the resize state while a project window edge is being dragged.",
+        "sectionDialogDragEnabled": "sectionDialogDragEnabled prevents drag handlers from being installed more than once.",
+        "isApplyingSectionRoute": "isApplyingSectionRoute prevents browser history updates from recursively triggering themselves while a saved route is being restored.",
+        "searchPanel": "searchPanel stores the dropdown result panel created for search.",
+        "searchStatus": "searchStatus stores the status element inside the search dropdown.",
+        "searchLimitSelect": "searchLimitSelect stores the dropdown control that lets the visitor choose 5, 10, 15, or 20 results.",
+        "currentSearchResults": "currentSearchResults is the current ranked search-result array. It lets click handlers navigate results without recalculating the search.",
+        "assistantSourceCounter": "assistantSourceCounter creates stable ids for assistant source buttons.",
+        "assistantSourceMap": "assistantSourceMap connects source button ids to source records so clicking a source opens the right place.",
+        "assistantChatHistory": "assistantChatHistory stores recent user and assistant messages. It gives the chatbot conversation memory.",
+        "searchableEntries": "searchableEntries is the full in-browser search index. It contains project titles, sections, files, captions, page sections, uploaded text, and electronics keyword expansions.",
+        "searchResultLimit": "searchResultLimit stores how many dropdown results to display.",
+        "searchHighlightTimer": "searchHighlightTimer debounces highlight updates so typing does not repaint the page too aggressively.",
+        "searchHighlightName": "searchHighlightName is the CSS class applied to highlighted search matches.",
+        "sectionRouteKey": "sectionRouteKey identifies portfolio section entries in browser history state.",
+        "sectionRouteParams": "sectionRouteParams defines the URL parameter names for project id, section index, and nested subsection path.",
+        "supportedCodeLanguages": "supportedCodeLanguages is the public language list for code rendering and detection. It names C, C++, Verilog/SystemVerilog, Java, JavaScript, Python, HTML, and related aliases.",
+        "legacyTemplateSkins": "legacyTemplateSkins maps older template ids to the newer appearance-only template ids. It keeps older saved projects rendering after template behavior changed.",
+        "defaultSiteContent": "defaultSiteContent is the fallback front-page copy for a blank install. It keeps the site readable before the builder user customizes hero text and site messaging.",
+        "defaultProfile": "defaultProfile is the empty-owner fallback. It defines all expected profile fields so renderProfile can run even before the user enters contact details.",
+    },
+}
+
+
+def function_references_for_variable(name: str, source: str) -> list[str]:
+    if name.startswith("destructured"):
+        return []
+    refs: list[str] = []
+    for func in function_ranges(source):
+        if re.search(rf"\b{re.escape(name)}\b", func.body):
+            refs.append(func.name)
+        if len(refs) >= 10:
+            break
+    return refs
+
+
+def local_variable_usage(name: str, body: str) -> list[str]:
+    if name.startswith("destructured") or not re.match(r"^[A-Za-z_$][\w$]*$", name):
+        return []
+    uses: list[str] = []
+    if re.search(rf"\breturn\s+{re.escape(name)}\b", body):
+        uses.append("returned to the caller")
+    if re.search(rf"\b{re.escape(name)}\.(map|filter|reduce|forEach|sort)\s*\(", body):
+        uses.append("iterated or transformed as a collection")
+    if re.search(rf"\b{re.escape(name)}\.(push|set|add|append|appendChild)\s*\(", body):
+        uses.append("mutated as a collection or DOM container")
+    if re.search(rf"\b{re.escape(name)}\.[A-Za-z_$][\w$]*", body):
+        props = sorted(set(re.findall(rf"\b{re.escape(name)}\.([A-Za-z_$][\w$]*)", body)))[:8]
+        if props:
+            uses.append("accesses properties/methods " + ", ".join(props))
+    call_names = sorted(set(re.findall(rf"\b([A-Za-z_$][\w$]*)\s*\([^)]*\b{re.escape(name)}\b", body)))[:8]
+    call_names = [item for item in call_names if item not in {"if", "for", "while", "switch", "return"}]
+    if call_names:
+        uses.append("passed into " + ", ".join(call_names))
+    if re.search(rf"\b{re.escape(name)}\s*=", body):
+        uses.append("assigned or updated later in the function")
+    return uses[:5]
+
+
+def variable_category(name: str, initializer: str, file_name: str) -> str:
+    lower = name.lower()
+    init = initializer.lower()
+    if name.startswith("destructured"):
+        return "imported or unpacked API handles"
+    if "root" in lower or "path" in lower or "dir" in lower or "folder" in lower:
+        return "filesystem location"
+    if "url" in lower or "remote" in lower or "endpoint" in lower:
+        return "network or routing value"
+    if "cache" in lower or "history" in lower or "stack" in lower or "state" in lower:
+        return "runtime state or cache"
+    if "profile" in lower or "project" in lower or "category" in lower or "catalog" in lower or "section" in lower:
+        return "portfolio data state"
+    if "tool" in lower or "compiler" in lower or "language" in lower or "compile" in lower:
+        return "compiler or language configuration"
+    if "assistant" in lower or "ollama" in lower or "openai" in lower or "portfolioai" in lower or lower.endswith("ai"):
+        return "AI configuration or conversation state"
+    if "git" in lower or "publish" in lower or "auth" in lower or "credential" in lower or "branch" in lower:
+        return "Git publishing and authorization state"
+    if "element" in lower or "dialog" in lower or "grid" in lower or "input" in lower or "button" in lower or "section" in lower and file_name == "script.js":
+        return "DOM reference or UI state"
+    if "class" in lower or "style" in lower or "color" in lower or "template" in lower:
+        return "appearance configuration"
+    if "map" in init or "set(" in init:
+        return "lookup collection"
+    return "temporary calculation"
+
+
+def explain_variable(variable: VariableDoc, file_name: str, top_level: bool = False, source: str = "", function_body: str = "") -> str:
+    name = variable.name
+    custom = TOP_LEVEL_VARIABLE_DETAILS.get(file_name, {}).get(name) if top_level else None
+    category = variable_category(name, variable.initializer, file_name)
+    shape = initializer_shape(variable.initializer)
+    keys = object_keys(variable.initializer)
+    if custom:
+        base = custom
+    else:
+        init_text = variable.initializer.strip()
+        if len(init_text) > 180:
+            init_text = init_text[:177].rstrip() + "..."
+        if shape == "no explicit initializer":
+            base = f"{name} starts without an immediate value. In this file that usually means it is filled by a loop, branch, callback, or later assignment inside the same function. "
+        elif shape == "object literal":
+            base = f"{name} stores a structured object for {category}. "
+        elif shape == "array literal":
+            base = f"{name} stores a list for {category}. "
+        elif shape == "DOM reference":
+            base = f"{name} stores a DOM element reference. "
+        elif shape == "path-derived value":
+            base = f"{name} stores a resolved filesystem or route value. "
+        elif shape == "awaited asynchronous result":
+            base = f"{name} stores the completed result of an awaited operation. "
+        elif shape == "network result":
+            base = f"{name} stores data returned from a network call. "
+        else:
+            base = f"{name} stores a {shape} for {category}. "
+        if init_text:
+            base += f"It is initialized from {init_text}. "
+    detail_parts: list[str] = []
+    lower = name.lower()
+    if "root" in lower or "path" in lower or "dir" in lower:
+        detail_parts.append("It controls a boundary or destination for file work, so an incorrect value can redirect uploads, previews, compiler artifacts, or published assets.")
+    elif "profile" in lower or "project" in lower or "category" in lower or "catalog" in lower:
+        detail_parts.append("It carries portfolio content, so rendering, search, AI context, and publishing expect its shape to stay consistent.")
+    elif "tool" in lower or "compiler" in lower or "language" in lower or "compile" in lower:
+        detail_parts.append("It supports the compile workspace by describing language rules, executable locations, tool status, or compiler output.")
+    elif "assistant" in lower or "ollama" in lower or "openai" in lower or "portfolioai" in lower or lower.endswith("ai"):
+        detail_parts.append("It influences assistant behavior: conversation memory, source display, model prompts, backend routing, or context selection.")
+    elif "git" in lower or "publish" in lower or "auth" in lower or "credential" in lower or "branch" in lower:
+        detail_parts.append("It affects publishing, where mistakes can change the public website or expose the wrong files.")
+    elif "dialog" in lower or "grid" in lower or "input" in lower or "button" in lower or "element" in lower:
+        detail_parts.append("It anchors UI behavior to a specific browser element or window state.")
+    elif name.startswith("destructured"):
+        detail_parts.append("It unpacks API handles from another object, giving the rest of the file short direct names for those APIs.")
+    if keys:
+        detail_parts.append(f"Visible object fields include {', '.join(keys)}. Those fields form the contract consumed by related functions.")
+    if top_level and source:
+        refs = function_references_for_variable(name, source)
+        if refs:
+            detail_parts.append(f"Functions that reference it include {', '.join(refs)}.")
+    if not top_level and function_body:
+        uses = local_variable_usage(name, function_body)
+        if uses:
+            detail_parts.append("Within the function it is " + "; ".join(uses) + ".")
+    return paragraph(base.rstrip() + " " + " ".join(detail_parts))
+
+
+def add_variable_section(doc: Document, guide: dict) -> None:
+    file_name = guide["file"]
+    if file_name not in {"server.mjs", "script.js"}:
+        return
+    source = (REPO / file_name).read_text(encoding="utf-8")
+    variables = top_level_variables(source)
+    doc.add_heading("Top-Level Objects And Variables", level=1)
+    doc.add_paragraph(
+        "This section explains the long-lived objects and variables before the function walkthrough. These are the values that give the file memory, configuration, API handles, DOM anchors, path boundaries, cache state, and behavior maps. They are explained by meaning, not by line number."
+    )
+    grouped: dict[str, list[VariableDoc]] = {}
+    for variable in variables:
+        category = variable_category(variable.name, variable.initializer, file_name)
+        grouped.setdefault(category, []).append(variable)
+    for category, items in grouped.items():
+        doc.add_heading(category.title(), level=2)
+        for variable in items:
+            doc.add_heading(variable.name, level=3)
+            doc.add_paragraph(explain_variable(variable, file_name, top_level=True, source=source))
+
+
+def parse_parameters(params: str) -> list[str]:
+    if not params:
+        return []
+    if params.startswith("{") and "}" in params:
+        inner = params[1 : params.find("}")]
+        return split_top_level_commas(inner)
+    return split_top_level_commas(params)
+
+
+def parameter_label(param: str) -> str:
+    cleaned = param.strip().lstrip("...")
+    cleaned = cleaned.split("=")[0].strip()
+    cleaned = cleaned.replace("{", "").replace("}", "").strip()
+    return cleaned or param.strip()
+
+
+def explain_parameter(param: str) -> str:
+    label = parameter_label(param)
+    lower = label.lower()
+    default_note = ""
+    if "=" in param:
+        default_note = " The default value is intentional: it lets the function fail softly or produce a predictable empty result when the caller omits that field."
+    if label in {"request", "response"}:
+        return paragraph(f"{label} is the Node HTTP object passed into the handler. The function reads request details or writes response details through this object instead of depending on browser globals.{default_note}")
+    if "project" in lower:
+        return paragraph(f"{label} identifies or carries the project being built, rendered, compiled, searched, or published. It links this function back to one portfolio project instead of letting work spill across unrelated projects.{default_note}")
+    if "language" in lower:
+        return paragraph(f"{label} names the programming or hardware-description language. The function uses it to choose file extensions, highlighting rules, compilers, simulators, labels, or output behavior.{default_note}")
+    if "file" in lower or "path" in lower or "url" in lower or "remote" in lower:
+        return paragraph(f"{label} points at an external resource, local file, route, Git remote, or public link. The function normally normalizes or validates it before using it so the app does not treat unsafe or malformed paths as trusted input.{default_note}")
+    if "code" in lower or "source" in lower:
+        return paragraph(f"{label} is source text supplied by the builder, project catalog, GitHub, or an uploaded file. The function inspects, formats, saves, compiles, highlights, or extracts meaning from this text.{default_note}")
+    if "query" in lower or "question" in lower or "intent" in lower:
+        return paragraph(f"{label} is user language: a search query, AI question, or classified assistant intent. It drives scoring, context selection, routing, or AI response behavior.{default_note}")
+    if "options" in lower or "config" in lower or "payload" in lower or "context" in lower or "data" in lower:
+        return paragraph(f"{label} is a structured object rather than one small value. It lets the caller pass several related settings or pieces of state together so the function can make one coordinated decision.{default_note}")
+    if "element" in lower or "dialog" in lower or "node" in lower or "root" in lower:
+        return paragraph(f"{label} is a DOM object or parsed content node. The function reads from it, writes into it, or uses it as the current place where UI or project content should be rendered.{default_note}")
+    if "value" in lower or "text" in lower or "title" in lower or "name" in lower or "label" in lower:
+        return paragraph(f"{label} is human-facing text. The function cleans, limits, displays, compares, or turns it into a safe identifier so the UI and generated site remain readable.{default_note}")
+    return paragraph(f"{label} is the caller-supplied input used by this function. The function interprets it according to its local responsibility, often converting it into safer, more predictable data before returning or rendering anything.{default_note}")
+
+
+SERVER_IMPORTANT: dict[str, list[str]] = {
+    "compileAndRunCode": [
+        paragraph("This is the central Compile Code brain. It receives the project id, active source file, language, action requested by the user, optional stdin, and any workspace files that belong to the project. From that one payload it decides whether the user is only beautifying code, saving code, compiling, building, running, simulating HDL, or reading waveform output. It is async because every serious action here touches the filesystem, discovers tools, writes temporary workspaces, runs external compiler processes, and waits for terminal output."),
+        paragraph("The function is needed because the builder treats each project like a small IDE workspace. JavaScript, Python, Java, C, C++, Verilog, SystemVerilog, LTspice, and HTML all have different compile/run rules. This function keeps those rules behind one API endpoint so the frontend can ask for a compile operation without knowing every compiler command. Without it, Compile Code would degrade into a text box with no reliable build, run, simulate, cache, or output behavior."),
+        paragraph("Important internal helpers include ensureRunSource, append, and missing. ensureRunSource writes the active source into the compile workspace before a run. append converts command results into terminal-style output. missing returns a helpful response when a required tool is unavailable. Those small local functions matter because they keep the larger language branches readable."),
+    ],
+    "handleApi": [
+        paragraph("handleApi is the backend router. It receives the parsed URL and decides which local API feature should run: project catalog reads, uploads, draft saves, compile actions, compiler installation, target authentication, load from target, apply to site, update checks, security reports, AI calls, or builder download reports. In a framework such as Express this would be spread across route handlers. Here it is one explicit switch-like controller."),
+        paragraph("The function protects the boundary between a browser click and local machine power. Before write operations, it checks whether the request is local. It reads request JSON only when needed, calls the specific operation function, and returns a normalized JSON response. Without handleApi, the server could still serve files, but the builder would have no organized command surface."),
+    ],
+    "publishSiteChanges": [
+        paragraph("publishSiteChanges is the final publishing operation behind Apply to site. It assumes authorization has been proven or supplied, synchronizes publishable files into the portfolio mirror, checks Git status, stages only approved paths, creates a commit when there are changes, and pushes to the selected branch. It is async because Git commands and file synchronization are external operations that take time and can fail."),
+        paragraph("This function is important because publishing is the one place where local draft work becomes public website content. It must therefore be strict. If it staged arbitrary files or pushed without checking state, builder internals, private drafts, or stale branches could leak to the website. The function works with assertPublishAccess, syncPortfolioPublishFiles, getGitStatus, runPublishGit, and stageablePublishPaths."),
+    ],
+    "assertPublishAccess": [
+        paragraph("assertPublishAccess is the gatekeeper that decides whether the current machine and target are allowed to change the website. It checks the configured publishing target, compares cached authorization against the current remote and branch, respects the once-per-day authentication window, and can force a fresh verification when needed. It returns the access object that publishing functions use as proof."),
+        paragraph("Without this function, Apply to site would either ask for GitHub authorization too often or push too freely. The cache logic is what makes the app usable day to day while still preventing an unauthenticated installation from silently modifying Maurice's website."),
+    ],
+    "authenticateGitHubForTarget": [
+        paragraph("authenticateGitHubForTarget is the interactive setup path for a publishing target. It validates the target remote, initializes or fixes the local Git repository when necessary, stores credentials when credentials are supplied, verifies write access, saves the target configuration, and records the authorization cache. It is the correct first step before Load from target or Apply to site."),
+        paragraph("The function exists because merely typing a GitHub URL does not prove the builder can read from or write to that repository. Authentication must be completed, verified, and remembered before the target is considered usable."),
+    ],
+    "syncFromPublishTarget": [
+        paragraph("syncFromPublishTarget is the import path. After a target is authenticated, this function pulls or fetches the latest public portfolio files from the selected repository and copies compatible website assets back into the local builder workspace. It is what lets a fresh machine reconstruct the current portfolio state from the website repository."),
+        paragraph("This function is deliberately separate from authentication. Authenticate target proves access. Load from target reads the target. Keeping those concepts separate makes the UI clearer and reduces accidental overwrites."),
+    ],
+    "downloadAndLaunchAppUpdate": [
+        paragraph("downloadAndLaunchAppUpdate is the updater handoff. It checks release information, downloads the installer, writes a PowerShell script that can wait for the current process to exit, launches the installer or updater quietly, and schedules the current app to close. It must be async because it performs network download, file writes, and process launches."),
+        paragraph("The function is needed because a running Electron app cannot safely replace all of its own files while those files are in use. The handoff script becomes a temporary helper that finishes the update after the current process gets out of the way."),
+    ],
+    "handlePortfolioAi": [
+        paragraph("handlePortfolioAi is the backend side of Ask My Portfolio. It reads the visitor's question, conversation history, intent, and context, enriches that context when public sources are allowed, then chooses an AI provider path. It can call OpenAI when configured, call Ollama locally when available, or fall back to rule-based answers when no model is available."),
+        paragraph("The function matters because the public script should not hold private API keys or perform privileged source fetching directly. It also gives the assistant one place to enforce prompt rules about portfolio-specific answers, general engineering answers, public source usage, and uncertainty."),
+    ],
+    "runProcess": [
+        paragraph("runProcess is the safe wrapper around external commands. Compilers, Git, Winget, Java, vvp, and installer helpers all eventually need child processes. This function starts the command with controlled options, captures stdout and stderr, enforces a timeout, kills process trees on Windows when necessary, and resolves to a structured result instead of letting raw process behavior leak through the API."),
+        paragraph("Without this wrapper, every compiler and Git function would need to repeat timeout logic, stdout/stderr collection, and error handling. More importantly, failures would be inconsistent and the frontend terminal would receive unreliable output."),
+    ],
+    "parseVcdScopeText": [
+        paragraph("parseVcdScopeText reads VCD waveform text from HDL simulation and converts it into signals, time points, values, and scope metadata that a frontend scope viewer can draw. VCD files are compact event logs, not friendly UI data. This parser turns symbol changes over time into understandable signal histories."),
+        paragraph("The function is essential for the SystemVerilog/Verilog simulator feature. A simulation that produces only text is useful, but a scope view requires structured waveform data. Without this parser, the scope icon would have no signal timeline to show."),
+    ],
+}
+
+
+SCRIPT_IMPORTANT: dict[str, list[str]] = {
+    "loadProjectCatalog": [
+        paragraph("loadProjectCatalog is the public website startup pipeline. It chooses embedded preview data when the builder is previewing, otherwise it fetches projects.json from the published site. After that it hydrates the major runtime state: categories, projects, profile, site content, fun facts, custom sections, text styles, and rich text variants. Then it renders the visible page and restores any deep-linked project window."),
+        paragraph("This function is async because fetching projects.json can take time and can fail. It is the reason the static HTML shell becomes a real portfolio. Without it, the page would show placeholders but no saved projects, profile details, resume, fun facts, project categories, search index, or assistant context."),
+    ],
+    "renderProfile": [
+        paragraph("renderProfile applies owner identity to the public page. It updates the displayed name, tagline, profile photo, brand/title text, email link, phone link, GitHub/resume links, contact cards, resume viewer, metadata hints, and social/contact links. It is the bridge between saved profile data and the visible recruiter-facing contact section."),
+        paragraph("The function is important because the same website shell can serve Maurice's portfolio or a fresh user's portfolio. Profile data cannot be hardcoded if the builder is intended to be reusable. Without renderProfile, the page would either remain generic or require manual HTML editing for every owner."),
+    ],
+    "renderRichContent": [
+        paragraph("renderRichContent is the renderer for builder-created rich content. It accepts blocks representing paragraphs, images, formulas, files, links, code blocks, captions, and styled text, then converts those blocks into safe public HTML. It decides whether an image should appear inline, whether a file should be downloadable, how captions attach, and how text styles survive into the website."),
+        paragraph("This function matters because the builder is not just saving plain text. It supports formatted explanations, pasted images, formulas, code, and files. Without renderRichContent, much of what the builder collects would be flattened or lost when the portfolio is published."),
+    ],
+    "sanitizeRichInlineHtml": [
+        paragraph("sanitizeRichInlineHtml is the safety filter for rich inline HTML. Builder editors may store spans, links, bold text, colors, and other inline markup, but the public website should not blindly inject arbitrary HTML. This function removes unsafe tags and attributes while preserving the formatting the portfolio actually needs."),
+        paragraph("The function prevents a content field from becoming a script injection surface. It works with renderRichContent and renderRichFieldContent, which need formatted HTML but should only receive controlled markup."),
+    ],
+    "tokenizedCodeHtml": [
+        paragraph("tokenizedCodeHtml is the lightweight syntax highlighter used by the public site. It escapes the code first, then wraps comments, strings, numbers, keywords, preprocessor directives, and other recognized tokens in spans with CSS classes. It supports the major languages that the builder exposes, including C, C++, SystemVerilog, LTspice-oriented text, Java, JavaScript, Python, and HTML-like code."),
+        paragraph("The function exists so code added to a project reads like code rather than plain paragraph text. Without it, source examples in the portfolio would be visually flat, harder to scan, and less convincing to technical recruiters."),
+    ],
+    "answerAssistantQuestion": [
+        paragraph("answerAssistantQuestion is the public chatbot orchestrator. It receives the user's typed question, appends it to chat history, classifies the intent, gathers relevant portfolio context, creates a pending assistant answer, calls the backend AI when appropriate, falls back to local answers when needed, renders sources only when relevant, and restores focus to the input."),
+        paragraph("This function is async because the AI backend may need network time and because context gathering can include indexed file text. It is the reason Ask My Portfolio behaves like a conversation instead of a static search form."),
+    ],
+    "assistantContextForQuestion": [
+        paragraph("assistantContextForQuestion builds the packet of portfolio evidence sent to the AI backend. It uses the question intent, search results, named project matches, profile links, project summaries, and available evidence to decide what the model should see. It is selective by design so a generic greeting does not receive a pile of unrelated project context."),
+        paragraph("Without this function, the assistant would either know too little about the portfolio or always overload the model with the same generic links. This is the function that makes the AI choose context based on the conversation."),
+    ],
+    "assistantSourcesForDisplay": [
+        paragraph("assistantSourcesForDisplay chooses which portfolio links appear under an assistant answer. The user complained earlier that related links were generic; this function is the fix-point for that behavior. It scores source relation to the prompt, respects named projects and topic tokens, and avoids showing source buttons that do not belong to the answer context."),
+        paragraph("The function matters because sources are a promise. A displayed link should help verify or explore the answer. If this function is too loose, the assistant looks random even when the text answer is good."),
+    ],
+    "openParsedSection": [
+        paragraph("openParsedSection opens a project section or nested subsection as a full-window public view. It finds the project, finds the section, walks the requested subsection path, applies the selected appearance template, renders the overview and child sections, updates navigation buttons, and syncs browser history."),
+        paragraph("This function is the heart of the website's project-window behavior. Without it, clicking Design, Simulation, Documentation, or any user-created section would either scroll the page awkwardly or render content in the wrong place."),
+    ],
+    "ensureSectionDialog": [
+        paragraph("ensureSectionDialog creates and wires the reusable full-window dialog used for project sections. It builds the top controls, back/forward behavior, close behavior, content container, and event delegation for child cards. It creates the window once and then later calls reuse it."),
+        paragraph("The function exists so every project section window behaves consistently. If each click created its own markup by hand, close buttons, back buttons, keyboard behavior, and nested navigation would drift apart."),
+    ],
+    "renderProjects": [
+        paragraph("renderProjects rebuilds the visible project directory from current state. It checks the active category filter and search query, groups visible projects by category, creates the category sections, and updates the summary count. It is called after catalog load, filter changes, and search changes."),
+        paragraph("The function is the public directory refresh mechanism. Without it, filters and searches might update state internally but the page would not visually change."),
+    ],
+    "goToSearchResult": [
+        paragraph("goToSearchResult turns a search dropdown item into navigation. Depending on what the result represents, it may open a project window, jump to a main page section, highlight text on the current page, or open a file/link. This makes search feel like a search engine instead of a passive list."),
+        paragraph("The function is necessary because search results can point to many different kinds of things: project titles, section overviews, files, custom sections, contact links, or page text. One navigation rule would not work for all of them."),
+    ],
+}
+
+
+def classify_function(file_name: str, func: FunctionDoc) -> tuple[str, str]:
+    name = func.name
+    lower = name.lower()
+    body = func.body.lower()
+    if file_name == "server.mjs":
+        if name in {"securityHeaders", "sendJson", "handleApi", "readRequestJson", "isLocalRequest"}:
+            return "HTTP API surface", "This function belongs to the local HTTP/API layer. It either shapes responses, reads requests, or decides whether a request is allowed to perform local work."
+        if "compile" in lower or "hdl" in lower or "vcd" in lower or "tool" in lower or "process" in lower or "source" in lower or "java" in lower or "cfamily" in lower:
+            return "Compiler and IDE workspace", "This function supports the Compile Code workspace: detecting languages, writing files, finding tools, running compilers, parsing terminal output, or preparing simulation data."
+        if "github" in lower or "source" in lower and "fetch" in lower or "portfolio" in lower and "context" in lower:
+            return "Public source and AI context", "This function helps the assistant read public sources, GitHub repositories, local site files, or source snippets so answers can be based on actual portfolio evidence."
+        if "ollama" in lower or "openai" in lower or "portfolioai" in lower or lower.endswith("ai") or "conversation" in lower or "answer" in lower:
+            return "AI backend", "This function is part of the portfolio AI path. It prepares messages, reads model responses, maintains conversation shape, or creates a fallback answer."
+        if "publish" in lower or "git" in lower or "remote" in lower or "branch" in lower or "credential" in lower or "target" in lower or "auth" in lower or "domain" in lower:
+            return "Publishing and GitHub authorization", "This function protects and performs website publishing. It validates Git remotes, checks branches, caches authorization, stages approved files, or imports the target site."
+        if "update" in lower or "release" in lower or "security" in lower or "version" in lower:
+            return "Application update and reporting", "This function supports release checks, installer handoff, version comparison, or security/download reporting."
+        if "safe" in lower or "resolveinside" in lower or "path" in lower or "file" in lower:
+            return "Filesystem safety", "This helper prevents unsafe names and paths from escaping the intended workspace, portfolio mirror, or compile workspace."
+        return "Backend utility", "This is a backend helper that normalizes data or supports a larger server operation."
+    if "assistant" in lower:
+        return "Portfolio AI frontend", "This function belongs to the public chatbot. It classifies questions, gathers context, renders answers, or manages the chat UI."
+    if "search" in lower or "score" in lower or "query" in lower or "match" in lower or "filter" in lower:
+        return "Search and filtering", "This function builds, scores, filters, highlights, or navigates search results so the public website behaves like a real searchable portfolio."
+    if "section" in lower or "dialog" in lower or "route" in lower or "history" in lower or "path" in lower or "node" in lower:
+        return "Project windows and navigation", "This function supports full-window project sections, nested subsections, browser history, back/forward behavior, or content tree traversal."
+    if "rich" in lower or "render" in lower or "html" in lower or "inline" in lower or "math" in lower or "code" in lower:
+        return "Rich content rendering", "This function turns saved builder content into public HTML: styled text, formulas, code blocks, images, files, links, and safe markup."
+    if "profile" in lower or "site" in lower or "fun" in lower or "contact" in lower or "mail" in lower or "phone" in lower:
+        return "Profile and site content", "This function renders or normalizes owner identity, front-page text, contact links, fun facts, or custom main-page sections."
+    if "template" in lower or "responsive" in lower or "style" in lower or "color" in lower or "font" in lower or "crop" in lower:
+        return "Appearance and responsive presentation", "This function applies templates, visual style, font/color/crop settings, or responsive layout decisions."
+    if "download" in lower or "resource" in lower or "file" in lower or "link" in lower or "url" in lower:
+        return "Resources and links", "This function decides whether content is a website link, local download, uploaded file, or resource card."
+    if "project" in lower or "category" in lower:
+        return "Project directory", "This function normalizes, flattens, filters, or renders projects and categories."
+    return "Public runtime utility", "This helper supports the public site runtime by normalizing values or preparing data for another renderer."
+
+
+def function_calls(func: FunctionDoc, all_names: set[str]) -> list[str]:
+    calls: list[str] = []
+    for name in sorted(all_names, key=lambda item: func.body.find(item)):
+        if name == func.name:
+            continue
+        if re.search(rf"\b{name}\s*\(", func.body):
+            calls.append(name)
+        if len(calls) >= 8:
+            break
+    return calls
+
+
+def return_description(func: FunctionDoc) -> str:
+    body = func.body
+    if re.search(r"\breturn\s+await\b", body):
+        return "It returns the awaited result of another asynchronous operation, so its caller receives the completed value rather than a pending Promise."
+    if re.search(r"\breturn\s+\{", body):
+        return "It returns a structured object. That object is the contract the next layer uses instead of trying to interpret raw strings or side effects."
+    if re.search(r"\breturn\s+\[", body):
+        return "It returns an array. The caller usually iterates over that list to render entries, process files, or choose candidates."
+    if re.search(r"\breturn\s+`", body) or re.search(r"\breturn\s+['\"]", body):
+        return "It returns a string that is already normalized for display, command output, a URL, a CSS value, or a file/path label."
+    if re.search(r"\breturn\s+", body):
+        return "It returns a computed value used immediately by a caller. The important point is that the caller does not repeat this rule elsewhere."
+    return "It mostly works through side effects, such as updating the DOM, writing files, sending an HTTP response, changing history, or mutating controlled runtime state."
+
+
+def operation_description(func: FunctionDoc) -> str:
+    signals = []
+    body = func.body
+    if "await " in body:
+        signals.append("waits for asynchronous work")
+    if "fetch(" in body:
+        signals.append("calls a network resource")
+    if "runProcess(" in body or "execFile" in body or "spawn(" in body:
+        signals.append("runs an external command")
+    if any(token in body for token in ["readFile", "writeFile", "mkdir", "rm(", "copyFile", "readdir"]):
+        signals.append("reads or writes files")
+    if "querySelector" in body or "innerHTML" in body or "classList" in body:
+        signals.append("updates browser DOM")
+    if "history." in body or "URLSearchParams" in body:
+        signals.append("updates browser route/history")
+    if "localStorage" in body:
+        signals.append("uses browser local storage")
+    if "setTimeout" in body:
+        signals.append("uses a timer to avoid blocking or to wait for another process")
+    if not signals:
+        return "The body is mostly deterministic transformation logic: it reads its inputs, normalizes or scores them, and returns a value the caller can trust."
+    return "Inside the body, it " + ", ".join(signals[:-1]) + (" and " if len(signals) > 1 else "") + signals[-1] + "."
+
+
+def body_detail_notes(func: FunctionDoc) -> str:
+    body = func.body
+    notes: list[str] = []
+    if "JSON.parse" in body:
+        notes.append("parses JSON rather than treating incoming text as already trusted data")
+    if "JSON.stringify" in body:
+        notes.append("serializes structured data before sending or saving it")
+    if "path.resolve" in body or "path.join" in body or "path.relative" in body:
+        notes.append("uses Node path utilities so Windows path separators and relative paths are handled consistently")
+    if "throw new Error" in body or "throw publishAccessError" in body:
+        notes.append("throws explicit errors when a required safety or compatibility condition fails")
+    if "response.writeHead" in body or "response.end" in body:
+        notes.append("writes the HTTP response directly")
+    if "document.createElement" in body:
+        notes.append("creates DOM elements instead of relying only on static HTML")
+    if "innerHTML" in body:
+        notes.append("writes generated markup into the page, which is why escaping and sanitizing helpers around it matter")
+    if "classList" in body:
+        notes.append("toggles CSS classes to express UI state")
+    if "addEventListener" in body:
+        notes.append("attaches event handlers that turn user actions into behavior")
+    if "URLSearchParams" in body:
+        notes.append("reads or writes URL query parameters so browser history can represent the current view")
+    if "localStorage" in body:
+        notes.append("uses local browser storage for lightweight persistence")
+    if "crypto.createHash" in body:
+        notes.append("hashes sensitive scope information so authorization cache keys do not store raw secrets")
+    if "fetch(" in body:
+        notes.append("performs a fetch and therefore must handle network delay and failure")
+    if "runProcess(" in body:
+        notes.append("delegates command execution to runProcess so timeout and terminal capture remain consistent")
+    if "await mkdir" in body or "mkdir(" in body:
+        notes.append("creates folders before writing files so missing directories do not crash the workflow")
+    if "await writeFile" in body or "writeFile(" in body:
+        notes.append("writes data to disk as part of the operation")
+    if "await readFile" in body or "readFile(" in body:
+        notes.append("reads data from disk as part of the operation")
+    if "history.pushState" in body or "history.replaceState" in body:
+        notes.append("updates browser history so Back, Forward, and refresh can follow the same window state")
+    if not notes:
+        return ""
+    return paragraph("; ".join(notes[:8]) + ".")
+
+
+def failure_description(file_name: str, category: str, func: FunctionDoc) -> str:
+    if "Publishing" in category:
+        return paragraph(f"Without {func.name}, the publishing flow would lose one guardrail or one mechanical step. Depending on the function, that could mean pushing to the wrong branch, forgetting authorization, accepting a bad remote, staging unsafe files, or failing to import the latest website state.")
+    if "Compiler" in category:
+        return paragraph(f"Without {func.name}, the IDE-style compile workspace would become less reliable. The app might misidentify a language, lose a file role, fail to find a compiler, show confusing terminal output, skip waveform data, or run code in the wrong folder.")
+    if "AI" in category or "assistant" in category:
+        return paragraph(f"Without {func.name}, the assistant would either answer with less context, display unrelated links, lose conversation memory, fail to format messages cleanly, or expose model/provider details in the wrong layer.")
+    if "Search" in category:
+        return paragraph(f"Without {func.name}, search would become less like a search engine. Results could be missing, poorly ranked, not highlighted, or unable to navigate the visitor to the exact project, section, file, or phrase.")
+    if "Project windows" in category:
+        return paragraph(f"Without {func.name}, nested project navigation would break down. A visitor might click a section and see nothing, lose Back/Forward behavior, remain trapped in a dialog, or see content rendered in the wrong hierarchy.")
+    if "Rich content" in category:
+        return paragraph(f"Without {func.name}, builder-created content would not survive cleanly into the website. Formatting, images, formulas, links, code blocks, or sanitized HTML could be lost or rendered unsafely.")
+    if "Profile" in category:
+        return paragraph(f"Without {func.name}, owner-specific content would remain generic or malformed. Contact links, profile text, fun facts, and custom sections would not render with the intended public shape.")
+    return paragraph(f"Without {func.name}, the specific rule it owns would disappear from the named workflow. Callers would either skip that behavior or reimplement it inconsistently, which is exactly how rendering, publishing, compiling, searching, or AI context drifts over time.")
+
+
+def function_role_sentence(file_name: str, func: FunctionDoc, category: str, category_context: str) -> str:
+    name = func.name
+    lower = name.lower()
+    subject = name
+    if lower.startswith("normalize"):
+        target = name[len("normalize") :] or "value"
+        return paragraph(
+            f"{subject} standardizes {target} data before another part of the app uses it. The point is not decoration; it prevents different callers from interpreting the same input differently. A normalizer usually accepts loose user, catalog, or file data and turns it into the one shape the rest of the subsystem expects."
+        )
+    if lower.startswith("render"):
+        target = name[len("render") :] or "content"
+        return paragraph(
+            f"{subject} turns saved data for {target} into visible UI. It is a presentation function, but it also enforces public-site rules: empty content should not appear, rich content must be converted into safe HTML, and the generated markup must match the class names that styles.css expects."
+        )
+    if lower.startswith("fetch"):
+        target = name[len("fetch") :] or "resource"
+        return paragraph(
+            f"{subject} retrieves {target} from outside the immediate function. It wraps network or repository access so callers do not need to know URL construction, headers, limits, or error behavior. This matters because external data is slow, failure-prone, and must be bounded before it is trusted."
+        )
+    if lower.startswith("read"):
+        target = name[len("read") :] or "data"
+        return paragraph(
+            f"{subject} reads {target} from a request, file, cache, or generated artifact. It gives the caller parsed data rather than raw bytes or untrusted text, which keeps parsing rules centralized."
+        )
+    if lower.startswith("write"):
+        target = name[len("write") :] or "data"
+        return paragraph(
+            f"{subject} writes {target} to a controlled destination. Write helpers matter because a wrong path, stale format, or missing directory can corrupt local drafts, compile workspaces, publishing state, or generated website files."
+        )
+    if lower.startswith("safe") or lower.startswith("validate") or lower.startswith("resolveinside"):
+        return paragraph(
+            f"{subject} is a guardrail function. It checks or transforms caller input before the system uses that input as a filename, path, remote, domain, credential, or public value. This keeps unsafe input from becoming filesystem access, Git access, or broken public links."
+        )
+    if lower.startswith("parse"):
+        target = name[len("parse") :] or "input"
+        return paragraph(
+            f"{subject} interprets {target} text and returns structured meaning. Parsing functions are needed because the rest of the app should not repeatedly scan raw strings when it can work with a stable object, array, or normalized value."
+        )
+    if lower.startswith("detect") or lower.startswith("infer"):
+        return paragraph(
+            f"{subject} makes an educated classification from incomplete evidence. It looks at names, extensions, source text, repository state, or runtime state and returns the app's best decision so the next operation can choose the correct path."
+        )
+    if lower.startswith("score"):
+        return paragraph(
+            f"{subject} ranks a candidate against a question or search term. Scoring functions are what make search and AI source selection feel relevant instead of random."
+        )
+    if lower.startswith("collect") or lower.startswith("flatten"):
+        return paragraph(
+            f"{subject} gathers scattered nested data into a shape that another function can loop over. This is important because portfolio data is hierarchical while rendering, search, and AI context often need a flat list."
+        )
+    if lower.startswith("open"):
+        return paragraph(
+            f"{subject} changes UI state from a closed or hidden state into a visible working state. In this app, opening usually means finding the correct project or section data, preparing the window, rendering content, and synchronizing navigation."
+        )
+    if lower.startswith("close"):
+        return paragraph(
+            f"{subject} reverses an open window or route state. It does more than hide markup: it must also clean navigation state, restore the previous view when appropriate, and avoid trapping the visitor inside a dialog."
+        )
+    if lower.startswith("ensure"):
+        return paragraph(
+            f"{subject} creates or repairs something only when it is needed. This pattern avoids duplicate DOM nodes, duplicate repositories, duplicate handlers, or missing folders while still letting later code assume the resource exists."
+        )
+    if lower.startswith("sync"):
+        return paragraph(
+            f"{subject} reconciles two states that can drift apart. In this project, sync functions connect local drafts, route state, Git branches, publish mirrors, or frontend state to the current truth."
+        )
+    if lower.startswith("run"):
+        return paragraph(
+            f"{subject} executes an operation with side effects. It is separated from callers so process execution, Git execution, optional command behavior, or status collection remains consistent."
+        )
+    if lower.startswith("install"):
+        return paragraph(
+            f"{subject} installs or prepares external tooling. It belongs in the backend because installation touches the machine, not just the browser page."
+        )
+    if lower.startswith("assistant"):
+        return paragraph(
+            f"{subject} is one piece of the Ask My Portfolio conversation system. It helps decide what the user means, what evidence belongs in context, how answers should be displayed, or how the chat panel should behave."
+        )
+    if lower.startswith("project") or lower.startswith("category"):
+        return paragraph(
+            f"{subject} handles project-directory structure. It helps turn saved catalog data into visible categories, cards, filters, responsive layout, or searchable project text."
+        )
+    if lower.startswith("is") or lower.startswith("has") or lower.startswith("can"):
+        return paragraph(
+            f"{subject} is a decision predicate. It answers one yes/no question so the larger workflow can branch clearly instead of embedding the same condition in several places."
+        )
+    return paragraph(
+        f"{subject} belongs to {category.lower()}. {category_context} In this role, it owns one named operation that later code depends on."
+    )
+
+
+def generated_function_paragraphs(file_name: str, func: FunctionDoc, all_names: set[str]) -> list[tuple[str, str]]:
+    important = SERVER_IMPORTANT.get(func.name) if file_name == "server.mjs" else SCRIPT_IMPORTANT.get(func.name)
+    category, category_context = classify_function(file_name, func)
+    calls = function_calls(func, all_names)
+    params = parse_parameters(func.params)
+    paragraphs: list[tuple[str, str]] = []
+    if important:
+        paragraphs.extend(("Purpose and intuition", text) for text in important)
+    else:
+        paragraphs.append(("Purpose and intuition", function_role_sentence(file_name, func, category, category_context)))
+    if params:
+        parameter_text = " ".join(explain_parameter(param) for param in params)
+    else:
+        parameter_text = "This function accepts no explicit parameters. It reads controlled module state, browser state, local configuration, or constants that are already available in the file."
+    paragraphs.append(("Parameters and data it receives", parameter_text))
+    async_note = " Because it is async, callers must await it or handle its Promise; otherwise the UI or backend could move on before files, network calls, Git commands, compiler runs, or model responses have finished." if func.is_async else ""
+    paragraphs.append(
+        (
+            "What it does",
+            paragraph(
+                f"{operation_description(func)} {return_description(func)}{async_note}"
+            ),
+        )
+    )
+    details = body_detail_notes(func)
+    if details:
+        paragraphs.append(("Important body details", details))
+    if calls:
+        call_text = paragraph(
+            f"It works with {', '.join(calls)}. Those calls show that {func.name} is not isolated; it is one piece of a larger workflow where helpers clean inputs, perform side effects, render results, or protect boundaries before the next step runs."
+        )
+    else:
+        call_text = paragraph(
+            f"No other named helper from this file is detected inside the body. That means {func.name} performs its rule directly from parameters, module state, standard APIs, or local calculations."
+        )
+    paragraphs.append(("What it calls or works with", call_text))
+    paragraphs.append(("Why the file needs it", failure_description(file_name, category, func)))
+    return paragraphs
 
 
 SERVER_OVERVIEW = [
@@ -806,8 +1692,52 @@ def add_overview(doc: Document, guide: dict) -> None:
 
 def add_function_walkthrough(doc: Document, guide: dict) -> None:
     doc.add_heading("Code Walkthrough", level=1)
+    file_name = guide["file"]
+    if file_name in {"server.mjs", "script.js"}:
+        source = (REPO / file_name).read_text(encoding="utf-8")
+        functions = function_ranges(source)
+        all_names = {function.name for function in functions}
+        doc.add_paragraph(
+            "This walkthrough is function-by-function. Related ideas are mentioned inside each function's explanation, but the headings are the actual function names so the document can be used as a code-reading companion even as line numbers change."
+        )
+        grouped: dict[str, list[FunctionDoc]] = {}
+        for function in functions:
+            category, _context = classify_function(file_name, function)
+            grouped.setdefault(category, []).append(function)
+        for category, items in grouped.items():
+            doc.add_heading(category, level=2)
+            doc.add_paragraph(
+                f"The functions in this group all support {category.lower()}. Read them as a small subsystem: the smaller helpers prepare data and the larger functions coordinate side effects or rendering."
+            )
+            for function in items:
+                doc.add_heading(function.signature, level=3)
+                for subheading, text in generated_function_paragraphs(file_name, function, all_names):
+                    p = doc.add_paragraph()
+                    run = p.add_run(f"{subheading}: ")
+                    run.bold = True
+                    p.add_run(text)
+                locals_found = local_variables(function)
+                p = doc.add_paragraph()
+                run = p.add_run("Objects and variables inside this function: ")
+                run.bold = True
+                if not locals_found:
+                    p.add_run(
+                        "No local const, let, or var values were detected. The function mostly works from its parameters, module-level state, literals, or immediate return expressions."
+                    )
+                else:
+                    p.add_run(
+                        "The following local values are important because they show how the function breaks the task into smaller pieces of state."
+                    )
+                    for variable in locals_found:
+                        bullet = doc.add_paragraph(style=None)
+                        bullet.paragraph_format.left_indent = Inches(0.22)
+                        bullet.paragraph_format.first_line_indent = Inches(-0.12)
+                        bullet.add_run(f"{variable.name}: ").bold = True
+                        bullet.add_run(explain_variable(variable, file_name, top_level=False, function_body=function.body))
+        return
+
     doc.add_paragraph(
-        "The walkthrough below groups related functions where they form one idea. Small helpers are explained together when that is clearer than pretending each one is a separate chapter. Larger functions receive direct explanations of their parameters, internal objects, side effects, return values, and why they are necessary."
+        "This file is markup rather than a JavaScript function module, so the walkthrough is procedural. Each section explains a structural object in the document and why the public runtime depends on it."
     )
     for group in guide["groups"]:
         doc.add_heading(group["title"], level=2)
@@ -820,6 +1750,7 @@ def add_function_walkthrough(doc: Document, guide: dict) -> None:
 def write_guide_docx(guide: dict, output_path: Path) -> None:
     doc = setup_document(guide["title"], guide["subtitle"])
     add_overview(doc, guide)
+    add_variable_section(doc, guide)
     add_function_walkthrough(doc, guide)
     doc.save(output_path)
 
@@ -903,6 +1834,7 @@ def main() -> None:
         master.add_heading(guide["title"], level=1)
         master.add_paragraph(guide["subtitle"])
         add_overview(master, guide)
+        add_variable_section(master, guide)
         add_function_walkthrough(master, guide)
         master.add_page_break()
 
