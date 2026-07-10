@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import html
 import json
 import math
 import re
@@ -16,11 +17,27 @@ from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Inches, Pt, RGBColor
 
+try:
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import LETTER
+    from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+    from reportlab.lib.units import inch
+    from reportlab.platypus import Image as PdfImage
+    from reportlab.platypus import PageBreak, Paragraph, Preformatted, SimpleDocTemplate, Spacer, Table, TableStyle
+
+    REPORTLAB_AVAILABLE = True
+except ImportError:
+    REPORTLAB_AVAILABLE = False
+
 
 REPO = Path(__file__).resolve().parents[1]
 OUTPUT = REPO / "docs" / "OMB_Portfolio_Builder_Complete_Guide.docx"
 DIAGRAM_DIR = REPO / "docs" / "guide-diagrams"
 CODE_REFERENCE_DIR = REPO / "docs" / "code-reference"
+CODE_REFERENCE_DOCX_DIR = REPO / "docs" / "code-reference-docx"
+CODE_REFERENCE_PDF_DIR = REPO / "docs" / "code-reference-pdf"
+CODE_REFERENCE_MASTER_DOCX = REPO / "docs" / "OMB_Portfolio_Builder_Code_Reference.docx"
+CODE_REFERENCE_MASTER_PDF = REPO / "docs" / "OMB_Portfolio_Builder_Code_Reference.pdf"
 
 
 FILE_DESCRIPTIONS = {
@@ -1076,24 +1093,24 @@ def setup_document() -> Document:
     section.page_height = Inches(11)
     section.page_width = Inches(8.5)
     for section in doc.sections:
-        section.top_margin = Inches(1)
-        section.bottom_margin = Inches(1)
-        section.left_margin = Inches(1)
-        section.right_margin = Inches(1)
-        section.header_distance = Inches(0.492)
-        section.footer_distance = Inches(0.492)
+        section.top_margin = Inches(0.65)
+        section.bottom_margin = Inches(0.6)
+        section.left_margin = Inches(0.65)
+        section.right_margin = Inches(0.65)
+        section.header_distance = Inches(0.28)
+        section.footer_distance = Inches(0.28)
 
     normal = doc.styles["Normal"]
     normal.font.name = "Calibri"
     normal._element.rPr.rFonts.set(qn("w:eastAsia"), "Calibri")
-    normal.font.size = Pt(11)
-    normal.paragraph_format.space_after = Pt(6)
-    normal.paragraph_format.line_spacing = 1.25
+    normal.font.size = Pt(10)
+    normal.paragraph_format.space_after = Pt(3)
+    normal.paragraph_format.line_spacing = 1.08
 
     for name, size, color, before, after in [
-        ("Heading 1", 16, "2E74B5", 18, 10),
-        ("Heading 2", 13, "2E74B5", 14, 7),
-        ("Heading 3", 12, "1F4D78", 10, 5),
+        ("Heading 1", 14, "2E74B5", 9, 4),
+        ("Heading 2", 12, "2E74B5", 7, 3),
+        ("Heading 3", 10.5, "1F4D78", 5, 2),
     ]:
         style = doc.styles[name]
         style.font.name = "Calibri"
@@ -1106,9 +1123,9 @@ def setup_document() -> Document:
     code = doc.styles.add_style("CodeBlock", 1)
     code.font.name = "Consolas"
     code._element.rPr.rFonts.set(qn("w:eastAsia"), "Consolas")
-    code.font.size = Pt(8.5)
-    code.paragraph_format.space_before = Pt(4)
-    code.paragraph_format.space_after = Pt(6)
+    code.font.size = Pt(7.2)
+    code.paragraph_format.space_before = Pt(2)
+    code.paragraph_format.space_after = Pt(3)
     code.paragraph_format.line_spacing = 1.0
 
     header = doc.sections[0].header.paragraphs[0]
@@ -1298,19 +1315,163 @@ def function_purpose(file_name: str, function_name: str) -> str:
     return "Named function in the repository. Inspect the surrounding lines to learn its exact inputs and outputs."
 
 
+FUNCTION_PATTERNS = [
+    re.compile(r"^\s*(?:async\s+)?function\s+([A-Za-z_$][\w$]*)\s*\("),
+    re.compile(r"^\s*const\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?\([^=]*\)\s*=>"),
+    re.compile(r"^\s*const\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s+)?function\b"),
+    re.compile(r"^\s*export\s+(?:async\s+)?function\s+([A-Za-z_$][\w$]*)\s*\("),
+    re.compile(r"^\s*def\s+([A-Za-z_][\w]*)\s*\("),
+    re.compile(r"^\s*Function\s+([A-Za-z0-9_.-]+)\s*$"),
+]
+
+
+SOURCE_SIGNAL_RULES = [
+    ("Git command", re.compile(r"\bgit\b|simpleGit|GIT_", re.IGNORECASE), "Repository state, publishing, branch checks, or release automation."),
+    ("File read", re.compile(r"\breadFile(?:Sync)?\b|Get-Content|createReadStream|fs\.read", re.IGNORECASE), "Reads local builder state, project files, website assets, or configuration."),
+    ("File write", re.compile(r"\bwriteFile(?:Sync)?\b|appendFile(?:Sync)?\b|copyFile(?:Sync)?\b|mkdir(?:Sync)?\b|fs\.write", re.IGNORECASE), "Writes drafts, generated portfolio output, compiler artifacts, uploaded files, or installer data."),
+    ("Process execution", re.compile(r"\bspawn\b|\bexecFile\b|\bexec\b|\bStart-Process\b", re.IGNORECASE), "Runs Git, compilers, installers, or helper tools outside the JavaScript runtime."),
+    ("Compiler or simulator", re.compile(r"\bgcc\b|\bg\+\+\b|\bjavac\b|\bjava\b|\bpython\b|\bnode\b|\biverilog\b|\bvvp\b|\bverilog\b|\bsystemverilog\b", re.IGNORECASE), "Part of the Compile Code workspace or language/tool detection."),
+    ("Cloudflare or AI", re.compile(r"cloudflare|wrangler|OPENAI|Workers AI|portfolio-ai|chat|model", re.IGNORECASE), "Public AI assistant, Worker deployment, or model-provider fallback behavior."),
+    ("Security or auth", re.compile(r"auth|token|credential|secret|oauth|permission|authorize|scope|csrf|csp|headers", re.IGNORECASE), "Publishing protection, API key safety, HTTP security, or user authorization."),
+    ("Browser DOM", re.compile(r"document\.|querySelector|getElementById|classList|dataset|addEventListener", re.IGNORECASE), "Builder or website interface behavior in the browser/Electron renderer."),
+    ("Local storage", re.compile(r"localStorage|sessionStorage|IndexedDB|cache", re.IGNORECASE), "Local persistence, draft state, auth cache, update snooze, or browser-side caching."),
+    ("Network request", re.compile(r"\bfetch\s*\(|XMLHttpRequest|https?://|/api/", re.IGNORECASE), "Frontend-backend communication or public web/API calls."),
+    ("Rich text", re.compile(r"contenteditable|execCommand|Selection|Range|clipboard|paste|font|color|sanitize", re.IGNORECASE), "Rich editor behavior, formatting, paste handling, or content sanitization."),
+    ("Installer", re.compile(r"NSIS|installer|uninstall|shortcut|AppData|Program Files|UAC|electron-builder", re.IGNORECASE), "Windows setup, update, shortcut, or installation behavior."),
+]
+
+
+COMMON_CALL_WORDS = {
+    "if", "for", "while", "switch", "catch", "return", "typeof", "await", "function", "class", "new", "throw",
+    "console", "Math", "JSON", "String", "Number", "Boolean", "Array", "Object", "Promise", "Date", "RegExp",
+    "setTimeout", "clearTimeout", "setInterval", "parseInt", "parseFloat", "encodeURIComponent",
+    "decodeURIComponent", "require", "import", "describe", "it", "test",
+}
+
+
+def line_excerpt(lines: list[str], start: int, end: int, max_lines: int = 120) -> str:
+    selected = lines[max(start - 1, 0): min(end, len(lines))]
+    truncated = len(selected) > max_lines
+    selected = selected[:max_lines]
+    rendered = [f"{start + index:>5}: {line}" for index, line in enumerate(selected)]
+    if truncated:
+        rendered.append(f"      ... excerpt truncated after {max_lines} lines. Open the source file for the rest of this function.")
+    return "\n".join(rendered)
+
+
+def find_block_end(lines: list[str], start_index: int) -> int:
+    brace_balance = 0
+    saw_brace = False
+    for index in range(start_index, min(start_index + 500, len(lines))):
+        line = re.sub(r"//.*$", "", lines[index])
+        brace_balance += line.count("{")
+        brace_balance -= line.count("}")
+        if "{" in line:
+            saw_brace = True
+        if saw_brace and brace_balance <= 0 and index > start_index:
+            return index + 1
+        if not saw_brace and index > start_index and not lines[index].startswith((" ", "\t")):
+            return index
+    return min(start_index + 80, len(lines))
+
+
+def extract_function_blocks(repo_file: str, lines: list[str]) -> list[dict]:
+    functions = []
+    for index, line in enumerate(lines):
+        stripped = line.strip()
+        for pattern in FUNCTION_PATTERNS:
+            match = pattern.search(line)
+            if not match:
+                continue
+            name = match.group(1)
+            if line.lstrip().startswith("Function "):
+                end = next((i + 1 for i in range(index + 1, len(lines)) if lines[i].lstrip().startswith("FunctionEnd")), min(index + 80, len(lines)))
+            elif line.lstrip().startswith("def "):
+                end = next((i for i in range(index + 1, len(lines)) if lines[i] and not lines[i].startswith((" ", "\t", "@"))), min(index + 120, len(lines)))
+            else:
+                end = find_block_end(lines, index)
+            body = "\n".join(lines[index:end])
+            call_candidates = re.findall(r"\b([A-Za-z_$][\w$]*)\s*\(", body)
+            calls = []
+            for candidate in call_candidates:
+                if candidate not in COMMON_CALL_WORDS and candidate != name and candidate not in calls:
+                    calls.append(candidate)
+            endpoint_hits = sorted(set(match.rstrip("/") for match in re.findall(r"['\"](/api/[A-Za-z0-9_./-]+)", body)))
+            local_storage_keys = sorted(set(match for match in re.findall(r"(?:localStorage|sessionStorage)\.(?:getItem|setItem|removeItem)\(['\"]([^'\"]+)", body)))
+            functions.append({
+                "line": index + 1,
+                "end_line": end,
+                "name": name,
+                "purpose": function_purpose(Path(repo_file).name, name),
+                "signature": stripped[:240],
+                "excerpt": line_excerpt(lines, index + 1, end, max_lines=120),
+                "line_count": max(end - index, 1),
+                "calls": calls[:30],
+                "endpoints": endpoint_hits[:30],
+                "storage_keys": local_storage_keys[:30],
+                "returns": len(re.findall(r"\breturn\b", body)),
+                "awaits": len(re.findall(r"\bawait\b", body)),
+                "touches_dom": bool(re.search(r"document\.|querySelector|getElementById|classList|dataset", body)),
+                "touches_files": bool(re.search(r"readFile|writeFile|appendFile|copyFile|mkdir|rm|unlink|fs\.", body, re.IGNORECASE)),
+                "runs_process": bool(re.search(r"\bspawn\b|\bexecFile\b|\bexec\b", body, re.IGNORECASE)),
+                "uses_network": bool(re.search(r"\bfetch\s*\(|https?://|/api/", body, re.IGNORECASE)),
+                "uses_security": bool(re.search(r"auth|token|secret|credential|permission|authorize|scope", body, re.IGNORECASE)),
+            })
+            break
+    return functions
+
+
+def collect_signal_hits(lines: list[str]) -> list[dict]:
+    hits = []
+    for line_no, line in enumerate(lines, start=1):
+        stripped = line.strip()
+        if not stripped:
+            continue
+        for name, pattern, explanation in SOURCE_SIGNAL_RULES:
+            if pattern.search(line):
+                hits.append({
+                    "line": line_no,
+                    "type": name,
+                    "evidence": stripped[:220],
+                    "meaning": explanation,
+                })
+                break
+    return hits
+
+
+def function_detail_rows(item: dict) -> list[tuple[str, str]]:
+    touches = []
+    if item["touches_dom"]:
+        touches.append("browser/Electron DOM")
+    if item["touches_files"]:
+        touches.append("filesystem")
+    if item["runs_process"]:
+        touches.append("external processes")
+    if item["uses_network"]:
+        touches.append("network/API requests")
+    if item["uses_security"]:
+        touches.append("authentication/security data")
+    return [
+        ("Source location", f"Lines {item['line']}-{item['end_line']} ({item['line_count']} source lines)."),
+        ("Purpose", item["purpose"]),
+        ("Declaration", item["signature"]),
+        ("Touches", ", ".join(touches) if touches else "Mostly local calculations or local UI state."),
+        ("Calls detected", ", ".join(item["calls"][:12]) if item["calls"] else "No obvious named calls detected by the generator."),
+        ("API endpoints", ", ".join(item["endpoints"]) if item["endpoints"] else "None detected inside this function body."),
+        ("Storage keys", ", ".join(item["storage_keys"]) if item["storage_keys"] else "No local/session storage keys detected."),
+        ("Async/return clues", f"{item['awaits']} await expression(s), {item['returns']} return statement(s)."),
+        ("Debug approach", "Trigger the user action that reaches this function, inspect inputs/state before the function, then inspect the returned value, DOM update, file write, process output, or API response after it runs."),
+    ]
+
+
 def extract_functions() -> list[tuple[str, int, str, str]]:
     function_rows: list[tuple[str, int, str, str]] = []
-    patterns = [
-        re.compile(r"^\s*(?:async\s+)?function\s+([A-Za-z_$][\w$]*)\s*\("),
-        re.compile(r"^\s*const\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?\([^=]*\)\s*=>"),
-        re.compile(r"^\s*const\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s+)?function\b"),
-    ]
-    for file_name in ["main.cjs", "server.mjs", "template-preview.js", "script.js"]:
+    for file_name in ["main.cjs", "server.mjs", "template-preview.js", "script.js", "cloudflare/portfolio-ai-worker.js", "docs/build_complete_guide.py", "build/installer.nsh"]:
         path = REPO / file_name
         if not path.exists():
             continue
         for line_no, line in enumerate(path.read_text(encoding="utf-8", errors="replace").splitlines(), start=1):
-            for pattern in patterns:
+            for pattern in FUNCTION_PATTERNS:
                 match = pattern.search(line)
                 if match:
                     name = match.group(1)
@@ -1320,13 +1481,15 @@ def extract_functions() -> list[tuple[str, int, str, str]]:
 
 
 TEXT_CODE_EXTENSIONS = {
-    ".cjs", ".css", ".html", ".js", ".json", ".md", ".mjs", ".nsh", ".toml", ".txt", ".yaml", ".yml"
+    ".cjs", ".css", ".html", ".js", ".json", ".md", ".mjs", ".nsh", ".py", ".toml", ".txt", ".yaml", ".yml"
 }
 
 
 def is_text_code_file(repo_file: str) -> bool:
     path = REPO / repo_file
-    if repo_file.startswith("docs/code-reference/"):
+    if repo_file.startswith(("docs/code-reference/", "docs/code-reference-docx/", "docs/code-reference-pdf/", "docs/guide-render-check/")):
+        return False
+    if repo_file.endswith((".docx", ".pdf", ".png", ".ico")):
         return False
     return path.is_file() and path.suffix.lower() in TEXT_CODE_EXTENSIONS
 
@@ -1341,32 +1504,18 @@ def source_lines(repo_file: str) -> list[str]:
 def extract_source_facts(repo_file: str) -> dict:
     lines = source_lines(repo_file)
     text = "\n".join(lines)
-    functions = []
+    functions = extract_function_blocks(repo_file, lines)
     variables = []
     imports = []
     endpoints = []
     selectors = []
     events = []
-    patterns = [
-        re.compile(r"^\s*(?:async\s+)?function\s+([A-Za-z_$][\w$]*)\s*\("),
-        re.compile(r"^\s*const\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?\([^=]*\)\s*=>"),
-        re.compile(r"^\s*const\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s+)?function\b"),
-    ]
+    routes = []
+    json_keys = []
     for line_no, line in enumerate(lines, start=1):
         stripped = line.strip()
-        for pattern in patterns:
-            match = pattern.search(line)
-            if match:
-                name = match.group(1)
-                functions.append({
-                    "line": line_no,
-                    "name": name,
-                    "purpose": function_purpose(Path(repo_file).name, name),
-                    "signature": stripped[:180],
-                })
-                break
         var_match = re.match(r"^\s*(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=", line)
-        if var_match and len(variables) < 80:
+        if var_match and len(variables) < 140:
             variables.append({
                 "line": line_no,
                 "name": var_match.group(1),
@@ -1376,11 +1525,17 @@ def extract_source_facts(repo_file: str) -> dict:
             imports.append({"line": line_no, "statement": stripped[:220]})
         for match in re.findall(r"['\"](/api/[A-Za-z0-9_./-]+)", line):
             endpoints.append({"line": line_no, "endpoint": match.rstrip("/")})
+        route_match = re.search(r"\bapp\.(get|post|put|delete|patch)\(['\"]([^'\"]+)", line)
+        if route_match:
+            routes.append({"line": line_no, "method": route_match.group(1).upper(), "path": route_match.group(2)})
         if ".addEventListener(" in line:
             events.append({"line": line_no, "statement": stripped[:180]})
+        json_match = re.match(r'^\s*"([^"]+)"\s*:', line)
+        if json_match and len(json_keys) < 120:
+            json_keys.append({"line": line_no, "key": json_match.group(1), "statement": stripped[:180]})
         if repo_file.endswith(".css"):
             selector_match = re.match(r"^\s*([.#A-Za-z0-9_\-:\[\]\(\)\s>,+.=\"']+)\s*\{", line)
-            if selector_match and len(selectors) < 80:
+            if selector_match and len(selectors) < 140:
                 selectors.append({"line": line_no, "selector": selector_match.group(1).strip()[:160]})
     return {
         "repo_file": repo_file,
@@ -1391,15 +1546,18 @@ def extract_source_facts(repo_file: str) -> dict:
         "variables": variables,
         "imports": imports,
         "endpoints": endpoints,
+        "routes": routes,
         "selectors": selectors,
         "events": events,
+        "json_keys": json_keys,
+        "signals": collect_signal_hits(lines),
         "mentions_server": "server.mjs" in text,
         "mentions_template_preview": "template-preview" in text,
         "mentions_script": "script.js" in text,
         "mentions_projects_json": "projects.json" in text,
         "mentions_github": "github" in text.lower(),
         "mentions_cloudflare": "cloudflare" in text.lower() or "worker" in text.lower(),
-        "snippet": "\n".join(lines[:36]) if lines else "",
+        "snippet": line_excerpt(lines, 1, min(72, len(lines)), max_lines=72) if lines else "",
     }
 
 
@@ -1420,115 +1578,357 @@ def fact_relationship_summary(facts: dict) -> str:
     return ", ".join(related) if related else "Mostly local to its own feature area."
 
 
-def code_reference_name(repo_file: str) -> str:
-    return re.sub(r"[^A-Za-z0-9_.-]+", "__", repo_file).strip("_") + ".md"
+def code_reference_name(repo_file: str, suffix: str) -> str:
+    return re.sub(r"[^A-Za-z0-9_.-]+", "__", repo_file).strip("_") + suffix
 
 
-def write_code_reference_docs(files: list[str]) -> list[Path]:
-    if CODE_REFERENCE_DIR.exists():
-        def remove_readonly(function, path, excinfo):
-            try:
-                Path(path).chmod(0o700)
-                function(path)
-            except Exception:
-                raise excinfo
-        shutil.rmtree(CODE_REFERENCE_DIR, onexc=remove_readonly)
-    CODE_REFERENCE_DIR.mkdir(parents=True, exist_ok=True)
-    code_files = [file for file in files if is_text_code_file(file)]
-    written = []
-    index_lines = [
-        "# OMB Portfolio Builder Code Reference",
-        "",
-        "Generated by `docs/build_complete_guide.py` from the current repository state.",
-        "These notes are intentionally code-focused: functions, variables, endpoints, imports, selectors, and communication paths.",
-        "",
+def remove_directory(path: Path) -> None:
+    if not path.exists():
+        return
+
+    def remove_readonly(function, item_path, excinfo):
+        try:
+            Path(item_path).chmod(0o700)
+            function(item_path)
+        except Exception:
+            raise excinfo
+
+    shutil.rmtree(path, onexc=remove_readonly)
+
+
+def add_source_fact_summary(doc: Document, facts: dict) -> None:
+    add_table(doc, [
+        ("File", facts["repo_file"]),
+        ("Purpose", facts["description"]),
+        ("Lines", f"{facts['line_count']:,}"),
+        ("Size", f"{facts['size_bytes']:,} bytes"),
+        ("Talks to", fact_relationship_summary(facts)),
+        ("Functions", str(len(facts["functions"]))),
+        ("Variables/constants", str(len(facts["variables"]))),
+        ("API mentions", str(len(facts["endpoints"]))),
+        ("Signals", str(len(facts["signals"]))),
+    ])
+
+
+def add_source_fact_sections(doc: Document, facts: dict, include_excerpts: bool = True) -> None:
+    doc.add_heading("How this file participates in the system", level=2)
+    doc.add_paragraph("This generated section reads the actual file and points out how it communicates with other pieces of the app. It is intentionally concrete: line numbers, declarations, endpoints, events, source excerpts, and debugging cues.")
+    if facts["imports"]:
+        doc.add_heading("Imports, requires, and external dependencies", level=2)
+        add_table(doc, [(f"Line {item['line']}", item["statement"]) for item in facts["imports"][:60]])
+    if facts["routes"]:
+        doc.add_heading("Backend routes implemented here", level=2)
+        add_table(doc, [(f"{item['method']} {item['path']}", f"Line {item['line']}. {endpoint_purpose(item['path'])}") for item in facts["routes"][:80]])
+    if facts["endpoints"]:
+        doc.add_heading("API endpoints mentioned or called", level=2)
+        add_table(doc, [(item["endpoint"], f"Line {item['line']}. {endpoint_purpose(item['endpoint'])}") for item in facts["endpoints"][:80]])
+    if facts["signals"]:
+        doc.add_heading("Important implementation signals", level=2)
+        add_table(doc, [(f"{item['type']} at line {item['line']}", f"{item['meaning']} Evidence: {item['evidence']}") for item in facts["signals"][:80]])
+    if facts["variables"]:
+        doc.add_heading("Important constants and variables", level=2)
+        add_table(doc, [(item["name"], f"Line {item['line']}: {item['statement']}") for item in facts["variables"][:80]])
+    if facts["json_keys"]:
+        doc.add_heading("JSON/YAML-style keys detected", level=2)
+        add_table(doc, [(item["key"], f"Line {item['line']}: {item['statement']}") for item in facts["json_keys"][:80]])
+    if facts["events"]:
+        doc.add_heading("Event handlers and user interactions", level=2)
+        add_table(doc, [(f"Line {item['line']}", item["statement"]) for item in facts["events"][:80]])
+    if facts["selectors"]:
+        doc.add_heading("CSS selectors and visual hooks", level=2)
+        add_table(doc, [(f"Line {item['line']}", item["selector"]) for item in facts["selectors"][:120]])
+    if facts["functions"]:
+        doc.add_heading("Function-by-function detail", level=2)
+        for item in facts["functions"]:
+            doc.add_heading(f"{item['name']} - lines {item['line']}-{item['end_line']}", level=3)
+            add_table(doc, function_detail_rows(item))
+            if include_excerpts:
+                doc.add_paragraph("Source excerpt:")
+                add_code(doc, item["excerpt"])
+    doc.add_heading("Representative opening snippet", level=2)
+    add_code(doc, facts["snippet"] or "(empty file)")
+    doc.add_heading("Beginner debugging checklist for this file", level=2)
+    numbers(doc, [
+        "Name the user action, command, or workflow that reaches this file.",
+        "Find the exact function or route that owns the behavior.",
+        "Check the inputs: DOM state, request body, file path, local storage value, compiler source, or Git branch.",
+        "Check the outputs: returned JSON, updated DOM, written file, terminal output, generated project catalog, or published website asset.",
+        "If the issue crosses a boundary, test the boundary directly: browser console for frontend, endpoint call for backend, command line for Git/compiler, Cloudflare logs for Worker behavior.",
+    ])
+
+
+def setup_code_reference_document(title: str, subtitle: str) -> Document:
+    doc = setup_document()
+    title_p = doc.add_paragraph()
+    title_p.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    run = title_p.add_run(title)
+    run.bold = True
+    run.font.size = Pt(22)
+    run.font.color.rgb = RGBColor(11, 37, 69)
+    doc.add_paragraph(subtitle)
+    doc.add_paragraph(f"Generated from repository state at {REPO}.")
+    doc.add_paragraph("")
+    return doc
+
+
+def compact_generated_docx(doc: Document, keep_first_page_break: bool = True) -> int:
+    """Remove generator-inserted page breaks so pages fill naturally."""
+    kept = 0
+    removed = 0
+    for paragraph in list(doc.paragraphs):
+        has_page_break = any(
+            element.tag == qn("w:br") and element.get(qn("w:type")) == "page"
+            for element in paragraph._element.iter()
+        )
+        if not has_page_break:
+            continue
+        if keep_first_page_break and kept == 0:
+            kept += 1
+            continue
+        parent = paragraph._element.getparent()
+        if parent is not None:
+            parent.remove(paragraph._element)
+            removed += 1
+    return removed
+
+
+def write_single_code_reference_docx(facts: dict, output_path: Path) -> None:
+    doc = setup_code_reference_document(
+        f"Code Reference: {facts['repo_file']}",
+        "A source-level explanation with function details, file communication, variables, endpoints, and debugging notes.",
+    )
+    add_source_fact_summary(doc, facts)
+    add_source_fact_sections(doc, facts, include_excerpts=True)
+    compact_generated_docx(doc, keep_first_page_break=False)
+    doc.save(output_path)
+
+
+def pdf_styles():
+    styles = getSampleStyleSheet()
+    styles.add(ParagraphStyle(
+        name="CodeTiny",
+        parent=styles["Code"],
+        fontName="Courier",
+        fontSize=6.4,
+        leading=7.6,
+        backColor=colors.HexColor("#F5F8FB"),
+        borderColor=colors.HexColor("#D8E6F0"),
+        borderWidth=0.25,
+        borderPadding=4,
+        spaceAfter=7,
+    ))
+    styles.add(ParagraphStyle(
+        name="SmallBody",
+        parent=styles["BodyText"],
+        fontSize=8.5,
+        leading=11.0,
+        spaceAfter=5,
+    ))
+    styles.add(ParagraphStyle(
+        name="TinyTable",
+        parent=styles["BodyText"],
+        fontSize=7.0,
+        leading=8.5,
+    ))
+    return styles
+
+
+def pdf_paragraph(text: str, style) -> Paragraph:
+    return Paragraph(html.escape(str(text)).replace("\n", "<br/>"), style)
+
+
+def pdf_code(text: str, styles) -> Preformatted:
+    wrapped_lines = []
+    for raw_line in (text or "").splitlines():
+        expanded = raw_line.replace("\t", "    ")
+        chunks = textwrap.wrap(expanded, width=112, replace_whitespace=False, drop_whitespace=False) or [""]
+        wrapped_lines.extend(chunks)
+    return Preformatted("\n".join(wrapped_lines), styles["CodeTiny"])
+
+
+def pdf_table(rows: list[tuple[str, str]], styles):
+    data = [[pdf_paragraph("Item", styles["TinyTable"]), pdf_paragraph("Explanation", styles["TinyTable"])]]
+    data.extend([[pdf_paragraph(label, styles["TinyTable"]), pdf_paragraph(value, styles["TinyTable"])] for label, value in rows])
+    table = Table(data, colWidths=[1.45 * inch, 5.25 * inch], repeatRows=1)
+    table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#E8EEF5")),
+        ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#B7CFE0")),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 5),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+    ]))
+    return table
+
+
+def add_pdf_source_fact_sections(story: list, facts: dict, styles, include_excerpts: bool = True) -> None:
+    story.append(Paragraph("How this file participates in the system", styles["Heading2"]))
+    story.append(pdf_paragraph("This generated section reads the actual file and points out line numbers, declarations, endpoints, events, source excerpts, and debugging cues.", styles["SmallBody"]))
+    if facts["imports"]:
+        story.append(Paragraph("Imports, requires, and external dependencies", styles["Heading2"]))
+        story.append(pdf_table([(f"Line {item['line']}", item["statement"]) for item in facts["imports"][:60]], styles))
+    if facts["routes"]:
+        story.append(Paragraph("Backend routes implemented here", styles["Heading2"]))
+        story.append(pdf_table([(f"{item['method']} {item['path']}", f"Line {item['line']}. {endpoint_purpose(item['path'])}") for item in facts["routes"][:80]], styles))
+    if facts["endpoints"]:
+        story.append(Paragraph("API endpoints mentioned or called", styles["Heading2"]))
+        story.append(pdf_table([(item["endpoint"], f"Line {item['line']}. {endpoint_purpose(item['endpoint'])}") for item in facts["endpoints"][:80]], styles))
+    if facts["signals"]:
+        story.append(Paragraph("Important implementation signals", styles["Heading2"]))
+        story.append(pdf_table([(f"{item['type']} at line {item['line']}", f"{item['meaning']} Evidence: {item['evidence']}") for item in facts["signals"][:80]], styles))
+    if facts["variables"]:
+        story.append(Paragraph("Important constants and variables", styles["Heading2"]))
+        story.append(pdf_table([(item["name"], f"Line {item['line']}: {item['statement']}") for item in facts["variables"][:80]], styles))
+    if facts["json_keys"]:
+        story.append(Paragraph("JSON/YAML-style keys detected", styles["Heading2"]))
+        story.append(pdf_table([(item["key"], f"Line {item['line']}: {item['statement']}") for item in facts["json_keys"][:80]], styles))
+    if facts["events"]:
+        story.append(Paragraph("Event handlers and user interactions", styles["Heading2"]))
+        story.append(pdf_table([(f"Line {item['line']}", item["statement"]) for item in facts["events"][:80]], styles))
+    if facts["selectors"]:
+        story.append(Paragraph("CSS selectors and visual hooks", styles["Heading2"]))
+        story.append(pdf_table([(f"Line {item['line']}", item["selector"]) for item in facts["selectors"][:120]], styles))
+    if facts["functions"]:
+        story.append(Paragraph("Function-by-function detail", styles["Heading2"]))
+        for item in facts["functions"]:
+            story.append(Paragraph(f"{item['name']} - lines {item['line']}-{item['end_line']}", styles["Heading3"]))
+            story.append(pdf_table(function_detail_rows(item), styles))
+            if include_excerpts:
+                story.append(pdf_paragraph("Source excerpt:", styles["SmallBody"]))
+                story.append(pdf_code(item["excerpt"], styles))
+    story.append(Paragraph("Representative opening snippet", styles["Heading2"]))
+    story.append(pdf_code(facts["snippet"] or "(empty file)", styles))
+
+
+def write_single_code_reference_pdf(facts: dict, output_path: Path) -> None:
+    if not REPORTLAB_AVAILABLE:
+        return
+    styles = pdf_styles()
+    story = [
+        Paragraph(f"Code Reference: {facts['repo_file']}", styles["Title"]),
+        pdf_paragraph("A source-level explanation with function details, file communication, variables, endpoints, and debugging notes.", styles["SmallBody"]),
+        pdf_table([
+            ("File", facts["repo_file"]),
+            ("Purpose", facts["description"]),
+            ("Lines", f"{facts['line_count']:,}"),
+            ("Size", f"{facts['size_bytes']:,} bytes"),
+            ("Talks to", fact_relationship_summary(facts)),
+            ("Functions", str(len(facts["functions"]))),
+            ("Variables/constants", str(len(facts["variables"]))),
+            ("API mentions", str(len(facts["endpoints"]))),
+            ("Signals", str(len(facts["signals"]))),
+        ], styles),
+        Spacer(1, 0.12 * inch),
     ]
+    add_pdf_source_fact_sections(story, facts, styles, include_excerpts=True)
+    SimpleDocTemplate(str(output_path), pagesize=LETTER, rightMargin=0.55 * inch, leftMargin=0.55 * inch, topMargin=0.55 * inch, bottomMargin=0.55 * inch).build(story)
+
+
+def write_master_code_reference_docx(code_files: list[str], facts_by_file: dict[str, dict], diagrams: dict[str, Path]) -> None:
+    doc = setup_code_reference_document(
+        "OMB Portfolio Builder Code Reference",
+        "A generated Word reference that explains the important source files, all discovered functions, communication paths, variables, endpoints, installers, AI paths, and compiler paths.",
+    )
+    add_diagram(doc, diagrams["file-communication-map"], "Main source file communication map.")
+    add_diagram(doc, diagrams["frontend-backend-cloudflare"], "Frontend, backend, Cloudflare, and AI boundary.")
+    add_diagram(doc, diagrams["compile-code-flow"], "Compile Code workspace and simulator flow.")
+    doc.add_heading("How to use this document", level=1)
+    numbers(doc, [
+        "Start with the file you want to understand.",
+        "Read the summary table to understand its role.",
+        "Read implementation signals to see whether the file touches Git, files, compilers, Cloudflare, authentication, DOM, storage, or network calls.",
+        "Read function details to understand line ranges, side effects, calls, endpoints, and source excerpts.",
+        "Use the debugging checklist to trace a behavior from click to function to file/API/output.",
+    ])
+    doc.add_heading("Generated file index", level=1)
+    add_table(doc, [(repo_file, f"{facts_by_file[repo_file]['line_count']:,} lines, {len(facts_by_file[repo_file]['functions'])} function(s), {len(facts_by_file[repo_file]['signals'])} signal(s).") for repo_file in code_files])
+    doc.add_page_break()
     for repo_file in code_files:
-        facts = extract_source_facts(repo_file)
-        doc_path = CODE_REFERENCE_DIR / code_reference_name(repo_file)
-        rel_doc = doc_path.relative_to(REPO).as_posix()
-        index_lines.append(f"- [{repo_file}]({doc_path.name})")
-        lines = [
-            f"# {repo_file}",
-            "",
-            facts["description"],
-            "",
-            "## Quick Facts",
-            "",
-            f"- Lines: {facts['line_count']:,}",
-            f"- Size: {facts['size_bytes']:,} bytes",
-            f"- Talks to: {fact_relationship_summary(facts)}",
-            f"- API endpoints mentioned: {len(facts['endpoints'])}",
-            f"- Named functions discovered: {len(facts['functions'])}",
-            "",
-            "## Communication Role",
-            "",
-            "This section explains how the file participates in the app. If it mentions `template-preview.js`, it likely affects the private builder UI. If it mentions `server.mjs`, it likely calls or implements local backend APIs. If it mentions `script.js`, it affects the public website. If it mentions GitHub, Cloudflare, or Workers, it participates in publishing, releases, or public AI.",
-            "",
-        ]
-        if facts["imports"]:
-            lines.extend(["## Imports Or Requires", ""])
-            for item in facts["imports"][:40]:
-                lines.append(f"- Line {item['line']}: `{item['statement']}`")
-            lines.append("")
-        if facts["endpoints"]:
-            lines.extend(["## API Endpoints Mentioned", ""])
-            for item in facts["endpoints"][:80]:
-                lines.append(f"- Line {item['line']}: `{item['endpoint']}` - {endpoint_purpose(item['endpoint'])}")
-            lines.append("")
-        if facts["functions"]:
-            lines.extend(["## Functions", ""])
-            for item in facts["functions"]:
-                lines.append(f"### `{item['name']}` line {item['line']}")
-                lines.append("")
-                lines.append(item["purpose"])
-                lines.append("")
-                lines.append(f"Signature or declaration: `{item['signature']}`")
-                lines.append("")
-        if facts["variables"]:
-            lines.extend(["## Important Constants And Variables", ""])
-            for item in facts["variables"][:80]:
-                lines.append(f"- Line {item['line']}: `{item['name']}` from `{item['statement']}`")
-            lines.append("")
-        if facts["events"]:
-            lines.extend(["## Event Handlers", ""])
-            for item in facts["events"][:80]:
-                lines.append(f"- Line {item['line']}: `{item['statement']}`")
-            lines.append("")
-        if facts["selectors"]:
-            lines.extend(["## CSS Selectors", ""])
-            for item in facts["selectors"][:80]:
-                lines.append(f"- Line {item['line']}: `{item['selector']}`")
-            lines.append("")
-        lines.extend([
-            "## Representative Opening Snippet",
-            "",
-            "```",
-            facts["snippet"],
-            "```",
-            "",
-            "## Debugging Questions",
-            "",
-            "- What user action reaches this file?",
-            "- What state, file, endpoint, or DOM element does this file read?",
-            "- What state, file, endpoint, or DOM element does it write?",
-            "- If it fails, what is the smallest command or click that reproduces the failure?",
-        ])
-        doc_path.write_text("\n".join(lines), encoding="utf-8")
-        written.append(doc_path)
-    (CODE_REFERENCE_DIR / "README.md").write_text("\n".join(index_lines), encoding="utf-8")
-    written.append(CODE_REFERENCE_DIR / "README.md")
+        facts = facts_by_file[repo_file]
+        doc.add_heading(f"Source File: {repo_file}", level=1)
+        add_source_fact_summary(doc, facts)
+        add_source_fact_sections(doc, facts, include_excerpts=True)
+        doc.add_page_break()
+    compact_generated_docx(doc, keep_first_page_break=True)
+    doc.save(CODE_REFERENCE_MASTER_DOCX)
+
+
+def write_master_code_reference_pdf(code_files: list[str], facts_by_file: dict[str, dict], diagrams: dict[str, Path]) -> None:
+    if not REPORTLAB_AVAILABLE:
+        return
+    styles = pdf_styles()
+    story = [
+        Paragraph("OMB Portfolio Builder Code Reference", styles["Title"]),
+        pdf_paragraph("A generated PDF reference that explains the important source files, discovered functions, communication paths, variables, endpoints, installers, AI paths, and compiler paths.", styles["SmallBody"]),
+    ]
+    for diagram_name, caption in [
+        ("file-communication-map", "Main source file communication map."),
+        ("frontend-backend-cloudflare", "Frontend, backend, Cloudflare, and AI boundary."),
+        ("compile-code-flow", "Compile Code workspace and simulator flow."),
+    ]:
+        path = diagrams.get(diagram_name)
+        if path and path.exists():
+            story.append(PdfImage(str(path), width=6.6 * inch, height=3.72 * inch))
+            story.append(pdf_paragraph(caption, styles["SmallBody"]))
+    story.append(Paragraph("Generated file index", styles["Heading1"]))
+    story.append(pdf_table([(repo_file, f"{facts_by_file[repo_file]['line_count']:,} lines, {len(facts_by_file[repo_file]['functions'])} function(s), {len(facts_by_file[repo_file]['signals'])} signal(s).") for repo_file in code_files], styles))
+    story.append(PageBreak())
+    for repo_file in code_files:
+        facts = facts_by_file[repo_file]
+        story.append(Paragraph(f"Source File: {repo_file}", styles["Heading1"]))
+        story.append(pdf_table([
+            ("File", facts["repo_file"]),
+            ("Purpose", facts["description"]),
+            ("Lines", f"{facts['line_count']:,}"),
+            ("Size", f"{facts['size_bytes']:,} bytes"),
+            ("Talks to", fact_relationship_summary(facts)),
+            ("Functions", str(len(facts["functions"]))),
+            ("Variables/constants", str(len(facts["variables"]))),
+            ("API mentions", str(len(facts["endpoints"]))),
+            ("Signals", str(len(facts["signals"]))),
+        ], styles))
+        add_pdf_source_fact_sections(story, facts, styles, include_excerpts=True)
+        story.append(PageBreak())
+    SimpleDocTemplate(str(CODE_REFERENCE_MASTER_PDF), pagesize=LETTER, rightMargin=0.55 * inch, leftMargin=0.55 * inch, topMargin=0.55 * inch, bottomMargin=0.55 * inch).build(story)
+
+
+def write_code_reference_docs(files: list[str], diagrams: dict[str, Path]) -> list[Path]:
+    remove_directory(CODE_REFERENCE_DIR)
+    remove_directory(CODE_REFERENCE_DOCX_DIR)
+    remove_directory(CODE_REFERENCE_PDF_DIR)
+    CODE_REFERENCE_DOCX_DIR.mkdir(parents=True, exist_ok=True)
+    CODE_REFERENCE_PDF_DIR.mkdir(parents=True, exist_ok=True)
+    code_files = [file for file in files if is_text_code_file(file)]
+    facts_by_file = {repo_file: extract_source_facts(repo_file) for repo_file in code_files}
+    written: list[Path] = []
+    for repo_file in code_files:
+        facts = facts_by_file[repo_file]
+        docx_path = CODE_REFERENCE_DOCX_DIR / code_reference_name(repo_file, ".docx")
+        write_single_code_reference_docx(facts, docx_path)
+        written.append(docx_path)
+        pdf_path = CODE_REFERENCE_PDF_DIR / code_reference_name(repo_file, ".pdf")
+        write_single_code_reference_pdf(facts, pdf_path)
+        if pdf_path.exists():
+            written.append(pdf_path)
+    write_master_code_reference_docx(code_files, facts_by_file, diagrams)
+    written.append(CODE_REFERENCE_MASTER_DOCX)
+    write_master_code_reference_pdf(code_files, facts_by_file, diagrams)
+    if CODE_REFERENCE_MASTER_PDF.exists():
+        written.append(CODE_REFERENCE_MASTER_PDF)
     return written
 
 
-def add_generated_code_reference(doc: Document, files: list[str]) -> None:
-    doc.add_heading("Generated Code Reference Docs", level=1)
-    written = write_code_reference_docs(files)
-    doc.add_paragraph("The repository now includes generated Markdown code-reference pages. These are meant for source-level reading beside the actual files. They explain functions, variables, API endpoints, imports, event handlers, and file relationships.")
+def add_generated_code_reference(doc: Document, files: list[str], diagrams: dict[str, Path]) -> None:
+    doc.add_heading("Generated Word And PDF Code References", level=1)
+    written = write_code_reference_docs(files, diagrams)
+    doc.add_paragraph("The repository now includes generated Word and PDF code-reference documents rather than only Markdown notes. These documents are meant for source-level reading beside the actual files. They explain functions, variables, API endpoints, imports, event handlers, file relationships, security/authentication cues, compiler calls, installer behavior, and debugging paths.")
     add_table(doc, [
-        ("Folder", str(CODE_REFERENCE_DIR.relative_to(REPO))),
-        ("Documents generated", str(len(written))),
-        ("Index", "docs/code-reference/README.md"),
+        ("Word folder", str(CODE_REFERENCE_DOCX_DIR.relative_to(REPO))),
+        ("PDF folder", str(CODE_REFERENCE_PDF_DIR.relative_to(REPO))),
+        ("Master Word reference", str(CODE_REFERENCE_MASTER_DOCX.relative_to(REPO))),
+        ("Master PDF reference", str(CODE_REFERENCE_MASTER_PDF.relative_to(REPO)) if CODE_REFERENCE_MASTER_PDF.exists() else "PDF generation skipped because ReportLab is unavailable."),
+        ("Artifacts generated", str(len(written))),
         ("Regeneration command", "python docs/build_complete_guide.py"),
     ])
     doc.add_page_break()
@@ -1544,16 +1944,20 @@ def add_generated_code_reference(doc: Document, files: list[str]) -> None:
             ("Functions discovered", str(len(facts["functions"]))),
             ("Variables discovered", str(len(facts["variables"]))),
             ("API endpoints mentioned", str(len(facts["endpoints"]))),
+            ("Implementation signals", str(len(facts["signals"]))),
         ])
+        if facts["signals"]:
+            doc.add_heading("Signals detected", level=2)
+            add_table(doc, [(f"{item['type']} at line {item['line']}", f"{item['meaning']} Evidence: {item['evidence']}") for item in facts["signals"][:20]])
         if facts["endpoints"]:
             doc.add_heading("Endpoints in this file", level=2)
             add_table(doc, [(item["endpoint"], f"Line {item['line']}. {endpoint_purpose(item['endpoint'])}") for item in facts["endpoints"][:20]])
         if facts["functions"]:
             doc.add_heading("Function details", level=2)
-            for item in facts["functions"][:30]:
-                doc.add_paragraph(f"{item['name']} (line {item['line']})", style="List Bullet")
-                doc.add_paragraph(item["purpose"])
-                add_code(doc, item["signature"])
+            for item in facts["functions"][:60]:
+                doc.add_heading(f"{item['name']} (lines {item['line']}-{item['end_line']})", level=3)
+                add_table(doc, function_detail_rows(item))
+                add_code(doc, item["excerpt"])
         if facts["variables"]:
             doc.add_heading("Variables and constants", level=2)
             add_table(doc, [(item["name"], f"Line {item['line']}: {item['statement']}") for item in facts["variables"][:20]])
@@ -1988,7 +2392,7 @@ def main() -> None:
     add_installer_details(doc, diagrams)
     add_function_maps(doc, diagrams)
     add_complete_function_inventory(doc)
-    add_generated_code_reference(doc, files)
+    add_generated_code_reference(doc, files, diagrams)
     add_deep_detail_topics(doc)
     add_workflows(doc, files, diagrams)
     add_files(doc, files)
@@ -1998,6 +2402,8 @@ def main() -> None:
     add_troubleshooting(doc)
     add_concepts(doc)
     add_closing(doc)
+    removed_breaks = compact_generated_docx(doc, keep_first_page_break=True)
+    print(f"Compacted generated DOCX layout by removing {removed_breaks} page breaks.")
     doc.save(OUTPUT)
     print(OUTPUT)
 
