@@ -490,8 +490,9 @@
                               <li>Use Add mathematical formula only when you intentionally want a formula block.</li>
                               <li>Use Code block or Paste as code for C, C++, SystemVerilog, LTspice, Java, JavaScript, Python, and HTML snippets.</li>
                               <li>Choose Basic paste when you want the builder to clean extra trailing whitespace, or Keep source spacing when indentation is important.</li>
-                              <li>Use the project Compile Code section when you want to save a source file, import a source file, beautify it, check compiler tools, and run it inside the builder.</li>
-                              <li>For Verilog and SystemVerilog simulation, mark design files as Design and mark the stimulus file as Testbench. The simulator requires a testbench before it will run the design.</li>
+                              <li>Use the project Compile Code section when you want a small IDE-style workspace with a file explorer, active syntax editor, beautifier, compiler checks, terminal output, and project append controls.</li>
+                              <li>Use Compile to check or build the active source, Build project to build the project workspace, and Run to execute the built active program when the language supports execution.</li>
+                              <li>For Verilog and SystemVerilog, use Simulate to run the simulator. Simulation requires a Testbench file; plain Compile can still check or build HDL design files.</li>
                               <li>Use Add testbench to create a starter testbench with $dumpfile and $dumpvars. Those waveform calls feed the signal scope, where HDL signals can be viewed over time.</li>
                               <li>Add Code is for presentation snippets in the portfolio. Compile Code is a separate local workspace for buildable source files and terminal output.</li>
                               <li>Links in rich text open as websites on the portfolio unless you attach them as downloadable files.</li>
@@ -505,6 +506,7 @@
                               <li>Use code blocks for short code examples that should be readable on the website; use files or GitHub links for long source trees.</li>
                               <li>Use Compile Code to test C, C++, Java, JavaScript, Python, HTML checks, and any installed Verilog, SystemVerilog, or LTspice command-line tools before deciding what to publish later.</li>
                               <li>Use Show output for terminal logs and Show scope for HDL timing waveforms after a successful testbench simulation.</li>
+                              <li>Use Append code to project after selecting the correct section or nested subsection destination; the code is appended as a formatted code block.</li>
                               <li>If a link is accidentally treated as a formula, remove the formula block and paste it again as normal text or link content.</li>
                           </ul>
                           <p>When pasting from ChatGPT, review formulas and code before saving. If the content is a link, it should render as a clickable link, not as a formula. If the content is source code, it should render inside a dark code block with language coloring instead of becoming ordinary paragraph text.</p>
@@ -522,6 +524,7 @@
                               <li>Add PDFs under documents, lab reports, design notes, or references.</li>
                               <li>Add simulation files under Simulation files and screenshots/plots under Results.</li>
                               <li>Add source repositories as links, not downloadable text files.</li>
+                              <li>All local project evidence file types are accepted, including .sv, .v, .asc, .raw, .zip, PDFs, images, reports, and source files.</li>
                           </ol>
                           <ul>
                               <li>Use visible images when the visitor should inspect them immediately.</li>
@@ -529,7 +532,7 @@
                               <li>Rename files and images to meaningful names before saving when the default filename is not clear.</li>
                               <li>Add captions that explain what the image proves, not just what the image is.</li>
                           </ul>
-                          <p>Use titles that explain the evidence: Oscilloscope capture, KiCad PCB layout, LTspice transient result, VCO test handout, measured ripple at load, and so on. Before publishing, click every visible image and file link in the preview so broken or private files do not reach the public site.</p>
+                          <p>Project evidence is saved under docs/project-folder/section-or-subsection/filename. For example, a SystemVerilog design file could be saved as docs/laser-link/design/filter.sv. The upload status shows the generated path after the file is saved. Use titles that explain the evidence: Oscilloscope capture, KiCad PCB layout, LTspice transient result, VCO test handout, measured ripple at load, and so on. Before publishing, click every visible image and file link in the preview so broken or private files do not reach the public site.</p>
                       </div>
                   </details>
                   <details class="builder-guide-section" data-guide-section="preview">
@@ -582,14 +585,14 @@
                           <ol>
                               <li>Open Publishing target.</li>
                               <li>Enter the GitHub repository URL or owner/repository target.</li>
-                              <li>Add a custom domain only if that website should use one.</li>
-                              <li>Authenticate with GitHub when prompted.</li>
-                              <li>Use Load from target only after authentication succeeds.</li>
+                              <li>Click Authenticate target to verify write access for that repository and branch.</li>
+                              <li>Complete GitHub/Git Credential Manager sign-in only when prompted.</li>
+                              <li>Use Load from target only after authentication succeeds and only when you want to import that website repository into this builder.</li>
                           </ol>
                           <ul>
                               <li>Use the repository that backs the public website, such as a GitHub Pages repository.</li>
                               <li>Use the correct branch. The builder should not guess a branch that does not exist.</li>
-                              <li>Use custom domain only when the DNS and GitHub Pages setup already expect that domain.</li>
+                              <li>Authenticate target does not import content; Load from target does not authenticate a new target.</li>
                               <li>If authentication fails, read the message before retrying; it usually explains whether Git, credentials, branch state, or repository access caused the failure.</li>
                           </ul>
                           <p>GitHub authorization is cached per repository and branch. Daily reuse avoids repeated prompts, and repeated successful authorization can extend trust for that exact target. If the target changes, authenticate again because a new target is a different publishing permission boundary.</p>
@@ -859,38 +862,17 @@
                   <ul id="publish-target-readiness-list">
                       <li>Checking local publishing tools...</li>
                   </ul>
-                  <div class="publish-target-tool-actions">
-                      <button class="button secondary compact-button" id="publish-target-check" type="button">Check tools</button>
-                      <button class="button secondary compact-button" id="publish-target-install-git" type="button">Install Git</button>
-                      <button class="button primary compact-button" id="publish-target-auth" type="button">Authenticate current target</button>
-                  </div>
               </div>
               <label>
                   <span>GitHub Pages repository URL</span>
                   <input id="publish-target-repository" type="text" placeholder="https://github.com/USERNAME/USERNAME.github.io.git" />
               </label>
-              <label>
-                  <span>Custom domain, optional</span>
-                  <input id="publish-target-domain" type="text" placeholder="example.com" />
-                  <small class="publish-target-field-note">If filled, the builder writes this value to the website CNAME file when the target is saved.</small>
-              </label>
-              <label>
-                  <span>Advanced: GitHub username, optional</span>
-                  <input id="publish-target-username" type="text" autocomplete="off" placeholder="GitHub username" />
-                  <small class="publish-target-field-note">Use only when you want to authenticate with a GitHub personal access token instead of the browser sign-in window.</small>
-              </label>
-              <label>
-                  <span>Advanced: personal access token, optional</span>
-                  <input id="publish-target-password" type="password" autocomplete="off" placeholder="GitHub personal access token or credential password" />
-                  <small class="publish-target-field-note">The token is passed to Git Credential Manager on this computer. It is never saved into the website files or repository.</small>
-              </label>
               <p class="publish-target-note">
-                  Publishing uses Git for Windows and Git Credential Manager. Enter a repository, then click Save target and authenticate. A browser or GitHub sign-in window opens only when the saved authorization for this repository and branch has expired. The builder keeps the previous target until GitHub confirms write access to the new target, then it loads the latest compatible website copy from that target into this local builder.
+                  Authenticate target verifies that this computer can write to the selected GitHub Pages repository. Load from target imports the latest compatible website data from that authenticated repository into this builder. Authentication is remembered for this exact repository and branch so you do not sign in every time you reopen the app.
               </p>
               <div class="dialog-actions">
-                  <button class="button primary" type="submit">Save target and authenticate</button>
+                  <button class="button primary" id="publish-target-auth" type="submit">Authenticate target</button>
                   <button class="button secondary" id="publish-target-sync" type="button" disabled>Load from target</button>
-                  <button class="button secondary" id="publish-target-cancel" type="button">Cancel</button>
               </div>
           </form>
       </dialog>

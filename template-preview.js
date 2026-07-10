@@ -1338,7 +1338,6 @@ function renderPublishTargetInfo(target = {}) {
     ["Portfolio workspace", target.portfolioWorkspace || target.workspace || "Not available"],
     ["Repository", target.repository || target.remote || "No repository connected"],
     ["Branch", target.branch || "No branch selected"],
-    ["Custom domain", target.customDomain || "None"],
     ["GitHub authorization", authorizationStatus],
     ["Compatible site", target.compatible ? "Yes" : "No"],
     ["Git-backed", target.gitBacked ? "Yes" : "No"]
@@ -1349,10 +1348,6 @@ function renderPublishTargetInfo(target = {}) {
   if (publishTargetRepository) {
     publishTargetRepository.value = target.remote || "";
     publishTargetRepository.dataset.loadedValue = target.remote || "";
-  }
-  if (publishTargetDomain) {
-    publishTargetDomain.value = target.customDomain || "";
-    publishTargetDomain.dataset.autofilled = "true";
   }
   if (publishTargetSync) publishTargetSync.disabled = !target.authorizationChecked;
 }
@@ -1384,7 +1379,7 @@ function renderSystemReadiness(system = {}, target = {}) {
       ok: Boolean(target?.remote),
       text: target?.remote
         ? `Publishing target: ${target.repository || target.remote}.`
-        : "Publishing target: enter a repository URL and click Save target."
+        : "Publishing target: enter a repository URL and click Authenticate target."
     },
     {
       ok: Boolean(target?.authorizationChecked),
@@ -1456,10 +1451,7 @@ async function savePublishTarget(event) {
 
 function currentPublishTargetPayload() {
   return {
-    repositoryUrl: publishTargetRepository?.value || "",
-    customDomain: publishTargetDomain?.value || "",
-    authUsername: publishTargetUsername?.value || "",
-    authPassword: publishTargetPassword?.value || ""
+    repositoryUrl: publishTargetRepository?.value || ""
   };
 }
 
@@ -1492,7 +1484,7 @@ async function authenticatePublishTarget(options = {}) {
   const fromSave = Boolean(options.fromSave);
   if (publishTargetSync) publishTargetSync.disabled = true;
   setPublishTargetProgress(
-    fromSave ? "Saving target and checking authorization" : "Checking GitHub authorization",
+    fromSave ? "Authenticating publishing target" : "Checking GitHub authorization",
     [
       { label: "Step 1", value: "Validating the repository URL and local Git tools." },
       { label: "Step 2", value: "Using the saved daily authorization if it is still valid." },
@@ -1517,23 +1509,22 @@ async function authenticatePublishTarget(options = {}) {
     if (publishTargetPassword) publishTargetPassword.value = "";
     const usedCachedAuth = Boolean(result.auth?.authorizationCached || result.target?.authorizationCached);
     setPublishTargetProgress(
-      usedCachedAuth ? "Target saved with existing GitHub authorization" : "Target saved and GitHub authorization verified",
+      usedCachedAuth ? "Target authenticated from saved authorization" : "Target authenticated",
       [
         { label: "Repository", value: result.target?.repository || result.auth?.repository || "Selected target" },
         { label: "Branch", value: result.target?.branch || result.auth?.branch || "Detected target branch" },
         { label: "Authorization", value: usedCachedAuth ? "A valid saved authorization was reused; no new GitHub sign-in was needed." : "GitHub write access was verified now." },
-        { label: "Next step", value: "Loading the latest compatible portfolio files from the target now." }
+        { label: "Next step", value: "Click Load from target when you want to import the latest compatible website files into this builder." }
       ]
     );
     if (publishTargetSync) publishTargetSync.disabled = false;
-    await syncFromPublishTarget({ afterAuth: true });
   } catch (error) {
     if (publishTargetSync) publishTargetSync.disabled = true;
     setPublishTargetProgress(
       "Target was not saved",
       [
         { label: "Reason", value: error.message || "GitHub authentication did not complete." },
-        { label: "Status", value: "The previous publishing target was kept. Fix the repository or sign-in, then try Save target and authenticate again." }
+        { label: "Status", value: "The previous publishing target was kept. Fix the repository or sign-in, then try Authenticate target again." }
       ]
     );
     showBuilderError(
@@ -1561,7 +1552,7 @@ async function syncFromPublishTarget(options = {}) {
     if (!response.ok || !result.ok) {
       throw new Error([
         result.error || "Publishing target could not be imported.",
-        result.details || "Click Authenticate with GitHub, complete the browser sign-in, then try Load from target again."
+        result.details || "Click Authenticate target, complete the browser sign-in if prompted, then try Load from target again."
       ].filter(Boolean).join("\n\n"));
     }
     renderPublishTargetInfo(result.target || {});
@@ -2051,6 +2042,14 @@ function escapeHtml(value) {
     .replaceAll("'", "&#039;");
 }
 
+function escapeCodeHtml(value) {
+  return String(value || "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
+}
+
 function normalizeCodeLanguage(value = "") {
   const clean = String(value || "").trim().toLowerCase().replace(/[_-]+/g, " ");
   const match = supportedCodeLanguages.find((language) =>
@@ -2137,12 +2136,22 @@ function detectCodeLanguage(value = "", fileName = "") {
 }
 
 function tokenizedCodeHtml(code = "", language = "javascript") {
-  let html = escapeHtml(code);
+  let html = escapeCodeHtml(code);
   const tokens = [];
+  const tokenName = (index) => {
+    let value = Number(index) + 1;
+    let output = "";
+    while (value > 0) {
+      value -= 1;
+      output = String.fromCharCode(65 + (value % 26)) + output;
+      value = Math.floor(value / 26);
+    }
+    return `\uE000${output}\uE001`;
+  };
   const protect = (pattern, className) => {
     html = html.replace(pattern, (match) => {
-      const token = `@@CODE_TOKEN_${tokens.length}@@`;
-      tokens.push(`<span class="${className}">${match}</span>`);
+      const token = tokenName(tokens.length);
+      tokens.push({ token, html: `<span class="${className}">${match}</span>` });
       return token;
     });
   };
@@ -2176,7 +2185,9 @@ function tokenizedCodeHtml(code = "", language = "javascript") {
   };
   const keywords = keywordMap[normalizeCodeLanguage(language)] || keywordMap.javascript;
   html = html.replace(new RegExp(`\\b(${keywords})\\b`, "g"), '<span class="code-token-keyword">$1</span>');
-  html = html.replace(/@@CODE_TOKEN_(\d+)@@/g, (_match, index) => tokens[Number(index)] || "");
+  tokens.forEach((token) => {
+    html = html.replaceAll(token.token, token.html);
+  });
   return html;
 }
 
@@ -6518,29 +6529,64 @@ function renderDesignSummaryField(project, pathValue, label, placeholder) {
   `;
 }
 
+function designPathHasContent(project, pathValue) {
+  const value = getByPath(project, pathValue);
+  if (Array.isArray(value)) return value.some((item) => itemTitle(item) || item?.description || item?.url || item?.artifact || richHasContent(item?.richDescription));
+  return Boolean(value || richHasContent(getByPath(project, summaryRichPathFromTextPath(pathValue))));
+}
+
+function renderEmptyDynamicSectionPrompt(label = "section") {
+  return `
+    <div class="compile-code-empty">
+      <h3>No ${escapeHtml(label)} content added yet</h3>
+      <p>Create your own sections and subsections with the Add section button. Empty predefined groups stay hidden so the project structure is controlled by you.</p>
+      <div class="section-actions">
+        <button class="button primary" type="button" data-add-section="true">Add section</button>
+      </div>
+    </div>
+  `;
+}
+
 function renderAnalogDesignWorkspace(project) {
   ensureDesignModel(project);
-  return `
-    <div class="section-stack analog-design-workspace">
+  const cards = [];
+  if (designPathHasContent(project, "design.brief.summary") || designPathHasContent(project, "design.brief.files")) {
+    cards.push(`
       <section class="design-workspace-card">
         <h3>Design Overview</h3>
         ${renderDesignSummaryField(project, "design.brief.summary", "Design overview", "State the analog design objective, topology, constraints, and design decisions.")}
         ${renderDesignObjectSection(project, "design.brief.files", "design-brief", "brief file", "document")}
       </section>
+    `);
+  }
+  if (
+    designPathHasContent(project, "design.documentation.summary") ||
+    designPathHasContent(project, "design.documentation.files") ||
+    designPathHasContent(project, "design.documentation.references") ||
+    designPathHasContent(project, "design.documentation.mathAnalysis")
+  ) {
+    cards.push(`
       <section class="design-workspace-card">
         <h3>Documentation</h3>
         ${renderDesignSummaryField(project, "design.documentation.summary", "Documentation overview", "Summarize schematics, notes, datasheets, calculations, and supporting documents.")}
         ${renderDesignObjectSection(project, "design.documentation.files", "documentation", "document", "document")}
-        <h4>References</h4>
-        ${renderDesignObjectSection(project, "design.documentation.references", "", "reference", "reference")}
-        <h4>Math / Analysis</h4>
-        ${renderDesignObjectSection(project, "design.documentation.mathAnalysis", "", "analysis item", "analysis")}
+        ${designPathHasContent(project, "design.documentation.references") ? `<h4>References</h4>${renderDesignObjectSection(project, "design.documentation.references", "", "reference", "reference")}` : ""}
+        ${designPathHasContent(project, "design.documentation.mathAnalysis") ? `<h4>Math / Analysis</h4>${renderDesignObjectSection(project, "design.documentation.mathAnalysis", "", "analysis item", "analysis")}` : ""}
       </section>
+    `);
+  }
+  if ((project.pcbs || []).length || (project.media || []).length) {
+    cards.push(`
       <section class="design-workspace-card">
         <h3>PCB and Visual Evidence</h3>
-        ${renderObjectSection(project, "pcbs", "pcbs", "PCBs")}
-        ${renderObjectSection(project, "media", "images", "Images")}
+        ${(project.pcbs || []).length ? renderObjectSection(project, "pcbs", "pcbs", "PCBs") : ""}
+        ${(project.media || []).length ? renderObjectSection(project, "media", "images", "Images") : ""}
       </section>
+    `);
+  }
+  return `
+    <div class="section-stack analog-design-workspace">
+      ${cards.join("") || renderEmptyDynamicSectionPrompt("design")}
       ${renderPendingEditor()}
     </div>
   `;
@@ -6548,20 +6594,34 @@ function renderAnalogDesignWorkspace(project) {
 
 function renderAnalogSimulationWorkspace(project) {
   ensureDesignModel(project);
-  return `
-    <div class="section-stack analog-design-workspace">
+  const cards = [];
+  if (designPathHasContent(project, "design.simulation.summary")) {
+    cards.push(`
       <section class="design-workspace-card">
         <h3>Simulation Overview</h3>
         ${renderDesignSummaryField(project, "design.simulation.summary", "Simulation overview", "Explain what was simulated, why it mattered, and what the results proved.")}
       </section>
+    `);
+  }
+  if (designPathHasContent(project, "design.simulation.files")) {
+    cards.push(`
       <section class="design-workspace-card">
         <h3>Simulation Files</h3>
         ${renderDesignObjectSection(project, "design.simulation.files", "simulations", "simulation file", "simulation-file")}
       </section>
+    `);
+  }
+  if (designPathHasContent(project, "design.simulation.results")) {
+    cards.push(`
       <section class="design-workspace-card">
         <h3>Simulation Results</h3>
         ${renderDesignObjectSection(project, "design.simulation.results", "simulation-results", "simulation result", "simulation-result")}
       </section>
+    `);
+  }
+  return `
+    <div class="section-stack analog-design-workspace">
+      ${cards.join("") || renderEmptyDynamicSectionPrompt("simulation")}
       ${renderPendingEditor()}
     </div>
   `;
@@ -6944,6 +7004,22 @@ function compileAppendDestinations(project) {
       richPath: `sections.${index}.richDescription`,
       textPath: `sections.${index}.description`
     });
+    const walkItems = (items = [], prefix = `sections.${index}.items`, labelPrefix = section.title || `Custom section ${index + 1}`) => {
+      (items || []).forEach((item, itemIndex) => {
+        const itemPath = `${prefix}.${itemIndex}`;
+        const itemTitle = item.title || `Subsection ${itemIndex + 1}`;
+        if (!item.url) {
+          destinations.push({
+            id: `custom-${section.id || index}-${itemPath}`,
+            label: `${labelPrefix} / ${itemTitle} overview`,
+            richPath: `${itemPath}.richDescription`,
+            textPath: `${itemPath}.description`
+          });
+        }
+        walkItems(item.children || item.items || [], `${itemPath}.children`, `${labelPrefix} / ${itemTitle}`);
+      });
+    };
+    walkItems(section.items || []);
   });
 
   return destinations;
@@ -7179,15 +7255,6 @@ function clearCompileOutput(project, file = activeCompileFile(project)) {
   scheduleAutosave();
 }
 
-function visibleEditorForCompileDestination(destination) {
-  if (!destination) return null;
-  const editors = [...document.querySelectorAll("[data-rich-editor]")];
-  if (destination.richPath === "summaryRich") {
-    return editors.find((editor) => editor.dataset.richEditor === "summary" && !editor.dataset.richPath) || null;
-  }
-  return editors.find((editor) => editor.dataset.richPath === destination.richPath) || null;
-}
-
 function richBlocksForCompileAppend(project, destination) {
   const existingRich = getByPath(project, destination.richPath);
   const existingText = getByPath(project, destination.textPath) || "";
@@ -7226,20 +7293,25 @@ function renderCompileCodeSection(project) {
           <h3>Compile Code</h3>
           <small>${workspace.files.length} source file${workspace.files.length === 1 ? "" : "s"}</small>
         </div>
+        <div class="compile-code-workspace-tree" aria-label="Project workspace tree">
+          <details open>
+            <summary>${escapeHtml(project.title || "Project workspace")}</summary>
+            <div class="compile-code-tree-files">
+              ${workspace.files.map((file) => `
+                <button class="compile-code-tree-file${file.id === workspace.activeFileId ? " is-active" : ""}" type="button" data-compile-select="${escapeHtml(file.id)}">
+                  <span class="compile-file-extension">${escapeHtml((file.fileName.match(/\.[^.]+$/)?.[0] || "src").replace(".", ""))}</span>
+                  <span>${escapeHtml(file.fileName)}</span>
+                  <small>${escapeHtml(compileFileDirtyLabel(file))}</small>
+                </button>
+              `).join("") || `<p>No source files yet.</p>`}
+            </div>
+          </details>
+        </div>
         <div class="compile-code-actions">
           <button type="button" data-compile-add>Add code file</button>
           <button type="button" data-compile-add-testbench>Add testbench</button>
           <button type="button" data-compile-import>Import file</button>
           <button type="button" data-compile-tools>Check compilers</button>
-        </div>
-        <div class="compile-code-file-list" role="list">
-          ${workspace.files.map((file) => `
-            <button class="compile-code-file${file.id === workspace.activeFileId ? " is-active" : ""}" type="button" data-compile-select="${escapeHtml(file.id)}" role="listitem">
-              <strong>${escapeHtml(file.title || file.fileName)}</strong>
-              <span>${escapeHtml(file.fileName)} - ${escapeHtml(codeLanguageLabel(file.language))}${isHdlLanguage(file.language) ? ` - ${escapeHtml(compileFileRoleLabel(file.role))}` : ""}</span>
-              <small>${escapeHtml(compileFileDirtyLabel(file))}</small>
-            </button>
-          `).join("") || `<p class="evidence-empty">No compile files yet. Add a code file or import source.</p>`}
         </div>
       </aside>
 
@@ -7265,16 +7337,15 @@ function renderCompileCodeSection(project) {
                 : `<input type="text" value="Program source" disabled />`}
             </label>
           </div>
-          <div class="compile-code-editor-grid">
-            <label class="compile-code-source-field">
-              <span>Source</span>
-              <textarea data-compile-field="code" spellcheck="false" rows="18" placeholder="Type or paste code here">${escapeHtml(activeFile.code || "")}</textarea>
-            </label>
-            <section class="compile-code-preview-panel" aria-label="Syntax highlighted preview">
+          <div class="compile-code-editor-grid compile-code-editor-grid-single">
+            <section class="compile-code-preview-panel compile-code-active-panel" aria-label="Active syntax highlighted code editor">
               <div class="compile-code-preview-heading">
-                <span>${escapeHtml(codeLanguageLabel(activeFile.language))} preview</span>
+                <span>${escapeHtml(codeLanguageLabel(activeFile.language))} active editor</span>
               </div>
-              <pre class="compile-code-preview"><code data-compile-preview>${tokenizedCodeHtml(activeFile.code || "", activeFile.language)}</code></pre>
+              <div class="compile-code-active-editor">
+                <pre class="compile-code-preview" aria-hidden="true"><code data-compile-preview>${tokenizedCodeHtml(activeFile.code || "", activeFile.language)}</code></pre>
+                <textarea data-compile-field="code" data-compile-active-editor spellcheck="false" wrap="off" rows="18" placeholder="Type or paste code here">${escapeHtml(activeFile.code || "")}</textarea>
+              </div>
             </section>
           </div>
           <label class="compile-stdin-field">
@@ -7284,8 +7355,11 @@ function renderCompileCodeSection(project) {
           <div class="compile-code-command-bar">
             <button type="button" data-compile-save>Save source</button>
             <button type="button" data-compile-beautify>Beautify</button>
-            <button type="button" data-compile-run>Compile / run</button>
-            <button type="button" data-compile-rebuild>Rebuild / run</button>
+            <button type="button" data-compile-compile>Compile</button>
+            <button type="button" data-compile-build>Build project</button>
+            ${isHdlLanguage(activeFile.language)
+              ? `<button type="button" data-compile-simulate>Simulate</button>`
+              : `<button type="button" data-compile-run>Run</button>`}
             <button class="compile-output-button" type="button" data-compile-show-output title="Open the terminal output for this source"><span class="compile-command-icon" aria-hidden="true">&gt;_</span><span>Show output</span></button>
             ${isHdlLanguage(activeFile.language) ? `<button class="compile-output-button" type="button" data-compile-show-scope title="Open the HDL waveform scope"><span class="compile-command-icon" aria-hidden="true">~</span><span>Show scope</span></button>` : ""}
             <button type="button" data-compile-install>Install tools</button>
@@ -7302,7 +7376,6 @@ function renderCompileCodeSection(project) {
             </label>
             <div class="compile-append-actions">
               <button type="button" data-compile-append-code>Append code to project</button>
-              <button type="button" data-compile-insert-cursor>Insert at active cursor</button>
             </div>
           </section>
         ` : `
@@ -7358,23 +7431,20 @@ function renderSectionContent(project) {
 
   const renderers = {
     brief: () => "",
-    design: () => isAnalogProject(project) ? renderAnalogDesignWorkspace(project) : `
-      <div class="section-stack">
-        <section>
-          <h3>Documents</h3>
-          ${renderObjectSection(project, "documents", "documents", "Documents")}
-        </section>
-        <section>
-          <h3>PCBs Built</h3>
-          ${renderObjectSection(project, "pcbs", "pcbs", "PCBs")}
-        </section>
-        <section>
-          <h3>Images</h3>
-          ${renderObjectSection(project, "media", "images", "Images")}
-        </section>
-        ${renderPendingEditor()}
-      </div>
-    `,
+    design: () => {
+      if (isAnalogProject(project)) return renderAnalogDesignWorkspace(project);
+      const cards = [
+        (project.documents || []).length ? `<section><h3>Documents</h3>${renderObjectSection(project, "documents", "documents", "Documents")}</section>` : "",
+        (project.pcbs || []).length ? `<section><h3>PCBs Built</h3>${renderObjectSection(project, "pcbs", "pcbs", "PCBs")}</section>` : "",
+        (project.media || []).length ? `<section><h3>Images</h3>${renderObjectSection(project, "media", "images", "Images")}</section>` : ""
+      ].filter(Boolean);
+      return `
+        <div class="section-stack">
+          ${cards.join("") || renderEmptyDynamicSectionPrompt("design")}
+          ${renderPendingEditor()}
+        </div>
+      `;
+    },
     simulation: () => isAnalogProject(project) ? renderAnalogSimulationWorkspace(project) : "",
     "compile-code": () => renderCompileCodeSection(project),
     tests: () => `${renderObjectSection(project, "tests", "tests", "Tests")}${renderPendingEditor()}`,
@@ -7881,6 +7951,14 @@ function updateCompilePreview(file) {
   if (preview && file) preview.innerHTML = tokenizedCodeHtml(file.code || "", file.language);
 }
 
+function syncCompileEditorScroll(textarea) {
+  const editor = textarea?.closest(".compile-code-active-editor");
+  const preview = editor?.querySelector(".compile-code-preview");
+  if (!preview || !textarea) return;
+  preview.scrollTop = textarea.scrollTop;
+  preview.scrollLeft = textarea.scrollLeft;
+}
+
 function compilePayload(project, file, options = {}) {
   const workspace = ensureCompileCode(project);
   return {
@@ -7900,6 +7978,7 @@ function compilePayload(project, file, options = {}) {
       role: workspaceFile.role || inferCompileFileRole(workspaceFile.fileName, workspaceFile.code, workspaceFile.language),
       code: workspaceFile.code || ""
     })),
+    action: options.action || "",
     forceRebuild: options.forceRebuild === true
   };
 }
@@ -7910,7 +7989,7 @@ function selectedCompileAppendDestination(project) {
   return destinations.find((destination) => destination.id === workspace.appendTargetId) || destinations[0] || null;
 }
 
-function appendCompileCodeToProject(project, file, options = {}) {
+function appendCompileCodeToProject(project, file) {
   const block = codeBlockForCompileFile(file);
   if (!block.code.trim()) {
     setStatus("Type or import code before appending it to the project.");
@@ -7925,25 +8004,14 @@ function appendCompileCodeToProject(project, file, options = {}) {
     return false;
   }
 
-  const visibleEditor = visibleEditorForCompileDestination(destination);
-  const insertAtCursor = options.atCursor === true && visibleEditor;
-  if (insertAtCursor) {
-    insertRichBlockAtCursor(visibleEditor, createRichCodeBlock(block));
-    saveRichEditorToProject(visibleEditor);
-  } else {
-    if (options.atCursor === true) {
-      addCompileMessage(project, `No active visible cursor was found for ${destination.label}; appended to the end instead.`, "warning");
-    }
-    const blocks = richBlocksForCompileAppend(project, destination);
-    blocks.push(block);
-    setByPath(project, destination.richPath, { blocks });
-    setByPath(project, destination.textPath, plainTextFromRich({ blocks }));
-  }
+  const blocks = richBlocksForCompileAppend(project, destination);
+  blocks.push(block);
+  setByPath(project, destination.richPath, { blocks });
+  setByPath(project, destination.textPath, plainTextFromRich({ blocks }));
 
-  const mode = insertAtCursor ? "inserted at the active cursor" : "appended";
   file.lastAppendedAt = new Date().toISOString();
-  addCompileMessage(project, `${file.fileName || file.title || "Source code"} ${mode} to ${destination.label}.`, "success");
-  setStatus(`Code ${mode} to ${destination.label}. Save project to include it in the portfolio preview.`);
+  addCompileMessage(project, `${file.fileName || file.title || "Source code"} appended to ${destination.label}.`, "success");
+  setStatus(`Code appended to ${destination.label}. Save project to include it in the portfolio preview.`);
   scheduleAutosave();
   schedulePreviewRender();
   updateCompileMessagesPanel(project);
@@ -8019,14 +8087,14 @@ async function beautifyCompileFile(project, file) {
 async function compileActiveFile(project, file, options = {}) {
   if (!file) return;
   const workspace = ensureCompileCode(project);
+  const action = options.action || (isHdlLanguage(file.language) ? "simulate" : "run");
+  const actionLabel = action === "compile" ? "Compile" : action === "build" ? "Build project" : action === "simulate" ? "Simulate" : "Run";
   file.lastResult = {
     ok: null,
-    terminal: options.forceRebuild
-      ? "Rebuilding from source, then running. Please wait..."
-      : "Running code. Cached compiled output will be reused when possible..."
+    terminal: `${actionLabel} started. Please wait...`
   };
   workspace.terminal = file.lastResult.terminal;
-  addCompileMessage(project, `${options.forceRebuild ? "Rebuild" : "Compile/run"} started for ${file.fileName || file.title || "source file"}.`, "info");
+  addCompileMessage(project, `${actionLabel} started for ${file.fileName || file.title || "source file"}.`, "info");
   updateCompileTerminalPanel(project, file);
   updateCompileMessagesPanel(project);
   try {
@@ -8035,7 +8103,10 @@ async function compileActiveFile(project, file, options = {}) {
       method: "POST",
       cache: "no-store",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(compilePayload(project, file, { forceRebuild: options.forceRebuild === true }))
+      body: JSON.stringify(compilePayload(project, file, {
+        action,
+        forceRebuild: options.forceRebuild === true || action === "build"
+      }))
     });
     const result = await response.json();
     const compileResult = result.result || {};
@@ -8055,8 +8126,8 @@ async function compileActiveFile(project, file, options = {}) {
     file.dirty = false;
     ensureCompileCode(project).terminal = file.lastResult.terminal;
     updateCompileTerminalPanel(project, file);
-    addCompileMessage(project, result.ok ? `Compile/run succeeded for ${file.fileName}.` : `Compile/run completed with errors for ${file.fileName}.`, result.ok ? "success" : "error");
-    setStatus(result.ok ? "Compile/run succeeded." : "Compile/run completed with errors.");
+    addCompileMessage(project, result.ok ? `${actionLabel} succeeded for ${file.fileName}.` : `${actionLabel} completed with errors for ${file.fileName}.`, result.ok ? "success" : "error");
+    setStatus(result.ok ? `${actionLabel} succeeded.` : `${actionLabel} completed with errors.`);
     scheduleAutosave();
     renderSectionContent(project);
   } catch (error) {
@@ -8067,8 +8138,8 @@ async function compileActiveFile(project, file, options = {}) {
     };
     ensureCompileCode(project).terminal = file.lastResult.terminal;
     updateCompileTerminalPanel(project, file);
-    addCompileMessage(project, `Compile/run failed for ${file.fileName || "source file"}.`, "error");
-    setStatus(error.message || "Compile/run failed.");
+    addCompileMessage(project, `${actionLabel} failed for ${file.fileName || "source file"}.`, "error");
+    setStatus(error.message || `${actionLabel} failed.`);
     renderSectionContent(project);
   }
 }
@@ -8182,47 +8253,46 @@ function withExtension(name, fallbackFileName) {
 }
 
 function uploadProfile(key) {
+  const anyProjectFile = {
+    label: "project file",
+    accept: "",
+    extensions: [],
+    mimeStarts: [],
+    allFiles: true
+  };
   const profiles = {
     media: {
-      label: "image",
-      accept: "image/png,image/jpeg,image/webp,image/gif,image/svg+xml",
-      extensions: [".png", ".jpg", ".jpeg", ".webp", ".gif", ".svg"],
-      mimeStarts: ["image/"]
+      ...anyProjectFile,
+      label: "image or file"
     },
     pcbs: {
-      label: "PCB artifact",
-      accept: ".kicad_pcb,.kicad_sch,.sch,.brd,.zip,.pdf,.png,.jpg,.jpeg,.webp,.cir,.net,.lib,.asc",
-        extensions: [".kicad_pcb", ".kicad_sch", ".sch", ".brd", ".zip", ".pdf", ".png", ".jpg", ".jpeg", ".webp", ".cir", ".net", ".lib", ".asc"],
-      mimeStarts: ["image/"]
+      ...anyProjectFile,
+      label: "PCB artifact"
     },
     tests: {
-      label: "test artifact",
-      accept: ".pdf,.xlsx,.xls,.csv,.txt,.md,.log,.png,.jpg,.jpeg,.webp",
-        extensions: [".pdf", ".xlsx", ".xls", ".csv", ".txt", ".md", ".log", ".png", ".jpg", ".jpeg", ".webp",".cir",".net",".lib",".asc"],
-      mimeStarts: ["image/", "text/"]
+      ...anyProjectFile,
+      label: "test artifact"
     },
     documents: {
-      label: "document",
-      accept: ".pdf,.doc,.docx,.ppt,.pptx,.txt,.md,.kicad_sch,.asc,.cir,.spice,.zip",
-      extensions: [".pdf", ".doc", ".docx", ".ppt", ".pptx", ".txt", ".md", ".kicad_sch", ".asc", ".cir", ".spice", ".zip"],
-      mimeStarts: ["text/"]
+      ...anyProjectFile,
+      label: "document"
     },
     sections: {
-      label: "section file",
-        accept: ".pdf,.doc,.docx,.ppt,.pptx,.txt,.md,.xlsx,.xls,.csv,.log,.png,.jpg,.jpeg,.webp,.zip,.cir,.net,.lib,.asc",
-        extensions: [".pdf", ".doc", ".docx", ".ppt", ".pptx", ".txt", ".md", ".xlsx", ".xls", ".csv", ".log", ".png", ".jpg", ".jpeg", ".webp", ".zip", , ".cir", ".net", ".lib", ".asc"],
-      mimeStarts: ["image/", "text/"]
+      ...anyProjectFile,
+      label: "section file"
     }
   };
   return profiles[key] || profiles.sections;
 }
 
 function allowedFileMessage(profile) {
+  if (profile.allFiles) return `Add any local file type for this ${profile.label}.`;
   return `Add a ${profile.label}: ${profile.extensions.join(", ")}`;
 }
 
 function isAllowedUpload(key, fileName, mimeType = "") {
   const profile = uploadProfile(key);
+  if (profile.allFiles) return { ok: true, message: "" };
   const extension = extensionFor(fileName).toLowerCase();
   if (key === "media" && !profile.extensions.includes(extension) && !mimeType.startsWith("image/")) {
     return { ok: false, message: "Images can only accept image files. Add PDFs under Documents, Tests, or a custom section instead." };
@@ -8240,10 +8310,6 @@ function validateAssetForSection(key, asset) {
     return isAllowedUpload(key, asset.fileName || asset.file?.name || "", asset.file?.type || "");
   }
   const url = normalizeLinkTarget(asset.url || "", { assumeWeb: true });
-  const kind = inferUrlAssetKind(url, asset.source);
-  if (key === "media" && !["image", "google-drive"].includes(kind)) {
-    return { ok: false, message: "Image areas need an image file or direct image URL. Add PDFs, websites, and documents under Documents, Tests, Links, or a custom section." };
-  }
   if (!extensionFromUrl(url) && !extensionFor(asset.title || "")) {
     return { ok: true, message: "" };
   }
@@ -8263,7 +8329,7 @@ function dialogValue(dialog) {
 
 async function openAssetDialog(key) {
   const profile = uploadProfile(key);
-  assetDialogTitle.textContent = key === "media" ? "Add image" : `Add ${profile.label}`;
+  assetDialogTitle.textContent = `Add ${profile.label}`;
   assetSource.value = "local";
   assetFile.value = "";
   assetFile.accept = profile.accept;
@@ -8381,7 +8447,7 @@ async function uploadToSection(key, folder, customSectionId = "", customItemInde
   }
 
   setStatus(asset.source === "local"
-    ? `Saved ${asset.fileName} in the editor. Click Save project to include it in the portfolio preview.`
+    ? `Saved ${asset.fileName} to ${url}. Click Save project to include it in the portfolio preview.`
     : `Linked ${asset.title}. Click Save project to include it in the portfolio preview.`);
   scheduleAutosave();
   renderAll();
@@ -8429,7 +8495,7 @@ async function uploadToDesignSection(pathValue, folder, kind = "document") {
     type
   });
   setStatus(asset.source === "local"
-    ? `Saved ${asset.fileName} in the design workspace. Click Save project to include it in the portfolio preview.`
+    ? `Saved ${asset.fileName} to ${url}. Click Save project to include it in the portfolio preview.`
     : `Linked ${asset.title}. Click Save project to include it in the portfolio preview.`);
   scheduleAutosave();
   renderAll();
@@ -8964,13 +9030,8 @@ publishTargetForm?.addEventListener("submit", savePublishTarget);
 publishTargetSync?.addEventListener("click", syncFromPublishTarget);
 publishTargetCheck?.addEventListener("click", loadSystemReadiness);
 publishTargetInstallGit?.addEventListener("click", installGitForPublishing);
-publishTargetAuth?.addEventListener("click", authenticatePublishTarget);
 publishTargetRepository?.addEventListener("input", () => {
   markPublishTargetNeedsAuthentication();
-  const loadedRepository = publishTargetRepository.dataset.loadedValue || currentPublishTarget?.remote || "";
-  if (publishTargetRepository.value.trim() !== loadedRepository.trim() && publishTargetDomain?.dataset.autofilled === "true") {
-    publishTargetDomain.value = "";
-  }
 });
 publishTargetDomain?.addEventListener("input", () => {
   markPublishTargetNeedsAuthentication();
@@ -10260,6 +10321,10 @@ sectionContent.addEventListener("click", async (event) => {
   if (!button || !project) return;
 
   const hasDataset = (key) => Object.prototype.hasOwnProperty.call(button.dataset, key);
+  if (button.dataset.addSection) {
+    await addCustomSection();
+    return;
+  }
   if (hasDataset("compileAdd")) {
     const workspace = ensureCompileCode(project);
     const file = newCompileFile("javascript");
@@ -10319,12 +10384,20 @@ sectionContent.addEventListener("click", async (event) => {
     await beautifyCompileFile(project, compileFile);
     return;
   }
-  if (hasDataset("compileRun")) {
-    await compileActiveFile(project, compileFile);
+  if (hasDataset("compileCompile")) {
+    await compileActiveFile(project, compileFile, { action: "compile" });
     return;
   }
-  if (hasDataset("compileRebuild")) {
-    await compileActiveFile(project, compileFile, { forceRebuild: true });
+  if (hasDataset("compileBuild")) {
+    await compileActiveFile(project, compileFile, { action: "build", forceRebuild: true });
+    return;
+  }
+  if (hasDataset("compileRun")) {
+    await compileActiveFile(project, compileFile, { action: "run" });
+    return;
+  }
+  if (hasDataset("compileSimulate")) {
+    await compileActiveFile(project, compileFile, { action: "simulate" });
     return;
   }
   if (hasDataset("compileShowOutput")) {
@@ -10349,11 +10422,6 @@ sectionContent.addEventListener("click", async (event) => {
   }
   if (hasDataset("compileAppendCode")) {
     appendCompileCodeToProject(project, compileFile);
-    updateCompileMessagesPanel(project);
-    return;
-  }
-  if (hasDataset("compileInsertCursor")) {
-    appendCompileCodeToProject(project, compileFile, { atCursor: true });
     updateCompileMessagesPanel(project);
     return;
   }
@@ -10553,7 +10621,10 @@ sectionContent.addEventListener("input", (event) => {
         file.role = inferCompileFileRole(file.fileName, file.code, file.language);
       }
     }
-    if (field === "code") updateCompilePreview(file);
+    if (field === "code") {
+      updateCompilePreview(file);
+      syncCompileEditorScroll(event.target);
+    }
     file.dirty = true;
     file.lastResult = ["code", "role", "language", "fileName"].includes(field) ? null : file.lastResult;
     setStatus("Unsaved compile source changes.");
@@ -10619,6 +10690,12 @@ deleteConfirmDialog.addEventListener("click", (event) => {
   pendingDeleteAction = null;
   closeDialogElement(deleteConfirmDialog, "no");
 });
+
+sectionContent.addEventListener("scroll", (event) => {
+  if (event.target?.dataset?.compileActiveEditor !== undefined) {
+    syncCompileEditorScroll(event.target);
+  }
+}, true);
 
 assetSource.addEventListener("change", updateAssetDialogVisibility);
 assetUrl.addEventListener("input", updateAssetDialogVisibility);
