@@ -1690,6 +1690,166 @@ def add_overview(doc: Document, guide: dict) -> None:
     doc.add_page_break()
 
 
+def function_fact_map(file_name: str, func: FunctionDoc, all_names: set[str]) -> dict[str, list[str]]:
+    facts: dict[str, list[str]] = {}
+    for heading, text in generated_function_paragraphs(file_name, func, all_names):
+        facts.setdefault(heading, []).append(text)
+    return facts
+
+
+def add_syntax_block(doc: Document, signature: str) -> None:
+    intro = doc.add_paragraph()
+    intro.add_run("The syntax of the function is:")
+    block = doc.add_paragraph()
+    block.paragraph_format.left_indent = Inches(0.24)
+    run = block.add_run(f"{signature} {{ ... }}")
+    run.font.name = "Consolas"
+    run.font.size = Pt(9)
+    run.font.color.rgb = RGBColor(22, 78, 99)
+
+
+def syntax_reader_text(func: FunctionDoc) -> str:
+    params = parse_parameters(func.params)
+    async_text = (
+        "The async keyword is important here: this function returns a Promise, so callers must wait for it before trusting the result or assuming the side effect has completed. "
+        if func.is_async
+        else "There is no async keyword, so the function completes synchronously unless it calls another asynchronous helper indirectly. "
+    )
+    if not params:
+        return paragraph(
+            async_text
+            + "The empty parameter list means the function works from module-level state, browser state, local constants, or values it creates internally. That is common for UI helpers that operate on known page elements and backend helpers that read already configured paths."
+        )
+    names = ", ".join(parameter_label(param) for param in params)
+    if func.params.strip().startswith("{"):
+        return paragraph(
+            async_text
+            + f"The braces in the parameter list mean the caller passes one object and the function pulls named fields out of it. In this case the important fields are {names}. That style is useful when a function needs several related values but the call site should still be readable."
+        )
+    return paragraph(
+        async_text
+        + f"The parameter list tells you what the caller must provide: {names}. Read those names as the contract between this function and the code that calls it. The body should make sense only after those inputs are understood."
+    )
+
+
+def phrase_variant(seed: str, options: list[str]) -> str:
+    return options[sum(ord(char) for char in seed) % len(options)]
+
+
+def add_textbook_function(doc: Document, file_name: str, function: FunctionDoc, all_names: set[str]) -> None:
+    facts = function_fact_map(file_name, function, all_names)
+    purpose = " ".join(facts.get("Purpose and intuition", []))
+    parameters = " ".join(facts.get("Parameters and data it receives", []))
+    what = " ".join(facts.get("What it does", []))
+    body_details = " ".join(facts.get("Important body details", []))
+    collaborators = " ".join(facts.get("What it calls or works with", []))
+    why = " ".join(facts.get("Why the file needs it", []))
+
+    doc.add_heading(function.signature, level=3)
+    if purpose:
+        doc.add_paragraph(
+            paragraph(
+                phrase_variant(
+                    function.name + "intro",
+                    [
+                        f"Begin with the role of {function.name}. ",
+                        f"To understand {function.name}, start with the problem it owns. ",
+                        f"Read {function.name} first as a named idea, not as syntax. ",
+                        f"The best entry point for {function.name} is its responsibility in the surrounding workflow. ",
+                    ],
+                )
+                + purpose
+            )
+        )
+    add_syntax_block(doc, function.signature)
+    doc.add_paragraph(syntax_reader_text(function))
+    if parameters:
+        doc.add_paragraph(
+            paragraph(
+                f"Those syntax pieces become practical once you connect them to the data being passed in. {parameters}"
+            )
+        )
+    implementation_text = paragraph(
+        phrase_variant(
+            function.name + "impl",
+            [
+                "With the signature understood, the implementation can be read as a sequence of decisions and side effects. ",
+                "After the syntax, move into the body and follow the work in the order the function performs it. ",
+                "The body is where the contract above becomes behavior. ",
+                "Once the inputs are clear, the implementation shows how the function turns those inputs into useful program state. ",
+            ],
+        )
+        + what
+    )
+    if body_details:
+        implementation_text = paragraph(
+            implementation_text
+            + " A close reading of the body shows these implementation details: "
+            + body_details
+        )
+    doc.add_paragraph(implementation_text)
+    if collaborators:
+        doc.add_paragraph(
+            paragraph(
+                phrase_variant(
+                    function.name + "calls",
+                    [
+                        "Next, trace the helper calls that surround the function. ",
+                        "The function also has to be read through the helpers it calls. ",
+                        "Its connection to the rest of the file matters as much as its local code. ",
+                        "The surrounding workflow becomes clearer when you notice its collaborators. ",
+                    ],
+                )
+                + collaborators
+            )
+        )
+    if why:
+        doc.add_paragraph(
+            paragraph(
+                phrase_variant(
+                    function.name + "why",
+                    [
+                        "This is why the function is worth separating instead of burying the logic somewhere else. ",
+                        "The practical importance of the function is easiest to see by imagining it removed. ",
+                        "The application keeps this behavior isolated because other features rely on it being consistent. ",
+                        "This function earns its place in the file because it protects one behavior from being rewritten differently elsewhere. ",
+                    ],
+                )
+                + why
+            )
+        )
+
+    locals_found = local_variables(function)
+    if not locals_found:
+        doc.add_paragraph(
+            paragraph(
+                f"Inside {function.name}, there are no local const, let, or var values to discuss. The function mainly works from its parameters, module-level state, direct expressions, or helpers it calls."
+            )
+        )
+        return
+
+    doc.add_paragraph(
+        paragraph(
+            phrase_variant(
+                function.name + "locals",
+                [
+                    f"The local objects and variables inside {function.name} show how the implementation holds temporary work while it runs. ",
+                    f"The easiest way to follow the body of {function.name} is to watch its local values. ",
+                    f"The local state inside {function.name} explains how the larger task is split into smaller steps. ",
+                    f"After the main flow, the working values inside {function.name} reveal what the function must remember while it runs. ",
+                ],
+            )
+            + "They are included here because they explain the implementation rather than merely naming syntax."
+        )
+    )
+    for variable in locals_found:
+        bullet = doc.add_paragraph(style=None)
+        bullet.paragraph_format.left_indent = Inches(0.22)
+        bullet.paragraph_format.first_line_indent = Inches(-0.12)
+        bullet.add_run(f"{variable.name}: ").bold = True
+        bullet.add_run(explain_variable(variable, file_name, top_level=False, function_body=function.body))
+
+
 def add_function_walkthrough(doc: Document, guide: dict) -> None:
     doc.add_heading("Code Walkthrough", level=1)
     file_name = guide["file"]
@@ -1698,7 +1858,7 @@ def add_function_walkthrough(doc: Document, guide: dict) -> None:
         functions = function_ranges(source)
         all_names = {function.name for function in functions}
         doc.add_paragraph(
-            "This walkthrough is function-by-function. Related ideas are mentioned inside each function's explanation, but the headings are the actual function names so the document can be used as a code-reading companion even as line numbers change."
+            "This walkthrough is function-by-function. Each section now follows a textbook rhythm: first the idea of the function, then the syntax, then how to read that syntax, then the implementation and the local objects that make the implementation work. Line numbers are deliberately avoided because the source will keep changing."
         )
         grouped: dict[str, list[FunctionDoc]] = {}
         for function in functions:
@@ -1710,30 +1870,7 @@ def add_function_walkthrough(doc: Document, guide: dict) -> None:
                 f"The functions in this group all support {category.lower()}. Read them as a small subsystem: the smaller helpers prepare data and the larger functions coordinate side effects or rendering."
             )
             for function in items:
-                doc.add_heading(function.signature, level=3)
-                for subheading, text in generated_function_paragraphs(file_name, function, all_names):
-                    p = doc.add_paragraph()
-                    run = p.add_run(f"{subheading}: ")
-                    run.bold = True
-                    p.add_run(text)
-                locals_found = local_variables(function)
-                p = doc.add_paragraph()
-                run = p.add_run("Objects and variables inside this function: ")
-                run.bold = True
-                if not locals_found:
-                    p.add_run(
-                        "No local const, let, or var values were detected. The function mostly works from its parameters, module-level state, literals, or immediate return expressions."
-                    )
-                else:
-                    p.add_run(
-                        "The following local values are important because they show how the function breaks the task into smaller pieces of state."
-                    )
-                    for variable in locals_found:
-                        bullet = doc.add_paragraph(style=None)
-                        bullet.paragraph_format.left_indent = Inches(0.22)
-                        bullet.paragraph_format.first_line_indent = Inches(-0.12)
-                        bullet.add_run(f"{variable.name}: ").bold = True
-                        bullet.add_run(explain_variable(variable, file_name, top_level=False, function_body=function.body))
+                add_textbook_function(doc, file_name, function, all_names)
         return
 
     doc.add_paragraph(
