@@ -11,13 +11,23 @@ A long beginner-oriented Word guide and a deeper source-code reference are inclu
 ```text
 docs/OMB_Portfolio_Builder_Complete_Guide.docx
 docs/OMB_Portfolio_Builder_Complete_Guide.pdf
+docs/OMB_Portfolio_Builder_File_Reference.docx
+docs/OMB_Portfolio_Builder_File_Reference.pdf
 docs/OMB_Portfolio_Builder_Code_Reference.docx
 docs/OMB_Portfolio_Builder_Code_Reference.pdf
 docs/OMB_Portfolio_Builder_Important_Code_Reference.docx
 docs/OMB_Portfolio_Builder_Important_Code_Reference.pdf
 ```
 
-It explains the high-level design, generated block diagrams, software-engineering decisions, shell commands, programming syntax, how the important files communicate, what each build tool owns, GitHub workflows, Electron, the installer, caching, API endpoints, data contracts, frontend/backend/AI/Cloudflare layers, the website, the parser, publishing, compiler tools, generated function inventories, and file-by-file repository notes. The generator writes source-focused Word documents to `docs/code-reference-docx` and PDFs to `docs/code-reference-pdf`. It also writes a focused important-code reference for the behavior-driving files to `docs/important-code-reference-docx` and `docs/important-code-reference-pdf`.
+The complete guide explains the whole system: high-level design, generated block diagrams, software-engineering decisions, shell commands, programming syntax, how the important files communicate, what each build tool owns, GitHub workflows, Electron, the installer, caching, API endpoints, data contracts, frontend/backend/AI/Cloudflare layers, the website, the parser, publishing, and compiler tools.
+
+File-specific explanations live in generated Word/PDF references:
+
+- `docs/file-reference-docx` and `docs/file-reference-pdf` contain one document for each primary tracked repository file.
+- `docs/code-reference-docx` and `docs/code-reference-pdf` contain source-focused documents with discovered function detail.
+- `docs/important-code-reference-docx` and `docs/important-code-reference-pdf` contain the curated set of behavior-driving files to study first.
+
+The complete guide should stay system-level. The file-specific documents explain each file's contents, functions, important variables, calls, returns, source excerpts, metadata, and safe-change notes.
 
 ## Install
 
@@ -236,6 +246,7 @@ Use the workflow in [BRANCHING.md](BRANCHING.md):
 | `codex/builder-file-ai-auth-docs-cleanup` | Allows all project evidence file types, cleans publishing target authentication/loading, improves the website AI fallback, adds IDE-style compile workspace controls, and expands generated code documentation. | `development` | `development` | Merged into `development` |
 | `codex/deep-docx-pdf-code-reference` | Replaces Markdown-only code references with generated Word/PDF source references and expands function-level documentation with diagrams, endpoints, variables, implementation signals, and debugging notes. | `development` | `development` | Merged into `development` |
 | `codex/all-file-specific-docs` | Adds focused Word/PDF references for the important code and control files that drive the builder, website, installer, Cloudflare AI worker, workflows, parser, and generated documentation. | `development` | `development` | Merged into `development` |
+| `codex/narrative-important-function-docs` | Splits the documentation model so the complete guide explains the whole system while generated per-file Word/PDF references explain each file's own contents, functions, variables, calls, returns, and safe-change notes. | `development` | `development` | Active |
 
 ## Uninstall
 
