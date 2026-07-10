@@ -62,10 +62,10 @@ const defaultSiteRepository = process.env.OMB_BUILDER_REPOSITORY || "";
 const blockedAppUpdateVersions = new Set(["0.2.16"]);
 const publishAuthorizationHelp = [
   "Publishing was blocked before live website files were applied.",
-  "Open Publishing target, enter the repository URL, click Save target, then click Authenticate with GitHub.",
+  "Open Publishing target, enter the repository URL, then click Authenticate target.",
   "A GitHub/Git Credential Manager browser sign-in may open. Sign in with an account that has write access to the selected Pages repository.",
-  "After authentication succeeds, the builder automatically loads compatible target files. You can also click Load from target later to refresh.",
-  "For a custom domain, add or update the repository CNAME file after the repository is associated.",
+  "Authenticate target only verifies write access and remembers it for the matching repository and branch.",
+  "Load from target only imports compatible website files from the authenticated repository into the local builder workspace.",
   "Until a compatible writable website repository is associated, the builder remains local-only."
 ].join(" ");
 const gitCandidates = [
@@ -726,6 +726,82 @@ function hdlFilesFromPayload(payload = {}, activeFileName = "", activeLanguage =
   });
 }
 
+function compileActionFromPayload(value = "", language = "") {
+  const clean = String(value || "").trim().toLowerCase().replace(/[_\s-]+/g, "-");
+  if (["compile", "build", "run", "simulate"].includes(clean)) return clean;
+  return isHdlLanguage(language) ? "simulate" : "run";
+}
+
+function compileActionLabel(action = "run", language = "") {
+  if (action === "compile") return "Compile";
+  if (action === "build") return "Build project";
+  if (action === "simulate") return "Simulate";
+  return isHdlLanguage(language) ? "Simulate" : "Run";
+}
+
+function compileWorkspaceFilesFromPayload(payload = {}, activeFileName = "", activeLanguage = "javascript") {
+  const incoming = Array.isArray(payload.workspaceFiles) ? payload.workspaceFiles : [];
+  const byId = new Map();
+  const addFile = (item = {}, fallbackId = "") => {
+    const code = String(item.code || "");
+    if (!code.trim()) return;
+    const language = normalizeCodeLanguage(item.language || detectCodeLanguageFromSource(code, item.fileName));
+    const fileName = safeCodeFileName(item.fileName || activeFileName || compileLanguageProfiles[language]?.defaultFile || "source.txt", language);
+    const id = safeSegment(item.id || fallbackId || fileName, path.parse(fileName).name);
+    byId.set(id, {
+      id,
+      title: clampText(item.title || fileName, 180),
+      fileName,
+      language,
+      role: normalizeCompileFileRole(item.role || inferCompileFileRole(fileName, code, language), language),
+      code
+    });
+  };
+  incoming.forEach((item, index) => addFile(item, `workspace-${index + 1}`));
+  addFile({
+    id: payload.fileId,
+    title: payload.title,
+    fileName: activeFileName,
+    language: activeLanguage,
+    role: payload.role,
+    code: payload.code
+  }, "active");
+  return [...byId.values()].sort((a, b) => a.fileName.localeCompare(b.fileName));
+}
+
+async function writeCompileWorkspaceSources(files = [], targetDir = "", options = {}) {
+  await mkdir(targetDir, { recursive: true });
+  const seen = new Map();
+  const written = [];
+  for (const file of files) {
+    if (options.languages?.length && !options.languages.includes(normalizeCodeLanguage(file.language))) continue;
+    if (options.extensions?.length && !options.extensions.includes(path.extname(file.fileName).toLowerCase())) continue;
+    const parsed = path.parse(file.fileName);
+    const count = seen.get(file.fileName) || 0;
+    seen.set(file.fileName, count + 1);
+    const uniqueName = count ? `${parsed.name}_${count}${parsed.ext}` : file.fileName;
+    const sourcePath = path.join(targetDir, uniqueName);
+    await writeFile(sourcePath, file.code, "utf8");
+    written.push({ ...file, uniqueName, sourcePath });
+  }
+  return written;
+}
+
+function sourceDisplayName(file = {}) {
+  return file.uniqueName || file.fileName || path.basename(file.sourcePath || "source");
+}
+
+function cFamilyWorkspaceSources(files = [], language = "c", activeFileName = "") {
+  const exts = language === "cpp"
+    ? new Set([".cpp", ".cc", ".cxx", ".c++", ".hpp", ".hh", ".hxx", ".h"])
+    : new Set([".c", ".h"]);
+  const selected = files.filter((file) => exts.has(path.extname(file.fileName).toLowerCase()));
+  if (!selected.some((file) => file.fileName === activeFileName)) {
+    selected.push(...files.filter((file) => file.fileName === activeFileName));
+  }
+  return selected;
+}
+
 async function writeHdlSimulationSources(files = [], cacheDir = "") {
   const sourceDir = path.join(cacheDir, "sources");
   await rm(sourceDir, { recursive: true, force: true });
@@ -880,21 +956,43 @@ async function compileAndRunCode(payload = {}) {
   const saved = await saveCompileSource({ ...payload, language, fileName });
   const projectFolder = safeSegment(payload.projectId, "project");
   const sourcePath = resolveInsideCompileRoot(projectFolder, safeSegment(saved.id), saved.fileName);
+  const sourceCode = String(payload.code || "");
+  const action = compileActionFromPayload(payload.action, language);
+  const allWorkspaceFiles = compileWorkspaceFilesFromPayload(payload, saved.fileName, language);
   let runDir = "";
   let runSourcePath = "";
-  const ensureRunSource = async () => {
-    if (runDir && runSourcePath) return { runDir, runSourcePath };
+  let runWorkspaceSources = [];
+  const ensureRunSource = async (options = {}) => {
+    if (runDir && runSourcePath) return { runDir, runSourcePath, writtenSources: runWorkspaceSources };
     const runId = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
     runDir = resolveInsideCompileRoot(projectFolder, ".runs", runId);
     await mkdir(runDir, { recursive: true });
-    runSourcePath = path.join(runDir, saved.fileName);
-    await cp(sourcePath, runSourcePath, { force: true });
-    return { runDir, runSourcePath };
+    const filesToWrite = Array.isArray(options.files) && options.files.length ? options.files : allWorkspaceFiles;
+    runWorkspaceSources = await writeCompileWorkspaceSources(filesToWrite, runDir, {
+      languages: options.languages,
+      extensions: options.extensions
+    });
+    const active = runWorkspaceSources.find((file) => file.id === saved.id || file.fileName === saved.fileName);
+    runSourcePath = active?.sourcePath || path.join(runDir, saved.fileName);
+    if (!active) {
+      await cp(sourcePath, runSourcePath, { force: true });
+      runWorkspaceSources.push({
+        id: saved.id,
+        title: saved.title,
+        fileName: saved.fileName,
+        language,
+        role: saved.role,
+        code: sourceCode,
+        uniqueName: saved.fileName,
+        sourcePath: runSourcePath
+      });
+    }
+    return { runDir, runSourcePath, writtenSources: runWorkspaceSources };
   };
   const stdin = String(payload.stdin || "");
-  const sourceCode = String(payload.code || "");
   const forceRebuild = payload.forceRebuild === true;
   const terminal = [];
+  terminal.push(`${compileActionLabel(action, language)} request for ${saved.fileName}`);
   const append = (label, result) => {
     terminal.push(terminalLine(label, processTerminalText(result)));
   };
@@ -927,10 +1025,20 @@ async function compileAndRunCode(payload = {}) {
   if (language === "javascript") {
     const node = await findTool("node");
     if (!node) return { ok: false, language, saved, terminal: "Node.js was not found. Install Node.js to run JavaScript." };
-    const runSource = await ensureRunSource();
-    const check = await runProcess(node, ["--check", runSource.runSourcePath], { cwd: runSource.runDir, timeoutMs: 15000 });
-    append(`${path.basename(node)} --check ${saved.fileName}`, check);
-    if (check.ok) {
+    const jsFiles = allWorkspaceFiles.filter((file) => normalizeCodeLanguage(file.language) === "javascript");
+    const runSource = await ensureRunSource({ files: jsFiles.length ? jsFiles : allWorkspaceFiles, languages: ["javascript"] });
+    const targets = action === "build"
+      ? runSource.writtenSources.filter((file) => normalizeCodeLanguage(file.language) === "javascript")
+      : runSource.writtenSources.filter((file) => file.sourcePath === runSource.runSourcePath);
+    ok = true;
+    for (const target of targets.length ? targets : [{ sourcePath: runSource.runSourcePath, uniqueName: saved.fileName }]) {
+      const check = await runProcess(node, ["--check", target.sourcePath], { cwd: runSource.runDir, timeoutMs: 15000 });
+      terminal.push(terminalLine(`${path.basename(node)} --check ${sourceDisplayName(target)}`, processTerminalText(check)));
+      ok = ok && check.ok;
+    }
+    if (action === "compile" || action === "build") {
+      terminal.push(ok ? "JavaScript syntax check completed." : "JavaScript syntax check found errors.");
+    } else if (ok) {
       const run = await runProcess(node, [runSource.runSourcePath], { cwd: runSource.runDir, timeoutMs: 20000, ...stdinOptions });
       append(`${path.basename(node)} ${saved.fileName}`, run);
       ok = run.ok;
@@ -938,10 +1046,20 @@ async function compileAndRunCode(payload = {}) {
   } else if (language === "python") {
     const python = await findTool("python");
     if (!python) return { ok: false, language, saved, terminal: "Python was not found. Install Python to run Python code." };
-    const runSource = await ensureRunSource();
-    const check = await runProcess(python, ["-m", "py_compile", runSource.runSourcePath], { cwd: runSource.runDir, timeoutMs: 15000 });
-    append(`${path.basename(python)} -m py_compile ${saved.fileName}`, check);
-    if (check.ok) {
+    const pyFiles = allWorkspaceFiles.filter((file) => normalizeCodeLanguage(file.language) === "python");
+    const runSource = await ensureRunSource({ files: pyFiles.length ? pyFiles : allWorkspaceFiles, languages: ["python"] });
+    const targets = action === "build"
+      ? runSource.writtenSources.filter((file) => normalizeCodeLanguage(file.language) === "python")
+      : runSource.writtenSources.filter((file) => file.sourcePath === runSource.runSourcePath);
+    ok = true;
+    for (const target of targets.length ? targets : [{ sourcePath: runSource.runSourcePath, uniqueName: saved.fileName }]) {
+      const check = await runProcess(python, ["-m", "py_compile", target.sourcePath], { cwd: runSource.runDir, timeoutMs: 15000 });
+      terminal.push(terminalLine(`${path.basename(python)} -m py_compile ${sourceDisplayName(target)}`, processTerminalText(check)));
+      ok = ok && check.ok;
+    }
+    if (action === "compile" || action === "build") {
+      terminal.push(ok ? "Python bytecode compile check completed." : "Python compile check found errors.");
+    } else if (ok) {
       const run = await runProcess(python, [runSource.runSourcePath], { cwd: runSource.runDir, timeoutMs: 20000, ...stdinOptions });
       append(`${path.basename(python)} ${saved.fileName}`, run);
       ok = run.ok;
@@ -953,11 +1071,16 @@ async function compileAndRunCode(payload = {}) {
     if (missingTools.length) {
       return { ok: false, language, saved, terminal: `${profile.label} compiler missing: ${missingTools.join(", ")}. Install WinLibs/MinGW or add it to PATH.` };
     }
+    const workspaceSources = cFamilyWorkspaceSources(allWorkspaceFiles, language, saved.fileName);
+    const buildTargets = action === "build"
+      ? workspaceSources.filter((file) => !cFamilyCompileProfile(language, file.fileName).header)
+      : workspaceSources.filter((file) => file.fileName === saved.fileName);
     const compilerVersion = await toolVersionLine(found[toolName]);
     const cacheKey = compileCacheKey({
       language,
-      fileName: saved.fileName,
-      sourceCode,
+      action,
+      activeFileName: saved.fileName,
+      files: buildTargets.map((file) => ({ fileName: file.fileName, code: file.code })),
       compiler: found[toolName],
       compilerVersion,
       flags: cProfile.flags,
@@ -965,28 +1088,39 @@ async function compileAndRunCode(payload = {}) {
     });
     const cacheDir = compileCacheDirectory(payload.projectId, language, cacheKey);
     await mkdir(cacheDir, { recursive: true });
+    const workspaceDir = path.join(cacheDir, "sources");
+    await rm(workspaceDir, { recursive: true, force: true });
+    const writtenSources = await writeCompileWorkspaceSources(workspaceSources, workspaceDir);
+    const activeWritten = writtenSources.find((file) => file.fileName === saved.fileName) || writtenSources[0];
     const binaryName = cFamilyBinaryName(saved.fileName);
     const output = path.join(cacheDir, binaryName);
     const outputMarker = path.join(cacheDir, "syntax-ok.txt");
     const cached = !forceRebuild && await pathExists(output);
     const cachedHeader = cProfile.header && !forceRebuild && await pathExists(outputMarker);
     terminal.push(`${cProfile.label} build profile: ${cProfile.standard}, warnings enabled, debug symbols enabled`);
+    terminal.push(`Workspace sources visible to compiler: ${writtenSources.map(sourceDisplayName).join(", ") || saved.fileName}`);
     if (compilerVersion) terminal.push(`Compiler: ${compilerVersion}`);
     if (cached || cachedHeader) {
       terminal.push(cachedBuildLine(cProfile.header ? `${cProfile.label} header syntax check` : `${cProfile.label} binary`, cProfile.header ? outputMarker : output));
     } else {
-      const runSource = await ensureRunSource();
       const args = cProfile.header
-        ? ["-x", cProfile.languageFlag, "-fsyntax-only", ...cProfile.flags, runSource.runSourcePath]
-        : [runSource.runSourcePath, "-o", output, ...cProfile.flags];
-      const compile = await runProcess(found[toolName], args, { cwd: runSource.runDir, timeoutMs: 30000 });
+        ? ["-x", cProfile.languageFlag, "-fsyntax-only", ...cProfile.flags, activeWritten?.sourcePath || sourcePath]
+        : [
+            ...(action === "build"
+              ? writtenSources.filter((file) => !cFamilyCompileProfile(language, file.fileName).header).map((file) => file.sourcePath)
+              : [activeWritten?.sourcePath || sourcePath]),
+            "-o",
+            output,
+            ...cProfile.flags
+          ];
+      const compile = await runProcess(found[toolName], args, { cwd: workspaceDir, timeoutMs: 30000 });
       const replacements = [
-        { from: runSource.runSourcePath, to: saved.fileName },
         { from: sourcePath, to: saved.fileName },
-        { from: output, to: binaryName }
+        { from: output, to: binaryName },
+        ...writtenSources.map((file) => ({ from: file.sourcePath, to: sourceDisplayName(file) }))
       ];
       terminal.push(terminalLine(
-        `${path.basename(found[toolName])} ${saved.fileName} ${cProfile.header ? "-fsyntax-only" : `-o ${binaryName}`} ${cProfile.flags.join(" ")}`,
+        `${path.basename(found[toolName])} ${action === "build" ? "workspace sources" : saved.fileName} ${cProfile.header ? "-fsyntax-only" : `-o ${binaryName}`} ${cProfile.flags.join(" ")}`,
         processTerminalTextWithPaths(compile, replacements)
       ));
       ok = compile.ok;
@@ -999,15 +1133,20 @@ async function compileAndRunCode(payload = {}) {
       ok = true;
     } else if (cached || ok) {
       terminal.push(`Generated binary: ${output}`);
-      const toolPath = found[toolName];
-      const run = await runProcess(output, [], {
-        cwd: cacheDir,
-        timeoutMs: 20000,
-        env: { PATH: `${path.dirname(toolPath)}${path.delimiter}${process.env.PATH || ""}` },
-        ...stdinOptions
-      });
-      terminal.push(terminalLine(binaryName, cFamilyRunOutput(run)));
-      ok = run.ok;
+      if (action === "run") {
+        const toolPath = found[toolName];
+        const run = await runProcess(output, [], {
+          cwd: cacheDir,
+          timeoutMs: 20000,
+          env: { PATH: `${path.dirname(toolPath)}${path.delimiter}${process.env.PATH || ""}` },
+          ...stdinOptions
+        });
+        terminal.push(terminalLine(binaryName, cFamilyRunOutput(run)));
+        ok = run.ok;
+      } else {
+        terminal.push(`${compileActionLabel(action, language)} completed. Use Run to execute the generated binary.`);
+        ok = true;
+      }
     }
   } else if (language === "java") {
     const { found, missingTools } = await missing(["javac", "java"]);
@@ -1015,25 +1154,44 @@ async function compileAndRunCode(payload = {}) {
       return { ok: false, language, saved, terminal: `Java tools missing: ${missingTools.join(", ")}. Install a JDK or add it to PATH.` };
     }
     const className = javaMainClassName(payload.code, saved.fileName);
-    const cacheKey = compileCacheKey({ language, fileName: saved.fileName, sourceCode, compiler: found.javac, runtime: found.java, className });
+    const javaFiles = allWorkspaceFiles.filter((file) => normalizeCodeLanguage(file.language) === "java");
+    const cacheKey = compileCacheKey({
+      language,
+      fileName: saved.fileName,
+      files: javaFiles.map((file) => ({ fileName: file.fileName, code: file.code })),
+      compiler: found.javac,
+      runtime: found.java,
+      className
+    });
     const cacheDir = compileCacheDirectory(payload.projectId, language, cacheKey);
     await mkdir(cacheDir, { recursive: true });
-    const javaPath = path.join(cacheDir, `${className}.java`);
     const classPath = path.join(cacheDir, `${className}.class`);
+    const sourceDir = path.join(cacheDir, "sources");
+    await rm(sourceDir, { recursive: true, force: true });
+    const writtenSources = await writeCompileWorkspaceSources(javaFiles.length ? javaFiles : allWorkspaceFiles, sourceDir, { languages: ["java"] });
+    const javaPath = writtenSources.find((file) => file.fileName === saved.fileName)?.sourcePath || path.join(sourceDir, `${className}.java`);
     const cached = !forceRebuild && await pathExists(classPath);
+    terminal.push(`Java workspace sources: ${writtenSources.map(sourceDisplayName).join(", ") || saved.fileName}`);
     if (cached) {
       terminal.push(cachedBuildLine("Java class", classPath));
     } else {
-      await writeFile(javaPath, sourceCode, "utf8");
-      const compile = await runProcess(found.javac, [javaPath], { cwd: cacheDir, timeoutMs: 30000 });
-      append(`${path.basename(found.javac)} ${path.basename(javaPath)}`, compile);
+      if (!writtenSources.length) await writeFile(javaPath, sourceCode, "utf8");
+      const compileTargets = action === "build" ? writtenSources.map((file) => file.sourcePath) : [javaPath];
+      const compile = await runProcess(found.javac, ["-d", cacheDir, ...compileTargets], { cwd: sourceDir, timeoutMs: 30000 });
+      terminal.push(terminalLine(`${path.basename(found.javac)} ${action === "build" ? "workspace sources" : path.basename(javaPath)}`, processTerminalTextWithPaths(
+        compile,
+        writtenSources.map((file) => ({ from: file.sourcePath, to: sourceDisplayName(file) }))
+      )));
       ok = compile.ok;
     }
-    if (cached || ok) {
+    if ((cached || ok) && action !== "compile" && action !== "build") {
       terminal.push(`Generated class: ${classPath}`);
       const run = await runProcess(found.java, ["-cp", cacheDir, className], { cwd: cacheDir, timeoutMs: 20000, ...stdinOptions });
       append(`${path.basename(found.java)} ${className}`, run);
       ok = run.ok;
+    } else if (cached || ok) {
+      terminal.push(`${compileActionLabel(action, language)} completed. Use Run to execute ${className}.`);
+      ok = true;
     }
   } else if (language === "verilog" || language === "systemverilog") {
     const { found, missingTools } = await missing(["iverilog", "vvp"]);
@@ -1042,7 +1200,7 @@ async function compileAndRunCode(payload = {}) {
     }
     const hdlFiles = hdlFilesFromPayload(payload, saved.fileName, language);
     const testbenchFiles = hdlFiles.filter((file) => file.role === "testbench");
-    if (!testbenchFiles.length) {
+    if (action === "simulate" && !testbenchFiles.length) {
       return {
         ok: false,
         language,
@@ -1054,7 +1212,7 @@ async function compileAndRunCode(payload = {}) {
         ].join("\n")
       };
     }
-    if (!testbenchFiles.some((file) => hdlHasWaveDump(file.code))) {
+    if (action === "simulate" && !testbenchFiles.some((file) => hdlHasWaveDump(file.code))) {
       return {
         ok: false,
         language,
@@ -1111,6 +1269,16 @@ async function compileAndRunCode(payload = {}) {
     let waveform = null;
     if (cached || ok) {
       terminal.push(`Generated simulation: ${output}`);
+      if (action === "compile" || action === "build") {
+        terminal.push(`${compileActionLabel(action, language)} completed. Use Simulate to run the generated simulation and produce scope data.`);
+        return {
+          ok: true,
+          language,
+          saved,
+          waveform: null,
+          terminal: terminal.join("\n\n").trim() || "No compiler output was returned."
+        };
+      }
       await clearHdlWaveforms(cacheDir);
       const run = await runProcess(found.vvp, [output], { cwd: cacheDir, timeoutMs: 20000 });
       terminal.push(terminalLine(`${path.basename(found.vvp)} simulation.vvp`, cleanHdlSimulationOutput(run)));
@@ -1546,6 +1714,62 @@ function extractOpenAiText(data) {
   });
 
   return chunks.join("\n\n").trim();
+}
+
+function extractOllamaText(data = {}) {
+  if (typeof data.message?.content === "string") return data.message.content.trim();
+  if (typeof data.response === "string") return data.response.trim();
+  return "";
+}
+
+async function callOllamaPortfolioAi({ question, intent, conversation, context, allowWebSearch }) {
+  const host = process.env.OLLAMA_HOST || "http://127.0.0.1:11434";
+  const model = process.env.OLLAMA_MODEL || "llama3.2";
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), Number(process.env.OLLAMA_TIMEOUT_MS || 45000));
+  try {
+    const response = await fetch(`${host.replace(/\/+$/, "")}/api/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      signal: controller.signal,
+      body: JSON.stringify({
+        model,
+        stream: false,
+        messages: [
+          { role: "system", content: portfolioAiInstructions },
+          {
+            role: "user",
+            content: [
+              `Visitor question: ${question}`,
+              `Question intent: ${intent}`,
+              `Web/public lookup requested by browser: ${allowWebSearch ? "yes" : "no"}`,
+              "",
+              "Recent conversation JSON:",
+              clampText(JSON.stringify(conversation, null, 2), 8000),
+              "",
+              "Portfolio context JSON:",
+              clampText(JSON.stringify(context, null, 2), 18000)
+            ].join("\n")
+          }
+        ],
+        options: {
+          temperature: Number(process.env.OLLAMA_TEMPERATURE || 0.35)
+        }
+      })
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      return { ok: false, error: data?.error || `Ollama returned HTTP ${response.status}.` };
+    }
+    const answer = extractOllamaText(data);
+    return answer
+      ? { ok: true, answer, model }
+      : { ok: false, error: "Ollama did not return an answer." };
+  } catch (error) {
+    return { ok: false, error: error?.name === "AbortError" ? "Ollama timed out." : "Ollama is not reachable on this machine." };
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 function ruleBasedConversationAnswer(question = "") {
@@ -2202,7 +2426,6 @@ async function restorePublishTargetState(snapshot = {}) {
   } catch {
     // Best-effort rollback; preserve the original error for the caller.
   }
-  await rm(publishAuthCachePath, { force: true }).catch(() => {});
 }
 
 async function writeTargetCustomDomain(domain, customDomainProvided) {
@@ -2535,7 +2758,7 @@ async function authenticateGitHubForTarget(options = {}) {
   if (!remoteUrl) {
     throw publishAccessError(
       "A GitHub repository URL is required before authentication.",
-      "Enter the GitHub Pages or compatible static-site repository URL, then use Save target and authenticate.",
+      "Enter the GitHub Pages or compatible static-site repository URL, then click Authenticate target.",
       await getPublishTargetInfo()
     );
   }
@@ -3031,7 +3254,17 @@ async function handlePortfolioAi(request, response) {
 
   const apiKey = process.env.OPENAI_API_KEY || "";
   if (!apiKey) {
-    sendJson(response, 503, { error: "OPENAI_API_KEY is not configured for the local backend." });
+    const ollama = await callOllamaPortfolioAi({ question, intent, conversation, context, allowWebSearch });
+    if (ollama.ok) {
+      sendJson(response, 200, {
+        answer: ollama.answer,
+        model: ollama.model,
+        provider: "ollama",
+        usedWebSearch: false
+      });
+      return;
+    }
+    sendJson(response, 503, { error: ollama.error || "No local Ollama model or OPENAI_API_KEY is available for the local backend." });
     return;
   }
 
@@ -3224,7 +3457,7 @@ async function handleApi(request, response, url) {
     sendJson(response, 400, {
       ok: false,
       error: "Publishing target setup now requires GitHub authentication.",
-      details: "Use Save target and authenticate. The builder keeps the previous target until GitHub write access is verified."
+      details: "Use Authenticate target. The builder keeps the previous target until GitHub write access is verified."
     });
     return true;
   }

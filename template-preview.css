@@ -1973,6 +1973,84 @@ body.rich-image-dragging * {
   font-size: 0.78rem;
 }
 
+.compile-code-workspace-tree {
+  overflow: hidden;
+  border: 1px solid rgba(14, 116, 144, 0.16);
+  border-radius: 8px;
+  background: #f8fcff;
+}
+
+.compile-code-workspace-tree summary {
+  padding: 9px 10px;
+  color: #17384a;
+  font-size: 0.84rem;
+  font-weight: 900;
+  cursor: pointer;
+  user-select: none;
+}
+
+.compile-code-tree-files {
+  display: grid;
+  gap: 1px;
+  padding: 4px;
+  border-top: 1px solid rgba(14, 116, 144, 0.12);
+}
+
+.compile-code-tree-files p {
+  margin: 0;
+  padding: 8px;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.compile-code-tree-file {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 7px;
+  min-height: 28px;
+  padding: 4px 7px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--ink);
+  background: transparent;
+  font: inherit;
+  font-size: 0.8rem;
+  text-align: left;
+}
+
+.compile-code-tree-file span:nth-child(2) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compile-code-tree-file small {
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 850;
+}
+
+.compile-code-tree-file:hover,
+.compile-code-tree-file.is-active {
+  border-color: #93c5fd;
+  background: #dbeafe;
+}
+
+.compile-file-extension {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  padding: 1px 4px;
+  border-radius: 5px;
+  background: #e0f2fe;
+  color: #075985;
+  font-size: 0.66rem;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
 .compile-code-actions,
 .compile-code-command-bar,
 .compile-append-actions {
@@ -2129,6 +2207,10 @@ body.rich-image-dragging * {
   gap: 12px;
 }
 
+.compile-code-editor-grid-single {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .compile-code-source-field textarea,
 .compile-stdin-field textarea {
   resize: vertical;
@@ -2137,6 +2219,59 @@ body.rich-image-dragging * {
   font-family: Consolas, "Courier New", monospace;
   line-height: 1.55;
   tab-size: 2;
+}
+
+.compile-code-active-panel {
+  min-width: 0;
+}
+
+.compile-code-active-editor {
+  position: relative;
+  min-height: 440px;
+  overflow: hidden;
+  background: #0f172a;
+}
+
+.compile-code-active-editor .compile-code-preview {
+  position: absolute;
+  inset: 0;
+  min-height: 100%;
+  max-height: none;
+  overflow: hidden;
+  pointer-events: none;
+  white-space: pre;
+}
+
+.compile-code-active-editor textarea {
+  position: relative;
+  z-index: 1;
+  display: block;
+  width: 100%;
+  min-height: 440px;
+  max-height: 640px;
+  margin: 0;
+  padding: 12px 14px;
+  resize: vertical;
+  overflow: auto;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: transparent;
+  caret-color: #f8fafc;
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 0.86rem;
+  line-height: 1.55;
+  white-space: pre;
+  tab-size: 2;
+}
+
+.compile-code-active-editor textarea::selection {
+  color: transparent;
+  background: rgba(56, 189, 248, 0.35);
+}
+
+.compile-code-active-editor textarea::placeholder {
+  color: rgba(226, 232, 240, 0.56);
 }
 
 .compile-stdin-field textarea {
@@ -5339,6 +5474,31 @@ body[data-builder-theme="dark"] .compile-code-file:hover,
 body[data-builder-theme="dark"] .compile-code-file.is-active {
   border-color: #38bdf8;
   background: #1e3a5f;
+}
+
+body[data-builder-theme="dark"] .compile-code-workspace-tree {
+  border-color: var(--builder-dark-line);
+  background: #0f172a;
+}
+
+body[data-builder-theme="dark"] .compile-code-workspace-tree summary,
+body[data-builder-theme="dark"] .compile-code-tree-file {
+  color: #e5edf6;
+}
+
+body[data-builder-theme="dark"] .compile-code-tree-files {
+  border-color: var(--builder-dark-line);
+}
+
+body[data-builder-theme="dark"] .compile-code-tree-file:hover,
+body[data-builder-theme="dark"] .compile-code-tree-file.is-active {
+  border-color: #38bdf8;
+  background: #1e3a5f;
+}
+
+body[data-builder-theme="dark"] .compile-file-extension {
+  color: #cffafe;
+  background: #164e63;
 }
 
 body[data-builder-theme="dark"] .compile-code-actions button,

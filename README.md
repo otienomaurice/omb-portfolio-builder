@@ -12,7 +12,7 @@ A long beginner-oriented Word guide is included at:
 docs/OMB_Portfolio_Builder_Complete_Guide.docx
 ```
 
-It explains the high-level design, generated block diagrams, software-engineering decisions, shell commands, programming syntax, how the important files communicate, what each build tool owns, GitHub workflows, Electron, the installer, caching, API endpoints, data contracts, frontend/backend/AI/Cloudflare layers, the website, the parser, publishing, compiler tools, generated function inventories, and file-by-file repository notes.
+It explains the high-level design, generated block diagrams, software-engineering decisions, shell commands, programming syntax, how the important files communicate, what each build tool owns, GitHub workflows, Electron, the installer, caching, API endpoints, data contracts, frontend/backend/AI/Cloudflare layers, the website, the parser, publishing, compiler tools, generated function inventories, and file-by-file repository notes. The generator also writes source-focused Markdown notes to `docs/code-reference`.
 
 ## Install
 
@@ -87,11 +87,21 @@ Front-page, profile, contact, fun facts, and project overview fields use the sam
 
 Code support is available from the rich editor right-click menu. Use **Code block** or **Paste as code** for C, C++, SystemVerilog, LTspice, Java, JavaScript, Python, and HTML. Code blocks store the selected language, preserve source spacing when requested, highlight common language keywords, and render as code in project previews and published portfolios.
 
-Projects also include a separate **Compile Code** workspace. This is local builder tooling, not a portfolio text block. Add or import source files, choose the language, save the source, run the beautifier, check compiler availability, and compile or run code with terminal-style output. JavaScript uses Node.js, Python uses the installed Python runtime, Java uses a JDK, C/C++ use a MinGW/WinLibs-style compiler when available, and Verilog/SystemVerilog/LTspice report clear missing-tool messages unless compatible command-line tools are installed.
+Projects also include a separate **Compile Code** workspace. This is local builder tooling, not a portfolio text block. Each project behaves like a small IDE workspace: the left explorer lists the source files, the main editor is the active syntax-highlighted typing surface, and the backend receives the whole workspace so files can include or call other files. JavaScript uses Node.js, Python uses the installed Python runtime, Java uses a JDK, C/C++ use a MinGW/WinLibs-style compiler when available, and Verilog/SystemVerilog use Icarus Verilog and vvp when installed.
 
-The Compile Code workspace includes an explicit **Show output** control. Use it to jump directly to the local terminal output for the active source file. The terminal panel also supports copying output and clearing output, while the Messages log keeps user-facing compile/save/append status entries.
+The Compile Code workspace has separate **Compile**, **Build project**, and **Run** controls. Verilog/SystemVerilog also show **Simulate** and **Show scope**. Compile checks or builds the active source. Build project uses the files in the project workspace. Run executes the built active program when the language supports it. Simulate runs HDL through vvp and can produce waveform data for the scope.
 
-Verilog and SystemVerilog simulation now requires a testbench. Mark HDL files as **Design** or **Testbench**, or use **Add testbench** to create a starter bench with `$dumpfile` and `$dumpvars`. HDL runs compile the design and testbench together through Icarus Verilog/vvp, then parse the generated VCD file into a **Signal scope** so signals can be viewed over time.
+The Compile Code workspace includes an explicit **Show output** control. Use it to jump directly to the local terminal output for the active source file. The terminal panel also supports copying output and clearing output, while the Messages log keeps user-facing compile/save/append status entries. **Append code to project** scans the project sections and nested subsections so the active source can be appended as a formatted code block to the correct overview.
+
+Verilog and SystemVerilog simulation requires a testbench. Mark HDL files as **Design** or **Testbench**, or use **Add testbench** to create a starter bench with `$dumpfile` and `$dumpvars`. HDL Compile can syntax-check/build design files, while Simulate requires the testbench and parses the generated VCD file into a **Signal scope** so signals can be viewed over time.
+
+Uploaded project evidence is saved locally under:
+
+```text
+docs\<project-folder>\<section-or-subsection>\<filename>
+```
+
+For example, a SystemVerilog file attached to a design section might be saved as `docs\laser-link\design\filter.sv`. The upload status in the builder shows the generated relative path after a file is saved.
 
 The portfolio parser carries those rich text fields into project previews, full portfolio previews, saved drafts, and generated website catalogs. Use **Save project** or **Save all sections** before previewing or publishing so the parsed site output includes the latest front-page, profile, contact, fun fact, and project text formatting.
 
@@ -112,12 +122,10 @@ To publish:
 https://github.com/YOUR-USERNAME/YOUR-USERNAME.github.io.git
 ```
 
-3. Optionally enter a custom domain value for the generated `CNAME`.
-4. Click **Check tools** and install Git if needed.
-5. Click **Save target and authenticate**.
-6. Complete GitHub/Git Credential Manager sign-in if prompted.
-7. After authorization succeeds, load compatible target files if desired.
-8. Click **Save draft** before **Apply to site**.
+3. Click **Authenticate target**.
+4. Complete GitHub/Git Credential Manager sign-in if prompted.
+5. Click **Load from target** only when you want to import the latest compatible website files from that repository into this local builder.
+6. Click **Save draft** before **Apply to site**.
 
 Successful authorization is cached locally per repository and branch for about one day. If the same target receives more than three successful authorizations in one week, the local trust window can extend to 30 days for that exact target.
 
@@ -220,6 +228,7 @@ Use the workflow in [BRANCHING.md](BRANCHING.md):
 | `codex/terminal-output-and-complete-guide` | Adds explicit Compile Code output controls and generates the full beginner guide with diagrams, engineering decisions, command explanations, file communication maps, and tool-build ownership notes. | `development` | `development` | Merged into `development` |
 | `codex/expand-complete-guide-detail` | Expands the complete guide with deeper flow walkthroughs, API endpoint details, data contracts, caching detail, installer internals, generated function inventory, and additional beginner debugging notes. | `development` | `development` | Merged into `development` |
 | `codex/hdl-testbench-scope` | Requires HDL simulations to include a testbench, adds HDL design/testbench roles, and renders VCD waveform data in a signal scope. | `development` | `development` | Merged into `development` |
+| `codex/builder-file-ai-auth-docs-cleanup` | Allows all project evidence file types, cleans publishing target authentication/loading, improves the website AI fallback, adds IDE-style compile workspace controls, and expands generated code documentation. | `development` | `development` | Active |
 
 ## Uninstall
 
