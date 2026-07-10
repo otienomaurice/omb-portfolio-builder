@@ -259,7 +259,7 @@ Use the workflow in [BRANCHING.md](BRANCHING.md):
 | `codex/narrative-important-function-docs` | Splits the documentation model so the complete guide explains the whole system while generated per-file Word/PDF references explain each file's own contents, functions, variables, calls, returns, and safe-change notes. | `development` | `development` | Merged into `development` |
 | `codex/curated-server-script-index-docs` | Adds book-style curated Word/PDF guides for `server.mjs`, `script.js`, and `index.html`, with multi-page overviews before grouped code walkthroughs. | `development` | `development` | Merged into `development` |
 | `codex/function-object-variable-docs` | Expands the curated Word/PDF guides so `server.mjs` and `script.js` document top-level objects, variables, every extracted function, parameters, body behavior, called helpers, and local function variables without line-number-dependent notes. | `development` | `development` | Merged into `development` |
-| `codex/textbook-function-doc-style` | Rewrites curated function sections into a smoother textbook flow with responsibility, syntax, parameter reading, implementation discussion, collaborator explanation, and local variable walkthroughs. | `development` | `development` | Active |
+| `codex/textbook-function-doc-style` | Rewrites curated function sections into a smoother textbook flow with responsibility, syntax, parameter reading, implementation discussion, collaborator explanation, and local variable walkthroughs. | `development` | `development` | Merged into `development` |
 
 ## Uninstall
 
