@@ -258,7 +258,7 @@ Use the workflow in [BRANCHING.md](BRANCHING.md):
 | `codex/all-file-specific-docs` | Adds focused Word/PDF references for the important code and control files that drive the builder, website, installer, Cloudflare AI worker, workflows, parser, and generated documentation. | `development` | `development` | Merged into `development` |
 | `codex/narrative-important-function-docs` | Splits the documentation model so the complete guide explains the whole system while generated per-file Word/PDF references explain each file's own contents, functions, variables, calls, returns, and safe-change notes. | `development` | `development` | Merged into `development` |
 | `codex/curated-server-script-index-docs` | Adds book-style curated Word/PDF guides for `server.mjs`, `script.js`, and `index.html`, with multi-page overviews before grouped code walkthroughs. | `development` | `development` | Merged into `development` |
-| `codex/function-object-variable-docs` | Expands the curated Word/PDF guides so `server.mjs` and `script.js` document top-level objects, variables, every extracted function, parameters, body behavior, called helpers, and local function variables without line-number-dependent notes. | `development` | `development` | Active |
+| `codex/function-object-variable-docs` | Expands the curated Word/PDF guides so `server.mjs` and `script.js` document top-level objects, variables, every extracted function, parameters, body behavior, called helpers, and local function variables without line-number-dependent notes. | `development` | `development` | Merged into `development` |
 
 ## Uninstall
 
