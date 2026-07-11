@@ -264,7 +264,7 @@ Use the workflow in [BRANCHING.md](BRANCHING.md):
 | `codex/server-textbook-narrative-doc` | Reworks the `server.mjs` curated guide into a top-down textbook narrative with a server abstract, general JavaScript/Node syntax chapter, selected subsystem chapters, full highlighted source blocks, and procedural explanations without repeated reference labels. | `development` | `development` | Merged into `development` |
 | `codex/server-pdf-js-textbook` | Rebuilds the `server.mjs` guide as a PDF-only textbook with a 50-plus-page JavaScript syntax primer and feature-based backend chapters without reference-label blocks. | `development` | `development` | Merged into `development` |
 | `codex/server-deep-feature-code-guide` | Expands the `server.mjs` PDF guide's backend chapters with deeper grouped explanations of the actual code paths, important state, endpoint flows, helper calls, and returned objects while keeping the JavaScript primer intact. | `development` | `development` | Merged into `development` |
-| `codex/server-600-page-book-guide` | Expands the `server.mjs` PDF into a compact 600-page bookmarked book with 16 chapter-level sections, a dedicated Node.js/modules chapter, deeper real-implementation walkthroughs, and a long future-framework migration chapter. | `development` | `development` | Active |
+| `codex/server-600-page-book-guide` | Expands the `server.mjs` PDF into a compact 600-page bookmarked book with 16 chapter-level sections, a dedicated Node.js/modules chapter, deeper real-implementation walkthroughs, and a long future-framework migration chapter. | `development` | `development` | Merged into `development` |
 
 ## Uninstall
 
