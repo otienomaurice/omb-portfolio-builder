@@ -262,7 +262,7 @@ Use the workflow in [BRANCHING.md](BRANCHING.md):
 | `codex/textbook-function-doc-style` | Rewrites curated function sections into a smoother textbook flow with responsibility, syntax, parameter reading, implementation discussion, collaborator explanation, and local variable walkthroughs. | `development` | `development` | Merged into `development` |
 | `codex/textbook-code-block-docs` | Adds textbook-style source-integrated docs with syntax/framework chapters, exact highlighted source blocks, styled paragraphs, analogies, and expanded function/source walkthroughs. | `development` | `development` | Merged into `development` |
 | `codex/server-textbook-narrative-doc` | Reworks the `server.mjs` curated guide into a top-down textbook narrative with a server abstract, general JavaScript/Node syntax chapter, selected subsystem chapters, full highlighted source blocks, and procedural explanations without repeated reference labels. | `development` | `development` | Merged into `development` |
-| `codex/server-pdf-js-textbook` | Rebuilds the `server.mjs` guide as a PDF-only textbook with a 50-plus-page JavaScript syntax primer and feature-based backend chapters without reference-label blocks. | `development` | `development` | Active |
+| `codex/server-pdf-js-textbook` | Rebuilds the `server.mjs` guide as a PDF-only textbook with a 50-plus-page JavaScript syntax primer and feature-based backend chapters without reference-label blocks. | `development` | `development` | Merged into `development` |
 
 ## Uninstall
 
