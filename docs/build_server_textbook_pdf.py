@@ -1940,12 +1940,368 @@ FEATURES = [
 ]
 
 
+DEEP_FEATURE_SECTIONS = {
+    "Chapter 2: What server.mjs Is Responsible For": [
+        (
+            "The startup constants as the server's first contract",
+            [
+                "Before a visitor ever clicks a button, the backend has to decide where it is running, where the portfolio workspace lives, where compile artifacts belong, which port to listen on, and which host address should be bound. These values are not decorative configuration. They become the hidden contract that every later file, compile, upload, publish, and update operation relies on.",
+                "The useful way to read this group is as the server's startup map. root tells the backend where the application code lives. portfolioRoot tells publishing where the website mirror lives. compileRoot keeps runnable code projects away from public site files. port and host decide how the local HTTP service becomes reachable. packageJson carries the application version into update checks. If any of those values point to the wrong place, later code may still look correct while operating on the wrong folder or reporting the wrong version.",
+            ],
+            ["root", "portfolioRoot", "compileRoot", "port", "host", "packageJson"],
+            [],
+        ),
+        (
+            "Static file serving after the API path says no",
+            [
+                "The final createServer block has two jobs. First, it gives /api requests to handleApi. Second, it serves static files such as index.html, styles.css, script.js, icons, images, PDFs, and JSON when the request is not an API command. This is the part that makes the local preview feel like a website instead of a loose folder of files.",
+                "The serving path still has a boundary check. The request URL is decoded and joined to the root, but the final file path must still begin inside root. That protects the server from URL paths that try to climb outside the app folder. After the file is read, the extension is matched against the types object so the browser knows whether it is receiving HTML, CSS, JavaScript, JSON, an image, a PDF, or a generic binary stream.",
+            ],
+            ["types"],
+            ["__server_startup__"],
+        ),
+    ],
+    "Chapter 3: Request Boundaries And JSON Responses": [
+        (
+            "Text cleanup before data is trusted or sent to AI",
+            [
+                "Several backend features need to shorten, strip, or normalize text before it moves into a response, an AI prompt, or a public-source excerpt. clampText is the simplest guard: it turns an unknown value into text and cuts it to a maximum length. stripHtmlToText is more opinionated: it removes script and style blocks, removes tags, decodes common entities, and compresses whitespace.",
+                "These helpers are not trying to be a full browser or a perfect HTML parser. They are meant to make fetched public pages and saved rich content usable as plain evidence. Without them, AI prompts could become too large, HTML markup could drown out useful text, and source excerpts could carry irrelevant page structure instead of human-readable content.",
+            ],
+            [],
+            ["clampText", "stripHtmlToText"],
+        ),
+        (
+            "Local request checks before privileged actions",
+            [
+                "The local builder may listen on a host that a browser can reach, but that does not mean every device on the network should be allowed to run compiler commands, read publishing status, authenticate GitHub, or launch an installer. isLocalRequest is the backend's first practical answer to that problem.",
+                "The helper reads the request's remote address and treats loopback addresses as local. handleApi uses this result before write-style POST routes and before sensitive read routes such as security reports. The pattern is intentionally simple: route code asks whether the request came from this machine before allowing operations that belong only to the owner sitting at the builder.",
+            ],
+            [],
+            ["isLocalRequest"],
+        ),
+        (
+            "Safe names and safe paths are separate protections",
+            [
+                "safeSegment and safeFileName clean user-supplied names so they can be used as folder names or filenames. They remove characters that do not belong in a predictable local path and fall back to boring names when input is empty. That is useful, but it is not the whole safety story.",
+                "The path-resolving helpers then check the final absolute location. This second step matters because a cleaned name and a safe root boundary solve different problems. A name sanitizer keeps filenames readable and compatible. A root-boundary check prevents the final path from escaping the approved workspace. The upload endpoint, compile workspace, and publish sync all depend on both ideas.",
+            ],
+            [],
+            ["safeSegment", "safeFileName", "resolveInsideRoot", "resolveInsidePortfolioRoot", "resolveInsideCompileRoot"],
+        ),
+    ],
+    "Chapter 4: API Routing As User Features": [
+        (
+            "Catalog loading routes before anything is edited",
+            [
+                "The /api/catalog route exists because the builder must prefer the local draft when a draft exists, while the public website should still have a published catalog. handleApi first tries projects.local.json and falls back to projects.json. That means local builder work can be previewed without pretending it has already been published.",
+                "readJsonFile is intentionally small, but it is part of the story: it reads a file as UTF-8 and parses JSON. If that read fails for the draft, the route does not treat it as a fatal error; it simply answers with the published catalog. This is a good example of feature-specific error meaning. A missing draft is normal, while a malformed saved catalog would be a real problem.",
+            ],
+            ["draftPath", "catalogPath"],
+            ["readJsonFile"],
+        ),
+        (
+            "Save draft as a local-only write path",
+            [
+                "The Save draft path is the calm version of catalog writing. It receives the catalog object, checks that categories and projects are arrays, and writes the data to projects.local.json. No Git operation happens. No live website files are pushed. The whole point is to preserve the builder's working state locally.",
+                "The same validation used for Apply to site is used here because a broken draft can still break local previews. The function writes formatted JSON with a trailing newline so the file remains readable in Git diffs and text editors. The response returns the file path relative to the app root because the frontend needs a human-friendly success message, not an absolute machine path.",
+            ],
+            [],
+            ["handleApi"],
+        ),
+        (
+            "Apply to site as Save draft plus publishing authority",
+            [
+                "Apply to site shares the catalog validation path, but it adds a gate before public files are written. assertPublishAccess must succeed before the backend writes projects.json and before publishSiteChanges starts Git work. This is the difference between changing a local draft and changing a public website.",
+                "The route is designed to report partial meaning. If authorization fails, the response says publishing was blocked and includes guidance. If the catalog write succeeds but Git push fails, the response still says which local file was written and then reports the push failure. That shape lets the UI display a truthful message instead of flattening every problem into a single generic error.",
+            ],
+            [],
+            ["assertPublishAccess", "publishSiteChanges"],
+        ),
+        (
+            "Upload as a bytes-to-project-file workflow",
+            [
+                "The upload path turns a browser-supplied base64 payload into a real file under docs/<project>/<section>/<filename>. That sounds simple until you follow the boundary crossings: the project id, section name, filename, and file bytes all originate outside the backend. Each one is cleaned, decoded, or bounded before writing.",
+                "The function removes any data URL prefix, decodes the remaining base64 into a Buffer, creates the destination folder, writes the file, and returns a relative URL using forward slashes. That returned URL is the stable piece the catalog can store and the website can later render or offer as a download.",
+            ],
+            [],
+            ["safeSegment", "safeFileName", "resolveInsideRoot"],
+        ),
+    ],
+    "Chapter 5: Compile Code, Simulation, And Terminal Output": [
+        (
+            "Language detection before compiler selection",
+            [
+                "The compile workspace cannot choose a compiler until it has a normalized language. The detection path starts with explicit language values, then looks at filenames, then inspects the source text. This lets a pasted SystemVerilog module, a Java class, a C header, or a Python snippet land in the right toolchain more often without making the user fight the interface.",
+                "This group is deliberately layered. normalizeCodeLanguage converts human variants into internal ids. languageFromFileName uses extensions. detectCodeLanguageFromSource looks for syntax clues. safeCodeFileName then checks that the final filename extension makes sense for the selected language. Together, they keep the compile workspace forgiving at the input edge and strict before writing files.",
+            ],
+            ["compileLanguageProfiles"],
+            ["normalizeCodeLanguage", "sourceLooksCpp", "sourceLooksC", "languageFromFileName", "detectCodeLanguageFromSource", "safeCodeFileName"],
+        ),
+        (
+            "Beautifying code without becoming a full IDE parser",
+            [
+                "The beautifier is intentionally modest. It normalizes line endings, replaces tabs, performs brace-based indentation for C-like and HDL-like languages, and applies a simple HTML line split. It is not trying to replace clang-format, prettier, or a full language server.",
+                "That tradeoff is appropriate for this builder. Add Code needs presentable source blocks inside a portfolio, while Compile Code needs runnable files. beautifyCode improves readability for common pasted snippets without risking heavy dependencies or surprising rewrites.",
+            ],
+            [],
+            ["indentBraceCode", "beautifyCode"],
+        ),
+        (
+            "C and C++ as compiled workspace languages",
+            [
+                "C and C++ need more than a source file. The backend chooses a standard, warning flags, an output binary name, and a run command. The C-family helpers keep those decisions grouped so compileAndRunCode does not have to bury every flag directly inside its main body.",
+                "cFamilyCompileProfile chooses language-specific compiler flags. cFamilyBinaryName creates a predictable executable name. cFamilyWorkspaceSources decides which workspace files should participate. cFamilyRunOutput reshapes the compiler/run result for terminal display. These helpers make C and C++ feel like first-class IDE modes rather than one-off command strings.",
+            ],
+            [],
+            ["cFamilyCompileProfile", "cFamilyBinaryName", "cFamilyWorkspaceSources", "cFamilyRunOutput"],
+        ),
+        (
+            "HDL simulation as a design plus testbench workflow",
+            [
+                "Verilog and SystemVerilog are different from ordinary run buttons because a design usually needs a testbench to produce meaningful behavior. The HDL helpers separate design files, testbench files, waveform files, and simulator output. That matches the way digital hardware verification is actually done.",
+                "hdlFilesFromPayload reads the workspace and classifies files. writeHdlSimulationSources writes them into the cache directory. clearHdlWaveforms removes stale VCD files before a simulation. readHdlWaveform finds the new waveform after vvp runs. parseVcdScopeText turns that waveform text into signal data for the scope view.",
+            ],
+            [],
+            ["isHdlLanguage", "inferCompileFileRole", "normalizeCompileFileRole", "hdlFilesFromPayload", "writeHdlSimulationSources", "clearHdlWaveforms", "readHdlWaveform", "parseVcdScopeText"],
+        ),
+        (
+            "Terminal output as the user's proof of execution",
+            [
+                "A compiler feature is not useful if the output appears only in a hidden process or only after the user clicks somewhere else. The backend captures stdout, stderr, exit code, elapsed time, generated artifacts, and timeout state so the frontend terminal can repaint immediately.",
+                "The terminal helpers are small but important. terminalLine gives command output a readable shell-like heading. processTerminalText produces a standard status block. replacePathReferences can shorten machine-specific paths in displayed output. cleanHdlSimulationOutput removes simulator noise so HDL results are easier to read.",
+            ],
+            [],
+            ["terminalLine", "processTerminalText", "pathVariantsForReplacement", "replacePathReferences", "processTerminalTextWithPaths", "cleanHdlSimulationOutput", "runProcess"],
+        ),
+        (
+            "The Compile button as the full coordinator",
+            [
+                "compileAndRunCode is the main compile feature because it joins all the smaller pieces. It interprets the action, normalizes language, writes workspace files, finds tools, chooses commands, uses caches when possible, runs compile/build/run/simulate actions, collects terminal output, and returns a result the UI can render.",
+                "The function is long because the feature is genuinely multi-stage. A shorter version would likely hide important behavior in vague helpers or push compiler details into the browser. The current shape keeps privileged execution in Node while still organizing language-specific details in smaller support functions.",
+            ],
+            ["compileToolCandidates", "compileToolCache", "compileToolVersionCache"],
+            ["compileActionFromPayload", "compileActionLabel", "compileWorkspaceFilesFromPayload", "writeCompileWorkspaceSources", "compileAndRunCode", "installCompilerTools"],
+        ),
+    ],
+    "Chapter 6: Publishing, Authentication, And Loading From Target": [
+        (
+            "Git commands as backend-only side effects",
+            [
+                "Git operations are not done in the browser. runGit, runPublishGit, runGitWithInput, and runOptionalCommand are the backend's command layer around Git. They keep command execution, working directory, input, output, and failure text in one controlled area.",
+                "This grouping matters because publishing touches a real repository. If the browser assembled Git commands directly, it would mix UI state with privileged side effects. Keeping Git in the backend lets the UI ask for Authenticate target, Load from target, or Apply to site while the server handles the command details.",
+            ],
+            ["gitCandidates"],
+            ["runGit", "runPublishGit", "runOptionalCommand", "runGitWithInput", "gitFailureText", "getGitStatus"],
+        ),
+        (
+            "Target setup as a reversible transaction",
+            [
+                "Configuring a publishing target is risky because the builder may need to create or alter a local Git remote, check out a branch, write a CNAME, and verify write access. The code treats that as something that should be reversible if verification fails.",
+                "capturePublishTargetState records the current repository state before the attempt. configurePublishTarget applies the requested target. If access verification fails, restorePublishTargetState can put the workspace back. This is the kind of defensive design that prevents a failed authentication attempt from leaving the local repo half-reconfigured.",
+            ],
+            [],
+            ["capturePublishTargetState", "configurePublishTarget", "restorePublishTargetState", "writeTargetCustomDomain", "ensureGitRepository"],
+        ),
+        (
+            "Remote branch detection and synchronization",
+            [
+                "The builder should not assume every repository uses master, and it should not push over remote changes blindly. detectRemoteDefaultBranch, checkoutPublishBranch, ensurePublishHeadForWriteCheck, and synchronizePublishBranchFromRemote help the local workspace line up with the selected remote branch before writing.",
+                "This is the code path that addresses the kind of error where Git says the local branch is behind its remote counterpart. The publishing flow must fetch, inspect, checkout, and synchronize before the final push can be trusted.",
+            ],
+            [],
+            ["normalizeGitBranchName", "detectRemoteDefaultBranch", "originRemoteExists", "setOriginRemote", "checkoutPublishBranch", "ensurePublishHeadForWriteCheck", "synchronizePublishBranchFromRemote"],
+        ),
+        (
+            "Authentication cache scope and expiration",
+            [
+                "The authorization cache is not a global permission slip. It is scoped to the target repository, branch, and local conditions the code records. publishAuthCacheScope defines that scope. publishAuthCacheIsFresh then decides whether a stored session still matches the current access request.",
+                "The expiration logic gives the user convenience without turning a one-time sign-in into permanent trust. One day is the normal window. Repeated successful authorizations can extend trust for the same target, but the cache still has an expiration moment and a matching check.",
+            ],
+            ["publishAuthCachePath", "publishAuthCacheTtlMs", "publishAuthExtendedTtlMs", "publishAuthHistoryWindowMs", "publishAuthExtendedThreshold"],
+            ["readPublishAuthCache", "writePublishAuthCache", "publishAuthCacheScope", "parsePublishAuthTimestamp", "publishAuthCacheExpiresAt", "publishAuthCacheIsFresh", "assertPublishAccess"],
+        ),
+        (
+            "Load from target as a controlled import",
+            [
+                "syncFromPublishTarget is the opposite direction from Apply to site. It uses an authenticated target as a source of truth and pulls compatible site files into the local builder. That is how a fresh install can recover the latest website state after the owner authenticates.",
+                "The function needs the same seriousness as publishing because importing the wrong repository could overwrite local builder state. It checks access, synchronizes the branch, verifies compatible files, copies allowed assets, and reports what happened.",
+            ],
+            [],
+            ["workspaceHasCompatibleSiteFiles", "syncFromPublishTarget", "syncPortfolioPublishFiles", "stageablePublishPaths", "publishSiteChanges"],
+        ),
+    ],
+    "Chapter 7: Portfolio AI And Public Source Context": [
+        (
+            "Public source URLs before AI context is built",
+            [
+                "The AI feature is stronger when it can read public evidence, but public-source fetching needs guardrails. sourceUrlAllowed rejects URLs that should not be fetched. parseGitHubSourceUrl recognizes GitHub profiles, repositories, and raw source paths. githubQuestionTokens and scoring helpers decide which files are most likely relevant to the visitor's question.",
+                "This means the assistant can answer a repository-code question from actual public source excerpts instead of inventing snippets. The code deliberately separates URL parsing, allowed-source checking, repository scoring, file scoring, and text fetching so each step has a narrow responsibility.",
+            ],
+            [],
+            ["sourceLooksTextual", "sourceUrlAllowed", "gitHubHeaders", "parseGitHubSourceUrl", "githubQuestionTokens", "scoreGitHubFile", "wantsGitHubCode", "scoreGitHubRepo"],
+        ),
+        (
+            "Fetching GitHub and local source text",
+            [
+                "The source-reading pipeline has several paths. GitHub profile fetches discover repositories. Repository fetches collect likely files and source snippets. Same-site or local source fetches can read uploaded text evidence when allowed. fetchSourceText becomes the dispatcher that chooses the right path.",
+                "Each fetch is size-limited because an AI prompt should not be flooded by an entire repository or huge file. The purpose is to provide enough evidence for a grounded answer, not to mirror every byte of a public project.",
+            ],
+            [],
+            ["fetchGitHubJson", "fetchLimitedText", "fetchGitHubProfileSource", "fetchGitHubRepositorySource", "fetchGitHubSourceText", "readLocalSourceText", "fetchSourceText", "enrichPortfolioContext"],
+        ),
+        (
+            "Conversation cleanup before a model sees it",
+            [
+                "AI chat is not just the current question. Follow-up questions need recent context, but unlimited history can become noisy, expensive, and privacy-unfriendly. cleanConversationHistory reduces the chat history to a bounded, predictable shape before it is sent to Ollama or OpenAI.",
+                "The extraction helpers then turn provider-specific responses into plain assistant text. extractOpenAiText understands the Responses API shape. extractOllamaText understands the local Ollama response shape. The rest of the UI does not need to know which provider produced the answer.",
+            ],
+            [],
+            ["cleanConversationHistory", "extractOpenAiText", "extractOllamaText"],
+        ),
+        (
+            "General conversation fallback before model calls",
+            [
+                "ruleBasedConversationAnswer exists because not every chat needs a large model. A greeting, a simple identity prompt, or an empty conversational opener can be answered safely and quickly. This prevents the assistant from sounding like a canned project search result when the visitor is only starting a conversation.",
+                "The function does not replace the AI model. It handles the small social edges that make the chat feel alive before deeper questions are routed to portfolio context and model reasoning.",
+            ],
+            [],
+            ["ruleBasedConversationAnswer", "callOllamaPortfolioAi", "handlePortfolioAi"],
+        ),
+    ],
+    "Chapter 8: Updates, Security Reports, And Maintenance": [
+        (
+            "Version comparison and release selection",
+            [
+                "The update checker needs to compare semantic-looking version strings, skip known bad releases, and find useful release assets. compareVersions gives the updater a deterministic way to decide whether a release is newer. blockedAppUpdateVersions gives the maintainer a quick blocklist for releases that should not be offered.",
+                "getUpdateInfo combines package metadata, GitHub release information, and download asset names into the object the UI can show. A good updater is not just a download button; it tells the user what version they have, what version is available, and whether the app is already current.",
+            ],
+            ["packageJson", "blockedAppUpdateVersions"],
+            ["compareVersions", "getUpdateInfo", "getBuilderReleaseDownloadReport"],
+        ),
+        (
+            "PowerShell quoting and detached update handoff",
+            [
+                "downloadAndLaunchAppUpdate writes a PowerShell handoff script. That script has to survive after the app exits, wait for the old process to close, run the installer, find the installed executable, and relaunch it. powershellSingleQuoted and safeUpdateFileSegment are small helpers that keep generated script text and filenames predictable.",
+                "The update path is intentionally not a normal in-process function call. The running app cannot replace itself cleanly while its files are in use. The detached script is the bridge between the old process and the new installed version.",
+            ],
+            [],
+            ["safeUpdateFileSegment", "powershellSingleQuoted", "downloadAndLaunchAppUpdate"],
+        ),
+        (
+            "Security reports as local visibility",
+            [
+                "getSecurityReport gives the builder a local view of security-relevant state such as release download reporting and publishing status. It is guarded by isLocalRequest through the API route because even read-only operational details can be sensitive.",
+                "This is not a public analytics dashboard. It is a local owner-facing report. The distinction matters: public website visitors should not be able to inspect builder internals, but the authenticated builder owner needs enough visibility to understand access and download behavior.",
+            ],
+            [],
+            ["getSecurityReport"],
+        ),
+    ],
+}
+
+
+STATE_PROSE = {
+    "root": [
+        "root is the anchor for application files. Every static file request and many local writes begin with this value, so the server can behave consistently no matter which shell or packaged runtime started it.",
+        "The value is derived from import.meta.url instead of the current terminal folder. That prevents a common desktop-app bug where launching from a shortcut changes the process working directory and breaks file lookup.",
+    ],
+    "portfolioRoot": [
+        "portfolioRoot is the publish mirror boundary. In a separated workspace installation, it lets the builder application and public website output live in different folders while still cooperating during Apply to site.",
+        "Publishing functions should use this root when they mean public website files. Compile functions should not use it, because generated binaries and simulations do not belong in the public mirror.",
+    ],
+    "compileRoot": [
+        "compileRoot is the workspace for code that may be compiled, built, run, or simulated. Keeping it separate protects the portfolio from temporary binaries, class files, VCD waveforms, and run folders.",
+        "The separation also makes future containerization easier. A Docker-based compile service can mount the compile workspace without needing access to every website asset.",
+    ],
+    "publishPaths": [
+        "publishPaths is a public-output allowlist. It tells the publisher which files and folders are allowed to become part of the live website.",
+        "This list is one of the most important safety objects in the backend. Without it, a broad git add could accidentally publish drafts, credentials, compile outputs, local caches, or builder-only implementation files.",
+    ],
+    "compileLanguageProfiles": [
+        "compileLanguageProfiles is the compile workspace's language table. Each entry names the default file, legal extensions, display label, required tools, and installer hints for one language mode.",
+        "The object is easier to maintain than scattered if statements. Adding a new compile language later should start here because this is where the frontend's language choice becomes backend rules.",
+    ],
+    "compileToolCandidates": [
+        "compileToolCandidates is the Windows-aware executable search table. It records command names and likely install paths for compilers, simulators, interpreters, and LTspice.",
+        "This object exists because Windows machines often have tools installed but not on PATH. The builder should be helpful enough to find common install locations before telling the user a compiler is missing.",
+    ],
+    "compileToolCache": [
+        "compileToolCache remembers resolved compiler paths. Once the backend finds gcc, g++, javac, java, iverilog, vvp, node, python, or another tool, future compile clicks can reuse the result.",
+        "This is a responsiveness feature. Tool discovery can involve shell commands and filesystem searches, and the UI should not pay that cost on every run.",
+    ],
+    "compileToolVersionCache": [
+        "compileToolVersionCache stores version-output results. It supports tool status panels without repeatedly spawning every compiler just to display the same version string.",
+    ],
+    "portfolioAiInstructions": [
+        "portfolioAiInstructions is not ordinary explanatory text. In an AI-backed feature, prompt instructions are application behavior. They define how the assistant should distinguish greetings, general questions, project-specific questions, source-code requests, uncertainty, and portfolio links.",
+        "The backend keeps this instruction block because the browser should not own private model behavior or API-key routes. The public page asks a question; the backend assembles the trusted instruction and context.",
+    ],
+    "publishAuthCachePath": [
+        "publishAuthCachePath points to the local authorization session file. It is not a public website asset and should never be pushed as portfolio content.",
+        "The cache file lets the builder avoid asking for GitHub authorization on every Apply to site click while still limiting trust to a matching target and branch.",
+    ],
+    "publishAuthCacheTtlMs": [
+        "publishAuthCacheTtlMs is the normal daily trust window. It implements the user's desired behavior that GitHub authorization should be remembered for about a day, not requested every time the app reopens.",
+    ],
+    "publishAuthExtendedTtlMs": [
+        "publishAuthExtendedTtlMs is the longer trust window used after repeated successful authorizations. It is a convenience layer for a known owner and target, not a permanent bypass.",
+    ],
+    "publishAuthHistoryWindowMs": [
+        "publishAuthHistoryWindowMs defines how far back successful authorizations count toward extended trust. The cache logic uses this to decide whether the same target has been verified repeatedly within a meaningful recent period.",
+    ],
+    "publishAuthExtendedThreshold": [
+        "publishAuthExtendedThreshold is the number of successful authorizations needed before the longer trust window applies. It turns the security rule into an auditable constant.",
+    ],
+    "packageJson": [
+        "packageJson carries the builder's package metadata into runtime code. The updater uses its version field to decide whether the installed app is current or behind a release.",
+    ],
+    "blockedAppUpdateVersions": [
+        "blockedAppUpdateVersions is a release safety switch. If a version is known to be broken, the updater can skip it without deleting GitHub release files.",
+    ],
+    "gitCandidates": [
+        "gitCandidates is the Git discovery table. It includes plain git plus common Windows install paths so publishing can work even when PATH is not perfectly configured.",
+    ],
+    "types": [
+        "types maps file extensions to HTTP content types. Static serving uses it to make browsers interpret files correctly instead of guessing.",
+    ],
+    "draftPath": [
+        "draftPath is the local working catalog. Save draft writes here so unfinished builder edits can survive app restarts without becoming the public site catalog.",
+    ],
+    "catalogPath": [
+        "catalogPath is the published website catalog path. Apply to site writes here before the publish flow stages and pushes public files.",
+    ],
+}
+
+STATE_PROSE.update({
+    "port": [
+        "port is the numeric doorway used by the local HTTP server. Environment variables arrive as text, so Number(...) converts the configured value into the number that listen expects.",
+        "The fallback keeps the builder predictable on a normal machine. If nothing overrides PORT, the local service starts on 8080 and the app knows what address to open.",
+    ],
+    "host": [
+        "host controls which network interfaces the local preview binds to. The default 0.0.0.0 allows the server to listen broadly, while the later local-only API checks decide which privileged actions are actually allowed.",
+        "That distinction is important. A preview can be reachable for testing while compiler, publishing, update, and security routes still refuse non-local requests.",
+    ],
+    "defaultSiteRepository": [
+        "defaultSiteRepository is a deployment-time hint, not proof of authorization. It lets packaged builds carry a preferred website repository into messages and setup flows.",
+        "The backend still requires explicit target authentication before public website files can be changed. A default repository only improves guidance; it does not replace GitHub write verification.",
+    ],
+    "publishAuthorizationHelp": [
+        "publishAuthorizationHelp is the long explanation returned when publishing cannot proceed. It is centralized so every failed publishing path teaches the same distinction between Authenticate target, Load from target, and Apply to site.",
+        "Keeping this help text beside the authorization constants matters because publishing failures are user-facing. A clear backend error becomes a useful dialog instead of a vague Git failure.",
+    ],
+})
+
+
 def add_state_excerpt(story: list, source: str, names: list[str]) -> None:
     for name in names:
         snippet = extract_const(source, name)
         if not snippet:
             continue
-        add_code(story, snippet, f"The shared value below is part of the feature's working memory. It is shown here because the following behavior depends on it.")
+        add_heading(story, f"How {name} shapes this workflow", 3)
+        for text in STATE_PROSE.get(name, []):
+            add_p(story, text)
+        add_code(story, snippet, "The code below is the actual shared value used by this feature group.")
 
 
 def add_function_excerpt(story: list, source: str, names: list[str]) -> None:
@@ -1956,8 +2312,12 @@ def add_function_excerpt(story: list, source: str, names: list[str]) -> None:
             snippet = extract_function(source, name)
         if not snippet:
             continue
-        add_code(story, snippet, f"The source below is the implementation that carries this part of the feature.")
-        add_function_prose(story, name)
+        add_heading(story, f"How {name} works inside this feature", 3)
+        paragraphs = FUNCTION_PROSE.get(name, [])
+        if paragraphs:
+            add_p(story, paragraphs[0])
+        add_code(story, snippet, "This is the implementation at the point where the feature needs it.")
+        add_function_prose(story, name, start=1)
 
 
 FUNCTION_PROSE: dict[str, list[str]] = {
@@ -2010,16 +2370,584 @@ FUNCTION_PROSE: dict[str, list[str]] = {
     ],
 }
 
+FUNCTION_PROSE.update({
+    "__server_startup__": [
+        "The server startup block is the point where the file becomes a running local service. The createServer callback receives every browser request, parses the requested URL, and decides whether the request belongs to the API router or to static file serving.",
+        "The first meaningful branch checks for /api paths. When handleApi returns true, the request has already been answered. When it returns false, the code continues into the file-serving path. This is a simple but effective split between commands and assets: API routes are verbs, while static paths are files.",
+        "The pathname logic gives the browser index.html for the root URL and decodes other paths before joining them to root. The important protection is the startsWith check after normalization. That check prevents a crafted URL from escaping the application folder and reading unrelated local files.",
+        "After the file is read, the response attaches shared security headers, a content type from the types table, and no-store caching. The no-store rule keeps the builder honest while the user is editing; the browser should not keep showing old JavaScript, stale JSON, or outdated images after a save.",
+        "The final listen call binds the local service to host and port. The console messages are mostly developer-facing, but they also tell us the intended operating model: the same backend can serve desktop preview traffic and LAN phone-preview traffic, while privileged API routes still rely on local-request checks.",
+    ],
+    "clampText": [
+        "clampText is a small pressure valve. It accepts an unknown value, converts it into a string, and limits how much text can travel into an API response, AI prompt, title, metadata field, or source excerpt.",
+        "The helper is deliberately plain because it sits near trust boundaries. It does not try to understand the meaning of the text. Its job is to stop unbounded strings from expanding until they dominate memory, PDF output, AI context, or UI dialogs.",
+        "The fallback through String(value || \"\") means null, undefined, and other empty-like values become harmless empty text. The maxLength parameter lets each caller choose a size appropriate for the feature: short for titles, larger for AI context, and larger still for fetched source excerpts.",
+    ],
+    "stripHtmlToText": [
+        "stripHtmlToText turns markup-heavy content into readable evidence. It removes script and style regions first because those blocks are usually behavior or decoration, not the human text that should be shown to the AI assistant or a security report.",
+        "After that, tags are replaced with spaces and common HTML entities are decoded. This matters when portfolio content comes from rich editors, saved pages, GitHub-rendered files, or uploaded documentation. The backend wants the meaning, not the browser markup.",
+        "The final whitespace compression is as important as the tag removal. Without it, an extracted paragraph could become a river of blank lines and odd spacing, making AI prompts harder to read and search excerpts less useful.",
+    ],
+    "normalizeCodeLanguage": [
+        "normalizeCodeLanguage translates messy user-facing language names into the internal language keys used by the compile workspace. A person may type C++, cpp, JavaScript, node, sv, spice, or py; the compiler feature needs one stable key.",
+        "The aliases object is the polite front door. It accepts common spellings and abbreviations, then maps them to compileLanguageProfiles. The final fallback to JavaScript is intentional because a text-like unknown snippet is more likely to be safely syntax-checked by Node than treated as a compiler language with missing rules.",
+        "This function is called before filenames are validated, before tools are selected, before code is beautified, and before compile actions are chosen. A wrong value here would ripple through the whole compile feature, so the function keeps the rest of the code from repeatedly solving the same naming problem.",
+    ],
+    "sourceLooksCpp": [
+        "sourceLooksCpp is a heuristic reader. It scans the source for C++-specific includes and language marks such as std::, cout, templates, classes, constexpr, nullptr, and namespace usage.",
+        "The function is needed because header files are ambiguous. A .h file may be C or C++, and the builder has to choose whether gcc or g++ should become the likely tool. The heuristic is not a formal parser, but it is good enough to avoid many frustrating wrong guesses.",
+    ],
+    "sourceLooksC": [
+        "sourceLooksC performs the same kind of rough reading for C. It looks for standard C headers and functions such as printf, scanf, malloc, free, structs, and typedef struct patterns.",
+        "When both C and C++ could be plausible, the caller can compare these heuristics and choose the safer profile. This is part of making Compile Code feel like an IDE instead of a dumb text box.",
+    ],
+    "languageFromFileName": [
+        "languageFromFileName treats the filename as a clue. The extension is compared against the supported language profiles, which lets main.cpp, design.sv, Main.java, index.html, and simulation.cir select the correct mode without inspecting the entire body first.",
+        "The .h branch is special because header files are shared by C and C++. The function asks the source heuristics to resolve that ambiguity. If no strong C++ clue exists, it returns C, which is the more conservative answer for a plain .h file.",
+    ],
+    "detectCodeLanguageFromSource": [
+        "detectCodeLanguageFromSource is the compile workspace's fallback reader. It first trusts filename evidence because extensions are usually intentional. If that is not enough, it scans the text for language-specific patterns.",
+        "The order of checks matters. HTML is detected early because angle-bracket markup can otherwise look like operators. SystemVerilog is checked before Verilog because SystemVerilog contains many Verilog words plus richer constructs like logic, always_ff, interfaces, classes, and covergroups.",
+        "The C and C++ check is split through sourceLooksCpp and sourceLooksC so that includes and common library features can steer the choice. If no strong evidence appears, the function lands on JavaScript, which is a practical default for a browser-centered builder.",
+    ],
+    "safeCodeFileName": [
+        "safeCodeFileName turns a requested code filename into something the compile workspace can safely write. It keeps the name readable through safeSegment, but it forces the extension to belong to the selected language profile.",
+        "That extension enforcement prevents a mismatch like saving SystemVerilog as .txt or Java as .cpp after the language has already been selected. The fallback default file comes from compileLanguageProfiles, so each language keeps a natural filename even when the user leaves the field blank.",
+    ],
+    "indentBraceCode": [
+        "indentBraceCode is a lightweight formatter for brace-shaped languages. It walks one line at a time, lowers indentation before a closing brace or bracket, writes the trimmed line with the current indentation depth, then adjusts depth based on opening and closing delimiters.",
+        "This does not pretend to be a full compiler-aware formatter. It is a portfolio-friendly cleanup pass. Its value is that pasted code becomes easier to read quickly without introducing a heavy dependency or trying to rewrite language semantics.",
+    ],
+    "beautifyCode": [
+        "beautifyCode chooses the formatting strategy after normalizing line endings and tabs. C, C++, Java, JavaScript, Verilog, and SystemVerilog use the brace indentation helper. HTML receives a simple tag line break pass. Other languages keep trailing-space cleanup and blank-line compression.",
+        "The function belongs in the backend because the same formatter can be used from the desktop app no matter which browser view or Electron window is active. It also lets the future parser reuse the same cleanup rule before code is appended into a project section.",
+    ],
+    "findExecutableUnder": [
+        "findExecutableUnder is the slow fallback for tool discovery. It recursively searches a folder for executable names while respecting a depth limit so the builder does not crawl an entire drive forever.",
+        "The function first checks files in the current folder, then descends into child directories. That order favors obvious bin folders before deeper installation internals. The caller uses it only after faster PATH-style checks fail.",
+    ],
+    "findTool": [
+        "findTool is the compiler and Git discovery engine. It starts with compileToolCache because a tool path that was found once should not be rediscovered on every compile click.",
+        "The function then loops through known candidates. Some candidates are ordinary command names, which execFile can test through the operating system. Other candidates are explicit Windows paths, which can be checked directly. This dual approach handles both clean developer machines and ordinary user machines where PATH may not include every tool.",
+        "If the obvious candidates fail, the helper performs targeted searches under likely installation folders. It then stores the resolved path in compileToolCache. Returning an empty string is useful too: the UI can tell the user exactly which compiler or simulator is missing rather than letting a later command fail with a cryptic message.",
+    ],
+    "terminalLine": [
+        "terminalLine gives the terminal output a readable rhythm. It places a label above a block of command text so the frontend can show which command produced which stdout or stderr.",
+        "That small formatting choice matters when a compile action runs several commands. A JavaScript build may syntax-check multiple files, and C or HDL flows may compile, then run. The terminal needs separators that feel like a real development console.",
+    ],
+    "processTerminalText": [
+        "processTerminalText turns the raw result from runProcess into terminal prose. It combines exit status, timeout state, stdout, and stderr into a single display string.",
+        "The helper is the reason compile output can be shown immediately and consistently. The UI does not have to understand the result object's internals; it can render the terminal field and the messages log from a stable string shape.",
+    ],
+    "pathVariantsForReplacement": [
+        "pathVariantsForReplacement prepares several spellings of a filesystem path. Windows paths, slash-normalized paths, and basename forms can all appear in compiler output.",
+        "The compile terminal uses these variants to shorten or normalize paths before showing them to the user. That keeps output focused on project files instead of long local-machine folders.",
+    ],
+    "replacePathReferences": [
+        "replacePathReferences takes terminal text and replaces known path spellings with cleaner labels. It is a readability helper, not a security boundary.",
+        "The function is useful after compilers report errors with absolute paths. A beginner should see the file that failed and the compiler message, not be distracted by a long AppData or compile-cache path.",
+    ],
+    "processTerminalTextWithPaths": [
+        "processTerminalTextWithPaths combines the normal terminal formatter with path replacement. It first builds the terminal text from the process result, then cleans path references against the replacements supplied by the compile workflow.",
+        "This is a good example of helper composition. One helper understands process status, another understands path shortening, and the combined helper gives the UI a polished message.",
+    ],
+    "cFamilyCompileProfile": [
+        "cFamilyCompileProfile builds the C or C++ compiler decision. It chooses the executable, language standard, warnings, and output arguments appropriate for the selected language and active file.",
+        "The reason this lives outside compileAndRunCode is readability. C and C++ have enough special rules that burying flags directly in the main coordinator would make the central workflow harder to follow.",
+    ],
+    "cFamilyBinaryName": [
+        "cFamilyBinaryName creates a predictable executable name from the source file. That keeps compiled artifacts understandable in the cache and terminal output.",
+        "The filename is not only cosmetic. Later run commands need to know exactly which binary was produced, and stable naming avoids accidentally running an older artifact from a previous compile.",
+    ],
+    "toolVersionLine": [
+        "toolVersionLine asks a tool for its version text and caches the answer. Version checks are useful for diagnostics, but repeatedly launching compilers just to print versions would make the UI feel sluggish.",
+        "The function tolerates imperfect tools. Some programs write versions to stderr, some to stdout, and some fail if the version flag is not supported. The helper collects the useful text when it can and lets the caller continue when it cannot.",
+    ],
+    "cFamilyRunOutput": [
+        "cFamilyRunOutput translates a finished C or C++ program run into terminal text. It reports timeout or exit code first, then appends stdout and stderr or a clear no-output message.",
+        "This is separate from generic process text because compiled programs are user-authored. A successful program with no output should feel different from a missing terminal field; the helper tells the user the run completed even when the code printed nothing.",
+    ],
+    "cleanHdlSimulationOutput": [
+        "cleanHdlSimulationOutput reshapes simulator output into something readable. HDL simulators often include finish lines, file references, and mixed stdout/stderr text. The helper separates signal-like output from finish notices and reports simulation status at the top.",
+        "For a hardware learner, this matters because simulation is about behavior over time. The terminal should make it obvious whether the testbench completed, timed out, or produced useful printed values.",
+    ],
+    "runProcess": [
+        "runProcess is the backend's controlled way to run an external program. It uses spawn rather than string-built shell commands, so the executable and argument list stay separated.",
+        "The function creates a promise around the child process life cycle. It records the start time, starts a timeout, gathers stdout and stderr through data events, optionally writes stdin, and resolves only after the process closes or errors.",
+        "The Windows taskkill branch is there because compiler or simulator processes can spawn children. Killing only the parent may leave a stuck subprocess alive. The function therefore tries to stop the whole process tree before marking the run as timed out.",
+        "The returned object has the fields the rest of the compile system needs: ok, code, stdout, stderr, timedOut, and elapsedMs. By returning a normalized object, the compile coordinator can treat Node, Python, gcc, javac, iverilog, and vvp with the same display logic.",
+    ],
+    "compileToolStatus": [
+        "compileToolStatus turns the language profiles into a readiness report. It gathers the unique required tools, asks findTool for each one, and then builds a language-by-language object that says whether each mode is ready.",
+        "The frontend can use this result to show the user which compilers are available, which paths were found, and which winget install hints may be needed. The function is read-only but still local-only because it reveals machine setup details.",
+    ],
+    "isHdlLanguage": [
+        "isHdlLanguage answers a narrow but important question: does this language behave like hardware description code? Verilog and SystemVerilog need simulation roles, testbenches, VCD waveforms, and a simulator flow.",
+        "Keeping the check in one helper avoids scattering arrays of HDL names across compile logic. If VHDL is added later, this is one of the places the new mode would join the HDL path.",
+    ],
+    "inferCompileFileRole": [
+        "inferCompileFileRole classifies HDL files as design or testbench. It reads both the filename and the code, looking for common testbench clues such as tb, testbench, dumpfile, dumpvars, and module names that begin like a bench.",
+        "That role matters because a hardware simulation needs both the design being tested and the testbench driving it. The builder should not make the user manually label every file when the common clues are obvious.",
+    ],
+    "normalizeCompileFileRole": [
+        "normalizeCompileFileRole turns user-facing role words into the internal design/testbench distinction. Non-HDL languages always return source because they do not need that split.",
+        "This helper lets the UI offer friendly terms while the simulator pipeline receives predictable values.",
+    ],
+    "saveCompileSource": [
+        "saveCompileSource is the persistence point for the Compile Code workspace. It normalizes the language, chooses a safe filename, creates a stable file folder, writes the source file, optionally writes stdin, and records metadata.",
+        "The metadata file is important because code compilation is not just text. The builder needs to remember the title, file name, language, HDL role, original path, and save time. That object lets future sessions reload a workspace without guessing what each file was supposed to do.",
+        "The function returns metadata rather than raw file contents. The caller already knows the submitted code; what it needs after saving is the identity and filesystem location of the saved workspace item.",
+    ],
+    "javaMainClassName": [
+        "javaMainClassName extracts the class name Java should run. Java requires the runtime class name, and public classes usually need to match the filename.",
+        "The function first prefers a public class, then any class, then the filename stem, and finally Main. This sequence lets simple pasted Java examples work without forcing the user to configure a run target manually.",
+    ],
+    "compileCacheKey": [
+        "compileCacheKey hashes the pieces that define a build. The short SHA-256 digest becomes a folder name for cached compile artifacts.",
+        "The cache key is useful because builds are expensive compared with formatting text. If the same source, action, language, and inputs have already produced an artifact, the backend can reuse it rather than recompiling for no reason.",
+    ],
+    "compileCacheDirectory": [
+        "compileCacheDirectory converts a project id, language, and cache key into a path under compileRoot. It uses safeSegment and resolveInsideCompileRoot so the cache remains inside the compile workspace.",
+        "This keeps build artifacts organized by project and language while still respecting the filesystem boundary that protects the rest of the application.",
+    ],
+    "cachedBuildLine": [
+        "cachedBuildLine is a terminal message helper. When a build artifact is reused, the terminal should say that clearly and show which output path is being used.",
+        "Without this message, a fast compile could look suspiciously like nothing happened. The helper turns caching into visible behavior.",
+    ],
+    "hdlModuleNames": [
+        "hdlModuleNames scans source text for module declarations. It is a simple regex-based helper that gives the simulator flow names it can use when reasoning about design and testbench files.",
+        "The helper is not a replacement for elaboration by the simulator. It only provides quick metadata for sorting and display before Icarus Verilog does the real compile.",
+    ],
+    "hdlHasWaveDump": [
+        "hdlHasWaveDump checks whether a testbench already contains dumpfile and dumpvars calls. Those calls are what create the VCD waveform file used by the scope view.",
+        "If the user supplies a testbench without waveform dumping, the backend can still run the simulation, but it may not have a scope waveform to parse. This helper lets the UI explain that difference.",
+    ],
+    "hdlFilesFromPayload": [
+        "hdlFilesFromPayload builds the HDL file set for simulation. It reads workspaceFiles plus the currently active file, rejects non-HDL or empty entries, normalizes filenames and roles, and stores the result in a Map keyed by file id.",
+        "The Map prevents duplicate entries when the active file is also present in the workspace list. The final sort places design files before testbenches, which matches the mental model of compiling the circuit before the bench that drives it.",
+    ],
+    "compileActionFromPayload": [
+        "compileActionFromPayload decides what the user's button means. It accepts compile, build, run, and simulate when explicitly provided, then chooses a default based on language.",
+        "The default is intentionally different for HDL. Verilog and SystemVerilog should simulate by default because a design file alone does not behave like a software program with a main function.",
+    ],
+    "compileActionLabel": [
+        "compileActionLabel converts the internal action into text the terminal can show. This is where run becomes Run, build becomes Build project, and HDL defaults become Simulate.",
+        "Small labeling helpers reduce UI inconsistency. The backend and frontend can display the same action wording instead of inventing labels separately.",
+    ],
+    "compileWorkspaceFilesFromPayload": [
+        "compileWorkspaceFilesFromPayload turns the browser's workspace payload into a clean list of files. It accepts multiple workspace files, adds the active file, ignores empty code, normalizes language and role, and gives each item a safe id and filename.",
+        "The result is sorted by filename so build order and terminal display are predictable. More importantly, this function treats Compile Code as a workspace, not a single text area. That is what lets one file include, import, instantiate, or call another.",
+    ],
+    "writeCompileWorkspaceSources": [
+        "writeCompileWorkspaceSources materializes the workspace on disk. It creates the target directory, optionally filters by languages or extensions, prevents filename collisions by appending a count, writes each source file, and returns the written file records.",
+        "This is the moment where in-memory editor state becomes a real compiler workspace. Returning sourcePath and uniqueName gives later commands the exact files that were actually written, not merely the files the browser intended to write.",
+    ],
+    "sourceDisplayName": [
+        "sourceDisplayName chooses the most useful name for terminal output. A collision-handled uniqueName is preferred, then the original filename, then the basename of a source path.",
+        "The helper keeps terminal messages readable even after the backend has had to rename duplicate files inside the run directory.",
+    ],
+    "cFamilyWorkspaceSources": [
+        "cFamilyWorkspaceSources selects the files that should participate in a C or C++ build. It uses extension sets for each language and ensures the active file remains included if the extension filtering missed it.",
+        "This is what lets a C++ project compile several .cpp and .h files as a workspace instead of only the active editor buffer. It also avoids sending JavaScript or HDL files to gcc by accident.",
+    ],
+    "writeHdlSimulationSources": [
+        "writeHdlSimulationSources creates a clean HDL sources folder for a simulation run. It removes the previous sources directory, recreates it, writes unique filenames, and returns the written records.",
+        "The cleanup step is important. HDL simulations can be misleading if old files stay in the source folder and the simulator silently compiles stale modules from an earlier attempt.",
+    ],
+    "findFilesByExtension": [
+        "findFilesByExtension recursively finds generated files such as .vcd waveforms. The depth limit keeps the search bounded while still allowing simulators to place outputs in nested folders.",
+        "The waveform reader depends on this helper because the testbench decides the VCD filename. The backend cannot assume the waveform will always be called dump.vcd in the top directory.",
+    ],
+    "normalizeVcdValue": [
+        "normalizeVcdValue converts VCD scalar and vector value syntax into a consistent lowercase form. It understands single-bit values and binary or real-style vector prefixes.",
+        "The scope renderer needs clean values because waveform display is about comparing signal changes over time. Leaving prefixes and underscores in inconsistent forms would make frontend plotting harder.",
+    ],
+    "parseVcdScopeText": [
+        "parseVcdScopeText is the waveform parser behind the scope icon. It reads VCD text line by line, captures timescale, follows scope nesting, records signal definitions, then collects value changes after definitions end.",
+        "The parser limits signal count and change count. That is a practical UI decision: a waveform file can be enormous, but the portfolio builder scope needs a responsive educational view, not a full commercial simulator database.",
+        "The returned object contains the source filename, timescale, maximum time, and a list of signals with changes. That is exactly the shape a frontend scope view needs to draw signal names and transitions over time.",
+    ],
+    "readHdlWaveform": [
+        "readHdlWaveform searches the simulation cache for VCD files, chooses a short path as the likely main waveform, limits extremely large text, and passes it to parseVcdScopeText.",
+        "This function is the bridge between the simulator's file output and the UI scope. Without it, a successful simulation would still leave the user hunting through folders for a waveform file.",
+    ],
+    "clearHdlWaveforms": [
+        "clearHdlWaveforms removes old VCD files before a new simulation run. That prevents the scope from accidentally showing yesterday's waveform after today's simulation fails to produce one.",
+        "The function deliberately ignores individual deletion errors. A stale file should not stop the whole simulation attempt, but the backend should still make a best effort to start clean.",
+    ],
+    "compileAndRunCode": [
+        "compileAndRunCode is the compiler feature's main conductor. It receives the browser payload, decides the language and action, saves the active source, builds a run workspace, resolves tools, executes compile/build/run/simulate steps, and returns terminal text plus artifacts.",
+        "The early part of the function prepares shared state: language, profile, safe filename, saved metadata, source path, action, workspace files, stdin, and terminal lines. These variables are the common vocabulary used by every language branch.",
+        "The nested ensureRunSource function is a local helper because it belongs only to this workflow. It creates a unique run directory once, writes the selected workspace files, finds the active source path, and copies the saved source if the active file was not already written. Keeping it inside compileAndRunCode makes it clear that run directories are temporary execution spaces, not permanent project records.",
+        "Each language branch then maps the user's requested action to real commands. HTML performs lightweight validation. JavaScript runs node --check and optionally node. Python runs the interpreter. Java compiles with javac and runs the detected class. C and C++ compile to binaries. Verilog and SystemVerilog use iverilog and vvp, then attempt waveform parsing.",
+        "The function's return object is shaped for the frontend. It includes ok, language, saved metadata, terminal output, and language-specific extras such as artifacts or waveform information. That makes the Compile, Build, Run, Simulate, Show Output, Messages Log, and Scope UI possible without each button inventing a different backend contract.",
+    ],
+    "installCompilerTools": [
+        "installCompilerTools is the assisted setup route for compilers. It looks at the selected language profile, reads its winget install hints, and starts the appropriate installer command when possible.",
+        "The function does not claim that every language needs installation. JavaScript may use the bundled Node runtime, HTML needs no compiler, and some tools may already be found. The helper exists for languages where a missing external compiler would otherwise leave the user stuck.",
+    ],
+    "sourceLooksTextual": [
+        "sourceLooksTextual is part of the AI source-ingestion boundary. It decides whether a source descriptor appears to represent text that can be fetched or read into an AI prompt.",
+        "The function keeps binary-heavy evidence such as images, archives, executables, and office files out of text fetch paths. Those files may still be linked or downloaded, but they should not be treated as plain source text.",
+    ],
+    "sourceUrlAllowed": [
+        "sourceUrlAllowed decides whether a URL is safe enough for backend fetching. It allows known public source contexts and rejects URLs that do not match the permitted shape.",
+        "This matters because the AI assistant can fetch public GitHub and same-site evidence. The backend needs a gate so a portfolio visitor cannot turn the AI endpoint into a general private-network fetcher.",
+    ],
+    "gitHubHeaders": [
+        "gitHubHeaders prepares the headers used for GitHub API requests. The accept type can change depending on whether the request wants JSON metadata or raw content, while the user-agent identifies the builder.",
+        "Putting headers in a helper avoids subtle differences between GitHub fetch calls. Consistent headers reduce API surprises and make future token support easier to add in one place.",
+    ],
+    "parseGitHubSourceUrl": [
+        "parseGitHubSourceUrl reads GitHub-style URLs and extracts owner, repository, branch, and file path when possible. It handles repository pages and blob/raw-style source links differently.",
+        "The AI code-fetching feature needs this parser because a portfolio may store a normal repository URL, a branch URL, or a direct file URL. The backend turns those shapes into a common object before scoring or fetching files.",
+    ],
+    "githubQuestionTokens": [
+        "githubQuestionTokens reduces the visitor's question to searchable words. It removes punctuation-like noise and keeps tokens that can help match repositories and files.",
+        "This is simple information retrieval. The model should receive source excerpts that are relevant to the question, and token matching is a cheap first pass before any AI reasoning happens.",
+    ],
+    "scoreGitHubFile": [
+        "scoreGitHubFile assigns a relevance score to a file path based on the question. Files with matching names, extensions, or likely source-code relevance rise higher.",
+        "The score does not prove that a file is the answer. It decides what to fetch first so the AI prompt contains useful evidence within a bounded context size.",
+    ],
+    "wantsGitHubCode": [
+        "wantsGitHubCode recognizes questions that are asking for source, implementation, repository code, functions, or files. That signal lets the assistant prefer GitHub source excerpts over high-level portfolio summaries.",
+        "This prevents generic answers when a visitor specifically asks to see code. If public source is available, the backend should fetch it; if it is not, the assistant should say so clearly.",
+    ],
+    "scoreGitHubRepo": [
+        "scoreGitHubRepo ranks repositories against the visitor's question. Names, descriptions, languages, and topics can all make one repository more relevant than another.",
+        "A portfolio owner may link several GitHub repositories. Scoring helps the AI avoid dumping random links and instead focus on the repository most related to the current prompt.",
+    ],
+    "fetchGitHubJson": [
+        "fetchGitHubJson is the small GitHub API fetch wrapper. It requests JSON, checks response status, and returns parsed data.",
+        "The helper keeps error behavior consistent across profile, repository, and contents requests. If GitHub rejects a request, callers can handle one predictable failure shape.",
+    ],
+    "fetchLimitedText": [
+        "fetchLimitedText downloads text with a maximum length. It is used when a source file or public page might be larger than the AI prompt should receive.",
+        "The limit is a product decision. The assistant needs evidence, not an entire repository or huge generated file. Bounded text keeps answers responsive and reduces model context waste.",
+    ],
+    "fetchGitHubProfileSource": [
+        "fetchGitHubProfileSource handles profile-level GitHub links. It can discover repositories from a GitHub user profile and rank them against the question.",
+        "This allows a broad GitHub profile link in the portfolio to become useful evidence. Instead of only showing the profile URL, the backend can find likely repositories when the visitor asks a code-related question.",
+    ],
+    "fetchGitHubRepositorySource": [
+        "fetchGitHubRepositorySource handles repository-level code retrieval. It asks GitHub for repository contents, filters out binary files, scores likely text files, fetches limited excerpts, and packages them as source evidence.",
+        "The function is intentionally public-only. It should never imply private repository access. If a repository or file cannot be fetched publicly, the assistant should report that limitation rather than inventing code.",
+    ],
+    "fetchGitHubSourceText": [
+        "fetchGitHubSourceText is the direct GitHub source path. When a portfolio link already points at a specific file, this helper fetches the relevant text without first ranking a whole repository.",
+        "That direct path is useful for resumes, examples, HDL files, scripts, or documentation links that the owner intentionally exposed as public evidence.",
+    ],
+    "readLocalSourceText": [
+        "readLocalSourceText reads same-site text files from the portfolio workspace when the URL maps to local published content. It keeps local reads inside the approved root and applies text limits.",
+        "This lets uploaded text evidence, Markdown files, source files, or simulation logs become AI context without requiring GitHub fetching.",
+    ],
+    "fetchSourceText": [
+        "fetchSourceText is the dispatcher for source evidence. It looks at a source descriptor and chooses whether to read local text, fetch a same-site URL, fetch a GitHub file, or expand a GitHub repository.",
+        "That dispatcher is what lets the AI assistant combine uploaded project files, public repository files, resume excerpts, and safe website links through one enrichment path.",
+    ],
+    "enrichPortfolioContext": [
+        "enrichPortfolioContext prepares the information the AI will see. It starts with the frontend-supplied context, then adds source excerpts when links or file descriptors can be safely fetched.",
+        "The function's job is not to answer the question. Its job is to assemble trustworthy evidence before the model answers. That separation keeps prompt construction different from response generation.",
+    ],
+    "cleanConversationHistory": [
+        "cleanConversationHistory keeps recent chat context useful and bounded. It accepts only reasonable message shapes, trims text, and limits how much history travels to the model.",
+        "A conversational assistant needs memory for follow-up questions, but unlimited chat history would make prompts noisy and slower. This helper preserves continuity without letting the conversation become an unbounded payload.",
+    ],
+    "extractOpenAiText": [
+        "extractOpenAiText reads the OpenAI Responses API output shape and returns the assistant's text. Provider responses can contain arrays, nested content items, and metadata; the frontend only needs the final answer.",
+        "This helper isolates provider-specific parsing. If OpenAI changes response details later, the rest of handlePortfolioAi can remain focused on routing and error handling.",
+    ],
+    "extractOllamaText": [
+        "extractOllamaText performs the same normalization for the local Ollama response. It returns the model's message text while hiding provider-specific response details from the rest of the app.",
+        "Keeping OpenAI and Ollama extraction separate lets the assistant support both cloud and local models without forcing the UI to understand either response format.",
+    ],
+    "callOllamaPortfolioAi": [
+        "callOllamaPortfolioAi is the local-model path. It builds a prompt from instructions, question, intent, conversation, and portfolio context, then sends it to the local Ollama API.",
+        "The function is important for offline or keyless machines. If OPENAI_API_KEY is not available, the builder can still answer through a local model when Ollama is running.",
+        "The returned object includes ok, answer, model, and error fields so handlePortfolioAi can either send the local answer or report that no backend model is available.",
+    ],
+    "ruleBasedConversationAnswer": [
+        "ruleBasedConversationAnswer handles tiny conversational cases that should not need a model call. Greetings and simple identity prompts can be answered immediately and naturally.",
+        "This helper improves the feel of the chatbot. Without it, a visitor saying hi could receive an awkward portfolio-search answer or an unnecessary model failure when the backend provider is unavailable.",
+    ],
+    "isLocalRequest": [
+        "isLocalRequest checks the remote address and decides whether the request came from the same machine. Loopback addresses are treated as local.",
+        "The helper is used before routes that expose machine details or perform side effects: compiler status, security reports, saving files, installing tools, launching updates, authenticating GitHub, and publishing.",
+    ],
+    "readJsonFile": [
+        "readJsonFile is the small JSON file reader used by catalog, template, and configuration routes. It reads UTF-8 text and parses it into a JavaScript object.",
+        "The helper keeps route code compact, but callers still decide what failure means. A missing draft catalog can fall back to the published catalog, while a missing required template file may be a real endpoint error.",
+    ],
+    "readRequestJson": [
+        "readRequestJson receives a POST body as a stream, enforces a maximum size while reading, joins chunks into text, and parses JSON.",
+        "This function is the shared entrance for write operations. It does not validate every possible payload because each route has its own data contract, but it ensures that all routes start from a bounded parsed object.",
+    ],
+    "safeSegment": [
+        "safeSegment turns an arbitrary title or id into one safe path segment. It strips unusual characters, trims repeated separators, limits length, and falls back to a boring name when needed.",
+        "This is used for project folders, section folders, compile file ids, temporary branch names, and update filename fragments. The goal is readable paths that cannot carry path separators or control characters.",
+    ],
+    "safeFileName": [
+        "safeFileName is the upload-oriented filename cleaner. It preserves a basename and extension while removing characters that do not belong in a local filename.",
+        "Unlike safeCodeFileName, this helper does not force a compile-language extension. Project evidence can be PDFs, images, schematics, source files, logs, spreadsheets, and many other file types.",
+    ],
+    "resolveInsideRoot": [
+        "resolveInsideRoot joins path segments to the application root and verifies that the final absolute path still belongs under root.",
+        "The check is the important part. A sanitized name is helpful, but a final root-boundary check is what prevents path traversal from becoming file access outside the builder folder.",
+    ],
+    "resolveInsidePortfolioRoot": [
+        "resolveInsidePortfolioRoot applies the same boundary rule to the website/publish workspace. It is used when the backend means public portfolio files rather than app implementation files.",
+        "The separate helper makes mistakes easier to spot in code review. Publishing code should normally use the portfolio boundary; application-code routes should normally use the app boundary.",
+    ],
+    "resolveInsideCompileRoot": [
+        "resolveInsideCompileRoot applies the boundary rule to compile workspaces and build caches. It keeps generated binaries, class files, source copies, and waveforms out of the website folder.",
+        "This separation reduces accidental publishing risk and prepares the system for future Docker/container compilation where compileRoot could be mounted independently.",
+    ],
+    "samePath": [
+        "samePath compares two paths after resolving them. It lets the backend tell whether the application root and portfolio root are actually the same folder.",
+        "That matters in separated installations. If the builder app and portfolio output share a folder, copying is unnecessary. If they differ, syncPortfolioPublishFiles must copy allowlisted files across.",
+    ],
+    "pathExists": [
+        "pathExists is a small existence test that returns true or false instead of throwing. Many workflows need to ask whether an optional file or folder exists without treating absence as an exception.",
+        "The helper keeps optional-path logic readable in publish sync, tool discovery, and file searching.",
+    ],
+    "publishAccessError": [
+        "publishAccessError creates an Error object with extra details and publishAccess metadata attached. This lets catch blocks return a useful structured JSON response instead of losing context.",
+        "Publishing failures often need more than one sentence. The UI needs the main message, Git details, target repository, branch, and next-step help. This helper keeps those fields together.",
+    ],
+    "gitFailureText": [
+        "gitFailureText extracts the most useful text from a failed Git command. Git errors may arrive through stderr, stdout, or the Error message itself.",
+        "The helper improves dialogs after authentication, synchronization, or push failures. The user sees the actual Git reason rather than a generic JavaScript exception.",
+    ],
+    "remoteUrlForDisplay": [
+        "remoteUrlForDisplay removes sensitive credential material from a remote URL before it is shown in the UI or stored in authorization metadata.",
+        "A repository URL with embedded credentials should not be echoed back into a visible dialog. This helper keeps target display useful without leaking secrets.",
+    ],
+    "parseGitHubRemote": [
+        "parseGitHubRemote extracts owner and repository from common GitHub remote URL formats. It supports HTTPS and SSH-like remotes.",
+        "The parsed owner/repo string is used for display, cache matching, and publishing status. If parsing fails, the backend can still fall back to the display-safe remote string.",
+    ],
+    "validatePublishRemoteUrl": [
+        "validatePublishRemoteUrl checks that a target repository URL is shaped like a supported GitHub remote. It rejects empty or unsafe values before Git commands run.",
+        "This validation makes target setup fail early with a clear message. It is better to reject an unsupported target before changing remotes, writing caches, or asking Git Credential Manager to authenticate.",
+    ],
+    "validateCustomDomain": [
+        "validateCustomDomain normalizes optional custom-domain text for the CNAME file. It rejects values that do not look like a simple domain name.",
+        "The helper protects a small but important output file. A malformed CNAME can break the public site's domain behavior, so the backend checks it before writing.",
+    ],
+    "compareVersions": [
+        "compareVersions compares dotted version strings part by part. The update checker uses it to decide whether the GitHub release is newer than the installed app.",
+        "This is deliberately simpler than a full semantic-version library because the builder release tags follow a predictable builder-vX.Y.Z pattern. The helper keeps updater logic dependency-light.",
+    ],
+    "bumpPublishedAssetVersions": [
+        "bumpPublishedAssetVersions updates asset references so browsers and phones stop showing stale cached files after publishing.",
+        "This matters because a successful Git push can still look broken if a browser keeps old JavaScript or CSS. The function helps the built website announce that its assets changed.",
+    ],
+    "workspaceHasCompatibleSiteFiles": [
+        "workspaceHasCompatibleSiteFiles checks whether a target folder looks like an OMB-compatible static portfolio. It expects core website files such as index.html, styles.css, and script.js.",
+        "The function prevents Apply to site from treating an arbitrary repository as a valid website target. Load from target can be more flexible during authentication, but publishing should require compatible files.",
+    ],
+    "getPublishTargetInfo": [
+        "getPublishTargetInfo collects the current publishing state: whether the workspace is a Git repository, the origin remote, current branch, repository display name, custom domain, and authorization cache status.",
+        "The frontend uses this object to explain where Apply to site will push and whether GitHub authorization is currently fresh. It is an information route, but it still matters for security because it keeps target state explicit before writes happen.",
+    ],
+    "runGit": [
+        "runGit is the general Git command wrapper. It tries each candidate executable until one works, runs the requested argument list, and returns stdout, stderr, and the Git path used.",
+        "The candidate loop is Windows-friendly. Some machines have git on PATH, others have it installed in Program Files or LocalAppData. The wrapper lets the rest of the backend call Git without caring where it was installed.",
+    ],
+    "runPublishGit": [
+        "runPublishGit is runGit with the publishing workspace as its default current directory. That single default prevents many accidental app-repository versus website-repository mistakes.",
+        "Whenever a command is meant to inspect, sync, stage, commit, or push the website target, this wrapper communicates that intent.",
+    ],
+    "runOptionalCommand": [
+        "runOptionalCommand executes a command but returns an ok object instead of throwing. It is used for checks where failure is information rather than a fatal condition.",
+        "System checks and installer discovery benefit from this shape. The UI can report that winget or Git Credential Manager is missing without crashing the whole backend request.",
+    ],
+    "getGitStatus": [
+        "getGitStatus builds the system-readiness report for publishing. It checks Git, Git Credential Manager, the bundled Node runtime, pnpm developer requirements, and the application version.",
+        "This function turns machine setup into structured UI data. Instead of asking the user to run shell commands, the builder can show which dependency is present, missing, or only needed for developers.",
+    ],
+    "publishPathIsStageable": [
+        "publishPathIsStageable answers whether a publish path should be included in git add. A path may be stageable because it exists now, or because Git already tracks it and the file was deleted.",
+        "That second case matters. If a public asset is removed locally, publishing should stage the deletion instead of silently leaving the old file online.",
+    ],
+    "stageablePublishPaths": [
+        "stageablePublishPaths filters the publishPaths allowlist down to paths that actually matter for this publish run.",
+        "The function keeps git add focused. It avoids failing on missing optional paths while still allowing deletions of tracked files to be staged.",
+    ],
+    "runGitWithInput": [
+        "runGitWithInput runs Git commands that need stdin. Credential approval is the main example: Git expects protocol, host, path, username, and password lines through standard input.",
+        "This helper mirrors runGit's candidate search but uses spawn so it can write to stdin and collect stdout/stderr manually. That is why credential storage can work without constructing unsafe shell strings.",
+    ],
+    "storeGitCredentials": [
+        "storeGitCredentials optionally saves a GitHub username and personal access token into Git's credential system for the selected repository path.",
+        "The function validates that both username and password/token are present together and that the remote is GitHub HTTPS. It then enables credential.useHttpPath and sends an approve record to Git credentials through runGitWithInput.",
+        "This lets a user authenticate with explicit credentials instead of an interactive browser prompt, while still keeping the credential storage inside Git's normal credential machinery.",
+    ],
+    "validateCredentialPair": [
+        "validateCredentialPair enforces that username and password/token are provided as a pair. A half-filled credential form is more dangerous than helpful because Git cannot use it successfully.",
+        "The helper returns cleaned values so later functions can distinguish between no explicit credentials and a valid credential attempt.",
+    ],
+    "normalizeGitBranchName": [
+        "normalizeGitBranchName accepts a branch-like string only if it avoids characters and shapes that Git rejects or treats specially.",
+        "Branch names become command arguments and cache keys, so the backend should not pass arbitrary text into Git. This helper catches invalid names before checkout, sync, or push.",
+    ],
+    "detectRemoteDefaultBranch": [
+        "detectRemoteDefaultBranch asks the remote repository which branch HEAD points to. That is how the builder learns whether a target uses main, master, or another default branch.",
+        "Using the remote's default avoids hardcoding branch assumptions during target setup. The function returns a normalized branch name or an empty string when detection fails.",
+    ],
+    "originRemoteExists": [
+        "originRemoteExists checks whether the publishing workspace already has an origin remote. It returns a boolean instead of throwing, which makes setOriginRemote straightforward.",
+        "The helper is small, but it keeps remote setup readable: first ask whether origin exists, then set or add accordingly.",
+    ],
+    "setOriginRemote": [
+        "setOriginRemote either changes the existing origin URL or creates it if it does not exist. This is the backend equivalent of connecting the builder to a website repository.",
+        "The function does not authenticate by itself. It only changes Git configuration. Authentication and write verification happen later through authenticateGitHubForTarget and assertPublishAccess.",
+    ],
+    "checkoutPublishBranch": [
+        "checkoutPublishBranch switches the publishing workspace to the selected branch, creating it locally if necessary.",
+        "The clean branch name is important because this function passes the branch to Git. Returning the branch also gives callers a stable value to include in status responses.",
+    ],
+    "verifyPublishWriteAccess": [
+        "verifyPublishWriteAccess performs the decisive write-access check. It attempts a dry-run push to a temporary branch name, which proves that the current credentials can write without actually changing the remote repository.",
+        "If the dry-run push fails, the function throws a publishAccessError with Git's failure text attached. That is the message the frontend shows when GitHub authorization is missing, expired, or pointed at the wrong account.",
+    ],
+    "ensurePublishHeadForWriteCheck": [
+        "ensurePublishHeadForWriteCheck makes sure the publishing workspace has a commit before dry-run write verification. A repository with no HEAD cannot push HEAD to a temporary branch.",
+        "If no commit exists, the helper creates an empty initialization commit with local builder identity. That gives Git a concrete object to test during authorization.",
+    ],
+    "synchronizePublishBranchFromRemote": [
+        "synchronizePublishBranchFromRemote makes the local publishing branch match the remote branch before writes happen. It checks whether the remote branch exists, fetches it, checks out the local branch, and hard-resets to origin/branch.",
+        "This is the answer to non-fast-forward failures. Before the builder writes new website files, it starts from the remote's current state so Apply to site does not push from behind.",
+    ],
+    "capturePublishTargetState": [
+        "capturePublishTargetState records the current remote, branch, and CNAME state before target authentication changes anything.",
+        "It exists because target setup is reversible. If authentication fails after changing origin or branch, the backend can attempt to restore the previous workspace state instead of leaving the user half-switched to a bad target.",
+    ],
+    "restorePublishTargetState": [
+        "restorePublishTargetState attempts to put the publishing workspace back the way it was after a failed target setup. It restores origin, branch, and custom-domain file state on a best-effort basis.",
+        "The function intentionally catches rollback errors. The original authentication failure is the important error for the user; rollback attempts should not hide it.",
+    ],
+    "writeTargetCustomDomain": [
+        "writeTargetCustomDomain writes or removes CNAME in the portfolio workspace, and mirrors it to the app root when those roots differ.",
+        "This lets the builder maintain custom-domain configuration as a publishable site file. The customDomainProvided flag distinguishes 'the user did not edit this field' from 'the user intentionally cleared the domain'.",
+    ],
+    "ensureGitRepository": [
+        "ensureGitRepository makes sure the portfolio workspace is a Git work tree. It creates the folder, runs git init if needed, and creates a main branch when the repository has no named branch.",
+        "This is setup plumbing for both existing targets and blank local workspaces. The builder cannot authenticate, load, or publish until the workspace can run Git commands.",
+    ],
+    "configurePublishTarget": [
+        "configurePublishTarget is the older target setup path that configures repository URL, optional custom domain, and optional credentials, then reports target information.",
+        "The current UI steers users toward Authenticate target because configuration without write verification caused confusion. The function remains useful as a lower-level setup routine and a historical bridge in the backend.",
+    ],
+    "readPublishAuthCache": [
+        "readPublishAuthCache loads the local authorization session file and returns null when it cannot be read.",
+        "Returning null is intentional. Missing auth cache is normal on a new device, after cleanup, or after a target change. The caller decides whether that absence means 'ask the user to authenticate' or simply 'show not authenticated'.",
+    ],
+    "writePublishAuthCache": [
+        "writePublishAuthCache records a successful publishing authorization for the current remote, branch, repository, and device scope.",
+        "The function also maintains success history. If the same target is authorized repeatedly within the recent window, it can grant extended trust for up to thirty days. That implements the owner's requested behavior without making authentication permanent.",
+        "After writing the JSON file, the helper attempts chmod 600. On Windows this may not map perfectly to Unix permissions, but the intent is clear: the authorization cache is local owner state, not a public website asset.",
+    ],
+    "publishAuthCacheScope": [
+        "publishAuthCacheScope creates a hash from machine and workspace identity. The cache should not be valid merely because a remote and branch match; it should also belong to this device and installation context.",
+        "The hash avoids storing the raw username and path as the visible scope while still letting publishAuthCacheIsFresh detect whether the cache was created for the same local environment.",
+    ],
+    "parsePublishAuthTimestamp": [
+        "parsePublishAuthTimestamp converts stored ISO date strings into timestamps. It also normalizes over-precise fractional seconds so Date.parse can handle them.",
+        "This helper makes the auth cache more tolerant of timestamp formatting differences between versions without weakening the expiration rule.",
+    ],
+    "publishAuthCacheExpiresAt": [
+        "publishAuthCacheExpiresAt calculates the expiration instant for a cache. It prefers an explicit expiresAt field, then falls back to checkedAt plus the normal TTL.",
+        "The fallback supports older cache files. That lets updated builders read previous authorization records instead of forcing a fresh GitHub login just because the cache schema gained a field.",
+    ],
+    "publishAuthCacheIsFresh": [
+        "publishAuthCacheIsFresh decides whether cached authorization can be trusted for the requested access. It compares remote, branch, repository, scope, and expiration time.",
+        "Every part of that comparison matters. A cache for one repository should not publish another. A cache from one branch should not silently apply to a different branch. A cache from another installation should not grant this one trust.",
+    ],
+    "assertPublishAccess": [
+        "assertPublishAccess is the gatekeeper for live website changes. It first proves the portfolio workspace is a Git repository, then reads origin and current branch, then checks compatibility unless the caller intentionally disables that requirement.",
+        "After building the access shape, it tries the authorization cache. A fresh matching cache returns immediately with authorizationCached true. That is the daily-login behavior the user wanted: reopening the app should not force GitHub authorization again when the target is unchanged.",
+        "If the cache is missing or expired, the function synchronizes the local branch from remote, ensures there is a HEAD commit, performs the dry-run write check, writes a new auth cache, and returns a detailed access object. The function both protects Apply to site and supplies the UI with exactly what was verified.",
+    ],
+    "syncFromPublishTarget": [
+        "syncFromPublishTarget is Load from target. It first calls assertPublishAccess with compatibility relaxed, because a newly selected repository may need to be inspected before the local builder knows whether it has the expected files.",
+        "The function clones the selected branch into a temporary folder, checks for importable paths, requires projects.json, backs up existing local files, copies target files into the builder workspace, writes the imported catalog into the local draft, and synchronizes publish files.",
+        "The temporary clone is removed in a finally block. That cleanup matters because target imports can include assets and documents, and failed imports should not litter the temp directory with old repository copies.",
+    ],
+    "authenticateGitHubForTarget": [
+        "authenticateGitHubForTarget is the guided target-authentication workflow. It validates the repository URL and optional credentials, ensures the workspace is a Git repo, captures the old state, sets the new origin, checks Git/Git Credential Manager, selects the target branch, and then verifies write access.",
+        "The cache shortcut is important. If the same target is already authenticated and the user did not provide new credentials, the function can return cached authorization after writing any requested domain change. That is how authentication persists across app restarts.",
+        "If explicit credentials are supplied, storeGitCredentials approves them through Git. If not, the function launches Git Credential Manager's GitHub login flow. Only after that does assertPublishAccess force the dry-run write check and write the cache.",
+        "The catch block restores the previous target state. This is what keeps a failed authentication attempt from leaving the builder pointed at an incomplete or unauthorized repository.",
+    ],
+    "installGitForWindows": [
+        "installGitForWindows is a convenience installer launcher. It first checks whether winget exists. If not, it returns the normal Git download page so the UI can guide the user.",
+        "When winget is available, it starts the Git for Windows installation detached from the backend request. The user still follows the installer prompts, but the builder provides a one-click starting point.",
+    ],
+    "getUpdateInfo": [
+        "getUpdateInfo asks GitHub Releases for the latest builder release, compares it with the installed version, finds installer and portable assets, and reports whether an update is available.",
+        "The blocked version check is a safety escape hatch. If a release is known to have installer problems, the backend can refuse to offer it for automatic update while still reporting why it was skipped.",
+    ],
+    "getBuilderReleaseDownloadReport": [
+        "getBuilderReleaseDownloadReport reads GitHub release asset download counts. It returns asset names, download counts, sizes, update times, URLs, and a total download count.",
+        "This is the only download visibility GitHub Releases provides directly. It can tell how many downloads occurred per asset, but not who downloaded them or their IP addresses.",
+    ],
+    "getSecurityReport": [
+        "getSecurityReport combines release download counts, authorization cache status, publish target information, and documented security controls into one local report.",
+        "The website access section is deliberately honest. A static GitHub Pages site does not provide raw visitor identity or IP logs by itself. The report recommends Cloudflare analytics or Worker-backed logging if the owner wants deeper visibility with a privacy notice.",
+    ],
+    "safeUpdateFileSegment": [
+        "safeUpdateFileSegment cleans version names and other update fragments before they become temp filenames. It keeps letters, numbers, dots, underscores, and hyphens, then trims the result.",
+        "The updater writes downloaded installers, logs, PowerShell scripts, and command launchers. Predictable filenames make cleanup and troubleshooting much easier.",
+    ],
+    "powershellSingleQuoted": [
+        "powershellSingleQuoted safely places a JavaScript string inside a single-quoted PowerShell literal by doubling embedded single quotes.",
+        "The update launcher is generated as text. This helper prevents paths containing apostrophes from breaking the script.",
+    ],
+    "downloadAndLaunchAppUpdate": [
+        "downloadAndLaunchAppUpdate performs the automatic update handoff. It checks update availability, rejects blocked or missing installer releases, downloads the installer to a temp folder, validates that the file is large enough to be plausible, and writes it to disk.",
+        "The function then calculates relaunch candidates. It includes the per-user AppData install path, the current executable, legacy OMB application paths, and Program Files paths. That broad list is what lets the updater find the app again after installation, even as the project migrates away from older folder layouts.",
+        "The generated PowerShell script is the real bridge. It waits for the current process, stops any builder processes, runs the installer silently, retries elevated if necessary, waits for an executable to appear, and relaunches it. The Node process cannot safely replace itself, so the detached script continues after Node exits.",
+        "The final timers emit an update-started event and exit the backend. The HTTP response returns before the process closes, giving the frontend a chance to tell the user that the update has started.",
+    ],
+    "syncPortfolioPublishFiles": [
+        "syncPortfolioPublishFiles copies public website files from the builder root into the separated portfolio workspace when those roots are different.",
+        "It only copies paths from publishPaths. That allowlist is the central protection against publishing builder internals, local drafts, compile caches, credentials, or generated documentation that should not belong to the public site.",
+        "The removeMissing option controls whether missing source files should delete the corresponding target. Apply to site uses removal so the live website reflects deleted assets. Load from target can avoid aggressive deletion during import.",
+    ],
+    "publishSiteChanges": [
+        "publishSiteChanges turns a saved catalog and public asset set into a Git push. It obtains or receives verified publish access, synchronizes the branch from remote, copies publishable files, bumps asset versions, filters stageable paths, stages them, commits only when there are changes, and pushes.",
+        "The function is intentionally conservative. It refuses to publish when no compatible files are stageable. It avoids empty commits. It returns commit and push output so the success dialog can show real Git evidence.",
+        "The ordering solves the earlier non-fast-forward problem: synchronize first, copy local public files second, stage and commit third, push last. That mirrors the safe human workflow for updating a GitHub Pages repository.",
+    ],
+    "handlePortfolioAi": [
+        "handlePortfolioAi is the AI request coordinator. It reads the visitor's question, clamps it, cleans recent conversation, validates intent, enriches portfolio context, and then chooses the model provider.",
+        "When no OpenAI key is configured, it tries the local Ollama route. That makes the backend useful for local development and machines without cloud credentials. If Ollama also fails, the endpoint returns a clear service-unavailable response instead of pretending to answer.",
+        "When OpenAI is available, the function builds a Responses API payload with developer instructions, question intent, web-search permission, conversation JSON, and portfolio context JSON. The model choice and fallback model come from environment variables so deployments can change models without rewriting the code.",
+        "The enableWebSearch decision is also explicit. Web search can be forced, disabled, or allowed per question. This lets the assistant answer portfolio-specific questions from local context while still using broader knowledge when a general electronics question needs it.",
+        "The response returns answer, model, and whether web search was used. The frontend does not need to know about prompt assembly, provider fallback, Ollama, OpenAI payload shape, or context-fetching internals.",
+    ],
+    "handleApi": [
+        "handleApi is the handwritten router for the local backend. It begins with safe GET routes: catalog, templates, publishing target status, system check, app update information, security report, and compiler tool status.",
+        "After GET handling, it rejects every non-POST request. Then it applies the local-only guard before any POST branch can run. This is the crucial security rhythm of the router: read routes are limited where needed, and write routes must come from the local machine.",
+        "The POST branches map directly to app features. Portfolio AI, code beautify, code save, code compile, compiler-tool install, Git install, app update, GitHub authentication, load from target, save draft/apply catalog, and upload each have a dedicated branch.",
+        "The save/apply branch shows the route's most important difference between local and public changes. Both actions validate the catalog shape. Save draft writes projects.local.json. Apply to site first calls assertPublishAccess, writes projects.json, then calls publishSiteChanges. If publishing fails after writing, the response still explains what happened instead of hiding the partial result.",
+        "The upload branch demonstrates file handling in the router. It reads project id, section, filename, and base64 bytes, sanitizes path pieces, writes under docs, and returns a relative URL. The route does not try to interpret every file type; it stores evidence safely and lets the parser decide how to present it.",
+    ],
+})
 
-def add_function_prose(story: list, name: str) -> None:
-    for text in FUNCTION_PROSE.get(name, []):
+
+def add_function_prose(story: list, name: str, start: int = 0) -> None:
+    for text in FUNCTION_PROSE.get(name, [])[start:]:
         add_p(story, text)
 
 
 def add_feature_chapters(story: list, source: str) -> None:
     for chapter_index, chapter in enumerate(FEATURES, start=2):
         add_heading(story, chapter["title"], 1)
-        for title, paragraphs, state_names, function_names in chapter["sections"]:
+        sections = list(chapter["sections"]) + DEEP_FEATURE_SECTIONS.get(chapter["title"], [])
+        for title, paragraphs, state_names, function_names in sections:
             add_heading(story, title, 2)
             for text in paragraphs:
                 add_p(story, text)
