@@ -10,6 +10,8 @@ from pathlib import Path
 
 from docx import Document
 from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
 from docx.shared import Inches, Pt, RGBColor
 
 
@@ -24,12 +26,112 @@ def paragraph(text: str) -> str:
     return " ".join(str(text).strip().split())
 
 
+JS_KEYWORDS = {
+    "async", "await", "break", "case", "catch", "class", "const", "continue", "default", "delete",
+    "do", "else", "export", "extends", "false", "finally", "for", "from", "function", "if",
+    "import", "in", "instanceof", "let", "new", "null", "of", "return", "switch", "throw",
+    "true", "try", "typeof", "undefined", "var", "void", "while", "yield",
+}
+
+
+def set_paragraph_shading(paragraph_obj, fill: str) -> None:
+    p_pr = paragraph_obj._p.get_or_add_pPr()
+    shd = p_pr.find(qn("w:shd"))
+    if shd is None:
+        shd = OxmlElement("w:shd")
+        p_pr.append(shd)
+    shd.set(qn("w:fill"), fill)
+
+
+def set_run_font(run, color: str = "0F172A", bold: bool = False, italic: bool = False, size: float = 7.5) -> None:
+    run.font.name = "Consolas"
+    run._element.rPr.rFonts.set(qn("w:eastAsia"), "Consolas")
+    run.font.size = Pt(size)
+    run.font.color.rgb = RGBColor.from_string(color)
+    run.bold = bold
+    run.italic = italic
+
+
+def code_token_runs(line: str, language: str = "javascript") -> list[tuple[str, str, bool, bool]]:
+    if language == "html":
+        pattern = re.compile(r"(<!--.*?-->|</?[\w:-]+|[A-Za-z_:][-A-Za-z0-9_:.]*(?=\=)|\"[^\"]*\"|'[^']*'|=|>|/?>|\s+|.)")
+        tokens = []
+        for match in pattern.finditer(line):
+            token = match.group(0)
+            if token.startswith("<!--"):
+                tokens.append((token, "64748B", False, True))
+            elif token.startswith("<"):
+                tokens.append((token, "0E7490", True, False))
+            elif token.startswith(("\"", "'")):
+                tokens.append((token, "B45309", False, False))
+            elif token in {"=", ">", "/>"}:
+                tokens.append((token, "475569", False, False))
+            elif token.strip() and re.match(r"[A-Za-z_:]", token):
+                tokens.append((token, "7C3AED", False, False))
+            else:
+                tokens.append((token, "0F172A", False, False))
+        return tokens
+
+    pattern = re.compile(
+        r"(//.*|/\*.*?\*/|`[^`]*`|\"(?:\\.|[^\"])*\"|'(?:\\.|[^'])*'|\b\d+(?:\.\d+)?\b|\b[A-Za-z_$][\w$]*\b|\s+|.)"
+    )
+    tokens = []
+    previous_non_space = ""
+    for match in pattern.finditer(line):
+        token = match.group(0)
+        if token.startswith("//") or token.startswith("/*"):
+            tokens.append((token, "64748B", False, True))
+        elif token.startswith(("\"", "'", "`")):
+            tokens.append((token, "B45309", False, False))
+        elif token in JS_KEYWORDS:
+            tokens.append((token, "1D4ED8", True, False))
+        elif re.fullmatch(r"\d+(?:\.\d+)?", token):
+            tokens.append((token, "7C3AED", False, False))
+        elif re.fullmatch(r"[A-Za-z_$][\w$]*", token) and previous_non_space == "function":
+            tokens.append((token, "0E7490", True, False))
+        elif re.fullmatch(r"[A-Za-z_$][\w$]*", token):
+            tokens.append((token, "0F172A", False, False))
+        elif token in "{}[]().,;:=>+-*/%!?&|":
+            tokens.append((token, "475569", False, False))
+        else:
+            tokens.append((token, "0F172A", False, False))
+        if token.strip():
+            previous_non_space = token
+    return tokens
+
+
+def add_code_block(doc: Document, code: str, language: str = "javascript", title: str = "Source code") -> None:
+    heading = doc.add_paragraph()
+    heading.paragraph_format.first_line_indent = Inches(0)
+    heading.paragraph_format.space_before = Pt(4)
+    heading.paragraph_format.space_after = Pt(2)
+    heading_run = heading.add_run(title)
+    heading_run.bold = True
+    heading_run.font.color.rgb = RGBColor(15, 82, 110)
+    heading_run.font.size = Pt(9)
+
+    for raw_line in code.splitlines() or [""]:
+        line = raw_line if raw_line else " "
+        p = doc.add_paragraph()
+        p.paragraph_format.left_indent = Inches(0.18)
+        p.paragraph_format.first_line_indent = Inches(0)
+        p.paragraph_format.right_indent = Inches(0.08)
+        p.paragraph_format.space_before = Pt(0)
+        p.paragraph_format.space_after = Pt(0)
+        p.paragraph_format.line_spacing = 1.0
+        set_paragraph_shading(p, "F8FAFC")
+        for token, color, bold, italic in code_token_runs(line, language):
+            run = p.add_run(token)
+            set_run_font(run, color=color, bold=bold, italic=italic)
+
+
 @dataclass
 class FunctionDoc:
     name: str
     signature: str
     params: str
     body: str
+    source: str
     is_async: bool
     occurrence: int = 1
 
@@ -39,6 +141,7 @@ class VariableDoc:
     kind: str
     name: str
     initializer: str
+    source: str
     scope: str = "top-level"
 
 
@@ -110,10 +213,18 @@ def function_ranges(source: str) -> list[FunctionDoc]:
         if brace_index == -1:
             continue
         next_start = matches[match_index + 1].start() if match_index + 1 < len(matches) else len(source)
-        body = source[brace_index + 1 : next_start]
+        segment = source[match.start() : next_start].rstrip()
+        close_index = segment.rfind("\n}")
+        if close_index != -1:
+            full_source = segment[: close_index + 2]
+        else:
+            full_source = segment
+        body_start = full_source.find("{")
+        body_end = full_source.rfind("}")
+        body = full_source[body_start + 1 : body_end] if body_start != -1 and body_end != -1 else source[brace_index + 1 : next_start]
         counts[name] += 1
         signature = f"{'async ' if is_async else ''}function {name}({params})"
-        results.append(FunctionDoc(name=name, signature=signature, params=params, body=body, is_async=is_async, occurrence=counts[name]))
+        results.append(FunctionDoc(name=name, signature=signature, params=params, body=body, source=full_source, is_async=is_async, occurrence=counts[name]))
     return results
 
 
@@ -178,7 +289,8 @@ def top_level_variables(source: str) -> list[VariableDoc]:
                         break
             index += 1
         initializer = source[start:index].strip()
-        results.append(VariableDoc(kind=kind, name=name, initializer=initializer))
+        source_code = source[match.start() : index + 1].strip()
+        results.append(VariableDoc(kind=kind, name=name, initializer=initializer, source=source_code))
     return results
 
 
@@ -191,7 +303,7 @@ def local_variables(func: FunctionDoc) -> list[VariableDoc]:
         if raw_name.startswith("{") or raw_name.startswith("["):
             name = "destructured " + raw_name[:60].replace("\n", " ")
         initializer = (match.group(3) or "").strip()
-        results.append(VariableDoc(kind=match.group(1), name=name, initializer=initializer, scope=func.name))
+        results.append(VariableDoc(kind=match.group(1), name=name, initializer=initializer, source=match.group(0).strip(), scope=func.name))
     return results
 
 
@@ -469,9 +581,9 @@ def add_variable_section(doc: Document, guide: dict) -> None:
         return
     source = (REPO / file_name).read_text(encoding="utf-8")
     variables = top_level_variables(source)
-    doc.add_heading("Top-Level Objects And Variables", level=1)
+    doc.add_heading("Chapter 2: Top-Level Objects And Variables", level=1)
     doc.add_paragraph(
-        "This section explains the long-lived objects and variables before the function walkthrough. These are the values that give the file memory, configuration, API handles, DOM anchors, path boundaries, cache state, and behavior maps. They are explained by meaning, not by line number."
+        "This chapter explains the long-lived objects and variables before the function walkthrough. Think of these top-level values as the workshop benches, labeled drawers, shared measuring tools, and safety rails of the file. A function can walk into the workshop, use these shared objects, and leave without recreating the whole environment from scratch. They are explained by meaning and use, not by line number."
     )
     grouped: dict[str, list[VariableDoc]] = {}
     for variable in variables:
@@ -482,6 +594,7 @@ def add_variable_section(doc: Document, guide: dict) -> None:
         for variable in items:
             doc.add_heading(variable.name, level=3)
             doc.add_paragraph(explain_variable(variable, file_name, top_level=True, source=source))
+            add_code_block(doc, variable.source, language="javascript", title=f"Source excerpt for {variable.name}")
 
 
 def parse_parameters(params: str) -> list[str]:
@@ -880,14 +993,14 @@ def generated_function_paragraphs(file_name: str, func: FunctionDoc, all_names: 
     if params:
         parameter_text = " ".join(explain_parameter(param) for param in params)
     else:
-        parameter_text = "This function accepts no explicit parameters. It reads controlled module state, browser state, local configuration, or constants that are already available in the file."
-    paragraphs.append(("Parameters and data it receives", parameter_text))
-    async_note = " Because it is async, callers must await it or handle its Promise; otherwise the UI or backend could move on before files, network calls, Git commands, compiler runs, or model responses have finished." if func.is_async else ""
+        parameter_text = ""
+    if parameter_text:
+        paragraphs.append(("Parameters and data it receives", parameter_text))
     paragraphs.append(
         (
             "What it does",
             paragraph(
-                f"{operation_description(func)} {return_description(func)}{async_note}"
+                f"{operation_description(func)} {return_description(func)}"
             ),
         )
     )
@@ -1661,24 +1774,67 @@ def setup_document(title: str, subtitle: str) -> Document:
     styles = doc.styles
     styles["Normal"].font.name = "Arial"
     styles["Normal"].font.size = Pt(10)
+    styles["Normal"].paragraph_format.first_line_indent = Inches(0.2)
+    styles["Normal"].paragraph_format.line_spacing = 1.12
+    styles["Normal"].paragraph_format.space_after = Pt(6)
     styles["Heading 1"].font.name = "Arial"
     styles["Heading 1"].font.size = Pt(18)
     styles["Heading 1"].font.color.rgb = RGBColor(10, 49, 80)
+    styles["Heading 1"].paragraph_format.first_line_indent = Inches(0)
+    styles["Heading 1"].paragraph_format.space_before = Pt(14)
+    styles["Heading 1"].paragraph_format.space_after = Pt(8)
     styles["Heading 2"].font.name = "Arial"
     styles["Heading 2"].font.size = Pt(14)
     styles["Heading 2"].font.color.rgb = RGBColor(13, 83, 122)
+    styles["Heading 2"].paragraph_format.first_line_indent = Inches(0)
+    styles["Heading 2"].paragraph_format.space_before = Pt(10)
+    styles["Heading 2"].paragraph_format.space_after = Pt(5)
     styles["Heading 3"].font.name = "Arial"
     styles["Heading 3"].font.size = Pt(11)
     styles["Heading 3"].font.color.rgb = RGBColor(31, 41, 55)
+    styles["Heading 3"].paragraph_format.first_line_indent = Inches(0)
+    styles["Heading 3"].paragraph_format.space_before = Pt(8)
+    styles["Heading 3"].paragraph_format.space_after = Pt(3)
     title_p = doc.add_paragraph()
     title_p.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    title_p.paragraph_format.first_line_indent = Inches(0)
     run = title_p.add_run(title)
     run.bold = True
     run.font.name = "Arial"
     run.font.size = Pt(24)
     run.font.color.rgb = RGBColor(8, 35, 61)
-    doc.add_paragraph(subtitle)
+    subtitle_p = doc.add_paragraph()
+    subtitle_p.paragraph_format.first_line_indent = Inches(0)
+    subtitle_run = subtitle_p.add_run(subtitle)
+    subtitle_run.italic = True
+    subtitle_run.font.color.rgb = RGBColor(71, 85, 105)
     return doc
+
+
+def add_body_paragraph(doc: Document, text: str, lead: str = "", italic: bool = False) -> None:
+    p = doc.add_paragraph()
+    p.paragraph_format.first_line_indent = Inches(0.2)
+    if lead:
+        lead_run = p.add_run(lead)
+        lead_run.bold = True
+        lead_run.font.color.rgb = RGBColor(15, 82, 110)
+    run = p.add_run(text)
+    run.italic = italic
+
+
+def add_analogy_paragraph(doc: Document, text: str) -> None:
+    p = doc.add_paragraph()
+    p.paragraph_format.left_indent = Inches(0.25)
+    p.paragraph_format.first_line_indent = Inches(0)
+    p.paragraph_format.space_before = Pt(2)
+    p.paragraph_format.space_after = Pt(8)
+    set_paragraph_shading(p, "EFF6FF")
+    lead = p.add_run("Analogy: ")
+    lead.bold = True
+    lead.font.color.rgb = RGBColor(30, 64, 175)
+    body = p.add_run(text)
+    body.italic = True
+    body.font.color.rgb = RGBColor(30, 41, 59)
 
 
 def add_overview(doc: Document, guide: dict) -> None:
@@ -1687,6 +1843,107 @@ def add_overview(doc: Document, guide: dict) -> None:
         doc.add_heading(heading, level=2)
         for text in paragraphs:
             doc.add_paragraph(text)
+    doc.add_page_break()
+
+
+def add_foundation_chapter(doc: Document, guide: dict) -> None:
+    file_name = guide["file"]
+    source = (REPO / file_name).read_text(encoding="utf-8")
+    doc.add_heading("Chapter 1: Syntax, Runtime, And Framework Foundations", level=1)
+
+    if file_name == "server.mjs":
+        add_body_paragraph(
+            doc,
+            paragraph(
+                "server.mjs is an ES module running on Node.js. That matters before any individual function is discussed, because the file is not browser JavaScript. It can read and write files, start child processes, run Git, call compilers, listen on a local port, and keep private API keys on the machine. The browser side asks for work; this file performs the work."
+            ),
+            lead="Runtime context: ",
+        )
+        add_body_paragraph(
+            doc,
+            paragraph(
+                "The file intentionally does not use Express or another web framework. Instead, Node's createServer receives each request and the file routes it manually. That is why request parsing, security headers, JSON responses, local-write checks, and static-file serving all appear in this file."
+            ),
+            lead="Framework choice: ",
+        )
+        add_analogy_paragraph(
+            doc,
+            "This is like wiring a circuit by hand instead of plugging into a premade development board: it takes more explicit routing, but every connection is visible and owned by the file.",
+        )
+        import_block = "\n".join(line for line in source.splitlines() if line.startswith("import "))
+        if import_block:
+            add_code_block(doc, import_block, language="javascript", title="Node module imports used by server.mjs")
+        add_body_paragraph(
+            doc,
+            paragraph(
+                "The imports are the backend toolboxes. node:http creates the local HTTP server. node:fs/promises gives Promise-based file access. node:child_process runs Git, compilers, simulators, and installers. node:path and node:url make paths predictable on Windows. node:crypto supports hashing for authorization scopes. node:os lets the backend reason about the current machine. Once you understand these modules, the file reads less like random utility code and more like a small operating station for the builder."
+            ),
+            lead="Module map: ",
+        )
+
+    elif file_name == "script.js":
+        add_body_paragraph(
+            doc,
+            paragraph(
+                "script.js runs in the public website visitor's browser. It cannot run Git or touch the local filesystem. Its power comes from the DOM, browser history, fetch, forms, dialogs, and event listeners."
+            ),
+            lead="Runtime context: ",
+        )
+        add_analogy_paragraph(
+            doc,
+            "index.html creates the switches and displays, styles.css paints them, and script.js is the wiring harness that makes clicks, searches, project windows, and chat messages do something.",
+        )
+        add_body_paragraph(
+            doc,
+            paragraph(
+                "The first part of the file captures DOM anchors with document.querySelector. Those anchors are not decorative variables; they are the live handles to the project grid, search box, filters, profile fields, contact area, resume panel, AI assistant, and footer. Later functions use those handles to populate the page after projects.json loads."
+            ),
+            lead="DOM anchors: ",
+        )
+        add_code_block(doc, "\n".join(source.splitlines()[:90]), language="javascript", title="Opening DOM anchors and public runtime state in script.js")
+
+    else:
+        add_body_paragraph(
+            doc,
+            paragraph(
+                "index.html is the public shell. It is not a passive text file; it is the structural contract that script.js and styles.css depend on. Tags create landmarks, ids create runtime hooks, classes create styling hooks, and metadata tells browsers and search engines how to treat the site."
+            ),
+            lead="Markup contract: ",
+        )
+        add_analogy_paragraph(
+            doc,
+            "Read the HTML like a circuit board. Sections are major components, ids are test points, classes are labels and routes for styling, and script tags connect the runtime logic.",
+        )
+        add_body_paragraph(
+            doc,
+            paragraph(
+                "If a hook such as #project-grid or #ai-assistant-input changes, the JavaScript connection that depends on it can break even if the page still looks valid."
+            ),
+            lead="Why hooks matter: ",
+        )
+        add_code_block(doc, "\n".join(source.splitlines()[:120]), language="html", title="Opening HTML structure, metadata, and runtime hooks")
+
+    doc.add_heading("Function Syntax Rules Used Later", level=2)
+    add_body_paragraph(
+        doc,
+        paragraph(
+            "The later chapters include function entry points and exact source blocks, but they do not re-explain the same syntax over and over. Read async as a marker that the function may wait for file work, network work, Git, compilers, or AI responses. Read parameters as the caller's contract with the function. Read default values after = as fallback behavior. Read destructured parameters in braces as one object being unpacked into named fields. Read const, let, and var as places where the function or file stores information while it works."
+        ),
+        lead="Reading rule: ",
+    )
+    add_code_block(
+        doc,
+        "async function exampleOperation({ projectId, fileName = \"main.c\" }, options = {}) {\n  const target = resolveInsideCompileRoot(projectId, fileName);\n  return await runProcess(\"tool\", [target], options);\n}",
+        language="javascript",
+        title="Compact syntax example used as a reference for later chapters",
+    )
+    add_body_paragraph(
+        doc,
+        paragraph(
+            "After this chapter, a function section will only explain what is specific to that function: why it exists, what data it receives, what exact code implements it, what helpers it calls, and what local objects or variables carry the work."
+        ),
+        lead="How to use later chapters: ",
+    )
     doc.add_page_break()
 
 
@@ -1699,37 +1956,17 @@ def function_fact_map(file_name: str, func: FunctionDoc, all_names: set[str]) ->
 
 def add_syntax_block(doc: Document, signature: str) -> None:
     intro = doc.add_paragraph()
-    intro.add_run("The syntax of the function is:")
+    intro.paragraph_format.first_line_indent = Inches(0)
+    intro_run = intro.add_run("Function entry point:")
+    intro_run.bold = True
+    intro_run.font.color.rgb = RGBColor(15, 82, 110)
     block = doc.add_paragraph()
     block.paragraph_format.left_indent = Inches(0.24)
+    block.paragraph_format.first_line_indent = Inches(0)
     run = block.add_run(f"{signature} {{ ... }}")
     run.font.name = "Consolas"
     run.font.size = Pt(9)
     run.font.color.rgb = RGBColor(22, 78, 99)
-
-
-def syntax_reader_text(func: FunctionDoc) -> str:
-    params = parse_parameters(func.params)
-    async_text = (
-        "The async keyword is important here: this function returns a Promise, so callers must wait for it before trusting the result or assuming the side effect has completed. "
-        if func.is_async
-        else "There is no async keyword, so the function completes synchronously unless it calls another asynchronous helper indirectly. "
-    )
-    if not params:
-        return paragraph(
-            async_text
-            + "The empty parameter list means the function works from module-level state, browser state, local constants, or values it creates internally. That is common for UI helpers that operate on known page elements and backend helpers that read already configured paths."
-        )
-    names = ", ".join(parameter_label(param) for param in params)
-    if func.params.strip().startswith("{"):
-        return paragraph(
-            async_text
-            + f"The braces in the parameter list mean the caller passes one object and the function pulls named fields out of it. In this case the important fields are {names}. That style is useful when a function needs several related values but the call site should still be readable."
-        )
-    return paragraph(
-        async_text
-        + f"The parameter list tells you what the caller must provide: {names}. Read those names as the contract between this function and the code that calls it. The body should make sense only after those inputs are understood."
-    )
 
 
 def phrase_variant(seed: str, options: list[str]) -> str:
@@ -1747,7 +1984,8 @@ def add_textbook_function(doc: Document, file_name: str, function: FunctionDoc, 
 
     doc.add_heading(function.signature, level=3)
     if purpose:
-        doc.add_paragraph(
+        add_body_paragraph(
+            doc,
             paragraph(
                 phrase_variant(
                     function.name + "intro",
@@ -1759,16 +1997,27 @@ def add_textbook_function(doc: Document, file_name: str, function: FunctionDoc, 
                     ],
                 )
                 + purpose
-            )
+            ),
+            lead="Role: ",
         )
     add_syntax_block(doc, function.signature)
-    doc.add_paragraph(syntax_reader_text(function))
     if parameters:
-        doc.add_paragraph(
+        add_body_paragraph(
+            doc,
             paragraph(
-                f"Those syntax pieces become practical once you connect them to the data being passed in. {parameters}"
-            )
+                f"The function-specific inputs are worth reading before the body. {parameters}"
+            ),
+            lead="Inputs: ",
         )
+    add_body_paragraph(
+        doc,
+        paragraph(
+            "Now place that explanation beside the actual source. Read the code slowly: the colored keywords show control flow, the teal function name marks the entry point, the orange sections are string data, and the muted text marks comments. The goal is not to memorize the code, but to see how the written implementation matches the responsibility described above."
+        ),
+        lead="Reading the source: ",
+        italic=True,
+    )
+    add_code_block(doc, function.source, language="javascript", title=f"Exact source block for {function.name}")
     implementation_text = paragraph(
         phrase_variant(
             function.name + "impl",
@@ -1787,9 +2036,10 @@ def add_textbook_function(doc: Document, file_name: str, function: FunctionDoc, 
             + " A close reading of the body shows these implementation details: "
             + body_details
         )
-    doc.add_paragraph(implementation_text)
+    add_body_paragraph(doc, implementation_text, lead="Implementation: ")
     if collaborators:
-        doc.add_paragraph(
+        add_body_paragraph(
+            doc,
             paragraph(
                 phrase_variant(
                     function.name + "calls",
@@ -1801,10 +2051,12 @@ def add_textbook_function(doc: Document, file_name: str, function: FunctionDoc, 
                     ],
                 )
                 + collaborators
-            )
+            ),
+            lead="Collaborators: ",
         )
     if why:
-        doc.add_paragraph(
+        add_body_paragraph(
+            doc,
             paragraph(
                 phrase_variant(
                     function.name + "why",
@@ -1816,19 +2068,23 @@ def add_textbook_function(doc: Document, file_name: str, function: FunctionDoc, 
                     ],
                 )
                 + why
-            )
+            ),
+            lead="Why it matters: ",
         )
 
     locals_found = local_variables(function)
     if not locals_found:
-        doc.add_paragraph(
+        add_body_paragraph(
+            doc,
             paragraph(
                 f"Inside {function.name}, there are no local const, let, or var values to discuss. The function mainly works from its parameters, module-level state, direct expressions, or helpers it calls."
-            )
+            ),
+            lead="Local values: ",
         )
         return
 
-    doc.add_paragraph(
+    add_body_paragraph(
+        doc,
         paragraph(
             phrase_variant(
                 function.name + "locals",
@@ -1840,7 +2096,8 @@ def add_textbook_function(doc: Document, file_name: str, function: FunctionDoc, 
                 ],
             )
             + "They are included here because they explain the implementation rather than merely naming syntax."
-        )
+        ),
+        lead="Local values: ",
     )
     for variable in locals_found:
         bullet = doc.add_paragraph(style=None)
@@ -1851,9 +2108,9 @@ def add_textbook_function(doc: Document, file_name: str, function: FunctionDoc, 
 
 
 def add_function_walkthrough(doc: Document, guide: dict) -> None:
-    doc.add_heading("Code Walkthrough", level=1)
     file_name = guide["file"]
     if file_name in {"server.mjs", "script.js"}:
+        doc.add_heading("Chapter 3: Function Walkthrough With Source Blocks", level=1)
         source = (REPO / file_name).read_text(encoding="utf-8")
         functions = function_ranges(source)
         all_names = {function.name for function in functions}
@@ -1873,6 +2130,7 @@ def add_function_walkthrough(doc: Document, guide: dict) -> None:
                 add_textbook_function(doc, file_name, function, all_names)
         return
 
+    doc.add_heading("Chapter 2: Markup Walkthrough", level=1)
     doc.add_paragraph(
         "This file is markup rather than a JavaScript function module, so the walkthrough is procedural. Each section explains a structural object in the document and why the public runtime depends on it."
     )
@@ -1882,11 +2140,18 @@ def add_function_walkthrough(doc: Document, guide: dict) -> None:
         for name, explanation in group["items"]:
             doc.add_heading(name, level=3)
             doc.add_paragraph(explanation)
+    html_source = (REPO / file_name).read_text(encoding="utf-8")
+    doc.add_heading("Chapter 3: Complete Markup Source", level=1)
+    doc.add_paragraph(
+        "The exact source below is included so the explanation can be read beside the real document shell. The colored tag names show HTML structure, purple attribute names show the hooks used by CSS and JavaScript, and orange strings show values such as IDs, classes, URLs, and labels."
+    )
+    add_code_block(doc, html_source, language="html", title="Exact source block for index.html")
 
 
 def write_guide_docx(guide: dict, output_path: Path) -> None:
     doc = setup_document(guide["title"], guide["subtitle"])
     add_overview(doc, guide)
+    add_foundation_chapter(doc, guide)
     add_variable_section(doc, guide)
     add_function_walkthrough(doc, guide)
     doc.save(output_path)
@@ -1971,6 +2236,7 @@ def main() -> None:
         master.add_heading(guide["title"], level=1)
         master.add_paragraph(guide["subtitle"])
         add_overview(master, guide)
+        add_foundation_chapter(master, guide)
         add_variable_section(master, guide)
         add_function_walkthrough(master, guide)
         master.add_page_break()

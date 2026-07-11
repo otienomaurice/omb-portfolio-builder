@@ -260,6 +260,7 @@ Use the workflow in [BRANCHING.md](BRANCHING.md):
 | `codex/curated-server-script-index-docs` | Adds book-style curated Word/PDF guides for `server.mjs`, `script.js`, and `index.html`, with multi-page overviews before grouped code walkthroughs. | `development` | `development` | Merged into `development` |
 | `codex/function-object-variable-docs` | Expands the curated Word/PDF guides so `server.mjs` and `script.js` document top-level objects, variables, every extracted function, parameters, body behavior, called helpers, and local function variables without line-number-dependent notes. | `development` | `development` | Merged into `development` |
 | `codex/textbook-function-doc-style` | Rewrites curated function sections into a smoother textbook flow with responsibility, syntax, parameter reading, implementation discussion, collaborator explanation, and local variable walkthroughs. | `development` | `development` | Merged into `development` |
+| `codex/textbook-code-block-docs` | Adds textbook-style source-integrated docs with syntax/framework chapters, exact highlighted source blocks, styled paragraphs, analogies, and expanded function/source walkthroughs. | `development` | `development` | Active |
 
 ## Uninstall
 
