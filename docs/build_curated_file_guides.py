@@ -1846,6 +1846,141 @@ def add_overview(doc: Document, guide: dict) -> None:
     doc.add_page_break()
 
 
+def add_server_overview_chapter(doc: Document, guide: dict) -> None:
+    doc.add_heading("Chapter 1: Server Abstract, Background, And Design Purpose", level=1)
+    add_body_paragraph(
+        doc,
+        paragraph(
+            "This chapter explains server.mjs as a complete backend file before isolating any single function. The useful first question is not 'what does line one do?' but 'what job does this file perform inside the whole application?' The answer is that server.mjs is the private local backend for the OMB Portfolio Builder. It receives browser requests from the builder UI, performs privileged work on the owner's machine, and returns structured results that the UI can display."
+        ),
+    )
+    add_body_paragraph(
+        doc,
+        paragraph(
+            "The file exists because a portfolio builder needs powers that a normal webpage should not have. A browser page can collect a project title, display an editor, and send a request. It should not directly write arbitrary files, run compilers, launch installers, push to GitHub, or store publishing authorization. server.mjs becomes the controlled layer between the friendly interface and those dangerous machine-level operations."
+        ),
+    )
+    add_analogy_paragraph(
+        doc,
+        "Think of the builder UI as the front desk of a hardware lab. The visitor can ask for a test, a file save, a compile, or a website push. server.mjs is the lab technician behind the counter. It knows which cabinet the files belong in, which tools are allowed, which requests are local, and which operations need authentication before anything public changes.",
+    )
+    for heading, paragraphs in guide["overview"]:
+        doc.add_heading(heading, level=2)
+        for text in paragraphs:
+            add_body_paragraph(doc, text)
+    doc.add_page_break()
+
+
+def add_server_syntax_chapter(doc: Document) -> None:
+    doc.add_heading("Chapter 2: JavaScript And Node Syntax Foundations", level=1)
+    add_body_paragraph(
+        doc,
+        paragraph(
+            "This chapter is intentionally general. It explains the JavaScript and Node ideas needed to read the later server chapters, without tying the explanation to any one server.mjs function. Once these ideas are in place, the later chapters can focus on behavior instead of repeating syntax notes."
+        ),
+    )
+    doc.add_heading("2.1 Modules And Toolboxes", level=2)
+    add_body_paragraph(
+        doc,
+        paragraph(
+            "Modern Node files can use ES module import statements. An import is a declaration that says, 'this file needs a tool that lives somewhere else.' The imported tool might come from Node itself, such as an HTTP server, path helper, cryptographic hash function, filesystem API, or child-process runner. In a local backend, these imports are the toolboxes that make the file more powerful than browser JavaScript."
+        ),
+    )
+    add_code_block(
+        doc,
+        "import { usefulTool } from \"node:some-module\";\n\nconst result = usefulTool(\"input\");",
+        language="javascript",
+        title="Generic ES module import pattern",
+    )
+    add_body_paragraph(
+        doc,
+        paragraph(
+            "The analogy is a lab bench. The bench itself is the file. The import statements are labeled instruments placed on the bench before work begins. Later functions do not need to manufacture a multimeter, oscilloscope, or power supply every time they need one; they reach for the prepared instrument."
+        ),
+    )
+
+    doc.add_heading("2.2 Objects, Arrays, And Destructuring", level=2)
+    add_body_paragraph(
+        doc,
+        paragraph(
+            "JavaScript objects store named fields. They are common in this backend because API requests, compiler profiles, Git status reports, update reports, and AI context packets all carry several related values at once. Destructuring is simply a shortcut for pulling named fields out of an object so the function can work with them directly."
+        ),
+    )
+    add_code_block(
+        doc,
+        "const profile = { language: \"C\", compiler: \"gcc\", timeoutMs: 30000 };\nconst { language, compiler } = profile;\n\nconst files = [\"main.c\", \"filter.h\", \"filter.c\"];",
+        language="javascript",
+        title="Generic object, destructuring, and array pattern",
+    )
+    add_body_paragraph(
+        doc,
+        paragraph(
+            "A good circuit analogy is a connector with labeled pins. The object is the connector body. Each property name is a pin label. Destructuring is grabbing only the pins you need for the next operation."
+        ),
+    )
+
+    doc.add_heading("2.3 Async Work And Await", level=2)
+    add_body_paragraph(
+        doc,
+        paragraph(
+            "Node backends constantly wait for slow work: reading a file, writing a file, calling GitHub, running Git, launching a compiler, or waiting for a model response. JavaScript represents those delayed results with Promises. The async keyword lets a function use await inside its body. await pauses that function until the operation finishes, while the rest of Node can continue handling other work."
+        ),
+    )
+    add_code_block(
+        doc,
+        "async function saveText(filePath, text) {\n  await writeFile(filePath, text, \"utf8\");\n  return { ok: true, filePath };\n}",
+        language="javascript",
+        title="Generic asynchronous file operation",
+    )
+    add_body_paragraph(
+        doc,
+        paragraph(
+            "The lab analogy is waiting for a soldering iron to heat. The instruction is still part of the procedure, but the technician does not pretend the result exists before the tool is ready."
+        ),
+    )
+
+    doc.add_heading("2.4 HTTP Requests And Responses", level=2)
+    add_body_paragraph(
+        doc,
+        paragraph(
+            "A local backend receives HTTP requests. Each request has a method, such as GET or POST, and a path, such as /api/catalog. A response has a status code, headers, and a body. Headers describe how the browser should interpret the body. The body carries the useful information, often JSON."
+        ),
+    )
+    add_code_block(
+        doc,
+        "if (request.method === \"GET\" && url.pathname === \"/api/example\") {\n  response.writeHead(200, { \"Content-Type\": \"application/json\" });\n  response.end(JSON.stringify({ ok: true }));\n}",
+        language="javascript",
+        title="Generic request and JSON response pattern",
+    )
+    add_body_paragraph(
+        doc,
+        paragraph(
+            "Read routing code like a switchboard. The method and path select the circuit. The selected branch decides which subsystem receives the request and what response returns to the browser."
+        ),
+    )
+
+    doc.add_heading("2.5 Paths, Processes, And Guardrails", level=2)
+    add_body_paragraph(
+        doc,
+        paragraph(
+            "A backend that writes files must treat paths carefully. User input should never be allowed to decide an unrestricted disk location. The normal pattern is to start from a trusted root folder, combine safe path segments, normalize the result, and reject anything that escapes the root."
+        ),
+    )
+    add_code_block(
+        doc,
+        "const target = path.resolve(rootFolder, safeSegment);\nif (!target.startsWith(rootFolder)) {\n  throw new Error(\"Path escaped the workspace.\");\n}",
+        language="javascript",
+        title="Generic path-boundary pattern",
+    )
+    add_body_paragraph(
+        doc,
+        paragraph(
+            "Process execution has a similar rule. A compiler or Git command should run with a specific executable, exact arguments, a working folder, a timeout, and captured output. That keeps the backend from becoming an open-ended command prompt."
+        ),
+    )
+    doc.add_page_break()
+
+
 def add_foundation_chapter(doc: Document, guide: dict) -> None:
     file_name = guide["file"]
     source = (REPO / file_name).read_text(encoding="utf-8")
@@ -1945,6 +2080,268 @@ def add_foundation_chapter(doc: Document, guide: dict) -> None:
         lead="How to use later chapters: ",
     )
     doc.add_page_break()
+
+
+SERVER_STATE_TEXT = {
+    "root": paragraph("root is the trusted builder workspace. Almost every local file path eventually relates back to this folder, so it acts like the mechanical chassis of the backend. A request may name a file, but the backend decides whether that name can safely resolve under root."),
+    "portfolioRoot": paragraph("portfolioRoot is the publishing mirror. It can be the same folder as root, but the newer architecture lets it be separate so public website files can be synchronized without mixing in private builder-only files."),
+    "compileRoot": paragraph("compileRoot is the code-workspace area. Compile Code writes sources, cache folders, run folders, generated binaries, Java classes, HDL simulations, and VCD files here instead of scattering temporary build material through the portfolio."),
+    "types": paragraph("types is the small static-file MIME table. It tells the browser whether a served file is JavaScript, CSS, JSON, an image, a PDF, or a generic download. Without it, local preview could serve files as the wrong content type."),
+    "draftPath": paragraph("draftPath points at the private local draft catalog. Save draft writes here so the builder can preserve unfinished work without immediately changing the public projects.json."),
+    "catalogPath": paragraph("catalogPath points at the publish-ready catalog. Apply to site writes here before the publishing path copies and commits website files."),
+    "publishPaths": paragraph("publishPaths is the publishing allowlist. It is one of the most important safety objects in the file because it names exactly what can leave the builder workspace and enter the public website repository."),
+    "publishAuthCachePath": paragraph("publishAuthCachePath stores the short-lived authorization record. The backend uses it to remember that the current machine, repository, branch, and workspace were recently verified instead of asking GitHub every time the app opens."),
+    "publishAuthCacheTtlMs": paragraph("publishAuthCacheTtlMs expresses the normal one-day authorization window requested for publishing. It keeps the app convenient while still forcing periodic verification."),
+    "publishAuthExtendedThreshold": paragraph("publishAuthExtendedThreshold is the rule that turns repeated successful authorizations into longer trust. In this app, repeated success over the recent window can stretch trust to thirty days."),
+    "gitCandidates": paragraph("gitCandidates is the Git discovery list. The backend tries environment paths, normal Program Files locations, and per-user Git installs because Windows machines do not all put Git in the same place."),
+    "compileLanguageProfiles": paragraph("compileLanguageProfiles is the compile workspace rulebook. Each language entry defines default filenames, file extensions, display labels, required tools, and optional Winget package ids. Compile, build, run, simulate, and install-tools operations all consult this object."),
+    "compileToolCandidates": paragraph("compileToolCandidates is the tool-location map. It gives findTool realistic places to search for gcc, g++, javac, java, node, python, iverilog, vvp, and LTspice before declaring a compiler missing."),
+    "portfolioAiInstructions": paragraph("portfolioAiInstructions is the policy prompt for Ask My Portfolio. It tells the model how to separate general questions from portfolio-specific questions, how to use public source excerpts, when to cite GitHub code, and what not to invent."),
+}
+
+
+SERVER_FUNCTION_NARRATIVES = {
+    "securityHeaders": [
+        paragraph("securityHeaders is a small function, but it sits at the outer skin of the backend. The function returns a headers object that every local response can reuse. It begins with fixed browser-safety headers, then merges the caller's extra headers at the end."),
+        paragraph("Reading the body is straightforward: the returned object disables MIME sniffing, limits referrer leakage, blocks browser permissions that the builder does not need, and keeps the opener policy same-origin. The spread of extra is intentionally last so a caller can add Content-Type, Cache-Control, or another endpoint-specific header without rebuilding the safety baseline."),
+        paragraph("This helper is not included because the syntax is difficult. It is included because repeated headers are easy to forget. Centralizing them makes local API responses and static-file responses behave consistently."),
+    ],
+    "sendJson": [
+        paragraph("sendJson is the backend's normal API response writer. The caller gives it the Node response object, a status code, and a data object. The function writes headers first, then serializes the data as formatted JSON and ends the response."),
+        paragraph("The important sequence is header policy before body output. It calls securityHeaders, adds application/json, disables caching, and only then sends JSON.stringify(data, null, 2). The indentation is not required by machines, but it makes API responses readable during debugging."),
+        paragraph("When later endpoint branches call sendJson, they do not need to remember the JSON content type or cache rule. That keeps handleApi focused on routing decisions instead of response formatting."),
+    ],
+    "readRequestJson": [
+        paragraph("readRequestJson turns a POST body stream into a parsed object. Node gives request data in chunks; the function collects those chunks, rejects bodies above a fixed size, and parses the final string as JSON."),
+        paragraph("The chronological flow matters. It starts with an empty body, appends each incoming chunk, throws if the body grows past sixty megabytes, and waits for the stream to finish. Only after the stream is complete does it call JSON.parse. That order prevents partially received JSON from being treated as a real command."),
+        paragraph("This function is the front door for almost every write action. Save draft, upload, compile, authenticate target, apply to site, and AI all depend on request data arriving as a safe object instead of an uncontrolled stream."),
+    ],
+    "resolveInsideRoot": [
+        paragraph("resolveInsideRoot converts caller-supplied path segments into a path under the builder workspace. It resolves the final path, compares it against root, and rejects the request if the path escapes the workspace."),
+        paragraph("The key detail is that path.normalize and path.join collapse the requested segments before comparison. That means dangerous segments such as '..' are interpreted before the safety check. The function then returns the normalized path only if it still belongs under root."),
+        paragraph("This is the filesystem equivalent of a current limit on a bench supply. The UI can request a destination, but this function keeps the request inside the safe operating region."),
+    ],
+    "resolveInsidePortfolioRoot": [
+        paragraph("resolveInsidePortfolioRoot performs the same boundary check for the publish mirror. It exists separately from resolveInsideRoot because the public portfolio workspace can live outside the builder workspace."),
+        paragraph("The function first builds the candidate path from portfolioRoot and the supplied segments. If the resolved path does not start inside portfolioRoot, it throws. Publishing then receives a usable path or no path at all; there is no middle state where a bad path is silently accepted."),
+    ],
+    "resolveInsideCompileRoot": [
+        paragraph("resolveInsideCompileRoot applies the boundary rule to code workspaces. Compile Code writes source files, run folders, binary artifacts, Java classes, and waveform files, so it needs the same path discipline as uploads and publishing."),
+        paragraph("This guard is especially important because filenames and project ids can originate from user-edited project data. The function ensures a source filename becomes a file inside compileRoot, not an accidental write to another part of the computer."),
+    ],
+    "runProcess": [
+        paragraph("runProcess is the command execution wrapper. The backend uses it for compilers, simulators, Git, Java, Python, Node, and installer-related commands. The function begins by choosing a timeout and working directory, then starts the child process with shell disabled and the environment explicitly composed."),
+        paragraph("After spawn, the function becomes a recorder. It accumulates stdout and stderr as data arrives, writes stdin if the caller supplied input, and ends stdin so tools waiting for input do not hang forever. A timer watches the process. On timeout, Windows process trees are killed through taskkill before the child receives SIGKILL."),
+        paragraph("The result object is the value of the wrapper. Instead of making every caller interpret Node child-process events, the function returns ok, code, stdout, stderr, timedOut, and elapsedMs. That shape is why Compile Code and Git publishing can show terminal output consistently."),
+    ],
+    "findTool": [
+        paragraph("findTool locates a compiler, runtime, simulator, or installer helper. It starts with cached answers so repeated compile runs do not rescan the machine. If no cache entry exists, it reads the candidate list for the requested tool name."),
+        paragraph("The function walks through realistic possibilities in order: explicit executable paths, commands available on PATH, and known installation folders. When it finds something usable, it stores that answer in compileToolCache and returns it. When it fails, it caches an empty string so the same missing tool does not cause repeated expensive searches."),
+        paragraph("This is why the builder can run on different Windows machines without hardcoding one install layout. The compiler feature asks for gcc or iverilog; findTool translates that request into an actual executable path if one exists."),
+    ],
+    "normalizeCodeLanguage": [
+        paragraph("normalizeCodeLanguage accepts loose human or UI language names and turns them into canonical backend ids. It trims the value, lowercases it, removes separator noise, and checks an alias map."),
+        paragraph("The alias table is the center of the function. Values such as c++, cpp, sv, system verilog, py, js, node, spice, and cir collapse into the ids used by compileLanguageProfiles. If the cleaned value already names a known profile, the function keeps it. Otherwise JavaScript becomes the fallback."),
+        paragraph("This function prevents every compile branch from having to understand every spelling a user might type. The rest of the backend can switch on c, cpp, verilog, systemverilog, java, javascript, python, html, or ltspice."),
+    ],
+    "compileWorkspaceFilesFromPayload": [
+        paragraph("compileWorkspaceFilesFromPayload turns frontend editor state into a clean list of files for a project workspace. It starts with payload.workspaceFiles, then defines an inner addFile helper that normalizes each file before placing it in a Map."),
+        paragraph("The helper ignores empty code, detects or normalizes the language, chooses a safe filename, creates a safe id, normalizes HDL roles, and stores the result by id. After processing the incoming workspace files, it adds the active file as well. That last step matters because the editor's active file might not already be present in the workspace list."),
+        paragraph("The returned array is sorted by filename. Compile Code can then write and compile a stable set of files rather than trying to reason about raw frontend payloads."),
+    ],
+    "writeCompileWorkspaceSources": [
+        paragraph("writeCompileWorkspaceSources is where normalized workspace objects become real files. It creates the target directory, tracks duplicate filenames, filters by language or extension when requested, writes each source file, and returns records that include uniqueName and sourcePath."),
+        paragraph("Duplicate handling is the most practical part of the body. If two workspace entries claim the same filename, the second one receives a suffix before its extension. That avoids overwriting one source with another while still preserving a readable name in compiler output."),
+        paragraph("Compilers do not compile rich editor blocks. They compile files. This function is the bridge between project editor state and the physical source files a toolchain can consume."),
+    ],
+    "parseVcdScopeText": [
+        paragraph("parseVcdScopeText converts a Verilog VCD waveform file into data a scope viewer can draw. It reads the text line by line and keeps separate state for scopes, signal definitions, timescale text, current time, and the largest observed time."),
+        paragraph("The first part of the loop handles metadata. Timescale lines are collected until their end marker. Scope lines push and pop hierarchical names. $var lines register signal codes, widths, and references, but the function caps the number of signals so a huge waveform does not overwhelm the UI."),
+        paragraph("After $enddefinitions, the function switches from definitions to signal changes. Lines beginning with # update the current simulation time. Scalar and vector value-change lines are normalized, matched to their signal code, and appended only when the value actually changes. The returned object contains the waveform source name, timescale, max time, and a trimmed signal list."),
+    ],
+    "compileAndRunCode": [
+        paragraph("compileAndRunCode is the backend IDE engine. It starts by deciding the language from the requested language or detected source. Then it chooses the language profile, produces a safe active filename, saves the active source, builds a normalized workspace list, and prepares local helpers for run directories, terminal text, and missing-tool checks."),
+        paragraph("The body then becomes a language dispatcher. HTML receives a lightweight tag-balance validation. JavaScript and Python perform syntax checks first, then run the active file when the requested action is run. C and C++ select a compiler profile, write workspace sources, compute a cache key, compile with warnings and debug flags, and run the generated binary only when requested. Java compiles into a cache directory and runs the detected class name. Verilog and SystemVerilog require a testbench and waveform dump before simulation, compile sources through iverilog, run vvp, and parse VCD output for the scope. LTspice runs the simulator in batch mode and includes the log file if one appears."),
+        paragraph("The large size of this function is intentional because it is the point where one frontend command becomes several very different toolchain behaviors. The function keeps the UI simple: the frontend sends one payload with action, code, language, files, project id, and stdin; the backend returns saved metadata, terminal text, ok status, and waveform data when HDL simulation succeeds."),
+    ],
+    "installCompilerTools": [
+        paragraph("installCompilerTools is the automatic setup path for language toolchains that have Winget packages configured. It normalizes the selected language, reads the language profile, and stops early with a clear message when no automatic install rule exists."),
+        paragraph("When a Winget list exists, the function runs each package install with source and package agreements accepted. It appends each command result to a terminal array and returns ok only if every package command succeeds. This gives the frontend a conventional installer-like log instead of a vague success or failure."),
+    ],
+    "validatePublishRemoteUrl": [
+        paragraph("validatePublishRemoteUrl turns a typed repository target into either a clean remote URL or a clear error. It accepts blank input when the caller is not setting a remote, but when a value exists it must match a GitHub HTTPS URL, SSH URL, or a plausible .git remote."),
+        paragraph("The function is deliberately early in the publish flow. A malformed repository URL should fail before Git remotes are changed, credentials are stored, or files are copied."),
+    ],
+    "getPublishTargetInfo": [
+        paragraph("getPublishTargetInfo asks the local publish workspace what repository it is connected to. It checks whether the folder is a Git worktree, reads the origin remote and current branch when available, parses GitHub owner/repo names, and checks for a CNAME file."),
+        paragraph("The result is a status object rather than a thrown error in normal missing-target cases. That lets the builder show a useful target panel even when no repository has been associated yet."),
+    ],
+    "configurePublishTarget": [
+        paragraph("configurePublishTarget is the lower-level target setup helper. It reads repositoryUrl, customDomain, authUsername, and authPassword from the options object, validates each value, ensures the portfolio folder is a Git repository, and sets the origin remote when a remote was supplied."),
+        paragraph("After the remote is set, the function detects the remote default branch and checks out that branch locally. Then it writes or removes CNAME based on the custom-domain input, stores credentials if provided, and returns the current target information. It configures the workspace, but authentication is handled by a stricter flow elsewhere."),
+    ],
+    "writePublishAuthCache": [
+        paragraph("writePublishAuthCache records a successful publishing authorization for the current target. It reads the previous cache first so it can preserve successful history when the repository, branch, and remote match."),
+        paragraph("The function converts recent successes into timestamps, counts successes in the last week, and decides whether extended trust applies. It then writes branch, remote, repository, machine scope, checked time, expiration time, history, trust days, and extended-trust status to the cache file. Finally it tries to chmod the file to owner-only permissions."),
+        paragraph("This is the backend implementation of the convenience rule: normal success lasts one day, but repeated successful authorizations can be remembered longer on the same machine and workspace."),
+    ],
+    "assertPublishAccess": [
+        paragraph("assertPublishAccess is the gate in front of Apply to site. It first proves the publish workspace is a Git worktree, then reads origin and branch. If either is missing, it throws a publishAccessError with details the UI can display."),
+        paragraph("After the basic Git shape is known, the function optionally checks that the workspace looks like a compatible static portfolio. Then it builds an access object containing branch, remote display URL, repository identity, and authorization status. A fresh cache can satisfy the check immediately if it matches the same repository, branch, machine scope, and expiration window."),
+        paragraph("When the cache is absent or stale, the function synchronizes the branch from remote, makes sure a local HEAD exists for write checks, verifies write access, writes a new authorization cache, and returns a richer access object. This is the reason Apply to site can be strict without forcing a GitHub login on every launch."),
+    ],
+    "syncFromPublishTarget": [
+        paragraph("syncFromPublishTarget is the Load from target workflow. It starts by calling assertPublishAccess with compatibility disabled, because the point is to inspect the target repository and decide whether it contains compatible files."),
+        paragraph("The function clones the target branch into a temporary folder, collects available import paths, and requires projects.json. Before replacing local files, it creates a timestamped backup under .omb-backups. Then it copies compatible assets, docs, Backgrounds, CNAME, robots, sitemap, and the catalog into the local builder workspace."),
+        paragraph("The imported projects.json is also written to the local draft path, and syncPortfolioPublishFiles refreshes the publish mirror. The finally block removes the temporary clone, so the machine does not accumulate stale target copies after imports."),
+    ],
+    "authenticateGitHubForTarget": [
+        paragraph("authenticateGitHubForTarget is the interactive trust-building path. It validates the repository URL and optional domain, validates credentials, requires a remote URL, ensures the publish folder is a Git repository, and captures the current target state so it can roll back on failure."),
+        paragraph("Inside the try block, it sets the origin remote, checks Git/Git Credential Manager health, detects the target branch, and checks out that branch. If a matching authorization cache is already fresh and no new credentials were supplied, it can return cached success after writing the custom domain."),
+        paragraph("If credentials are needed, the function either stores the supplied username/token pair or launches Git Credential Manager's GitHub login. It then forces assertPublishAccess, writes the custom domain, returns target/system details, and restores the previous target state if any error interrupts the sequence."),
+    ],
+    "syncPortfolioPublishFiles": [
+        paragraph("syncPortfolioPublishFiles copies publishable website files from the builder workspace to the portfolio mirror. When root and portfolioRoot are the same folder, there is nothing to copy and the function reports that the workspace is not separated."),
+        paragraph("In a separated setup, the function loops only through publishPaths. Existing source paths are copied after the destination is cleared. Missing paths can be removed from the mirror when removeMissing is true. That behavior keeps the public mirror aligned with the current builder output without staging arbitrary folders."),
+    ],
+    "publishSiteChanges": [
+        paragraph("publishSiteChanges is the final Apply to site operation. It starts with a publishAccess object if one was already created, otherwise it calls assertPublishAccess itself. Then it synchronizes the remote branch, copies publishable files into the portfolio mirror, and bumps published asset versions."),
+        paragraph("The function asks stageablePublishPaths which allowlisted paths actually exist, stages those paths with git add, checks status only for those paths, and commits only when there are changes. The commit message is date-based because the action is a generated portfolio update, not a hand-authored feature commit."),
+        paragraph("Finally it pushes to the current branch and returns a public-facing publish report: workspace path, sync details, branch, whether a commit happened, commit output, push status, and push output."),
+    ],
+    "fetchGitHubRepositorySource": [
+        paragraph("fetchGitHubRepositorySource is the public-code collector for Ask My Portfolio. It starts by reading repository metadata through GitHub's API, chooses a branch, and derives limits for how many files and how much text can enter the AI context."),
+        paragraph("If the URL points directly to a file, the function fetches that raw file and returns a source excerpt immediately. Otherwise it reads the repository tree, filters to text-like files, scores files against the visitor's question, pulls README text, lists candidate files, and fetches selected source files. The final text is clamped so a repository cannot flood the prompt."),
+        paragraph("This function is why the assistant can answer code questions from public GitHub repositories while still respecting boundaries. It fetches public evidence; it does not claim private access."),
+    ],
+    "enrichPortfolioContext": [
+        paragraph("enrichPortfolioContext receives the context packet prepared by the public site and adds safe fetched excerpts. It copies up to ten sourceFetches, attaches the current question to each one, and runs fetchSourceText for each source."),
+        paragraph("The returned context keeps everything from the original packet and adds sourceExcerpts plus a sourceFetchPolicy string. That policy is important because the model receives not only evidence but also the rule explaining what kind of evidence was fetched and what kind was only represented by metadata."),
+    ],
+    "callOllamaPortfolioAi": [
+        paragraph("callOllamaPortfolioAi is the local-model fallback. It chooses the Ollama host and model from environment variables, creates an AbortController, and sets a timeout so a missing or slow local model does not freeze the API request."),
+        paragraph("The function sends a chat request containing the portfolio AI instructions, question, intent, conversation, context, and web-search flag. It reads the response JSON, extracts text through extractOllamaText, and returns a normalized ok/error object. If the request fails or times out, the caller receives a clean failure instead of an unhandled network exception."),
+    ],
+    "handlePortfolioAi": [
+        paragraph("handlePortfolioAi is the backend API endpoint for Ask My Portfolio. It reads the request JSON, clamps the question, normalizes conversation history, validates the intent, and rejects empty questions before doing any model work."),
+        paragraph("The next step enriches portfolio context. After context is prepared, the function chooses a provider. If OPENAI_API_KEY is missing, it tries Ollama and returns a 503 only when the local model path also fails. If OpenAI is configured, it builds a Responses API payload with developer instructions, visitor question, intent, conversation JSON, portfolio context JSON, model settings, and optional web search."),
+        paragraph("The function also handles fallback model selection for default OpenAI model errors. A successful response returns answer text, model, and web-search status. A failed response returns the provider error through sendJson so the frontend can show a clear AI-backend problem."),
+    ],
+    "getUpdateInfo": [
+        paragraph("getUpdateInfo checks whether a newer builder release exists. It reads the current version from the app environment or package.json, calls the GitHub latest-release API, extracts the release tag, finds installer and portable assets, and compares versions."),
+        paragraph("The function also checks blockedAppUpdateVersions. A release can exist but be deliberately skipped if a known updater issue would make automatic installation unsafe. The returned object gives the UI enough information to show up-to-date, update-available, blocked, or error states."),
+    ],
+    "getSecurityReport": [
+        paragraph("getSecurityReport produces the builder's security visibility report. It runs release-download counts, authorization cache reads, and target info reads in parallel with Promise.allSettled so one failed source does not destroy the whole report."),
+        paragraph("The returned report is intentionally honest. GitHub release assets can reveal download counts, and the local cache can reveal publishing-auth state, but a static GitHub Pages website cannot identify every visitor or provide raw IP logs by itself. That is why the report recommends Cloudflare analytics, Logpush, Analytics Engine, or a Worker-backed endpoint for IP-level logging."),
+    ],
+    "downloadAndLaunchAppUpdate": [
+        paragraph("downloadAndLaunchAppUpdate performs the in-app updater handoff. It starts by calling getUpdateInfo and refuses to continue when the current version is already current, the release is blocked, no installer is available, or the OS is not Windows."),
+        paragraph("After those checks, it downloads the installer into a temp update folder, rejects suspiciously tiny downloads, builds candidate relaunch paths, and writes both a PowerShell launcher script and a small CMD wrapper. The PowerShell script waits for the current process, stops lingering builder processes, runs the installer, retries with elevation if necessary, waits for the installed executable, and relaunches it."),
+        paragraph("The backend launches the CMD wrapper detached, emits an update-started event, and exits the current process after a short delay. That sequence lets the app replace itself without asking the running executable to overwrite files that are still in use."),
+    ],
+    "handleApi": [
+        paragraph("handleApi is the local API router. It receives the parsed URL and checks specific method/path combinations in order. GET routes handle catalog reads, template reads, publish-target status, system checks, app updates, security reports, and compiler-tool status."),
+        paragraph("After the read-only routes, the function rejects non-POST requests that were not handled. Then it applies the most important boundary rule in the API: POST write actions must come from the local machine. Only after that local check does it route AI requests, code beautify/save/compile/install actions, Git installation, app update installation, GitHub authentication, load from target, save draft, apply catalog, and uploads."),
+        paragraph("The function is large because it is replacing a framework router. The chronological ordering is the safety design: cheap read routes first, local-only write gate second, then each command branch wrapped in endpoint-specific try/catch logic so the frontend receives JSON rather than a crashed server."),
+    ],
+}
+
+
+SERVER_TEXTBOOK_CHAPTERS = [
+    {
+        "title": "Chapter 3: Runtime Boundaries, Response Shape, And File Roots",
+        "intro": [
+            paragraph("The first backend concern is boundary control. Before the app can compile code or push a website, it must know which folders are trusted, how responses are shaped, and how requests become safe data."),
+        ],
+        "state": ["root", "portfolioRoot", "compileRoot", "types", "draftPath", "catalogPath", "publishPaths"],
+        "functions": ["securityHeaders", "sendJson", "readRequestJson", "resolveInsideRoot", "resolveInsidePortfolioRoot", "resolveInsideCompileRoot"],
+    },
+    {
+        "title": "Chapter 4: Compile Code Workspace And Tool Execution",
+        "intro": [
+            paragraph("This chapter follows the backend IDE path. The UI sends code and project workspace files; server.mjs turns that material into safe filenames, real source files, compiler invocations, terminal output, cached artifacts, and HDL scope data."),
+        ],
+        "state": ["compileLanguageProfiles", "compileToolCandidates"],
+        "functions": ["normalizeCodeLanguage", "findTool", "runProcess", "compileWorkspaceFilesFromPayload", "writeCompileWorkspaceSources", "parseVcdScopeText", "compileAndRunCode", "installCompilerTools"],
+    },
+    {
+        "title": "Chapter 5: Publishing, Authentication, And Loading From Target",
+        "intro": [
+            paragraph("Publishing is where local work becomes public website content. The functions in this chapter guard repository setup, daily authorization caching, target import, publish-mirror synchronization, and final Git push."),
+        ],
+        "state": ["publishAuthCachePath", "publishAuthCacheTtlMs", "publishAuthExtendedThreshold", "gitCandidates"],
+        "functions": ["validatePublishRemoteUrl", "getPublishTargetInfo", "configurePublishTarget", "writePublishAuthCache", "assertPublishAccess", "syncFromPublishTarget", "authenticateGitHubForTarget", "syncPortfolioPublishFiles", "publishSiteChanges"],
+    },
+    {
+        "title": "Chapter 6: AI Context, Public Source Fetching, And Model Routing",
+        "intro": [
+            paragraph("Ask My Portfolio is stronger when it can separate a greeting from a portfolio question, fetch safe public source evidence, and choose an AI backend without exposing private keys to the browser."),
+        ],
+        "state": ["portfolioAiInstructions"],
+        "functions": ["fetchGitHubRepositorySource", "enrichPortfolioContext", "callOllamaPortfolioAi", "handlePortfolioAi"],
+    },
+    {
+        "title": "Chapter 7: Updates, Security Reporting, And The API Switchboard",
+        "intro": [
+            paragraph("The final server responsibilities are maintenance and routing. The app needs update checks, security visibility, and one central API switchboard that maps browser actions to backend functions."),
+        ],
+        "state": [],
+        "functions": ["getUpdateInfo", "getSecurityReport", "downloadAndLaunchAppUpdate", "handleApi"],
+    },
+]
+
+
+def server_variable_lookup(source: str) -> dict[str, VariableDoc]:
+    return {variable.name: variable for variable in top_level_variables(source)}
+
+
+def server_function_lookup(source: str) -> dict[str, FunctionDoc]:
+    return {function.name: function for function in function_ranges(source)}
+
+
+def add_server_state_excerpt(doc: Document, variable: VariableDoc, text: str) -> None:
+    doc.add_heading(variable.name, level=3)
+    add_body_paragraph(doc, text)
+    add_code_block(doc, variable.source, language="javascript", title=f"Server state excerpt: {variable.name}")
+
+
+def add_server_function_walkthrough(doc: Document, function: FunctionDoc) -> None:
+    doc.add_heading(function.name, level=3)
+    paragraphs = SERVER_FUNCTION_NARRATIVES.get(function.name, [])
+    if paragraphs:
+        add_body_paragraph(doc, paragraphs[0])
+    add_code_block(doc, function.source, language="javascript", title=f"Full source for {function.name}")
+    for text in paragraphs[1:]:
+        add_body_paragraph(doc, text)
+
+
+def add_server_textbook_chapters(doc: Document) -> None:
+    source = (REPO / "server.mjs").read_text(encoding="utf-8")
+    variables = server_variable_lookup(source)
+    functions = server_function_lookup(source)
+    for chapter in SERVER_TEXTBOOK_CHAPTERS:
+        doc.add_heading(chapter["title"], level=1)
+        for text in chapter["intro"]:
+            add_body_paragraph(doc, text)
+        if chapter["state"]:
+            doc.add_heading("Important working state", level=2)
+            add_body_paragraph(
+                doc,
+                paragraph(
+                    "These objects and constants are shown before the functions because they are the shared state the functions read from or protect. They are not syntax trivia; they explain what the backend remembers while it runs."
+                ),
+            )
+            for variable_name in chapter["state"]:
+                variable = variables.get(variable_name)
+                if variable:
+                    add_server_state_excerpt(doc, variable, SERVER_STATE_TEXT.get(variable_name, explain_variable(variable, "server.mjs", top_level=True, source=source)))
+        doc.add_heading("Function walkthrough", level=2)
+        for function_name in chapter["functions"]:
+            function = functions.get(function_name)
+            if function:
+                add_server_function_walkthrough(doc, function)
+        doc.add_page_break()
 
 
 def function_fact_map(file_name: str, func: FunctionDoc, all_names: set[str]) -> dict[str, list[str]]:
@@ -2148,12 +2545,21 @@ def add_function_walkthrough(doc: Document, guide: dict) -> None:
     add_code_block(doc, html_source, language="html", title="Exact source block for index.html")
 
 
-def write_guide_docx(guide: dict, output_path: Path) -> None:
-    doc = setup_document(guide["title"], guide["subtitle"])
+def add_guide_content(doc: Document, guide: dict) -> None:
+    if guide["file"] == "server.mjs":
+        add_server_overview_chapter(doc, guide)
+        add_server_syntax_chapter(doc)
+        add_server_textbook_chapters(doc)
+        return
     add_overview(doc, guide)
     add_foundation_chapter(doc, guide)
     add_variable_section(doc, guide)
     add_function_walkthrough(doc, guide)
+
+
+def write_guide_docx(guide: dict, output_path: Path) -> None:
+    doc = setup_document(guide["title"], guide["subtitle"])
+    add_guide_content(doc, guide)
     doc.save(output_path)
 
 
@@ -2235,10 +2641,7 @@ def main() -> None:
 
         master.add_heading(guide["title"], level=1)
         master.add_paragraph(guide["subtitle"])
-        add_overview(master, guide)
-        add_foundation_chapter(master, guide)
-        add_variable_section(master, guide)
-        add_function_walkthrough(master, guide)
+        add_guide_content(master, guide)
         master.add_page_break()
 
     master.save(MASTER_DOCX)
