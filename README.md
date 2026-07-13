@@ -255,6 +255,7 @@ Use the workflow in [BRANCHING.md](BRANCHING.md):
 | `codex/local-docs-auth-nested-sections` | Keeps generated guide documents local-only, restores cached publishing authorization behavior, removes predefined project sections/subsections, adds recursive section editing, adds multi-file project uploads, upgrades Compile Code with nested folders/files and a real terminal, and routes portfolio AI prompts by conversation/general/portfolio/mixed intent. | `development` | `development` | Ready for `development` |
 | `codex/bump-builder-version-0.2.35` | Bumps the builder release version to `0.2.35` so the next approved `development` to `main` merge can create a fresh `builder-v0.2.35` release tag. | `development` | `development` | Ready for `development` |
 | `codex/fix-guide-and-bump-0.2.36` | Corrects the in-app guide so new projects are documented as Overview-only by default and bumps the builder release version to `0.2.36` so installed `0.2.35` apps can detect the next update. | `development` | `development` | Ready for `development` |
+| `codex/fix-nested-section-editor-0.2.37` | Repairs nested project section editing, prunes empty section trees while preserving content-bearing sections/subsections, and bumps the builder release version to `0.2.37`. | `development` | `development` | Ready for `main` |
 
 ## Uninstall
 
