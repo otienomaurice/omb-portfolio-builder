@@ -6,16 +6,25 @@ This README is for the builder application only. Website-specific content, domai
 
 ## Complete Beginner Guide
 
-A long beginner-oriented Word guide and a deeper source-code reference are included at:
+A long beginner-oriented Word/PDF guide and deeper source-code references can be generated locally from the scripts under `docs/`. Generated `.docx` and `.pdf` files are intentionally not committed or packaged with the app, so the repository stays small and the guides remain local learning artifacts.
 
-```text
-docs/OMB_Portfolio_Builder_Complete_Guide.docx
-docs/OMB_Portfolio_Builder_Complete_Guide.pdf
-docs/OMB_Portfolio_Builder_Code_Reference.docx
-docs/OMB_Portfolio_Builder_Code_Reference.pdf
-```
+The complete guide explains the whole system: high-level design, generated block diagrams, software-engineering decisions, shell commands, programming syntax, how the important files communicate, what each build tool owns, GitHub workflows, Electron, the installer, caching, API endpoints, data contracts, frontend/backend/AI/Cloudflare layers, the website, the parser, publishing, and compiler tools.
 
-It explains the high-level design, generated block diagrams, software-engineering decisions, shell commands, programming syntax, how the important files communicate, what each build tool owns, GitHub workflows, Electron, the installer, caching, API endpoints, data contracts, frontend/backend/AI/Cloudflare layers, the website, the parser, publishing, compiler tools, generated function inventories, and file-by-file repository notes. The generator also writes source-focused Word documents to `docs/code-reference-docx` and PDF documents to `docs/code-reference-pdf`.
+Start with the curated file guides when you generate them locally and want to understand code like a book instead of a line-number report. The expanded server guide is produced by `docs/build_server_book_pdf.py`:
+
+- `docs/curated-file-guides-pdf/server.mjs.pdf`
+- `docs/curated-file-guides-docx/script.js.docx` and `docs/curated-file-guides-pdf/script.js.pdf`
+- `docs/curated-file-guides-docx/index.html.docx` and `docs/curated-file-guides-pdf/index.html.pdf`
+
+The server PDF begins with a compact JavaScript syntax section, then explains `server.mjs` by grouped implementation chapters. It includes a dedicated Node.js/modules chapter, heavily expanded function walkthroughs, API routing, Save draft, Apply to site, uploads, Compile Code, Verilog/SystemVerilog simulation, GitHub authentication, Load from target, portfolio AI, updates, security reporting, PDF bookmarks, and a 50-page framework-transition chapter without old reference-label blocks.
+
+File-specific explanations are generated into local Word/PDF reference folders:
+
+- `docs/file-reference-docx` and `docs/file-reference-pdf` contain one document for each primary tracked repository file.
+- `docs/code-reference-docx` and `docs/code-reference-pdf` contain source-focused documents with discovered function detail.
+- `docs/important-code-reference-docx` and `docs/important-code-reference-pdf` contain the curated set of behavior-driving files to study first.
+
+The complete guide should stay system-level. The file-specific documents explain each file's contents, functions, important variables, calls, returns, source excerpts, metadata, and safe-change notes. Do not commit generated documentation outputs unless a release process explicitly asks for them.
 
 ## Install
 
@@ -90,11 +99,11 @@ Front-page, profile, contact, fun facts, and project overview fields use the sam
 
 Code support is available from the rich editor right-click menu. Use **Code block** or **Paste as code** for C, C++, SystemVerilog, LTspice, Java, JavaScript, Python, and HTML. Code blocks store the selected language, preserve source spacing when requested, highlight common language keywords, and render as code in project previews and published portfolios.
 
-Projects also include a separate **Compile Code** workspace. This is local builder tooling, not a portfolio text block. Each project behaves like a small IDE workspace: the left explorer lists the source files, the main editor is the active syntax-highlighted typing surface, and the backend receives the whole workspace so files can include or call other files. JavaScript uses Node.js, Python uses the installed Python runtime, Java uses a JDK, C/C++ use a MinGW/WinLibs-style compiler when available, and Verilog/SystemVerilog use Icarus Verilog and vvp when installed.
+Projects can include a separate **Compile Code** workspace when you create a project section named Compile Code. This is local builder tooling, not a required portfolio text block. Each project behaves like a small IDE workspace: the left explorer lists nested folders and source files, the main editor is the active syntax-highlighted typing surface, and the backend receives the whole workspace so files can include or call other files. JavaScript uses Node.js, Python uses the installed Python runtime, Java uses a JDK, C/C++ use a MinGW/WinLibs-style compiler when available, and Verilog/SystemVerilog use Icarus Verilog and vvp when installed.
 
 The Compile Code workspace has separate **Compile**, **Build project**, and **Run** controls. Verilog/SystemVerilog also show **Simulate** and **Show scope**. Compile checks or builds the active source. Build project uses the files in the project workspace. Run executes the built active program when the language supports it. Simulate runs HDL through vvp and can produce waveform data for the scope.
 
-The Compile Code workspace includes an explicit **Show output** control. Use it to jump directly to the local terminal output for the active source file. The terminal panel also supports copying output and clearing output, while the Messages log keeps user-facing compile/save/append status entries. **Append code to project** scans the project sections and nested subsections so the active source can be appended as a formatted code block to the correct overview.
+The Compile Code workspace includes an explicit **Show output** control. Use it to jump directly to the **Console** output for the active source file. The workspace also has a **Messages** log for compile/save/append status entries and a real **Terminal** panel for running local commands from the selected project compile folder. **Append code to project** scans the project sections and nested subsections so the active source can be appended as a formatted code block to the correct overview.
 
 Verilog and SystemVerilog simulation requires a testbench. Mark HDL files as **Design** or **Testbench**, or use **Add testbench** to create a starter bench with `$dumpfile` and `$dumpvars`. HDL Compile can syntax-check/build design files, while Simulate requires the testbench and parses the generated VCD file into a **Signal scope** so signals can be viewed over time.
 
@@ -233,6 +242,17 @@ Use the workflow in [BRANCHING.md](BRANCHING.md):
 | `codex/hdl-testbench-scope` | Requires HDL simulations to include a testbench, adds HDL design/testbench roles, and renders VCD waveform data in a signal scope. | `development` | `development` | Merged into `development` |
 | `codex/builder-file-ai-auth-docs-cleanup` | Allows all project evidence file types, cleans publishing target authentication/loading, improves the website AI fallback, adds IDE-style compile workspace controls, and expands generated code documentation. | `development` | `development` | Merged into `development` |
 | `codex/deep-docx-pdf-code-reference` | Replaces Markdown-only code references with generated Word/PDF source references and expands function-level documentation with diagrams, endpoints, variables, implementation signals, and debugging notes. | `development` | `development` | Merged into `development` |
+| `codex/all-file-specific-docs` | Adds focused Word/PDF references for the important code and control files that drive the builder, website, installer, Cloudflare AI worker, workflows, parser, and generated documentation. | `development` | `development` | Merged into `development` |
+| `codex/narrative-important-function-docs` | Splits the documentation model so the complete guide explains the whole system while generated per-file Word/PDF references explain each file's own contents, functions, variables, calls, returns, and safe-change notes. | `development` | `development` | Merged into `development` |
+| `codex/curated-server-script-index-docs` | Adds book-style curated Word/PDF guides for `server.mjs`, `script.js`, and `index.html`, with multi-page overviews before grouped code walkthroughs. | `development` | `development` | Merged into `development` |
+| `codex/function-object-variable-docs` | Expands the curated Word/PDF guides so `server.mjs` and `script.js` document top-level objects, variables, every extracted function, parameters, body behavior, called helpers, and local function variables without line-number-dependent notes. | `development` | `development` | Merged into `development` |
+| `codex/textbook-function-doc-style` | Rewrites curated function sections into a smoother textbook flow with responsibility, syntax, parameter reading, implementation discussion, collaborator explanation, and local variable walkthroughs. | `development` | `development` | Merged into `development` |
+| `codex/textbook-code-block-docs` | Adds textbook-style source-integrated docs with syntax/framework chapters, exact highlighted source blocks, styled paragraphs, analogies, and expanded function/source walkthroughs. | `development` | `development` | Merged into `development` |
+| `codex/server-textbook-narrative-doc` | Reworks the `server.mjs` curated guide into a top-down textbook narrative with a server abstract, general JavaScript/Node syntax chapter, selected subsystem chapters, full highlighted source blocks, and procedural explanations without repeated reference labels. | `development` | `development` | Merged into `development` |
+| `codex/server-pdf-js-textbook` | Rebuilds the `server.mjs` guide as a PDF-only textbook with a 50-plus-page JavaScript syntax primer and feature-based backend chapters without reference-label blocks. | `development` | `development` | Merged into `development` |
+| `codex/server-deep-feature-code-guide` | Expands the `server.mjs` PDF guide's backend chapters with deeper grouped explanations of the actual code paths, important state, endpoint flows, helper calls, and returned objects while keeping the JavaScript primer intact. | `development` | `development` | Merged into `development` |
+| `codex/server-600-page-book-guide` | Expands the `server.mjs` PDF into a compact 600-page bookmarked book with 16 chapter-level sections, a dedicated Node.js/modules chapter, deeper real-implementation walkthroughs, and a long future-framework migration chapter. | `development` | `development` | Merged into `development` |
+| `codex/local-docs-auth-nested-sections` | Keeps generated guide documents local-only, restores cached publishing authorization behavior, removes predefined project sections/subsections, adds recursive section editing, adds multi-file project uploads, upgrades Compile Code with nested folders/files and a real terminal, and routes portfolio AI prompts by conversation/general/portfolio/mixed intent. | `development` | `development` | Ready for `development` |
 
 ## Uninstall
 

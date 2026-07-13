@@ -8,3 +8,13 @@ dist/
 projects.local.json
 .omb-publish-session.json
 .omb-backups/
+docs/*.docx
+docs/*.pdf
+docs/code-reference-docx/
+docs/code-reference-pdf/
+docs/curated-file-guides-docx/
+docs/curated-file-guides-pdf/
+docs/file-reference-docx/
+docs/file-reference-pdf/
+docs/important-code-reference-docx/
+docs/important-code-reference-pdf/

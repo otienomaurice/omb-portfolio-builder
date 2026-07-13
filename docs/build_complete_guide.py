@@ -3,10 +3,12 @@ from __future__ import annotations
 import html
 import json
 import math
+import mimetypes
 import re
 import shutil
 import subprocess
 import textwrap
+from collections import Counter
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
@@ -38,6 +40,14 @@ CODE_REFERENCE_DOCX_DIR = REPO / "docs" / "code-reference-docx"
 CODE_REFERENCE_PDF_DIR = REPO / "docs" / "code-reference-pdf"
 CODE_REFERENCE_MASTER_DOCX = REPO / "docs" / "OMB_Portfolio_Builder_Code_Reference.docx"
 CODE_REFERENCE_MASTER_PDF = REPO / "docs" / "OMB_Portfolio_Builder_Code_Reference.pdf"
+ALL_FILE_REFERENCE_DOCX_DIR = REPO / "docs" / "file-reference-docx"
+ALL_FILE_REFERENCE_PDF_DIR = REPO / "docs" / "file-reference-pdf"
+ALL_FILE_REFERENCE_MASTER_DOCX = REPO / "docs" / "OMB_Portfolio_Builder_File_Reference.docx"
+ALL_FILE_REFERENCE_MASTER_PDF = REPO / "docs" / "OMB_Portfolio_Builder_File_Reference.pdf"
+FILE_REFERENCE_DOCX_DIR = REPO / "docs" / "important-code-reference-docx"
+FILE_REFERENCE_PDF_DIR = REPO / "docs" / "important-code-reference-pdf"
+FILE_REFERENCE_MASTER_DOCX = REPO / "docs" / "OMB_Portfolio_Builder_Important_Code_Reference.docx"
+FILE_REFERENCE_MASTER_PDF = REPO / "docs" / "OMB_Portfolio_Builder_Important_Code_Reference.pdf"
 
 
 FILE_DESCRIPTIONS = {
@@ -893,6 +903,308 @@ def tracked_files() -> list[str]:
     return [line.strip() for line in result.stdout.splitlines() if line.strip()]
 
 
+GENERATED_REFERENCE_PREFIXES = (
+    "docs/code-reference/",
+    "docs/code-reference-docx/",
+    "docs/code-reference-pdf/",
+    "docs/file-reference-docx/",
+    "docs/file-reference-pdf/",
+    "docs/important-code-reference-docx/",
+    "docs/important-code-reference-pdf/",
+    "docs/guide-diagrams/",
+)
+
+GENERATED_REFERENCE_FILES = {
+    "docs/OMB_Portfolio_Builder_Complete_Guide.docx",
+    "docs/OMB_Portfolio_Builder_Complete_Guide.pdf",
+    "docs/OMB_Portfolio_Builder_Code_Reference.docx",
+    "docs/OMB_Portfolio_Builder_Code_Reference.pdf",
+    "docs/OMB_Portfolio_Builder_File_Reference.docx",
+    "docs/OMB_Portfolio_Builder_File_Reference.pdf",
+    "docs/OMB_Portfolio_Builder_Important_Code_Reference.docx",
+    "docs/OMB_Portfolio_Builder_Important_Code_Reference.pdf",
+}
+
+
+def is_generated_reference_file(repo_file: str) -> bool:
+    return repo_file in GENERATED_REFERENCE_FILES or repo_file.startswith(GENERATED_REFERENCE_PREFIXES)
+
+
+def primary_tracked_files(files: list[str]) -> list[str]:
+    return [file for file in files if not is_generated_reference_file(file)]
+
+
+IMPORTANT_CODE_FILES = [
+    "main.cjs",
+    "server.mjs",
+    "template-preview.js",
+    "template-preview.html",
+    "template-preview.css",
+    "script.js",
+    "index.html",
+    "styles.css",
+    "cloudflare/portfolio-ai-worker.js",
+    "cloudflare/wrangler.toml",
+    "build/installer.nsh",
+    "docs/build_complete_guide.py",
+    "builder-rich-future-sections.js",
+    "electronics-search.js",
+    "package.json",
+    "project-templates.json",
+    "projects.json",
+    ".github/workflows/build-windows-builder.yml",
+    ".github/workflows/main-branch-gate.yml",
+]
+
+
+def important_code_files(files: list[str]) -> list[str]:
+    available = set(files)
+    return [file for file in IMPORTANT_CODE_FILES if file in available and not is_generated_reference_file(file)]
+
+
+IMPORTANT_FUNCTIONS = [
+    ("main.cjs", "preparePackagedWorkspace"),
+    ("main.cjs", "resolveWorkspaceRoots"),
+    ("main.cjs", "startBuilderServer"),
+    ("main.cjs", "createWindow"),
+    ("main.cjs", "boot"),
+    ("server.mjs", "findTool"),
+    ("server.mjs", "runProcess"),
+    ("server.mjs", "compileAndRunCode"),
+    ("server.mjs", "parseVcdScopeText"),
+    ("server.mjs", "readHdlWaveform"),
+    ("server.mjs", "configurePublishTarget"),
+    ("server.mjs", "publishAuthCacheIsFresh"),
+    ("server.mjs", "assertPublishAccess"),
+    ("server.mjs", "syncFromPublishTarget"),
+    ("server.mjs", "publishSiteChanges"),
+    ("server.mjs", "downloadAndLaunchAppUpdate"),
+    ("server.mjs", "enrichPortfolioContext"),
+    ("server.mjs", "handlePortfolioAi"),
+    ("server.mjs", "handleApi"),
+    ("template-preview.js", "renderCompileCodeSection"),
+    ("template-preview.js", "compileActiveFile"),
+    ("template-preview.js", "appendCompileCodeToProject"),
+    ("template-preview.js", "parseProjectForPortfolio"),
+    ("template-preview.js", "fullPortfolioPreviewHtmlExact"),
+    ("template-preview.js", "populateRichEditor"),
+    ("template-preview.js", "saveRichEditorToProject"),
+    ("template-preview.js", "handleRichEditorPaste"),
+    ("template-preview.js", "applySelectionInspectorFormat"),
+    ("template-preview.js", "saveCatalog"),
+    ("template-preview.js", "loadData"),
+    ("script.js", "rebuildSearchIndex"),
+    ("script.js", "searchResultsFor"),
+    ("script.js", "openParsedSection"),
+    ("script.js", "assistantContextForQuestion"),
+    ("script.js", "askRemoteAssistant"),
+    ("script.js", "assistantLocalAnswer"),
+    ("script.js", "answerAssistantQuestion"),
+    ("cloudflare/portfolio-ai-worker.js", "buildMessages"),
+    ("cloudflare/portfolio-ai-worker.js", "callOpenAi"),
+    ("cloudflare/portfolio-ai-worker.js", "callWorkersAi"),
+    ("cloudflare/portfolio-ai-worker.js", "fallbackWorkerAnswer"),
+    ("build/installer.nsh", "OMBUninstallExistingInstallIfPresent"),
+    ("build/installer.nsh", "OMBScanForDuplicateBuilderCopies"),
+    ("build/installer.nsh", "OMBStopBuilderProcessesForUpdate"),
+    ("docs/build_complete_guide.py", "extract_function_blocks"),
+    ("docs/build_complete_guide.py", "write_code_reference_docs"),
+    ("docs/build_complete_guide.py", "write_file_reference_docs"),
+]
+
+
+IMPORTANT_FUNCTION_DETAILS = {
+    ("main.cjs", "preparePackagedWorkspace"): {
+        "what": "This function prepares the writable workspace that the packaged desktop application will use at runtime. The installed app cannot safely treat packaged resources as editable source files, so this function copies or refreshes the required builder and portfolio resources into a location the user can actually write to.",
+        "why": "Without this function, a fresh install could open with missing website files, stale resources, or files trapped inside the packaged app bundle. It is one of the reasons the builder can behave like a normal desktop app while still using web assets internally.",
+    },
+    ("main.cjs", "resolveWorkspaceRoots"): {
+        "what": "This function decides where the builder workspace and portfolio workspace live for the current run. It combines packaged-app defaults, development-mode paths, and user-owned writable locations so the rest of the app can use stable roots instead of guessing paths repeatedly.",
+        "why": "The builder has to work when launched from source, from an installed executable, and from an updated install. Centralizing workspace resolution prevents different parts of the app from accidentally reading or writing different copies of the portfolio.",
+    },
+    ("main.cjs", "startBuilderServer"): {
+        "what": "This function starts the local backend process that serves the builder UI and handles local APIs. It chooses a port, launches server.mjs with the resolved workspace roots, and gives Electron an origin URL it can load.",
+        "why": "The Electron window is only the desktop shell. The heavy work still belongs to the backend: saving files, running Git, compiling code, and publishing. This function is the bridge between the desktop shell and that backend.",
+    },
+    ("main.cjs", "createWindow"): {
+        "what": "This function creates the Electron BrowserWindow and loads the local builder interface. It configures the window behavior, menu integration, navigation safety, fullscreen behavior, and the local URL where the builder runs.",
+        "why": "This is the point where the desktop application becomes visible. A mistake here can make the app look like a browser tab, block menus, break fullscreen, or load the wrong workspace.",
+    },
+    ("main.cjs", "boot"): {
+        "what": "This is the main startup routine. It prepares the workspace, starts the backend server, creates the desktop window, and connects the pieces in the order required for the builder to become usable.",
+        "why": "A desktop app needs a controlled startup sequence. The server must exist before the window loads, and the workspace must exist before the server can serve or save data. boot keeps that sequence explicit.",
+    },
+    ("server.mjs", "findTool"): {
+        "what": "This function locates external tools such as compilers, runtimes, Git, or simulators. It checks known paths and command availability, then caches the result so repeated compile/run actions do not keep searching the machine.",
+        "why": "Compile Code depends on tools that may or may not be installed. The builder needs fast, clear tool detection so it can explain missing tools and avoid lag every time the user presses Compile or Run.",
+    },
+    ("server.mjs", "runProcess"): {
+        "what": "This is the backend's controlled process runner. It launches a command with arguments, captures stdout and stderr, enforces a timeout, records elapsed time, and returns a structured result to the caller.",
+        "why": "Git commands, compilers, simulators, and installers all run outside Node. This wrapper makes those risky external calls predictable and lets the UI show terminal output instead of freezing or silently failing.",
+    },
+    ("server.mjs", "compileAndRunCode"): {
+        "what": "This function is the core Compile Code engine. It saves or gathers workspace files, detects the requested language/action, checks required tools, compiles when needed, runs when requested, handles HDL simulation/testbench requirements, reads generated waveform files, and returns terminal output plus metadata.",
+        "why": "It turns the builder's code workspace into a small IDE. Keeping this logic in one backend function lets the frontend stay focused on editing while the backend owns language-specific build behavior.",
+    },
+    ("server.mjs", "parseVcdScopeText"): {
+        "what": "This function parses VCD waveform text emitted by HDL simulations. It reads signal definitions, time markers, value changes, scopes, and symbols, then converts the raw waveform file into structured signal data.",
+        "why": "The scope UI cannot draw from raw VCD text directly. This parser is what lets a SystemVerilog or Verilog simulation become a visible timing waveform in the builder.",
+    },
+    ("server.mjs", "readHdlWaveform"): {
+        "what": "This function searches the compile cache for generated VCD waveform files, selects an appropriate waveform, and runs it through the VCD parser.",
+        "why": "A simulator may generate files in a build directory rather than returning all useful information through stdout. This function lets the builder recover waveform evidence after simulation finishes.",
+    },
+    ("server.mjs", "configurePublishTarget"): {
+        "what": "This function accepts a publishing target, validates it, configures the local publish mirror repository, verifies write access, and saves the target only after authentication succeeds.",
+        "why": "Publishing is dangerous if the target is wrong. This function protects the portfolio by making target setup explicit and verified before Apply to site can push changes.",
+    },
+    ("server.mjs", "publishAuthCacheIsFresh"): {
+        "what": "This function decides whether a saved publishing authorization cache still applies to the current target. It checks scope, repository, branch, timestamp, and trust rules before reusing the cached authorization.",
+        "why": "The user should not have to authenticate on every click, but the app also cannot trust stale credentials forever. This function is the balance between convenience and publishing safety.",
+    },
+    ("server.mjs", "assertPublishAccess"): {
+        "what": "This function is the gatekeeper before website-changing operations. It checks whether target authentication exists and is still fresh enough, and it returns a clear access error when publishing is not allowed.",
+        "why": "Apply to site should only run when the current user has proven write access. This function prevents accidental pushes from an unauthenticated or mismatched target state.",
+    },
+    ("server.mjs", "syncFromPublishTarget"): {
+        "what": "This function loads compatible website files from the configured GitHub target into the local builder workspace. It pulls or fetches the target state, reads supported portfolio files, and updates local fields when the target is valid.",
+        "why": "This is what lets the same owner move to another machine, authenticate, and pull the current website into the builder instead of starting blank.",
+    },
+    ("server.mjs", "publishSiteChanges"): {
+        "what": "This function applies the generated portfolio output to the publish mirror, stages allowed files, commits the changes, and pushes them to the configured website repository.",
+        "why": "This is the final local-to-public handoff. It keeps publishing constrained to generated website files so the builder app does not blindly push unrelated local files.",
+    },
+    ("server.mjs", "downloadAndLaunchAppUpdate"): {
+        "what": "This function downloads a selected app installer release, writes an update handoff script, closes the running app, starts the installer, and attempts to relaunch the updated executable afterward.",
+        "why": "Windows cannot cleanly overwrite a running app. This function coordinates update work so the user sees a simple Update button instead of manually closing, installing, and reopening everything.",
+    },
+    ("server.mjs", "enrichPortfolioContext"): {
+        "what": "This function expands the AI context with portfolio content and public source text when allowed. It can read local public files or fetch public GitHub/link data so the assistant has richer material for portfolio-aware answers.",
+        "why": "The AI should not give canned answers. It needs enough context to distinguish a general electronics question from a project-specific question and answer with relevant evidence.",
+    },
+    ("server.mjs", "handlePortfolioAi"): {
+        "what": "This backend handler receives AI chat requests, classifies the question, builds the model payload, chooses an available AI route, and falls back to local rule-based answers when remote AI is unavailable.",
+        "why": "It provides the conversational intelligence layer while keeping secrets and model calls away from static frontend code.",
+    },
+    ("server.mjs", "handleApi"): {
+        "what": "This is the local backend router. It reads the request path, selects the matching API behavior, calls the responsible function, and sends the response back to the builder frontend.",
+        "why": "Almost every builder action crosses this function. It is the traffic director between button clicks and backend work.",
+    },
+    ("template-preview.js", "renderCompileCodeSection"): {
+        "what": "This function draws the Compile Code workspace inside a project. It builds the file explorer, editor, language controls, compile/build/run/simulate/scope buttons, terminal panel, message log, and append-code controls.",
+        "why": "The builder needs an IDE-like surface inside each project. This renderer turns saved compile workspace state into the screen the user edits and runs.",
+    },
+    ("template-preview.js", "compileActiveFile"): {
+        "what": "This function packages the current compile workspace, saves the active file state, calls the backend compile endpoint, then updates terminal output, messages, waveform data, dirty flags, and UI state.",
+        "why": "It is the frontend half of the Compile button. Without it, the editor would not connect to server-side compilers or immediately show output.",
+    },
+    ("template-preview.js", "appendCompileCodeToProject"): {
+        "what": "This function inserts a compile workspace source file into a chosen project section or subsection as a formatted code block.",
+        "why": "Successful code needs a clean path from experimentation into portfolio evidence. This function moves code from the IDE workspace into the public-facing project narrative.",
+    },
+    ("template-preview.js", "parseProjectForPortfolio"): {
+        "what": "This function converts editable project state into the clean public project object used by previews and the website. It filters empty sections, normalizes overview content, applies appearance templates, gathers resources, and builds responsive profile metadata.",
+        "why": "The builder data is messy because it contains drafts, controls, and editor state. The public website needs a clean display model. This parser is that boundary.",
+    },
+    ("template-preview.js", "fullPortfolioPreviewHtmlExact"): {
+        "what": "This function builds the local preview HTML that should match the public website layout. It combines profile data, fun facts, sections, projects, contacts, AI placement, and generated project markup into one preview frame.",
+        "why": "The user needs to see exactly what will be pushed before publishing. This function is the truth test between builder state and website output.",
+    },
+    ("template-preview.js", "populateRichEditor"): {
+        "what": "This function reconstructs rich text editor blocks from saved data. It turns stored text, images, formulas, and code blocks back into editable DOM elements.",
+        "why": "A saved project must reopen in an editable form without losing formatting. This function is the load side of the rich editor.",
+    },
+    ("template-preview.js", "saveRichEditorToProject"): {
+        "what": "This function serializes rich editor DOM blocks back into structured project data. It extracts text formatting, image data, captions, formulas, code blocks, and ordering.",
+        "why": "The parser and previews cannot rely on raw contenteditable HTML. This function turns the user's editing surface into predictable data.",
+    },
+    ("template-preview.js", "handleRichEditorPaste"): {
+        "what": "This function controls paste behavior inside rich editors. It decides whether clipboard content is an image, plain text, HTML, code, or formula-like text, then inserts it using the builder's block model.",
+        "why": "Pasting is where editors often become messy. This function keeps pasted content usable while preventing links from being misread as formulas and images from landing in broken positions.",
+    },
+    ("template-preview.js", "applySelectionInspectorFormat"): {
+        "what": "This function applies formatting chosen in the floating selection inspector to the currently highlighted text.",
+        "why": "It is what makes font, size, and color controls actually affect only the selected text instead of changing a whole block.",
+    },
+    ("template-preview.js", "saveCatalog"): {
+        "what": "This function saves the builder catalog through the backend, coordinates parser output, and updates local saved state after successful persistence.",
+        "why": "Most builder edits mean nothing until the catalog is saved. This function is the local persistence checkpoint before previewing or publishing.",
+    },
+    ("template-preview.js", "loadData"): {
+        "what": "This function loads templates, projects, saved site content, profile data, categories, and current builder state into the frontend.",
+        "why": "It is the startup data path for the builder UI. If it fails, panels may appear empty even when files exist on disk.",
+    },
+    ("script.js", "rebuildSearchIndex"): {
+        "what": "This function builds the searchable index used by the public website. It collects project titles, sections, rich text, files, profile content, public sections, and other searchable terms into structured entries.",
+        "why": "A real search box needs an index rather than scanning random DOM text every time. This function makes search fast and able to jump to specific content.",
+    },
+    ("script.js", "searchResultsFor"): {
+        "what": "This function ranks search entries for the visitor's query. It compares normalized terms, phrase matches, entry scores, and searchable text to return the closest results.",
+        "why": "It makes search behave more like a small search engine instead of a simple browser find box.",
+    },
+    ("script.js", "openParsedSection"): {
+        "what": "This function opens a recruiter-facing section window from parsed project data. It handles route state, section history, content rendering, and navigation controls.",
+        "why": "The public website uses clickable sections instead of one long flat project page. This function drives that section-window experience.",
+    },
+    ("script.js", "assistantContextForQuestion"): {
+        "what": "This function chooses which portfolio context should accompany an AI question. It identifies project names, profile links, evidence files, public URLs, and intent signals related to the visitor's prompt.",
+        "why": "The assistant should not attach generic portfolio links to every answer. This function decides what context is actually related.",
+    },
+    ("script.js", "askRemoteAssistant"): {
+        "what": "This function sends the user's question and selected context to the configured AI endpoint, waits with a timeout, and returns the remote answer if available.",
+        "why": "It is the browser side of the website AI backend call. It lets the public site use Cloudflare/OpenAI/Workers AI without exposing implementation details in the UI.",
+    },
+    ("script.js", "assistantLocalAnswer"): {
+        "what": "This function builds a local fallback answer when the remote AI endpoint is unavailable or unnecessary.",
+        "why": "The chat should still respond to greetings, basic portfolio questions, and common electronics prompts instead of failing silently when the backend is down.",
+    },
+    ("script.js", "answerAssistantQuestion"): {
+        "what": "This function coordinates the full chat response flow: classify the question, build context, try the remote assistant, fall back locally if needed, and render the response.",
+        "why": "It is the public website's AI conversation orchestrator. It keeps the interface conversational while still grounding answers in portfolio context when appropriate.",
+    },
+    ("cloudflare/portfolio-ai-worker.js", "buildMessages"): {
+        "what": "This function converts an incoming chat request into model messages that include system instructions, prior conversation, user question, and portfolio context.",
+        "why": "The quality of an AI answer depends heavily on the message structure. This function shapes the prompt before it reaches OpenAI or Workers AI.",
+    },
+    ("cloudflare/portfolio-ai-worker.js", "callOpenAi"): {
+        "what": "This function calls the OpenAI API from the Cloudflare Worker when an OpenAI key is configured, then extracts the answer from the provider response.",
+        "why": "It keeps the API key server-side and gives the public website a stronger AI backend without exposing secrets in browser JavaScript.",
+    },
+    ("cloudflare/portfolio-ai-worker.js", "callWorkersAi"): {
+        "what": "This function calls Cloudflare Workers AI as a provider fallback when OpenAI is not configured.",
+        "why": "It gives the website AI a deployable backend path even before or without an OpenAI Worker secret.",
+    },
+    ("cloudflare/portfolio-ai-worker.js", "fallbackWorkerAnswer"): {
+        "what": "This function returns a simple local Worker answer when model calls are unavailable.",
+        "why": "It prevents the public AI endpoint from returning a useless failure for basic questions or temporary provider outages.",
+    },
+    ("build/installer.nsh", "OMBUninstallExistingInstallIfPresent"): {
+        "what": "This installer function checks for existing installations and decides whether setup is a fresh install, blocked duplicate install, or in-place update.",
+        "why": "It protects the machine from multiple conflicting builder installs and allows update installs to reuse the correct location.",
+    },
+    ("build/installer.nsh", "OMBScanForDuplicateBuilderCopies"): {
+        "what": "This function runs the duplicate-copy scanner generated by the installer script and blocks setup when another builder copy is found.",
+        "why": "Duplicate installations were causing shortcuts and updates to point to the wrong app. This function is part of the system-wide guard against that.",
+    },
+    ("build/installer.nsh", "OMBStopBuilderProcessesForUpdate"): {
+        "what": "This function stops running builder processes before setup tries to replace files.",
+        "why": "Windows cannot update files that are still locked by a running application. This makes the update path much smoother.",
+    },
+    ("docs/build_complete_guide.py", "extract_function_blocks"): {
+        "what": "This function scans source files, finds function declarations, estimates function boundaries, and records calls, returns, storage keys, endpoints, and source excerpts.",
+        "why": "The documentation generator depends on it to build source-aware function explanations instead of hand-maintained stale lists.",
+    },
+    ("docs/build_complete_guide.py", "write_code_reference_docs"): {
+        "what": "This function regenerates the exhaustive per-file code-reference DOCX/PDF artifacts from the current repository state.",
+        "why": "It keeps the file-specific docs synchronized with the actual code whenever the repository changes.",
+    },
+    ("docs/build_complete_guide.py", "write_file_reference_docs"): {
+        "what": "This function regenerates the focused important-code reference DOCX/PDF artifacts for the selected behavior-driving files.",
+        "why": "It gives the user a smaller curated reference that is easier to read than the exhaustive per-file set.",
+    },
+}
+
+
 def load_package() -> dict:
     try:
         return json.loads((REPO / "package.json").read_text(encoding="utf-8"))
@@ -1398,6 +1710,19 @@ def extract_function_blocks(repo_file: str, lines: list[str]) -> list[dict]:
                     calls.append(candidate)
             endpoint_hits = sorted(set(match.rstrip("/") for match in re.findall(r"['\"](/api/[A-Za-z0-9_./-]+)", body)))
             local_storage_keys = sorted(set(match for match in re.findall(r"(?:localStorage|sessionStorage)\.(?:getItem|setItem|removeItem)\(['\"]([^'\"]+)", body)))
+            return_lines = []
+            local_variables = []
+            for offset, body_line in enumerate(lines[index:end], start=index + 1):
+                stripped_body_line = body_line.strip()
+                if re.search(r"\breturn\b", stripped_body_line):
+                    return_lines.append({"line": offset, "statement": stripped_body_line[:220]})
+                var_match = re.match(r"^\s*(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=", body_line)
+                if var_match and len(local_variables) < 18:
+                    local_variables.append({
+                        "line": offset,
+                        "name": var_match.group(1),
+                        "statement": stripped_body_line[:220],
+                    })
             functions.append({
                 "line": index + 1,
                 "end_line": end,
@@ -1410,6 +1735,8 @@ def extract_function_blocks(repo_file: str, lines: list[str]) -> list[dict]:
                 "endpoints": endpoint_hits[:30],
                 "storage_keys": local_storage_keys[:30],
                 "returns": len(re.findall(r"\breturn\b", body)),
+                "return_lines": return_lines[:12],
+                "local_variables": local_variables,
                 "awaits": len(re.findall(r"\bawait\b", body)),
                 "touches_dom": bool(re.search(r"document\.|querySelector|getElementById|classList|dataset", body)),
                 "touches_files": bool(re.search(r"readFile|writeFile|appendFile|copyFile|mkdir|rm|unlink|fs\.", body, re.IGNORECASE)),
@@ -1464,6 +1791,99 @@ def function_detail_rows(item: dict) -> list[tuple[str, str]]:
     ]
 
 
+def function_detail(item: dict, repo_file: str) -> dict:
+    custom = IMPORTANT_FUNCTION_DETAILS.get((repo_file, item["name"]), {})
+    return {
+        "what": custom.get("what") or f"{item['name']} {item['purpose'].lower()} In this file, it appears around lines {item['line']}-{item['end_line']} and is part of the {folder_role(repo_file).lower()}",
+        "why": custom.get("why") or f"This function is needed so {repo_file} can keep that responsibility in one named place instead of scattering it through unrelated event handlers or route code.",
+    }
+
+
+def sentence_list(values: list[str], empty: str, limit: int = 10) -> str:
+    if not values:
+        return empty
+    selected = [str(value) for value in values[:limit] if str(value)]
+    if len(values) > limit:
+        selected.append(f"{len(values) - limit} more")
+    if len(selected) == 1:
+        return selected[0]
+    return ", ".join(selected[:-1]) + f", and {selected[-1]}"
+
+
+def function_calls_paragraph(item: dict) -> str:
+    calls = sentence_list(item.get("calls", []), "no major named helper calls detected")
+    endpoints = sentence_list(item.get("endpoints", []), "no direct /api endpoint strings detected")
+    storage = sentence_list(item.get("storage_keys", []), "no local/session storage keys detected")
+    return f"It calls or references {calls}. Endpoint references found inside it are {endpoints}. Browser storage keys found inside it are {storage}."
+
+
+def function_returns_paragraph(item: dict) -> str:
+    return_lines = item.get("return_lines", [])
+    if return_lines:
+        snippets = "; ".join(f"line {entry['line']}: {entry['statement']}" for entry in return_lines[:4])
+        extra = "" if len(return_lines) <= 4 else f" There are {len(return_lines) - 4} additional return statements in the function body."
+        return f"It has {len(return_lines)} return statement(s). The most important visible returns are: {snippets}.{extra}"
+    if item.get("runs_process"):
+        return "It does not expose many explicit return statements, but it produces its result through process output, side effects, or a structured response built after external commands finish."
+    if item.get("touches_dom"):
+        return "It does not mainly return a value; its output is the changed screen state or DOM it updates."
+    if item.get("touches_files"):
+        return "Its result is mostly side effect based: it reads, writes, copies, or synchronizes files rather than returning a simple value."
+    return "It has no obvious return statement in the extracted body; it likely completes through state changes, helper calls, or event flow."
+
+
+def function_variables_paragraph(item: dict) -> str:
+    variables = item.get("local_variables", [])
+    if not variables:
+        return "No major local variable declarations were detected in the extracted function body."
+    snippets = "; ".join(f"{entry['name']} at line {entry['line']}" for entry in variables[:8])
+    extra = "" if len(variables) <= 8 else f"; plus {len(variables) - 8} more local variable(s)"
+    return f"Important local values include {snippets}{extra}. These variables show what the function is assembling, checking, or handing to another layer."
+
+
+def add_function_explanation_docx(doc: Document, repo_file: str, item: dict, include_excerpt: bool = True, heading_level: int = 3) -> None:
+    details = function_detail(item, repo_file)
+    doc.add_heading(f"{item['name']} ({repo_file}, lines {item['line']}-{item['end_line']})", level=heading_level)
+    doc.add_paragraph(details["what"])
+    doc.add_paragraph(details["why"])
+    doc.add_paragraph(function_calls_paragraph(item))
+    doc.add_paragraph(function_returns_paragraph(item))
+    doc.add_paragraph(function_variables_paragraph(item))
+    if include_excerpt:
+        doc.add_paragraph("Relevant source excerpt:")
+        add_code(doc, item["excerpt"])
+
+
+def add_function_explanation_pdf(story: list, repo_file: str, item: dict, styles, include_excerpt: bool = True) -> None:
+    details = function_detail(item, repo_file)
+    story.append(Paragraph(f"{item['name']} ({repo_file}, lines {item['line']}-{item['end_line']})", styles["Heading3"]))
+    story.append(pdf_paragraph(details["what"], styles["SmallBody"]))
+    story.append(pdf_paragraph(details["why"], styles["SmallBody"]))
+    story.append(pdf_paragraph(function_calls_paragraph(item), styles["SmallBody"]))
+    story.append(pdf_paragraph(function_returns_paragraph(item), styles["SmallBody"]))
+    story.append(pdf_paragraph(function_variables_paragraph(item), styles["SmallBody"]))
+    if include_excerpt:
+        story.append(pdf_paragraph("Relevant source excerpt:", styles["SmallBody"]))
+        story.append(pdf_code(item["excerpt"], styles))
+
+
+def important_function_blocks(files: list[str]) -> list[tuple[str, dict]]:
+    facts_by_file = {
+        repo_file: extract_source_facts(repo_file)
+        for repo_file in sorted({repo_file for repo_file, _name in IMPORTANT_FUNCTIONS})
+        if repo_file in files and (REPO / repo_file).exists()
+    }
+    selected = []
+    for repo_file, function_name in IMPORTANT_FUNCTIONS:
+        facts = facts_by_file.get(repo_file)
+        if not facts:
+            continue
+        match = next((item for item in facts["functions"] if item["name"] == function_name), None)
+        if match:
+            selected.append((repo_file, match))
+    return selected
+
+
 def extract_functions() -> list[tuple[str, int, str, str]]:
     function_rows: list[tuple[str, int, str, str]] = []
     for file_name in ["main.cjs", "server.mjs", "template-preview.js", "script.js", "cloudflare/portfolio-ai-worker.js", "docs/build_complete_guide.py", "build/installer.nsh"]:
@@ -1487,7 +1907,7 @@ TEXT_CODE_EXTENSIONS = {
 
 def is_text_code_file(repo_file: str) -> bool:
     path = REPO / repo_file
-    if repo_file.startswith(("docs/code-reference/", "docs/code-reference-docx/", "docs/code-reference-pdf/", "docs/guide-render-check/")):
+    if is_generated_reference_file(repo_file):
         return False
     if repo_file.endswith((".docx", ".pdf", ".png", ".ico")):
         return False
@@ -1578,6 +1998,169 @@ def fact_relationship_summary(facts: dict) -> str:
     return ", ".join(related) if related else "Mostly local to its own feature area."
 
 
+def folder_role(repo_file: str) -> str:
+    if repo_file.startswith(".github/workflows/"):
+        return "GitHub automation. GitHub Actions reads this during CI/release/branch-gate runs."
+    if repo_file.startswith(".well-known/"):
+        return "Public web metadata. Browsers, security tools, and crawlers may request this path."
+    if repo_file.startswith("assets/"):
+        return "Public and desktop visual asset. Used for favicons, app icons, branding, or install surfaces."
+    if repo_file.startswith("build/"):
+        return "Packaging and installer customization. Used while creating the Windows app installer."
+    if repo_file.startswith("cloudflare/"):
+        return "Cloudflare Worker/deployment area. Used for public AI backend and Cloudflare deployment notes."
+    if repo_file.startswith("docs/"):
+        return "Documentation and generated reference area. Used to explain the app and source structure."
+    if repo_file.startswith("Backgrounds/"):
+        return "Portfolio background asset folder placeholder."
+    return "Repository root. Usually an entry file, app config, public website file, package manifest, or top-level documentation."
+
+
+def file_category(repo_file: str, path: Path) -> str:
+    suffix = path.suffix.lower()
+    if repo_file.endswith(".gitkeep"):
+        return "Folder marker"
+    if repo_file.startswith(".github/workflows/"):
+        return "GitHub workflow"
+    if suffix in {".png", ".ico", ".jpg", ".jpeg", ".webp", ".svg"}:
+        return "Image/icon asset"
+    if suffix in {".docx", ".pdf"}:
+        return "Generated document"
+    if suffix in {".js", ".mjs", ".cjs"}:
+        return "JavaScript source"
+    if suffix in {".html", ".css"}:
+        return "Website/builder UI source"
+    if suffix in {".json", ".toml", ".yaml", ".yml"}:
+        return "Configuration or structured data"
+    if suffix in {".md", ".txt", ""}:
+        return "Documentation or text control file"
+    if suffix == ".nsh":
+        return "NSIS installer script"
+    if suffix == ".py":
+        return "Python tooling"
+    return "Repository file"
+
+
+def image_metadata(path: Path) -> dict:
+    if not path.exists() or path.suffix.lower() not in {".png", ".jpg", ".jpeg", ".webp", ".ico"}:
+        return {}
+    try:
+        with Image.open(path) as image:
+            return {
+                "format": image.format or path.suffix.lower().lstrip(".").upper(),
+                "width": image.size[0],
+                "height": image.size[1],
+                "mode": image.mode,
+                "frames": getattr(image, "n_frames", 1),
+            }
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+def file_specific_notes(repo_file: str, category: str) -> list[str]:
+    notes = []
+    if repo_file in FILE_DESCRIPTIONS:
+        notes.append(FILE_DESCRIPTIONS[repo_file])
+    if repo_file.startswith("assets/favicon"):
+        notes.append("This favicon participates in browser tab identity, mobile install surfaces, and public website branding.")
+    if repo_file.startswith("assets/omb-app-icon"):
+        notes.append("This app icon is used by the Windows desktop application, installer metadata, and shortcuts.")
+    if repo_file == "assets/omb-mark.png":
+        notes.append("This is the OMB visual mark used by the website and builder branding.")
+    if repo_file == "_headers":
+        notes.append("This file describes security and caching headers for hosts that support static `_headers` files, such as Cloudflare Pages style deployments.")
+    if repo_file == ".nojekyll":
+        notes.append("This makes GitHub Pages serve static files directly without Jekyll filtering.")
+    if repo_file == ".gitattributes":
+        notes.append("This protects binary artifacts such as DOCX, PDF, PNG, ICO, and installers from line-ending conversion.")
+    if repo_file == ".gitignore":
+        notes.append("This keeps temporary build output, local-only data, and generated noise out of version control.")
+    if repo_file.endswith(".gitkeep"):
+        notes.append("This empty marker exists so Git keeps an otherwise empty folder.")
+    if category == "Image/icon asset":
+        notes.append("Do not edit binary assets with a text editor. Replace them with properly exported image/icon files.")
+    if category == "GitHub workflow":
+        notes.append("Workflow changes should be tested on a feature branch because mistakes can block merges or releases.")
+    if not notes:
+        notes.append("Tracked repository file used by the builder, website, installer, documentation, or release process.")
+    return notes
+
+
+def extract_file_facts(repo_file: str) -> dict:
+    path = REPO / repo_file
+    suffix = path.suffix.lower()
+    category = file_category(repo_file, path)
+    text_file = is_text_code_file(repo_file) or suffix in {".gitignore", ".gitattributes", ".nojekyll", "", ".txt", ".md"}
+    lines = source_lines(repo_file) if text_file and path.exists() and path.is_file() else []
+    mime_type, _encoding = mimetypes.guess_type(str(path))
+    facts = {
+        "repo_file": repo_file,
+        "path": path,
+        "exists": path.exists(),
+        "size_bytes": path.stat().st_size if path.exists() and path.is_file() else 0,
+        "suffix": suffix or "(none)",
+        "category": category,
+        "mime_type": mime_type or "unknown",
+        "folder_role": folder_role(repo_file),
+        "description": FILE_DESCRIPTIONS.get(repo_file, "Tracked repository file used by the builder or public website."),
+        "notes": file_specific_notes(repo_file, category),
+        "is_text": bool(lines or text_file),
+        "line_count": len(lines),
+        "snippet": line_excerpt(lines, 1, min(72, len(lines)), max_lines=72) if lines else "",
+        "image": image_metadata(path),
+    }
+    if is_text_code_file(repo_file):
+        facts["source"] = extract_source_facts(repo_file)
+    else:
+        facts["source"] = None
+    return facts
+
+
+def add_file_fact_summary(doc: Document, facts: dict) -> None:
+    rows = [
+        ("File", facts["repo_file"]),
+        ("Category", facts["category"]),
+        ("Folder role", facts["folder_role"]),
+        ("Size", f"{facts['size_bytes']:,} bytes"),
+        ("Extension", facts["suffix"]),
+        ("MIME type", facts["mime_type"]),
+        ("Text lines", f"{facts['line_count']:,}" if facts["is_text"] else "Not a readable text file"),
+    ]
+    if facts["image"]:
+        image = facts["image"]
+        if "error" in image:
+            rows.append(("Image metadata", f"Could not inspect image: {image['error']}"))
+        else:
+            rows.append(("Image metadata", f"{image['format']} {image['width']}x{image['height']}, mode {image['mode']}, frames {image['frames']}"))
+    add_table(doc, rows)
+
+
+def add_file_fact_sections(doc: Document, facts: dict) -> None:
+    doc.add_heading("Why this file exists", level=2)
+    for note in facts["notes"]:
+        doc.add_paragraph(note, style="List Bullet")
+    doc.add_heading("How it is used", level=2)
+    doc.add_paragraph(facts["folder_role"])
+    if facts["source"]:
+        add_source_fact_sections(doc, facts["source"], include_excerpts=True)
+    elif facts["snippet"]:
+        doc.add_heading("Readable content snippet", level=2)
+        add_code(doc, facts["snippet"])
+    elif facts["image"]:
+        doc.add_heading("Asset handling note", level=2)
+        doc.add_paragraph("This file is documented by metadata instead of raw bytes. Binary image/icon bytes are not useful to print in a Word/PDF reference. Use an image editor or icon tool when changing it.")
+    else:
+        doc.add_heading("Binary or marker note", level=2)
+        doc.add_paragraph("This file is either binary, empty, or a marker/config file whose value comes from its presence and path rather than readable content.")
+    doc.add_heading("Safe change checklist", level=2)
+    numbers(doc, [
+        "Confirm which app, website, installer, workflow, or document consumes this file.",
+        "Change it on a feature branch from development.",
+        "Regenerate docs if the file purpose, API surface, or behavior changes.",
+        "Run the smallest relevant smoke test before merging into development.",
+    ])
+
+
 def code_reference_name(repo_file: str, suffix: str) -> str:
     return re.sub(r"[^A-Za-z0-9_.-]+", "__", repo_file).strip("_") + suffix
 
@@ -1640,11 +2223,7 @@ def add_source_fact_sections(doc: Document, facts: dict, include_excerpts: bool 
     if facts["functions"]:
         doc.add_heading("Function-by-function detail", level=2)
         for item in facts["functions"]:
-            doc.add_heading(f"{item['name']} - lines {item['line']}-{item['end_line']}", level=3)
-            add_table(doc, function_detail_rows(item))
-            if include_excerpts:
-                doc.add_paragraph("Source excerpt:")
-                add_code(doc, item["excerpt"])
+            add_function_explanation_docx(doc, facts["repo_file"], item, include_excerpt=include_excerpts, heading_level=3)
     doc.add_heading("Representative opening snippet", level=2)
     add_code(doc, facts["snippet"] or "(empty file)")
     doc.add_heading("Beginner debugging checklist for this file", level=2)
@@ -1792,11 +2371,7 @@ def add_pdf_source_fact_sections(story: list, facts: dict, styles, include_excer
     if facts["functions"]:
         story.append(Paragraph("Function-by-function detail", styles["Heading2"]))
         for item in facts["functions"]:
-            story.append(Paragraph(f"{item['name']} - lines {item['line']}-{item['end_line']}", styles["Heading3"]))
-            story.append(pdf_table(function_detail_rows(item), styles))
-            if include_excerpts:
-                story.append(pdf_paragraph("Source excerpt:", styles["SmallBody"]))
-                story.append(pdf_code(item["excerpt"], styles))
+            add_function_explanation_pdf(story, facts["repo_file"], item, styles, include_excerpt=include_excerpts)
     story.append(Paragraph("Representative opening snippet", styles["Heading2"]))
     story.append(pdf_code(facts["snippet"] or "(empty file)", styles))
 
@@ -1893,6 +2468,278 @@ def write_master_code_reference_pdf(code_files: list[str], facts_by_file: dict[s
     SimpleDocTemplate(str(CODE_REFERENCE_MASTER_PDF), pagesize=LETTER, rightMargin=0.55 * inch, leftMargin=0.55 * inch, topMargin=0.55 * inch, bottomMargin=0.55 * inch).build(story)
 
 
+def write_single_file_reference_docx(
+    facts: dict,
+    output_path: Path,
+    title_prefix: str = "File Reference",
+    subtitle: str = "A file-specific explanation covering purpose, owner layer, metadata, source details, implementation signals, source excerpts, and safe-change rules.",
+) -> None:
+    doc = setup_code_reference_document(
+        f"{title_prefix}: {facts['repo_file']}",
+        subtitle,
+    )
+    add_file_fact_summary(doc, facts)
+    add_file_fact_sections(doc, facts)
+    compact_generated_docx(doc, keep_first_page_break=False)
+    doc.save(output_path)
+
+
+def add_pdf_file_fact_sections(story: list, facts: dict, styles) -> None:
+    story.append(Paragraph("Why this file exists", styles["Heading2"]))
+    for note in facts["notes"]:
+        story.append(pdf_paragraph(f"- {note}", styles["SmallBody"]))
+    story.append(Paragraph("How it is used", styles["Heading2"]))
+    story.append(pdf_paragraph(facts["folder_role"], styles["SmallBody"]))
+    if facts["source"]:
+        add_pdf_source_fact_sections(story, facts["source"], styles, include_excerpts=True)
+    elif facts["snippet"]:
+        story.append(Paragraph("Readable content snippet", styles["Heading2"]))
+        story.append(pdf_code(facts["snippet"], styles))
+    elif facts["image"]:
+        story.append(Paragraph("Asset handling note", styles["Heading2"]))
+        story.append(pdf_paragraph("This file is documented by metadata instead of raw bytes. Binary image/icon bytes are not useful to print in a reference document.", styles["SmallBody"]))
+    else:
+        story.append(Paragraph("Binary or marker note", styles["Heading2"]))
+        story.append(pdf_paragraph("This file is either binary, empty, or a marker/config file whose value comes from its presence and path rather than readable content.", styles["SmallBody"]))
+    story.append(Paragraph("Safe change checklist", styles["Heading2"]))
+    for item in [
+        "Confirm which app, website, installer, workflow, or document consumes this file.",
+        "Change it on a feature branch from development.",
+        "Regenerate docs if the file purpose, API surface, or behavior changes.",
+        "Run the smallest relevant smoke test before merging into development.",
+    ]:
+        story.append(pdf_paragraph(f"- {item}", styles["SmallBody"]))
+
+
+def write_single_file_reference_pdf(
+    facts: dict,
+    output_path: Path,
+    title_prefix: str = "File Reference",
+    subtitle: str = "A file-specific explanation covering purpose, owner layer, metadata, source details, implementation signals, source excerpts, and safe-change rules.",
+) -> None:
+    if not REPORTLAB_AVAILABLE:
+        return
+    styles = pdf_styles()
+    rows = [
+        ("File", facts["repo_file"]),
+        ("Category", facts["category"]),
+        ("Folder role", facts["folder_role"]),
+        ("Size", f"{facts['size_bytes']:,} bytes"),
+        ("Extension", facts["suffix"]),
+        ("MIME type", facts["mime_type"]),
+        ("Text lines", f"{facts['line_count']:,}" if facts["is_text"] else "Not a readable text file"),
+    ]
+    if facts["image"]:
+        image = facts["image"]
+        if "error" in image:
+            rows.append(("Image metadata", f"Could not inspect image: {image['error']}"))
+        else:
+            rows.append(("Image metadata", f"{image['format']} {image['width']}x{image['height']}, mode {image['mode']}, frames {image['frames']}"))
+    story = [
+        Paragraph(f"{title_prefix}: {facts['repo_file']}", styles["Title"]),
+        pdf_paragraph(subtitle, styles["SmallBody"]),
+        pdf_table(rows, styles),
+        Spacer(1, 0.12 * inch),
+    ]
+    add_pdf_file_fact_sections(story, facts, styles)
+    SimpleDocTemplate(str(output_path), pagesize=LETTER, rightMargin=0.55 * inch, leftMargin=0.55 * inch, topMargin=0.55 * inch, bottomMargin=0.55 * inch).build(story)
+
+
+def write_master_file_reference_docx(file_facts: list[dict], diagrams: dict[str, Path]) -> None:
+    doc = setup_code_reference_document(
+        "OMB Portfolio Builder Important Code Reference",
+        "A generated Word reference for the code and control files that drive the builder, website, installer, Cloudflare AI worker, workflows, parser, compile workspace, and generated documentation.",
+    )
+    add_diagram(doc, diagrams["file-communication-map"], "Main file communication map for the builder and public website.")
+    category_counts = Counter(facts["category"] for facts in file_facts)
+    doc.add_heading("Coverage summary", level=1)
+    add_table(doc, [
+        ("Important files documented", str(len(file_facts))),
+        ("Selection rule", "Only behavior-driving code/control files are included. Favicons, binary assets, and passive marker files are intentionally skipped here."),
+        ("Categories", ", ".join(f"{name}: {count}" for name, count in sorted(category_counts.items()))),
+    ])
+    doc.add_heading("File index", level=1)
+    add_table(doc, [(facts["repo_file"], f"{facts['category']}. {facts['folder_role']}") for facts in file_facts])
+    doc.add_page_break()
+    for facts in file_facts:
+        doc.add_heading(f"Important Code Reference: {facts['repo_file']}", level=1)
+        add_file_fact_summary(doc, facts)
+        add_file_fact_sections(doc, facts)
+        doc.add_page_break()
+    compact_generated_docx(doc, keep_first_page_break=True)
+    doc.save(FILE_REFERENCE_MASTER_DOCX)
+
+
+def write_master_file_reference_pdf(file_facts: list[dict], diagrams: dict[str, Path]) -> None:
+    if not REPORTLAB_AVAILABLE:
+        return
+    styles = pdf_styles()
+    category_counts = Counter(facts["category"] for facts in file_facts)
+    story = [
+        Paragraph("OMB Portfolio Builder Important Code Reference", styles["Title"]),
+        pdf_paragraph("A generated PDF reference for the code and control files that drive the builder, website, installer, Cloudflare AI worker, workflows, parser, compile workspace, and generated documentation.", styles["SmallBody"]),
+    ]
+    file_map = diagrams.get("file-communication-map")
+    if file_map and file_map.exists():
+        story.append(PdfImage(str(file_map), width=6.6 * inch, height=3.72 * inch))
+    story.append(Paragraph("Coverage summary", styles["Heading1"]))
+    story.append(pdf_table([
+        ("Important files documented", str(len(file_facts))),
+        ("Selection rule", "Only behavior-driving code/control files are included. Favicons, binary assets, and passive marker files are intentionally skipped here."),
+        ("Categories", ", ".join(f"{name}: {count}" for name, count in sorted(category_counts.items()))),
+    ], styles))
+    story.append(Paragraph("File index", styles["Heading1"]))
+    story.append(pdf_table([(facts["repo_file"], f"{facts['category']}. {facts['folder_role']}") for facts in file_facts], styles))
+    story.append(PageBreak())
+    for facts in file_facts:
+        story.append(Paragraph(f"Important Code Reference: {facts['repo_file']}", styles["Heading1"]))
+        rows = [
+            ("File", facts["repo_file"]),
+            ("Category", facts["category"]),
+            ("Folder role", facts["folder_role"]),
+            ("Size", f"{facts['size_bytes']:,} bytes"),
+            ("Extension", facts["suffix"]),
+            ("MIME type", facts["mime_type"]),
+            ("Text lines", f"{facts['line_count']:,}" if facts["is_text"] else "Not a readable text file"),
+        ]
+        if facts["image"]:
+            image = facts["image"]
+            rows.append(("Image metadata", f"Could not inspect image: {image['error']}" if "error" in image else f"{image['format']} {image['width']}x{image['height']}, mode {image['mode']}, frames {image['frames']}"))
+        story.append(pdf_table(rows, styles))
+        add_pdf_file_fact_sections(story, facts, styles)
+        story.append(PageBreak())
+    SimpleDocTemplate(str(FILE_REFERENCE_MASTER_PDF), pagesize=LETTER, rightMargin=0.55 * inch, leftMargin=0.55 * inch, topMargin=0.55 * inch, bottomMargin=0.55 * inch).build(story)
+
+
+def write_master_repository_file_reference_docx(file_facts: list[dict], diagrams: dict[str, Path]) -> None:
+    doc = setup_code_reference_document(
+        "OMB Portfolio Builder Repository File Reference",
+        "A generated Word reference with one explanation section for each primary tracked repository file. Source files receive function-level detail; assets and marker files receive metadata, purpose, usage, and safe-change notes.",
+    )
+    add_diagram(doc, diagrams["file-communication-map"], "Main file communication map for the builder and public website.")
+    category_counts = Counter(facts["category"] for facts in file_facts)
+    doc.add_heading("Coverage summary", level=1)
+    add_table(doc, [
+        ("Primary files documented", str(len(file_facts))),
+        ("Selection rule", "All primary tracked repository files are included. Generated reference documents, generated guide diagrams, and generated documentation folders are excluded so this reference does not recursively document its own output."),
+        ("Categories", ", ".join(f"{name}: {count}" for name, count in sorted(category_counts.items()))),
+    ])
+    doc.add_heading("How to use this reference", level=1)
+    numbers(doc, [
+        "Open the specific file document when you want to understand one file in isolation.",
+        "Use this master reference when you want to scan all files from one document.",
+        "For source files, read the function-by-function detail to understand what the function does, what it calls, what it returns, important local variables, and why it exists.",
+        "For assets, marker files, and static configuration, read the metadata and safe-change checklist instead of looking for function explanations that do not exist.",
+    ])
+    doc.add_heading("File index", level=1)
+    add_table(doc, [(facts["repo_file"], f"{facts['category']}. {facts['folder_role']}") for facts in file_facts])
+    doc.add_page_break()
+    for facts in file_facts:
+        doc.add_heading(f"File Reference: {facts['repo_file']}", level=1)
+        add_file_fact_summary(doc, facts)
+        add_file_fact_sections(doc, facts)
+        doc.add_page_break()
+    compact_generated_docx(doc, keep_first_page_break=True)
+    doc.save(ALL_FILE_REFERENCE_MASTER_DOCX)
+
+
+def write_master_repository_file_reference_pdf(file_facts: list[dict], diagrams: dict[str, Path]) -> None:
+    if not REPORTLAB_AVAILABLE:
+        return
+    styles = pdf_styles()
+    category_counts = Counter(facts["category"] for facts in file_facts)
+    story = [
+        Paragraph("OMB Portfolio Builder Repository File Reference", styles["Title"]),
+        pdf_paragraph("A generated PDF reference with one explanation section for each primary tracked repository file. Source files receive function-level detail; assets and marker files receive metadata, purpose, usage, and safe-change notes.", styles["SmallBody"]),
+    ]
+    file_map = diagrams.get("file-communication-map")
+    if file_map and file_map.exists():
+        story.append(PdfImage(str(file_map), width=6.6 * inch, height=3.72 * inch))
+    story.append(Paragraph("Coverage summary", styles["Heading1"]))
+    story.append(pdf_table([
+        ("Primary files documented", str(len(file_facts))),
+        ("Selection rule", "All primary tracked repository files are included. Generated reference outputs are excluded to avoid recursive documentation."),
+        ("Categories", ", ".join(f"{name}: {count}" for name, count in sorted(category_counts.items()))),
+    ], styles))
+    story.append(Paragraph("File index", styles["Heading1"]))
+    story.append(pdf_table([(facts["repo_file"], f"{facts['category']}. {facts['folder_role']}") for facts in file_facts], styles))
+    story.append(PageBreak())
+    for facts in file_facts:
+        story.append(Paragraph(f"File Reference: {facts['repo_file']}", styles["Heading1"]))
+        rows = [
+            ("File", facts["repo_file"]),
+            ("Category", facts["category"]),
+            ("Folder role", facts["folder_role"]),
+            ("Size", f"{facts['size_bytes']:,} bytes"),
+            ("Extension", facts["suffix"]),
+            ("MIME type", facts["mime_type"]),
+            ("Text lines", f"{facts['line_count']:,}" if facts["is_text"] else "Not a readable text file"),
+        ]
+        if facts["image"]:
+            image = facts["image"]
+            rows.append(("Image metadata", f"Could not inspect image: {image['error']}" if "error" in image else f"{image['format']} {image['width']}x{image['height']}, mode {image['mode']}, frames {image['frames']}"))
+        story.append(pdf_table(rows, styles))
+        add_pdf_file_fact_sections(story, facts, styles)
+        story.append(PageBreak())
+    SimpleDocTemplate(str(ALL_FILE_REFERENCE_MASTER_PDF), pagesize=LETTER, rightMargin=0.55 * inch, leftMargin=0.55 * inch, topMargin=0.55 * inch, bottomMargin=0.55 * inch).build(story)
+
+
+def write_repository_file_reference_docs(files: list[str], diagrams: dict[str, Path]) -> list[Path]:
+    remove_directory(ALL_FILE_REFERENCE_DOCX_DIR)
+    remove_directory(ALL_FILE_REFERENCE_PDF_DIR)
+    ALL_FILE_REFERENCE_DOCX_DIR.mkdir(parents=True, exist_ok=True)
+    ALL_FILE_REFERENCE_PDF_DIR.mkdir(parents=True, exist_ok=True)
+    file_facts = [extract_file_facts(file) for file in primary_tracked_files(files)]
+    written: list[Path] = []
+    for facts in file_facts:
+        docx_path = ALL_FILE_REFERENCE_DOCX_DIR / code_reference_name(facts["repo_file"], ".docx")
+        write_single_file_reference_docx(facts, docx_path)
+        written.append(docx_path)
+        pdf_path = ALL_FILE_REFERENCE_PDF_DIR / code_reference_name(facts["repo_file"], ".pdf")
+        write_single_file_reference_pdf(facts, pdf_path)
+        if pdf_path.exists():
+            written.append(pdf_path)
+    write_master_repository_file_reference_docx(file_facts, diagrams)
+    written.append(ALL_FILE_REFERENCE_MASTER_DOCX)
+    write_master_repository_file_reference_pdf(file_facts, diagrams)
+    if ALL_FILE_REFERENCE_MASTER_PDF.exists():
+        written.append(ALL_FILE_REFERENCE_MASTER_PDF)
+    return written
+
+
+def write_file_reference_docs(files: list[str], diagrams: dict[str, Path]) -> list[Path]:
+    remove_directory(FILE_REFERENCE_DOCX_DIR)
+    remove_directory(FILE_REFERENCE_PDF_DIR)
+    FILE_REFERENCE_DOCX_DIR.mkdir(parents=True, exist_ok=True)
+    FILE_REFERENCE_PDF_DIR.mkdir(parents=True, exist_ok=True)
+    file_facts = [extract_file_facts(file) for file in important_code_files(files)]
+    written: list[Path] = []
+    for facts in file_facts:
+        docx_path = FILE_REFERENCE_DOCX_DIR / code_reference_name(facts["repo_file"], ".docx")
+        write_single_file_reference_docx(
+            facts,
+            docx_path,
+            title_prefix="Important Code Reference",
+            subtitle="A focused code/control-file explanation covering purpose, owner layer, APIs, variables, implementation signals, source excerpts, and debugging rules.",
+        )
+        written.append(docx_path)
+        pdf_path = FILE_REFERENCE_PDF_DIR / code_reference_name(facts["repo_file"], ".pdf")
+        write_single_file_reference_pdf(
+            facts,
+            pdf_path,
+            title_prefix="Important Code Reference",
+            subtitle="A focused code/control-file explanation covering purpose, owner layer, APIs, variables, implementation signals, source excerpts, and debugging rules.",
+        )
+        if pdf_path.exists():
+            written.append(pdf_path)
+    write_master_file_reference_docx(file_facts, diagrams)
+    written.append(FILE_REFERENCE_MASTER_DOCX)
+    write_master_file_reference_pdf(file_facts, diagrams)
+    if FILE_REFERENCE_MASTER_PDF.exists():
+        written.append(FILE_REFERENCE_MASTER_PDF)
+    return written
+
+
 def write_code_reference_docs(files: list[str], diagrams: dict[str, Path]) -> list[Path]:
     remove_directory(CODE_REFERENCE_DIR)
     remove_directory(CODE_REFERENCE_DOCX_DIR)
@@ -1922,7 +2769,7 @@ def write_code_reference_docs(files: list[str], diagrams: dict[str, Path]) -> li
 def add_generated_code_reference(doc: Document, files: list[str], diagrams: dict[str, Path]) -> None:
     doc.add_heading("Generated Word And PDF Code References", level=1)
     written = write_code_reference_docs(files, diagrams)
-    doc.add_paragraph("The repository now includes generated Word and PDF code-reference documents rather than only Markdown notes. These documents are meant for source-level reading beside the actual files. They explain functions, variables, API endpoints, imports, event handlers, file relationships, security/authentication cues, compiler calls, installer behavior, and debugging paths.")
+    doc.add_paragraph("The repository includes generated Word and PDF code-reference documents for detailed per-file study. The complete guide intentionally does not duplicate every function from every file. Use the file-specific references when you want exhaustive function coverage for a particular source file.")
     add_table(doc, [
         ("Word folder", str(CODE_REFERENCE_DOCX_DIR.relative_to(REPO))),
         ("PDF folder", str(CODE_REFERENCE_PDF_DIR.relative_to(REPO))),
@@ -1931,68 +2778,80 @@ def add_generated_code_reference(doc: Document, files: list[str], diagrams: dict
         ("Artifacts generated", str(len(written))),
         ("Regeneration command", "python docs/build_complete_guide.py"),
     ])
-    doc.add_page_break()
-
-    for repo_file in [file for file in files if is_text_code_file(file)]:
-        facts = extract_source_facts(repo_file)
-        doc.add_heading(f"Code Reference: {repo_file}", level=1)
-        doc.add_paragraph(facts["description"])
-        add_table(doc, [
-            ("Lines", f"{facts['line_count']:,}"),
-            ("Size", f"{facts['size_bytes']:,} bytes"),
-            ("Talks to", fact_relationship_summary(facts)),
-            ("Functions discovered", str(len(facts["functions"]))),
-            ("Variables discovered", str(len(facts["variables"]))),
-            ("API endpoints mentioned", str(len(facts["endpoints"]))),
-            ("Implementation signals", str(len(facts["signals"]))),
-        ])
-        if facts["signals"]:
-            doc.add_heading("Signals detected", level=2)
-            add_table(doc, [(f"{item['type']} at line {item['line']}", f"{item['meaning']} Evidence: {item['evidence']}") for item in facts["signals"][:20]])
-        if facts["endpoints"]:
-            doc.add_heading("Endpoints in this file", level=2)
-            add_table(doc, [(item["endpoint"], f"Line {item['line']}. {endpoint_purpose(item['endpoint'])}") for item in facts["endpoints"][:20]])
-        if facts["functions"]:
-            doc.add_heading("Function details", level=2)
-            for item in facts["functions"][:60]:
-                doc.add_heading(f"{item['name']} (lines {item['line']}-{item['end_line']})", level=3)
-                add_table(doc, function_detail_rows(item))
-                add_code(doc, item["excerpt"])
-        if facts["variables"]:
-            doc.add_heading("Variables and constants", level=2)
-            add_table(doc, [(item["name"], f"Line {item['line']}: {item['statement']}") for item in facts["variables"][:20]])
-        if facts["imports"]:
-            doc.add_heading("Imports and dependencies", level=2)
-            add_table(doc, [(f"Line {item['line']}", item["statement"]) for item in facts["imports"][:20]])
-        doc.add_heading("Opening snippet", level=2)
-        add_code(doc, facts["snippet"] or "(empty file)")
-        doc.add_page_break()
-
-
-def add_complete_function_inventory(doc: Document) -> None:
-    rows = extract_functions()
-    doc.add_heading("Generated Function Inventory", level=1)
-    doc.add_paragraph("This section is generated from the real source files. It does not replace reading the code, but it gives you a map of where functions live and what their names suggest they own.")
-    add_table(doc, [
-        ("Files scanned", "main.cjs, server.mjs, template-preview.js, script.js"),
-        ("Functions found", str(len(rows))),
-        ("How descriptions are made", "Descriptions are heuristic based on file name and function naming patterns. For exact behavior, inspect the source around the listed line."),
+    doc.add_heading("What belongs here versus file-specific docs", level=2)
+    bullets(doc, [
+        "The complete guide explains architecture, workflows, boundaries, tools, and how the whole system fits together.",
+        "The code-reference DOCX/PDF files explain every discovered function inside each specific file.",
+        "When editing one file, open that file's generated reference rather than scrolling through the complete guide.",
     ])
     doc.add_page_break()
 
-    by_file: dict[str, list[tuple[str, int, str, str]]] = {}
-    for row in rows:
-        by_file.setdefault(row[0], []).append(row)
-    for file_name, file_rows in by_file.items():
-        doc.add_heading(f"Function Inventory: {file_name}", level=1)
-        doc.add_paragraph(f"{file_name} contains {len(file_rows)} named functions discovered by the guide generator.")
-        chunk_size = 45
-        for index in range(0, len(file_rows), chunk_size):
-            chunk = file_rows[index:index + chunk_size]
-            add_table(doc, [(f"{name} (line {line_no})", purpose) for _, line_no, name, purpose in chunk])
-            if index + chunk_size < len(file_rows):
-                doc.add_paragraph("Continued on the next table.")
-        doc.add_page_break()
+
+def add_generated_repository_file_reference(doc: Document, files: list[str], diagrams: dict[str, Path]) -> None:
+    doc.add_heading("Generated Word And PDF Repository File References", level=1)
+    written = write_repository_file_reference_docs(files, diagrams)
+    documented_files = primary_tracked_files(files)
+    doc.add_paragraph("The repository now has a file-specific Word document and PDF for each primary tracked file. Source files receive detailed function explanations. Static assets, favicons, marker files, security files, workflows, JSON files, and text documents receive purpose, metadata, usage, and safe-change notes.")
+    add_table(doc, [
+        ("Word folder", str(ALL_FILE_REFERENCE_DOCX_DIR.relative_to(REPO))),
+        ("PDF folder", str(ALL_FILE_REFERENCE_PDF_DIR.relative_to(REPO))),
+        ("Master Word reference", str(ALL_FILE_REFERENCE_MASTER_DOCX.relative_to(REPO))),
+        ("Master PDF reference", str(ALL_FILE_REFERENCE_MASTER_PDF.relative_to(REPO)) if ALL_FILE_REFERENCE_MASTER_PDF.exists() else "PDF generation skipped because ReportLab is unavailable."),
+        ("Primary files documented", str(len(documented_files))),
+        ("Artifacts generated", str(len(written))),
+        ("Excluded", "Generated documentation outputs and generated guide diagrams are skipped to avoid recursively documenting generated files."),
+        ("Regeneration command", "python docs/build_complete_guide.py"),
+    ])
+    doc.add_heading("How this supports slow curation", level=2)
+    bullets(doc, [
+        "Each file can be improved independently because it now has its own document.",
+        "The complete guide can stay focused on system architecture instead of becoming an unreadable function dump.",
+        "When a file changes, regenerate the references and review only that file's document first.",
+    ])
+    doc.add_page_break()
+
+
+def add_generated_file_reference(doc: Document, files: list[str], diagrams: dict[str, Path]) -> None:
+    doc.add_heading("Generated Word And PDF Important Code References", level=1)
+    written = write_file_reference_docs(files, diagrams)
+    selected_files = important_code_files(files)
+    doc.add_paragraph("The repository now includes generated file-specific Word and PDF documents for the important code and control files that explain how the system actually works. This focused set avoids passive binary assets and marker files so the documentation stays useful for learning the builder internals.")
+    add_table(doc, [
+        ("Word folder", str(FILE_REFERENCE_DOCX_DIR.relative_to(REPO))),
+        ("PDF folder", str(FILE_REFERENCE_PDF_DIR.relative_to(REPO))),
+        ("Master Word reference", str(FILE_REFERENCE_MASTER_DOCX.relative_to(REPO))),
+        ("Master PDF reference", str(FILE_REFERENCE_MASTER_PDF.relative_to(REPO)) if FILE_REFERENCE_MASTER_PDF.exists() else "PDF generation skipped because ReportLab is unavailable."),
+        ("Important files documented", str(len(selected_files))),
+        ("Artifacts generated", str(len(written))),
+        ("Skipped here", "Favicons, app icons, binary assets, passive marker files, and generated reference documents."),
+        ("Regeneration command", "python docs/build_complete_guide.py"),
+    ])
+    doc.add_heading("What this adds beyond the code reference", level=2)
+    bullets(doc, [
+        "The selected files are the places a developer actually starts when debugging app behavior.",
+        "Each selected file gets source excerpts, implementation signals, API/DOM/storage clues, and safe-change notes.",
+        "The master reference acts like a guided map of the app internals rather than a dump of every asset.",
+    ])
+    doc.add_page_break()
+
+
+def add_complete_function_inventory(doc: Document, files: list[str]) -> None:
+    selected_files = important_code_files(files)
+    doc.add_heading("Where The File-Level Details Live", level=1)
+    doc.add_paragraph("The complete guide explains the whole system: architecture, workflows, layers, tools, publishing, installer behavior, AI backend, security boundaries, and how files communicate. It intentionally does not explain every function body. Each important file has its own generated Word/PDF reference where that file's functions, calls, returns, variables, source excerpts, and purpose are explained in detail.")
+    add_table(doc, [
+        ("Complete guide job", "Explain the whole builder and website system without becoming a raw source-code dump."),
+        ("All-file docs job", "Give every primary tracked file its own Word/PDF explanation, including metadata for assets and detailed content for readable files."),
+        ("Source-code docs job", "Explain each source file's discovered functions, variables, calls, returns, endpoints, and excerpts."),
+        ("Important-file docs job", "Focus on the behavior-driving files a developer should read first."),
+        ("All-file docs", f"{ALL_FILE_REFERENCE_DOCX_DIR.relative_to(REPO)} and {ALL_FILE_REFERENCE_PDF_DIR.relative_to(REPO)}"),
+        ("Master all-file reference", f"{ALL_FILE_REFERENCE_MASTER_DOCX.relative_to(REPO)} and {ALL_FILE_REFERENCE_MASTER_PDF.relative_to(REPO)}"),
+        ("Important file docs", f"{FILE_REFERENCE_DOCX_DIR.relative_to(REPO)} and {FILE_REFERENCE_PDF_DIR.relative_to(REPO)}"),
+        ("Exhaustive code docs", f"{CODE_REFERENCE_DOCX_DIR.relative_to(REPO)} and {CODE_REFERENCE_PDF_DIR.relative_to(REPO)}"),
+    ])
+    doc.add_heading("Recommended source-reading order", level=2)
+    add_table(doc, [(repo_file, FILE_DESCRIPTIONS.get(repo_file, folder_role(repo_file))) for repo_file in selected_files])
+    doc.add_page_break()
 
 
 def add_deep_detail_topics(doc: Document) -> None:
@@ -2391,8 +3250,10 @@ def main() -> None:
     add_caching_methods(doc, diagrams)
     add_installer_details(doc, diagrams)
     add_function_maps(doc, diagrams)
-    add_complete_function_inventory(doc)
+    add_complete_function_inventory(doc, files)
+    add_generated_repository_file_reference(doc, files, diagrams)
     add_generated_code_reference(doc, files, diagrams)
+    add_generated_file_reference(doc, files, diagrams)
     add_deep_detail_topics(doc)
     add_workflows(doc, files, diagrams)
     add_files(doc, files)

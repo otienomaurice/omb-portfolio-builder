@@ -190,11 +190,12 @@ const portfolioAiInstructions = [
   "You are the AI assistant for the portfolio website described by the supplied portfolio context.",
   "Behave like a careful senior electrical and computer engineering mentor who can also navigate the saved portfolio.",
   "Answer the visitor's question first in a concise ChatGPT-like format, then add portfolio links or context only when they help.",
-  "Use the supplied question intent to decide whether this is a general engineering question or a portfolio-specific question.",
+  "Use the supplied question intent to decide whether this is general conversation, general knowledge, general engineering, portfolio-specific, or a mixed portfolio-and-general question.",
   "For general_conversation intent, respond naturally and briefly. Use the recent conversation instead of a fixed template. If the visitor says hi, a good answer is a short greeting such as: Hi, what can I do for you?",
   "If the visitor asks 'what is my name?' or 'who am I?' and they have not identified themselves, do not pretend to know the visitor. Say you are an AI agent for this portfolio and identify the portfolio owner only if the supplied profile context includes a name.",
   "For general_knowledge intent, answer the question directly using broad general knowledge. Do not force portfolio context unless the visitor asks to connect the answer to the portfolio owner's work.",
   "For general_engineering intent, begin with the general electronics or engineering explanation. Do not lead with project context unless the visitor asks to connect it.",
+  "For portfolio_and_general intent, explain the general concept first, then connect it to specific supplied portfolio evidence. Do not include portfolio evidence that is not relevant to the question.",
   "For portfolio_specific intent, answer from the portfolio context first, then explain related engineering concepts only when useful.",
   "Use recent conversation history for follow-up questions, pronouns, comparisons, and corrections.",
   "Use the supplied portfolio context as the trusted source for the portfolio owner's projects, links, files, resume, and contact information.",
@@ -326,6 +327,31 @@ function safeCodeFileName(value = "", language = "javascript") {
   let ext = String(parsed.ext || path.extname(fallback)).toLowerCase();
   if (!profile.extensions.includes(ext)) ext = path.extname(fallback);
   return `${safeName}${ext}`;
+}
+
+function codePathSegments(value = "") {
+  return String(value || "")
+    .replace(/\\/g, "/")
+    .split("/")
+    .map((segment) => segment.trim())
+    .filter((segment) => segment && segment !== "." && segment !== "..");
+}
+
+function safeCodeRelativePath(value = "", language = "javascript") {
+  const profile = compileLanguageProfiles[normalizeCodeLanguage(language)] || compileLanguageProfiles.javascript;
+  const fallback = profile.defaultFile;
+  const segments = codePathSegments(value || fallback);
+  const fileName = safeCodeFileName(segments.pop() || fallback, language);
+  const folders = segments.map((segment) => safeSegment(segment, "folder")).filter(Boolean).slice(0, 12);
+  return [...folders, fileName].join("/");
+}
+
+function safeCodeDirectoryPath(value = "") {
+  return codePathSegments(value)
+    .map((segment) => safeSegment(segment, "folder"))
+    .filter(Boolean)
+    .slice(0, 12)
+    .join("/");
 }
 
 function indentBraceCode(code = "") {
@@ -638,13 +664,16 @@ function normalizeCompileFileRole(value = "", language = "") {
   return ["tb", "testbench", "bench"].includes(clean) ? "testbench" : "design";
 }
 
-async function saveCompileSource({ projectId, fileId, title, fileName, language, role = "", code, stdin = "" }) {
-  const lang = normalizeCodeLanguage(language || detectCodeLanguageFromSource(code, fileName));
+async function saveCompileSource({ projectId, fileId, title, fileName, relativePath, language, role = "", code, stdin = "" }) {
+  const incomingPath = relativePath || fileName;
+  const lang = normalizeCodeLanguage(language || detectCodeLanguageFromSource(code, incomingPath));
   const projectFolder = safeSegment(projectId, "project");
-  const codeFileName = safeCodeFileName(fileName, lang);
+  const safeRelativePath = safeCodeRelativePath(incomingPath, lang);
+  const codeFileName = path.basename(safeRelativePath);
   const fileFolder = safeSegment(fileId || path.parse(codeFileName).name, path.parse(codeFileName).name);
   const folder = resolveInsideCompileRoot(projectFolder, fileFolder);
-  const sourcePath = resolveInsideCompileRoot(projectFolder, fileFolder, codeFileName);
+  const sourcePath = resolveInsideCompileRoot(projectFolder, fileFolder, safeRelativePath);
+  await mkdir(path.dirname(sourcePath), { recursive: true });
   await mkdir(folder, { recursive: true });
   await writeFile(sourcePath, String(code || ""), "utf8");
   if (stdin) await writeFile(resolveInsideCompileRoot(projectFolder, fileFolder, "stdin.txt"), String(stdin), "utf8");
@@ -652,6 +681,7 @@ async function saveCompileSource({ projectId, fileId, title, fileName, language,
     id: fileFolder,
     title: clampText(title || codeFileName, 180),
     fileName: codeFileName,
+    relativePath: safeRelativePath,
     language: lang,
     role: normalizeCompileFileRole(role || inferCompileFileRole(codeFileName, code, lang), lang),
     sourcePath,
@@ -700,12 +730,14 @@ function hdlFilesFromPayload(payload = {}, activeFileName = "", activeLanguage =
     const code = String(item.code || "");
     const language = normalizeCodeLanguage(item.language || detectCodeLanguageFromSource(code, item.fileName));
     if (!isHdlLanguage(language) || !code.trim()) return;
-    const fileName = safeCodeFileName(item.fileName || activeFileName || compileLanguageProfiles[language].defaultFile, language);
+    const relativePath = safeCodeRelativePath(item.relativePath || item.fileName || activeFileName || compileLanguageProfiles[language].defaultFile, language);
+    const fileName = path.basename(relativePath);
     const id = safeSegment(item.id || fallbackId || fileName, path.parse(fileName).name);
     byId.set(id, {
       id,
       title: clampText(item.title || fileName, 180),
       fileName,
+      relativePath,
       language,
       role: normalizeCompileFileRole(item.role || inferCompileFileRole(fileName, code, language), language),
       code
@@ -716,6 +748,7 @@ function hdlFilesFromPayload(payload = {}, activeFileName = "", activeLanguage =
     id: payload.fileId,
     title: payload.title,
     fileName: activeFileName,
+    relativePath: payload.relativePath || activeFileName,
     language: activeLanguage,
     role: payload.role,
     code: payload.code
@@ -746,12 +779,14 @@ function compileWorkspaceFilesFromPayload(payload = {}, activeFileName = "", act
     const code = String(item.code || "");
     if (!code.trim()) return;
     const language = normalizeCodeLanguage(item.language || detectCodeLanguageFromSource(code, item.fileName));
-    const fileName = safeCodeFileName(item.fileName || activeFileName || compileLanguageProfiles[language]?.defaultFile || "source.txt", language);
+    const relativePath = safeCodeRelativePath(item.relativePath || item.fileName || activeFileName || compileLanguageProfiles[language]?.defaultFile || "source.txt", language);
+    const fileName = path.basename(relativePath);
     const id = safeSegment(item.id || fallbackId || fileName, path.parse(fileName).name);
     byId.set(id, {
       id,
       title: clampText(item.title || fileName, 180),
       fileName,
+      relativePath,
       language,
       role: normalizeCompileFileRole(item.role || inferCompileFileRole(fileName, code, language), language),
       code
@@ -762,6 +797,7 @@ function compileWorkspaceFilesFromPayload(payload = {}, activeFileName = "", act
     id: payload.fileId,
     title: payload.title,
     fileName: activeFileName,
+    relativePath: payload.relativePath || activeFileName,
     language: activeLanguage,
     role: payload.role,
     code: payload.code
@@ -776,19 +812,21 @@ async function writeCompileWorkspaceSources(files = [], targetDir = "", options 
   for (const file of files) {
     if (options.languages?.length && !options.languages.includes(normalizeCodeLanguage(file.language))) continue;
     if (options.extensions?.length && !options.extensions.includes(path.extname(file.fileName).toLowerCase())) continue;
-    const parsed = path.parse(file.fileName);
-    const count = seen.get(file.fileName) || 0;
-    seen.set(file.fileName, count + 1);
-    const uniqueName = count ? `${parsed.name}_${count}${parsed.ext}` : file.fileName;
-    const sourcePath = path.join(targetDir, uniqueName);
+    const relativePath = safeCodeRelativePath(file.relativePath || file.fileName, file.language);
+    const parsed = path.parse(relativePath);
+    const count = seen.get(relativePath) || 0;
+    seen.set(relativePath, count + 1);
+    const uniqueRelativePath = count ? path.join(parsed.dir, `${parsed.name}_${count}${parsed.ext}`) : relativePath;
+    const sourcePath = path.join(targetDir, uniqueRelativePath);
+    await mkdir(path.dirname(sourcePath), { recursive: true });
     await writeFile(sourcePath, file.code, "utf8");
-    written.push({ ...file, uniqueName, sourcePath });
+    written.push({ ...file, relativePath, uniqueName: uniqueRelativePath.replace(/\\/g, "/"), sourcePath });
   }
   return written;
 }
 
 function sourceDisplayName(file = {}) {
-  return file.uniqueName || file.fileName || path.basename(file.sourcePath || "source");
+  return file.uniqueName || file.relativePath || file.fileName || path.basename(file.sourcePath || "source");
 }
 
 function cFamilyWorkspaceSources(files = [], language = "c", activeFileName = "") {
@@ -952,10 +990,11 @@ async function compileAndRunCode(payload = {}) {
     ? normalizeCodeLanguage(requestedLanguage)
     : detectCodeLanguageFromSource(payload.code, payload.fileName);
   const profile = compileLanguageProfiles[language] || compileLanguageProfiles.javascript;
-  const fileName = safeCodeFileName(payload.fileName, language);
-  const saved = await saveCompileSource({ ...payload, language, fileName });
+  const fileName = safeCodeFileName(payload.fileName || payload.relativePath, language);
+  const relativePath = safeCodeRelativePath(payload.relativePath || payload.fileName, language);
+  const saved = await saveCompileSource({ ...payload, language, fileName, relativePath });
   const projectFolder = safeSegment(payload.projectId, "project");
-  const sourcePath = resolveInsideCompileRoot(projectFolder, safeSegment(saved.id), saved.fileName);
+  const sourcePath = saved.sourcePath;
   const sourceCode = String(payload.code || "");
   const action = compileActionFromPayload(payload.action, language);
   const allWorkspaceFiles = compileWorkspaceFilesFromPayload(payload, saved.fileName, language);
@@ -973,17 +1012,19 @@ async function compileAndRunCode(payload = {}) {
       extensions: options.extensions
     });
     const active = runWorkspaceSources.find((file) => file.id === saved.id || file.fileName === saved.fileName);
-    runSourcePath = active?.sourcePath || path.join(runDir, saved.fileName);
+    runSourcePath = active?.sourcePath || path.join(runDir, saved.relativePath || saved.fileName);
     if (!active) {
+      await mkdir(path.dirname(runSourcePath), { recursive: true });
       await cp(sourcePath, runSourcePath, { force: true });
       runWorkspaceSources.push({
         id: saved.id,
         title: saved.title,
         fileName: saved.fileName,
+        relativePath: saved.relativePath || saved.fileName,
         language,
         role: saved.role,
         code: sourceCode,
-        uniqueName: saved.fileName,
+        uniqueName: saved.relativePath || saved.fileName,
         sourcePath: runSourcePath
       });
     }
@@ -1315,6 +1356,36 @@ async function compileAndRunCode(payload = {}) {
     language,
     saved,
     terminal: terminal.join("\n\n").trim() || "No compiler output was returned."
+  };
+}
+
+async function runCompileTerminalCommand(payload = {}) {
+  const command = String(payload.command || "").trim();
+  if (!command) throw new Error("Terminal command is required.");
+  if (command.length > 2000) throw new Error("Terminal command is too long.");
+  const projectFolder = safeSegment(payload.projectId, "project");
+  const cwdRelative = safeCodeDirectoryPath(payload.cwd || "");
+  const cwd = cwdRelative
+    ? resolveInsideCompileRoot(projectFolder, cwdRelative)
+    : resolveInsideCompileRoot(projectFolder);
+  await mkdir(cwd, { recursive: true });
+  const shellCommand = process.platform === "win32" ? "powershell.exe" : "bash";
+  const shellArgs = process.platform === "win32"
+    ? ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", command]
+    : ["-lc", command];
+  const result = await runProcess(shellCommand, shellArgs, {
+    cwd,
+    timeoutMs: Number(payload.timeoutMs || 30000)
+  });
+  const output = [
+    `${cwdRelative || "."}> ${command}`,
+    processTerminalText(result)
+  ].filter(Boolean).join("\n");
+  return {
+    cwd: cwdRelative,
+    exitCode: result.code,
+    ok: result.ok,
+    output
   };
 }
 
@@ -1775,14 +1846,62 @@ async function callOllamaPortfolioAi({ question, intent, conversation, context, 
 function ruleBasedConversationAnswer(question = "") {
   const clean = String(question || "").toLowerCase();
   if (/\b(thanks|thank you|appreciate it)\b/.test(clean)) {
-    return "You're welcome. I can keep helping with this portfolio, project evidence, resume links, or related electronics and embedded-systems questions.";
+    return "You're welcome. What would you like to look at next?";
   }
 
   if (/\b(who are you|what are you)\b/.test(clean)) {
     return "I am this portfolio's assistant. I can help visitors explore the saved engineering work, explain project details, summarize portfolio evidence, and answer related electronics, embedded, analog, digital, FPGA, ASIC, PCB, and firmware questions.";
   }
 
-  return "Hi. I can help you explore this portfolio, explain projects, summarize project evidence, open relevant sections, or answer related electronics and embedded-systems questions. You can ask about a specific project, a tool like KiCad or STM32CubeIDE, or a general topic such as embedded systems, op amps, FPGA design, ASICs, or PCB testing.";
+  return "Hi, what can I do for you?";
+}
+
+function backendAiQuestionLooksCasual(question = "") {
+  const clean = String(question || "").trim().toLowerCase();
+  return /^(hi|hello|hey|yo|sup|good\s+(morning|afternoon|evening))(\s+[a-z]+){0,3}[\s!.?]*$/.test(clean)
+    || /^(thanks|thank\s+you|ok|okay|cool|nice)[\s!.?]*$/.test(clean)
+    || /^(what'?s|what\s+is|do\s+you\s+know)\s+my\s+name\??$/.test(clean)
+    || /^who\s+am\s+i\??$/.test(clean);
+}
+
+function backendAiQuestionHasPortfolioIntent(question = "") {
+  const clean = String(question || "").toLowerCase();
+  return /\b(maurice|otieno|portfolio|resume|github|linkedin|contact|email|phone|project|projects|repo|repository|repositories|file|files|document|documents|artifact|artifacts|link|links|download|open|show|where|built|created|designed|implemented)\b/.test(clean)
+    || /\b(your|his|maurice's)\s+(project|projects|resume|github|linkedin|portfolio|work|email|phone|contact|repo|repository|files?|documents?|links?)\b/.test(clean);
+}
+
+function backendAiQuestionIsEngineeringRelated(question = "") {
+  const clean = String(question || "").toLowerCase();
+  return /\b(op\s*amp|amplifier|analog|mixed\s*signal|adc|dac|filter|vco|oscillator|pwm|charger|rectifier|regulator|buck|boost|ldo|mosfet|bjt|transistor|diode|pcb|schematic|layout|ground|noise|frequency|gain|phase|ltspice|kicad|vivado|verilog|vhdl|fpga|asic|stm32|mcu|microcontroller|embedded|firmware|rtos|i2c|spi|uart|sensor|control|signal|circuit|electronics|hardware|power)\b/.test(clean);
+}
+
+function backendAiQuestionLooksConceptual(question = "") {
+  const clean = String(question || "").toLowerCase().trim();
+  return /^(what|what\s+is|what\s+are|what's|define|explain|describe|how|why|compare|differentiate)\b/.test(clean)
+    || /\b(definition|meaning|basics|overview|introduction|difference\s+between|how\s+does|how\s+do|why\s+does|why\s+do)\b/.test(clean);
+}
+
+function classifyBackendAiIntent(question = "", requestedIntent = "") {
+  const valid = new Set(["general_conversation", "general_engineering", "general_knowledge", "portfolio_specific", "portfolio_and_general"]);
+  if (backendAiQuestionLooksCasual(question)) return "general_conversation";
+  const hasPortfolioIntent = backendAiQuestionHasPortfolioIntent(question);
+  const hasConceptIntent = backendAiQuestionIsEngineeringRelated(question) || backendAiQuestionLooksConceptual(question);
+  if (hasPortfolioIntent && hasConceptIntent) return "portfolio_and_general";
+  if (hasPortfolioIntent) return "portfolio_specific";
+  if (backendAiQuestionIsEngineeringRelated(question)) return "general_engineering";
+  if (valid.has(requestedIntent) && requestedIntent !== "portfolio_specific") return requestedIntent;
+  return "general_knowledge";
+}
+
+function contextForBackendIntent(context = {}, intent = "portfolio_specific") {
+  if (["portfolio_specific", "portfolio_and_general"].includes(intent)) return context;
+  return {
+    intent,
+    profile: context.profile || {},
+    question: context.question || "",
+    sourceFetches: [],
+    sourceExcerpts: []
+  };
 }
 
 function isLocalRequest(request) {
@@ -1903,6 +2022,39 @@ function parseGitHubRemote(remoteUrl = "") {
     return { owner: parts[0], repo: parts[1].replace(/\.git$/i, "") };
   } catch {
     return null;
+  }
+}
+
+function remoteUrlWithGitHubUsername(remoteUrl = "", username = "") {
+  const trimmed = String(remoteUrl || "").trim();
+  if (!trimmed || /^git@github\.com:/i.test(trimmed)) return trimmed;
+  try {
+    const parsed = new URL(trimmed.replace(/^git\+/, ""));
+    if (parsed.protocol !== "https:" || parsed.hostname.toLowerCase() !== "github.com") return trimmed;
+    const remote = parseGitHubRemote(trimmed);
+    const preferredUsername = String(username || remote?.owner || "").trim();
+    if (!preferredUsername) return trimmed;
+    parsed.username = preferredUsername;
+    parsed.password = "";
+    return parsed.toString();
+  } catch {
+    return trimmed;
+  }
+}
+
+async function configureGitCredentialPreference(remoteUrl = "", username = "") {
+  const parsedRemote = parseGitHubRemote(remoteUrl);
+  const preferredUsername = String(username || parsedRemote?.owner || "").trim();
+  try {
+    await runPublishGit(["config", "--local", "credential.useHttpPath", "true"]);
+  } catch {
+    // The publish check will surface a useful Git error if config is unavailable.
+  }
+  if (!preferredUsername) return;
+  try {
+    await runPublishGit(["config", "--local", "credential.username", preferredUsername]);
+  } catch {
+    // Username preference is helpful but not mandatory for publishing.
   }
 }
 
@@ -2223,7 +2375,7 @@ async function storeGitCredentials(remoteUrl, username, password) {
   }
 
   const pathName = parsed.pathname.replace(/^\/+/, "");
-  await runPublishGit(["config", "--local", "credential.useHttpPath", "true"]);
+  await configureGitCredentialPreference(remoteUrl, cleanUsername);
   const credentialInput = [
     "protocol=https",
     "host=github.com",
@@ -2283,12 +2435,14 @@ async function originRemoteExists() {
   }
 }
 
-async function setOriginRemote(remoteUrl) {
+async function setOriginRemote(remoteUrl, username = "") {
+  const preferredRemoteUrl = remoteUrlWithGitHubUsername(remoteUrl, username);
   if (await originRemoteExists()) {
-    await runPublishGit(["remote", "set-url", "origin", remoteUrl]);
+    await runPublishGit(["remote", "set-url", "origin", preferredRemoteUrl]);
   } else {
-    await runPublishGit(["remote", "add", "origin", remoteUrl]);
+    await runPublishGit(["remote", "add", "origin", preferredRemoteUrl]);
   }
+  await configureGitCredentialPreference(preferredRemoteUrl, username);
 }
 
 async function checkoutPublishBranch(branch) {
@@ -2616,6 +2770,15 @@ async function assertPublishAccess(options = {}) {
     );
   }
 
+  const parsedRemoteBeforePreference = parseGitHubRemote(remote);
+  const preferredRemote = remoteUrlWithGitHubUsername(remote, parsedRemoteBeforePreference?.owner || "");
+  if (preferredRemote && preferredRemote !== remote) {
+    await setOriginRemote(preferredRemote, parsedRemoteBeforePreference?.owner || "");
+    remote = preferredRemote;
+  } else {
+    await configureGitCredentialPreference(remote, parsedRemoteBeforePreference?.owner || "");
+  }
+
   if (options.requireCompatible !== false && !await workspaceHasCompatibleSiteFiles()) {
     throw publishAccessError(
       "This repository does not look like a compatible static portfolio website.",
@@ -2767,7 +2930,7 @@ async function authenticateGitHubForTarget(options = {}) {
   const snapshot = await capturePublishTargetState();
 
   try {
-    await setOriginRemote(remoteUrl);
+    await setOriginRemote(remoteUrl, credentials.cleanUsername || parseGitHubRemote(remoteUrl)?.owner || "");
     const status = await getGitStatus();
     const preliminaryTarget = await getPublishTargetInfo();
     if (!status.git.ok) {
@@ -3202,6 +3365,7 @@ async function syncPortfolioPublishFiles(options = {}) {
 async function publishSiteChanges(publishAccess = null) {
   const access = publishAccess || await assertPublishAccess();
   const branch = access.branch || (await runPublishGit(["branch", "--show-current"])).stdout.trim();
+  await configureGitCredentialPreference(access.remote || "", parseGitHubRemote(access.remote || "")?.owner || "");
   const remoteSync = await synchronizePublishBranchFromRemote(branch, access);
   const portfolioSync = await syncPortfolioPublishFiles({ removeMissing: true });
   await bumpPublishedAssetVersions(portfolioRoot);
@@ -3241,8 +3405,7 @@ async function handlePortfolioAi(request, response) {
   const body = await readRequestJson(request);
   const question = clampText(body.question, 1200).trim();
   const conversation = cleanConversationHistory(body.conversation);
-  const validIntents = new Set(["general_conversation", "general_engineering", "general_knowledge", "portfolio_specific"]);
-  const intent = validIntents.has(body.intent) ? body.intent : "portfolio_specific";
+  const intent = classifyBackendAiIntent(question, body.intent);
   const allowWebSearch = body.allowWebSearch === true;
 
   if (!question) {
@@ -3250,7 +3413,18 @@ async function handlePortfolioAi(request, response) {
     return;
   }
 
-  const context = await enrichPortfolioContext({ ...(body.context || {}), question });
+  if (intent === "general_conversation") {
+    sendJson(response, 200, {
+      answer: ruleBasedConversationAnswer(question),
+      intent,
+      model: "conversation-router",
+      provider: "local-router",
+      usedWebSearch: false
+    });
+    return;
+  }
+
+  const context = await enrichPortfolioContext(contextForBackendIntent({ ...(body.context || {}), question }, intent));
 
   const apiKey = process.env.OPENAI_API_KEY || "";
   if (!apiKey) {
@@ -3437,6 +3611,17 @@ async function handleApi(request, response, url) {
       sendJson(response, 200, { ok: result.ok, result });
     } catch (error) {
       sendJson(response, 400, { ok: false, error: error.message || "Code could not be compiled.", result: null });
+    }
+    return true;
+  }
+
+  if (url.pathname === "/api/code/terminal") {
+    try {
+      const body = await readRequestJson(request);
+      const result = await runCompileTerminalCommand(body);
+      sendJson(response, 200, result);
+    } catch (error) {
+      sendJson(response, 400, { ok: false, error: error.message || "Terminal command could not be run." });
     }
     return true;
   }
