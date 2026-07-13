@@ -3314,10 +3314,11 @@ function parsedNodeFromBuilder(node, fallbackKind = "subsection") {
 }
 
 function parsedGenericSection(section) {
+  normalizeBuilderSectionStorage(section);
   return parsedSection(
     `custom:${section.id}`,
     section.title || "Untitled section",
-    (section.items || []).filter(builderSectionNodeHasContent).map((item) => parsedNodeFromBuilder(item)),
+    sectionRootChildren(section).filter(builderSectionNodeHasContent).map((item) => parsedNodeFromBuilder(item)),
     section.description || "",
     section.richDescription
   );
@@ -6763,12 +6764,28 @@ function renderSectionTabs(project) {
     return;
   }
 
+  const rows = sectionOptions(project).map((section) => {
+    const isCustom = section.id.startsWith("custom:");
+    const sectionId = isCustom ? section.id.replace("custom:", "") : "";
+    return `
+      <div class="project-section-row ${section.id === activeSectionId ? "active" : ""}" role="listitem">
+        <button class="project-section-select" type="button" data-section-id="${escapeHtml(section.id)}">
+          ${escapeHtml(section.label || "Untitled section")}
+        </button>
+        ${isCustom ? `
+          <div class="project-section-actions">
+            <button type="button" data-open-editor="custom-section" data-edit-section-id="${escapeHtml(sectionId)}">Edit</button>
+            <button class="danger-icon" type="button" data-delete-section="${escapeHtml(sectionId)}">Delete</button>
+          </div>
+        ` : ""}
+      </div>
+    `;
+  }).join("");
+
   sectionTabs.innerHTML = `
-    ${sectionOptions(project).map((section) => `
-      <button class="${section.id === activeSectionId ? "active" : ""}" type="button" data-section-id="${section.id}">
-        ${section.label}
-      </button>
-    `).join("")}
+    <div class="project-section-list" role="list">
+      ${rows}
+    </div>
     <button type="button" data-add-section="true">Add section</button>
   `;
 }
@@ -7283,11 +7300,12 @@ function openEditorFromButton(button) {
   }
 
   if (type === "custom-section") {
-    const section = (project.sections || []).find((item) => item.id === button.dataset.sectionId);
+    const sectionId = button.dataset.editSectionId || button.dataset.sectionId;
+    const section = (project.sections || []).find((item) => item.id === sectionId);
     openPendingEditor({
       type,
       mode: "edit",
-      sectionId: button.dataset.sectionId,
+      sectionId,
       title: section?.title || "",
       description: section?.description || "",
       richDescription: section?.richDescription || null
@@ -7313,12 +7331,46 @@ function nodePathToString(path = []) {
   return path.join(".");
 }
 
+function mergeBuilderNodeArrays(...arrays) {
+  const merged = [];
+  const seen = new Set();
+  arrays.flatMap((items) => Array.isArray(items) ? items : []).forEach((item) => {
+    if (!item) return;
+    const key = item.id
+      ? `id:${item.id}`
+      : `${item.title || item.name || item.label || ""}|${item.url || item.artifact || ""}|${item.description || item.caption || ""}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    merged.push(item);
+  });
+  return merged;
+}
+
+function normalizeBuilderNodeStorage(node) {
+  if (!node) return node;
+  const children = mergeBuilderNodeArrays(node.children, node.items).map(normalizeBuilderNodeStorage);
+  node.children = children;
+  if (Object.prototype.hasOwnProperty.call(node, "items")) delete node.items;
+  return node;
+}
+
+function normalizeBuilderSectionStorage(section) {
+  if (!section) return section;
+  section.items = mergeBuilderNodeArrays(section.items, section.children).map(normalizeBuilderNodeStorage);
+  if (Object.prototype.hasOwnProperty.call(section, "children")) delete section.children;
+  return section;
+}
+
 function sectionRootChildren(section) {
+  if (!section) return [];
+  normalizeBuilderSectionStorage(section);
   section.items = section.items || [];
   return section.items;
 }
 
 function builderNodeChildren(node) {
+  if (!node) return [];
+  normalizeBuilderNodeStorage(node);
   node.children = node.children || [];
   return node.children;
 }
@@ -7351,7 +7403,7 @@ function builderNodeKindLabel(node) {
   return "Section";
 }
 
-function renderBuilderExplorerRows(section, items = section.items || [], path = [], depth = 0) {
+function renderBuilderExplorerRows(section, items = sectionRootChildren(section), path = [], depth = 0) {
   const visibleItems = (items || []).filter(Boolean);
   if (!visibleItems.length) {
     return `<p class="evidence-empty explorer-empty">No subsections or files added yet.</p>`;
@@ -7362,7 +7414,7 @@ function renderBuilderExplorerRows(section, items = section.items || [], path = 
         const itemPath = [...path, index];
         const pathValue = nodePathToString(itemPath);
         const hasUrl = Boolean(item.url || item.artifact);
-        const children = item.children || item.items || [];
+        const children = hasUrl ? [] : builderNodeChildren(item);
         return `
           <div class="builder-explorer-entry" role="listitem">
             <div class="builder-explorer-row ${hasUrl ? "is-file" : "is-section"}" style="--builder-depth: ${depth}">
@@ -7389,6 +7441,7 @@ function renderBuilderExplorerRows(section, items = section.items || [], path = 
 function renderCustomSection(project, sectionId) {
   const section = (project.sections || []).find((item) => item.id === sectionId);
   if (!section) return `<p class="evidence-empty">Section not found.</p>`;
+  normalizeBuilderSectionStorage(section);
 
   return `
     <div class="section-window-heading">
@@ -7463,6 +7516,7 @@ function compileAppendDestinations(project) {
   }];
 
   (project.sections || []).forEach((section, index) => {
+    normalizeBuilderSectionStorage(section);
     destinations.push({
       id: `custom-${section.id || index}`,
       label: `${section.title || `Custom section ${index + 1}`} overview`,
@@ -7471,6 +7525,7 @@ function compileAppendDestinations(project) {
     });
     const walkItems = (items = [], prefix = `sections.${index}.items`, labelPrefix = section.title || `Custom section ${index + 1}`) => {
       (items || []).forEach((item, itemIndex) => {
+        normalizeBuilderNodeStorage(item);
         const itemPath = `${prefix}.${itemIndex}`;
         const itemTitle = item.title || `Subsection ${itemIndex + 1}`;
         if (!item.url) {
@@ -7481,10 +7536,10 @@ function compileAppendDestinations(project) {
             textPath: `${itemPath}.description`
           });
         }
-        walkItems(item.children || item.items || [], `${itemPath}.children`, `${labelPrefix} / ${itemTitle}`);
+        walkItems(builderNodeChildren(item), `${itemPath}.children`, `${labelPrefix} / ${itemTitle}`);
       });
     };
-    walkItems(section.items || []);
+    walkItems(sectionRootChildren(section));
   });
 
   return destinations;
@@ -7991,7 +8046,7 @@ function renderCompileCodeSection(project) {
 }
 
 function isCompileCodeBuilderSection(section = {}) {
-  const label = normalize(`${section.id || ""} ${section.title || ""}`);
+  const label = projectSearchText(`${section.id || ""} ${section.title || ""}`);
   return /\bcompile\s+code\b/.test(label) || label.includes("compile-code");
 }
 
@@ -9114,20 +9169,18 @@ async function uploadToSection(key, folder, customSectionId = "", customItemInde
 
     if (customSectionId) {
       const section = (project.sections || []).find((item) => item.id === customSectionId);
+      normalizeBuilderSectionStorage(section);
       const uploadedItem = { title: asset.title, description: asset.caption, type, url, status: asset.source === "local" ? "uploaded" : "linked" };
       if (customNodePath !== null && customNodePath !== "") {
         const parent = findBuilderNode(section, nodePathFromString(customNodePath));
         if (!parent || parent.url || parent.artifact) return;
-        parent.children = parent.children || [];
-        parent.children.push(uploadedItem);
+        builderNodeChildren(parent).push(uploadedItem);
       } else if (customItemIndex !== null && customItemIndex !== "") {
-        const parent = section?.items?.[Number(customItemIndex)];
+        const parent = sectionRootChildren(section)?.[Number(customItemIndex)];
         if (!parent || parent.url) return;
-        parent.children = parent.children || [];
-        parent.children.push(uploadedItem);
+        builderNodeChildren(parent).push(uploadedItem);
       } else {
-        section.items = section.items || [];
-        section.items.push(uploadedItem);
+        sectionRootChildren(section).push(uploadedItem);
       }
     } else {
       project[key] = project[key] || [];
@@ -9282,6 +9335,25 @@ async function addCustomSection() {
   renderAll();
 }
 
+function deleteProjectSectionById(project, sectionId) {
+  if (!project || !sectionId) return;
+  const section = (project.sections || []).find((item) => item.id === sectionId);
+  if (!section) return;
+  openDeleteConfirm({
+    title: "Delete section",
+    message: `Are you sure you want to delete "${section.title || sectionId}"?`,
+    onConfirm: () => {
+      project.sections = (project.sections || []).filter((item) => item.id !== sectionId);
+      project.sectionModelVersion = 3;
+      if (activeSectionId === `custom:${sectionId}`) activeSectionId = "brief";
+      if (pendingEditor?.sectionId === sectionId) pendingEditor = null;
+      setStatus("Section deleted locally. Click Save project to rebuild the project preview.");
+      scheduleAutosave();
+      renderAll();
+    }
+  });
+}
+
 function addCustomItem(sectionId) {
   const project = selectedProject();
   const section = (project.sections || []).find((item) => item.id === sectionId);
@@ -9289,8 +9361,7 @@ function addCustomItem(sectionId) {
   if (!section || !title) return;
   const description = prompt("Paste or type a text description if you want.") || "";
 
-  section.items = section.items || [];
-  section.items.push({ title, description, type: "Text", status: "draft" });
+  sectionRootChildren(section).push({ title, description, type: "Text", status: "draft", children: [] });
   setStatus("Subsection added locally.");
   scheduleAutosave();
   renderAll();
@@ -11010,11 +11081,22 @@ projectFields.addEventListener("input", (event) => {
 sectionTabs.addEventListener("click", async (event) => {
   const button = event.target.closest("button");
   if (!button) return;
+  const project = selectedProject();
+  if (!project) return;
   if (button.dataset.addSection) {
     await addCustomSection();
     return;
   }
+  if (button.dataset.openEditor) {
+    openEditorFromButton(button);
+    return;
+  }
+  if (button.dataset.deleteSection) {
+    deleteProjectSectionById(project, button.dataset.deleteSection);
+    return;
+  }
   const nextSectionId = button.dataset.sectionId;
+  if (!nextSectionId) return;
   if (nextSectionId && nextSectionId !== activeSectionId && !suppressProjectWindowHistory) {
     projectWindowBackStack.push(activeSectionId);
     projectWindowForwardStack = [];
@@ -11301,13 +11383,13 @@ sectionContent.addEventListener("click", async (event) => {
   }
   if (button.dataset.deleteCustomChild) {
     const section = project.sections.find((item) => item.id === button.dataset.deleteCustomChild);
-    const parent = section?.items?.[Number(button.dataset.index)];
-    const child = parent?.children?.[Number(button.dataset.childIndex)];
+    const parent = sectionRootChildren(section)?.[Number(button.dataset.index)];
+    const child = builderNodeChildren(parent)?.[Number(button.dataset.childIndex)];
     openDeleteConfirm({
       title: "Delete file",
       message: `Are you sure you want to delete "${itemTitle(child)}"?`,
       onConfirm: () => {
-        parent.children.splice(Number(button.dataset.childIndex), 1);
+        builderNodeChildren(parent).splice(Number(button.dataset.childIndex), 1);
         scheduleAutosave();
         renderAll();
       }
@@ -11316,12 +11398,12 @@ sectionContent.addEventListener("click", async (event) => {
   }
   if (button.dataset.deleteCustomItem) {
     const section = project.sections.find((item) => item.id === button.dataset.deleteCustomItem);
-    const item = section?.items?.[Number(button.dataset.index)];
+    const item = sectionRootChildren(section)?.[Number(button.dataset.index)];
     openDeleteConfirm({
       title: "Delete subsection",
       message: `Are you sure you want to delete "${itemTitle(item)}"?`,
       onConfirm: () => {
-        section.items.splice(Number(button.dataset.index), 1);
+        sectionRootChildren(section).splice(Number(button.dataset.index), 1);
         scheduleAutosave();
         renderAll();
       }
@@ -11329,18 +11411,7 @@ sectionContent.addEventListener("click", async (event) => {
     return;
   }
   if (button.dataset.deleteSection) {
-    const section = project.sections.find((item) => item.id === button.dataset.deleteSection);
-    openDeleteConfirm({
-      title: "Delete section",
-      message: `Are you sure you want to delete "${section?.title || button.dataset.deleteSection}"?`,
-      onConfirm: () => {
-        project.sections = project.sections.filter((section) => section.id !== button.dataset.deleteSection);
-        activeSectionId = "brief";
-        pendingEditor = null;
-        scheduleAutosave();
-        renderAll();
-      }
-    });
+    deleteProjectSectionById(project, button.dataset.deleteSection);
     return;
   }
   if (button.dataset.cancelPending) {
