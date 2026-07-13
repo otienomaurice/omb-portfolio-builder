@@ -3253,7 +3253,6 @@ function builderSectionNodeHasContent(node) {
   if (!node) return false;
   const children = [...(node.children || []), ...(node.items || [])];
   return Boolean(
-    node.title ||
     node.description ||
     node.caption ||
     node.result ||
@@ -3263,6 +3262,36 @@ function builderSectionNodeHasContent(node) {
     richHasContent(node.richDescription) ||
     children.some(builderSectionNodeHasContent)
   );
+}
+
+function builderProjectSectionHasContent(section) {
+  if (!section) return false;
+  return Boolean(
+    section.description ||
+    richHasContent(section.richDescription) ||
+    (section.items || []).some(builderSectionNodeHasContent)
+  );
+}
+
+function pruneBuilderNodeTree(node) {
+  if (!node) return null;
+  const children = [...(node.children || []), ...(node.items || [])]
+    .map(pruneBuilderNodeTree)
+    .filter(Boolean);
+  const next = { ...node };
+  if (children.length) next.children = children;
+  else next.children = [];
+  delete next.items;
+  return builderSectionNodeHasContent(next) ? next : null;
+}
+
+function pruneProjectSectionTree(section) {
+  if (!section) return null;
+  const next = {
+    ...section,
+    items: (section.items || []).map(pruneBuilderNodeTree).filter(Boolean)
+  };
+  return builderProjectSectionHasContent(next) ? next : null;
 }
 
 function parsedNodeFromBuilder(node, fallbackKind = "subsection") {
@@ -3398,11 +3427,15 @@ function legacyDesignHasContent(design = {}) {
 function migrateLegacyProjectSections(project) {
   if (!project) return project;
   project.sections = Array.isArray(project.sections) ? project.sections : [];
-  if (project.sectionModelVersion === 2) {
-    project.sections = project.sections.map((section) => ({
-      ...section,
-      items: Array.isArray(section.items) ? section.items.map(normalizeBuilderNodeTree) : []
-    }));
+  if (project.sectionModelVersion >= 2) {
+    project.sections = project.sections
+      .map((section) => ({
+        ...section,
+        items: Array.isArray(section.items) ? section.items.map(normalizeBuilderNodeTree) : []
+      }))
+      .map(pruneProjectSectionTree)
+      .filter(Boolean);
+    project.sectionModelVersion = 3;
     return project;
   }
 
@@ -3411,7 +3444,8 @@ function migrateLegacyProjectSections(project) {
       ...section,
       items: (section.items || []).map(pruneLegacyNode).filter(Boolean)
     }))
-    .filter(legacySectionHasSubstance);
+    .map(pruneProjectSectionTree)
+    .filter(Boolean);
 
   const design = project.design || {};
   if (legacyDesignHasContent(design)) {
@@ -3489,7 +3523,8 @@ function migrateLegacyProjectSections(project) {
   project.languages = [];
   project.links = [];
   delete project.design;
-  project.sectionModelVersion = 2;
+  project.sections = project.sections.map(pruneProjectSectionTree).filter(Boolean);
+  project.sectionModelVersion = 3;
   return project;
 }
 
@@ -4547,6 +4582,7 @@ function buildTemplateProject() {
     languages: [],
     links: [],
     sections: [],
+    sectionModelVersion: 3,
     compileCode: { files: [], activeFileId: "", terminal: "" }
   };
 }
@@ -9239,6 +9275,7 @@ async function addCustomSection() {
 
   project.sections = project.sections || [];
   project.sections.push({ id, title: sectionInput.title, description: sectionInput.description, items: [] });
+  project.sectionModelVersion = 3;
   activeSectionId = `custom:${id}`;
   setStatus("New section added in the editor. Click Save project to include this version in the portfolio preview.");
   scheduleAutosave();
@@ -11150,9 +11187,18 @@ sectionContent.addEventListener("click", async (event) => {
     return;
   }
 
-  if (button.dataset.openEditor) openEditorFromButton(button);
-  if (button.dataset.upload) await uploadToSection(button.dataset.upload, button.dataset.folder);
-  if (button.dataset.uploadDesign) await uploadToDesignSection(button.dataset.uploadDesign, button.dataset.folder, button.dataset.designKind);
+  if (button.dataset.openEditor) {
+    openEditorFromButton(button);
+    return;
+  }
+  if (button.dataset.upload) {
+    await uploadToSection(button.dataset.upload, button.dataset.folder);
+    return;
+  }
+  if (button.dataset.uploadDesign) {
+    await uploadToDesignSection(button.dataset.uploadDesign, button.dataset.folder, button.dataset.designKind);
+    return;
+  }
   if (button.dataset.addNodeSubsection !== undefined) {
     openPendingEditor({
       type: "custom",
@@ -11243,10 +11289,15 @@ sectionContent.addEventListener("click", async (event) => {
   }
   if (button.dataset.addCustomItem) {
     openPendingEditor({ type: "custom", mode: "add", sectionId: button.dataset.addCustomItem, title: "", description: "" });
+    return;
   }
-  if (button.dataset.uploadCustom) await uploadToSection("sections", button.dataset.uploadCustom, button.dataset.uploadCustom);
+  if (button.dataset.uploadCustom) {
+    await uploadToSection("sections", button.dataset.uploadCustom, button.dataset.uploadCustom);
+    return;
+  }
   if (button.dataset.uploadCustomSubsection) {
     await uploadToSection("sections", button.dataset.uploadCustomSubsection, button.dataset.uploadCustomSubsection, button.dataset.index);
+    return;
   }
   if (button.dataset.deleteCustomChild) {
     const section = project.sections.find((item) => item.id === button.dataset.deleteCustomChild);
@@ -11290,10 +11341,12 @@ sectionContent.addEventListener("click", async (event) => {
         renderAll();
       }
     });
+    return;
   }
   if (button.dataset.cancelPending) {
     pendingEditor = null;
     renderSectionContent(project);
+    return;
   }
 });
 
