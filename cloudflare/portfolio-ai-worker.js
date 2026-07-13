@@ -78,11 +78,65 @@ function extractWorkersAiText(data = {}) {
   return "";
 }
 
+function questionLooksCasual(question = "") {
+  const clean = String(question || "").trim().toLowerCase();
+  return /^(hi|hello|hey|yo|sup|good\s+(morning|afternoon|evening))(\s+[a-z]+){0,3}[\s!.?]*$/.test(clean)
+    || /^(thanks|thank\s+you|ok|okay|cool|nice)[\s!.?]*$/.test(clean)
+    || /^(what'?s|what\s+is|do\s+you\s+know)\s+my\s+name\??$/.test(clean)
+    || /^who\s+am\s+i\??$/.test(clean);
+}
+
+function questionHasPortfolioIntent(question = "") {
+  const clean = String(question || "").toLowerCase();
+  return /\b(maurice|otieno|portfolio|resume|github|linkedin|contact|email|phone|project|projects|repo|repository|repositories|file|files|document|documents|artifact|artifacts|link|links|download|open|show|where|built|created|designed|implemented)\b/.test(clean)
+    || /\b(your|his|maurice's)\s+(project|projects|resume|github|linkedin|portfolio|work|email|phone|contact|repo|repository|files?|documents?|links?)\b/.test(clean);
+}
+
+function questionIsEngineeringRelated(question = "") {
+  const clean = String(question || "").toLowerCase();
+  return /\b(op\s*amp|amplifier|analog|mixed\s*signal|adc|dac|filter|vco|oscillator|pwm|charger|rectifier|regulator|buck|boost|ldo|mosfet|bjt|transistor|diode|pcb|schematic|layout|ground|noise|frequency|gain|phase|ltspice|kicad|vivado|verilog|vhdl|fpga|asic|stm32|mcu|microcontroller|embedded|firmware|rtos|i2c|spi|uart|sensor|control|signal|circuit|electronics|hardware|power)\b/.test(clean);
+}
+
+function questionLooksConceptual(question = "") {
+  const clean = String(question || "").toLowerCase().trim();
+  return /^(what|what\s+is|what\s+are|what's|define|explain|describe|how|why|compare|differentiate)\b/.test(clean)
+    || /\b(definition|meaning|basics|overview|introduction|difference\s+between|how\s+does|how\s+do|why\s+does|why\s+do)\b/.test(clean);
+}
+
+function classifyIntent(question = "", requestedIntent = "") {
+  const valid = new Set(["general_conversation", "general_engineering", "general_knowledge", "portfolio_specific", "portfolio_and_general"]);
+  if (questionLooksCasual(question)) return "general_conversation";
+  const hasPortfolio = questionHasPortfolioIntent(question);
+  const hasConcept = questionIsEngineeringRelated(question) || questionLooksConceptual(question);
+  if (hasPortfolio && hasConcept) return "portfolio_and_general";
+  if (hasPortfolio) return "portfolio_specific";
+  if (questionIsEngineeringRelated(question)) return "general_engineering";
+  if (valid.has(requestedIntent) && requestedIntent !== "portfolio_specific") return requestedIntent;
+  return "general_knowledge";
+}
+
+function contextForIntent(context = {}, intent = "portfolio_specific") {
+  if (["portfolio_specific", "portfolio_and_general"].includes(intent)) return context;
+  return {
+    intent,
+    profile: context.profile || {},
+    question: context.question || ""
+  };
+}
+
+function conversationalAnswer(question = "") {
+  const clean = String(question || "").toLowerCase();
+  if (/^(thanks|thank\s+you)/.test(clean)) return "You're welcome. What would you like to look at next?";
+  if (/\b(who are you|what are you)\b/.test(clean)) return "I am the AI assistant for this portfolio. I can help with projects, files, links, and related engineering questions.";
+  return "Hi, what can I do for you?";
+}
+
 function buildInstructions() {
   return [
     "You are the AI assistant for a public engineering portfolio website.",
     "Answer naturally like a helpful technical mentor and recruiter-facing portfolio guide.",
     "If the question is general, answer the concept directly before mentioning portfolio context.",
+    "If the question is mixed, answer the general idea first and then connect it to specific relevant portfolio evidence.",
     "If the question is about the portfolio owner, projects, files, resume, tools, links, or sections, answer from the supplied portfolio context.",
     "Use recent conversation to keep a conversational flow. Greetings should receive short greetings.",
     "Only include portfolio links when they are directly relevant to the visitor's question.",
@@ -238,19 +292,35 @@ export default {
 
     const question = clamp(body.question, 1200).trim();
     if (!question) return json({ error: "Question is required." }, 400, cors);
+    const intent = classifyIntent(question, body.intent);
+    const routedBody = {
+      ...body,
+      context: contextForIntent({ ...(body.context || {}), question }, intent),
+      intent,
+      question
+    };
+    if (intent === "general_conversation") {
+      return json({
+        answer: conversationalAnswer(question),
+        intent,
+        model: "conversation-router",
+        provider: "worker-router",
+        usedWebSearch: false
+      }, 200, cors);
+    }
 
     try {
       let provider = env.OPENAI_API_KEY ? "openai" : "cloudflare-workers-ai";
       let result = env.OPENAI_API_KEY
-        ? await callOpenAi({ ...body, question }, env)
-        : await callWorkersAi({ ...body, question }, env);
+        ? await callOpenAi(routedBody, env)
+        : await callWorkersAi(routedBody, env);
       if (!result.ok && env.OPENAI_API_KEY && env.AI) {
         provider = "cloudflare-workers-ai";
-        result = await callWorkersAi({ ...body, question }, env);
+        result = await callWorkersAi(routedBody, env);
       }
       if (!result.ok) {
         return json({
-          answer: fallbackWorkerAnswer({ ...body, question }),
+          answer: fallbackWorkerAnswer(routedBody),
           model: "worker-fallback",
           provider: "worker-fallback",
           warning: result.error,
@@ -265,7 +335,7 @@ export default {
       }, 200, cors);
     } catch (error) {
       return json({
-        answer: fallbackWorkerAnswer({ ...body, question }),
+        answer: fallbackWorkerAnswer(routedBody),
         model: "worker-fallback",
         provider: "worker-fallback",
         warning: error?.message || "Portfolio AI backend failed unexpectedly.",
