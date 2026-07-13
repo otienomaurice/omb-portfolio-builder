@@ -215,10 +215,7 @@ const templatePalette = document.querySelector("#template-palette");
 const templatePreviewClose = document.querySelector("#template-preview-close");
 
 const standardSections = [
-  { id: "brief", label: "Overview", folder: "" },
-  { id: "design", label: "Design", folder: "documents" },
-  { id: "simulation", label: "Simulation", folder: "simulations", analogOnly: true },
-  { id: "compile-code", label: "Compile Code", folder: "compile-code" }
+  { id: "brief", label: "Overview", folder: "" }
 ];
 
 const preferenceStorageKey = "omb-builder-preferences";
@@ -1995,14 +1992,20 @@ function ensureCompileCode(project) {
   if (!project) return null;
   project.compileCode = project.compileCode || {};
   project.compileCode.files = Array.isArray(project.compileCode.files) ? project.compileCode.files : [];
+  project.compileCode.directories = Array.isArray(project.compileCode.directories)
+    ? project.compileCode.directories.map(compileDirectoryPath).filter(Boolean)
+    : [];
   project.compileCode.files = project.compileCode.files.map((file, index) => {
-    const language = normalizeCodeLanguage(file.language || detectCodeLanguage(file.code || "", file.fileName || ""));
-    const fileName = safeClientCodeFileName(file.fileName || defaultCodeFileName(language), language);
+    const incomingPath = file.relativePath || file.fileName || defaultCodeFileName(file.language);
+    const language = normalizeCodeLanguage(file.language || detectCodeLanguage(file.code || "", incomingPath));
+    const relativePath = safeClientCodeRelativePath(incomingPath || defaultCodeFileName(language), language);
+    const fileName = compileFileNameFromPath(relativePath, language);
     const role = normalizeCompileFileRole(file.role || inferCompileFileRole(fileName, file.code || "", language), language);
     return {
       id: file.id || slugify(`${fileName}-${index}-${Date.now()}`),
-      title: file.title || fileName,
+      title: fileName,
       fileName,
+      relativePath,
       language,
       role,
       code: String(file.code || ""),
@@ -2018,6 +2021,18 @@ function ensureCompileCode(project) {
     project.compileCode.activeFileId = project.compileCode.files[0]?.id || "";
   }
   project.compileCode.terminal = String(project.compileCode.terminal || "");
+  project.compileCode.systemTerminal = {
+    cwd: compileDirectoryPath(project.compileCode.systemTerminal?.cwd || project.compileCode.terminalCwd || ""),
+    command: String(project.compileCode.systemTerminal?.command || ""),
+    output: String(project.compileCode.systemTerminal?.output || ""),
+    history: Array.isArray(project.compileCode.systemTerminal?.history)
+      ? project.compileCode.systemTerminal.history.slice(0, 40).map((item) => ({
+        at: item.at || new Date().toISOString(),
+        command: String(item.command || ""),
+        output: String(item.output || "")
+      })).filter((item) => item.command)
+      : []
+  };
   const appendDestinations = compileAppendDestinations(project);
   if (!project.compileCode.appendTargetId || !appendDestinations.some((destination) => destination.id === project.compileCode.appendTargetId)) {
     project.compileCode.appendTargetId = appendDestinations[0]?.id || "";
@@ -2101,6 +2116,51 @@ function safeClientCodeFileName(fileName = "", language = "javascript") {
   const extMatch = clean.match(/(\.[a-zA-Z0-9_+-]+)$/);
   const ext = (extMatch?.[1] || fallback.match(/(\.[^.]+)$/)?.[1] || ".js").toLowerCase();
   return `${namePart}${profile.extensions?.includes(ext) ? ext : fallback.match(/(\.[^.]+)$/)?.[1] || ".js"}`;
+}
+
+function compilePathSegments(value = "") {
+  return String(value || "")
+    .replace(/\\/g, "/")
+    .split("/")
+    .map((segment) => segment.trim())
+    .filter((segment) => segment && segment !== "." && segment !== "..");
+}
+
+function safeClientCodeDirectorySegment(value = "") {
+  return String(value || "folder")
+    .trim()
+    .replace(/[\\/:*?"<>|]+/g, "-")
+    .replace(/[^a-zA-Z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "") || "folder";
+}
+
+function safeClientCodeRelativePath(value = "", language = "javascript") {
+  const segments = compilePathSegments(value || defaultCodeFileName(language));
+  const fileName = safeClientCodeFileName(segments.pop() || defaultCodeFileName(language), language);
+  const folders = segments.map(safeClientCodeDirectorySegment).filter(Boolean).slice(0, 12);
+  return [...folders, fileName].join("/");
+}
+
+function compileFilePath(file = {}) {
+  return safeClientCodeRelativePath(file.relativePath || file.fileName || defaultCodeFileName(file.language), file.language);
+}
+
+function compileFileNameFromPath(relativePath = "", language = "javascript") {
+  const segments = compilePathSegments(relativePath);
+  return safeClientCodeFileName(segments.pop() || defaultCodeFileName(language), language);
+}
+
+function compileDirectoryPath(value = "") {
+  return compilePathSegments(value)
+    .map(safeClientCodeDirectorySegment)
+    .filter(Boolean)
+    .slice(0, 12)
+    .join("/");
+}
+
+function compileDirectoryName(value = "") {
+  const segments = compilePathSegments(value);
+  return segments.pop() || "folder";
 }
 
 function normalizeCodePasteMode(value = "") {
@@ -2798,9 +2858,13 @@ function renderRichFieldContent(rich, fallbackText = "") {
   }).filter(Boolean).join("");
 }
 
-function saveSelectedProjectToPortfolio() {
+async function saveSelectedProjectToPortfolio(options = {}) {
+  const settings = options && options.currentTarget ? {} : options;
+  if (settings.commitEdits !== false && !(await commitActiveProjectEdits())) return false;
   const project = selectedProject();
   if (!project) return false;
+  migrateLegacyProjectSections(project);
+  ensureCompileCode(project);
   const parsedProject = parseProjectForPortfolio(project);
   syncParsedPortfolioGlobalsIntoSaved();
   const nextProjects = (savedPortfolioCatalog.projects || []).filter((item) => item.id !== project.id);
@@ -2810,6 +2874,7 @@ function saveSelectedProjectToPortfolio() {
   const insertAt = Math.max(0, workingIndex);
   savedPortfolioCatalog.projects.splice(insertAt, 0, parsedProject);
   markDraftNeedsSave();
+  scheduleAutosave();
   refreshOpenPreviews();
   setStatus(`${project.title} saved into the portfolio preview.`);
   updateBuilderWorkflow();
@@ -2835,6 +2900,60 @@ function deleteProjectById(projectId) {
   renderAll();
 }
 
+function ensureFallbackCategory(excludedId = "") {
+  const categories = catalog.categories || [];
+  const existing = categories.find((category) => category.id !== excludedId && (
+    category.id === "uncategorized" ||
+    String(category.label || "").trim().toLowerCase() === "uncategorized"
+  ));
+  if (existing) return existing.id;
+  const existingIds = new Set(categories.map((category) => category.id));
+  let id = "uncategorized";
+  let suffix = 2;
+  while (existingIds.has(id) || id === excludedId) {
+    id = `uncategorized-${suffix}`;
+    suffix += 1;
+  }
+  const fallback = normalizeCategory({
+    id,
+    label: "Uncategorized",
+    description: "Projects moved from deleted categories.",
+    accent: "#91c7dd"
+  });
+  catalog.categories = [...categories, fallback];
+  return fallback.id;
+}
+
+function deleteCategoryById(categoryId) {
+  const category = (catalog.categories || []).find((item) => item.id === categoryId);
+  if (!category) return;
+  const affectedProjects = (catalog.projects || []).filter((project) => project.category === categoryId);
+  const fallbackId = affectedProjects.length ? ensureFallbackCategory(categoryId) : "";
+  if (fallbackId) {
+    affectedProjects.forEach((project) => {
+      project.category = fallbackId;
+    });
+  }
+  catalog.categories = (catalog.categories || []).filter((item) => item.id !== categoryId);
+  if (!catalog.categories.length) {
+    ensureFallbackCategory();
+  }
+  savedPortfolioCatalog.categories = clone(catalog.categories || []);
+  savedPortfolioCatalog.projects = (catalog.projects || []).map((project) => parseProjectForPortfolio(project));
+  expandedCategories.delete(categoryId);
+  if (fallbackId) expandedCategories.add(fallbackId);
+  selectedProjectId = selectedProjectId && catalog.projects.some((project) => project.id === selectedProjectId)
+    ? selectedProjectId
+    : catalog.projects[0]?.id || "";
+  setStatus(affectedProjects.length
+    ? `Category deleted. ${affectedProjects.length} project${affectedProjects.length === 1 ? "" : "s"} moved to Uncategorized.`
+    : "Category deleted locally.");
+  markDraftNeedsSave();
+  scheduleAutosave();
+  refreshCategoryControls();
+  renderAll();
+}
+
 function openDeleteConfirm({ title = "Delete project", message, onConfirm }) {
   pendingDeleteAction = onConfirm;
   deleteConfirmTitle.textContent = title;
@@ -2849,6 +2968,19 @@ function requestProjectDelete(projectId) {
     title: "Delete project",
     message: "Are you sure you want to delete this project?",
     onConfirm: () => deleteProjectById(project.id)
+  });
+}
+
+function requestCategoryDelete(categoryId) {
+  const category = (catalog.categories || []).find((item) => item.id === categoryId);
+  if (!category) return;
+  const projectCount = (catalog.projects || []).filter((project) => project.category === categoryId).length;
+  openDeleteConfirm({
+    title: "Delete category",
+    message: projectCount
+      ? `Are you sure you want to delete "${category.label}"? ${projectCount} project${projectCount === 1 ? "" : "s"} will be moved to Uncategorized.`
+      : `Are you sure you want to delete "${category.label}"?`,
+    onConfirm: () => deleteCategoryById(category.id)
   });
 }
 
@@ -3117,6 +3249,250 @@ function parsedSection(id, title, items = [], description = "", rich = null) {
   return section;
 }
 
+function builderSectionNodeHasContent(node) {
+  if (!node) return false;
+  const children = [...(node.children || []), ...(node.items || [])];
+  return Boolean(
+    node.title ||
+    node.description ||
+    node.caption ||
+    node.result ||
+    node.method ||
+    node.url ||
+    node.artifact ||
+    richHasContent(node.richDescription) ||
+    children.some(builderSectionNodeHasContent)
+  );
+}
+
+function parsedNodeFromBuilder(node, fallbackKind = "subsection") {
+  const children = [...(node.children || []), ...(node.items || [])]
+    .filter(builderSectionNodeHasContent)
+    .map((child) => parsedNodeFromBuilder(child, child.url || child.artifact ? "file" : "subsection"))
+    .filter(parsedItemHasContent);
+  const url = node.url || node.artifact || "";
+  const kind = node.kind || (url ? "file" : fallbackKind);
+  const meta = node.type || node.status || node.method || (url ? "File" : "Subsection");
+  return parserItem(
+    node.title || node.name || node.label || (url ? "Untitled file" : "Untitled section"),
+    node.description || node.caption || node.result || node.method || "",
+    url,
+    meta,
+    kind,
+    node.richDescription,
+    children
+  );
+}
+
+function parsedGenericSection(section) {
+  return parsedSection(
+    `custom:${section.id}`,
+    section.title || "Untitled section",
+    (section.items || []).filter(builderSectionNodeHasContent).map((item) => parsedNodeFromBuilder(item)),
+    section.description || "",
+    section.richDescription
+  );
+}
+
+function legacyNodeHasSubstance(node) {
+  if (!node) return false;
+  const children = [...(node.children || []), ...(node.items || [])].filter(legacyNodeHasSubstance);
+  const kind = String(node.kind || node.type || "").toLowerCase();
+  return Boolean(
+    node.description ||
+    node.caption ||
+    node.result ||
+    node.method ||
+    node.url ||
+    node.artifact ||
+    richHasContent(node.richDescription) ||
+    children.length ||
+    (node.title && ["tool", "language", "link", "document", "file", "image", "test", "pcb", "code"].includes(kind))
+  );
+}
+
+function pruneLegacyNode(node) {
+  if (!node) return null;
+  const children = [...(node.children || []), ...(node.items || [])].map(pruneLegacyNode).filter(Boolean);
+  const next = { ...node };
+  if (children.length) next.children = children;
+  else delete next.children;
+  delete next.items;
+  return legacyNodeHasSubstance(next) ? next : null;
+}
+
+function normalizeBuilderNodeTree(node) {
+  if (!node) return node;
+  const children = [...(node.children || []), ...(node.items || [])].filter(Boolean).map(normalizeBuilderNodeTree);
+  const next = { ...node };
+  if (children.length) next.children = children;
+  else if (!Array.isArray(next.children)) next.children = [];
+  delete next.items;
+  return next;
+}
+
+function legacySectionHasSubstance(section) {
+  return Boolean(
+    section?.description ||
+    richHasContent(section?.richDescription) ||
+    (section?.items || []).some(legacyNodeHasSubstance)
+  );
+}
+
+function legacyFileNode(item = {}, fallbackTitle = "File", kind = "file") {
+  const url = item.url || item.artifact || "";
+  return {
+    title: item.title || item.name || item.label || fallbackTitle,
+    description: item.description || item.caption || item.result || item.method || "",
+    kind,
+    type: item.type || item.status || item.method || (url ? "File" : "Text"),
+    url,
+    richDescription: item.richDescription || null,
+    status: item.status || (url ? "uploaded" : "draft")
+  };
+}
+
+function uniqueSectionId(project, title) {
+  const baseId = slugify(title || "section") || "section";
+  const existing = new Set((project.sections || []).map((section) => section.id));
+  let id = baseId;
+  let suffix = 2;
+  while (existing.has(id)) {
+    id = `${baseId}-${suffix}`;
+    suffix += 1;
+  }
+  return id;
+}
+
+function addMigratedSection(project, title, items = [], description = "", richDescription = null) {
+  const cleanItems = (items || []).map(pruneLegacyNode).filter(Boolean);
+  const section = {
+    id: uniqueSectionId(project, title),
+    title,
+    description: description || "",
+    richDescription: richHasContent(richDescription) ? clone(richDescription) : null,
+    items: cleanItems
+  };
+  if (!legacySectionHasSubstance(section)) return;
+  project.sections = project.sections || [];
+  project.sections.push(section);
+}
+
+function legacyDesignHasContent(design = {}) {
+  return Boolean(
+    design.brief?.summary ||
+    richHasContent(design.brief?.summaryRich) ||
+    (design.brief?.files || []).some(legacyNodeHasSubstance) ||
+    design.documentation?.summary ||
+    richHasContent(design.documentation?.summaryRich) ||
+    (design.documentation?.files || []).some(legacyNodeHasSubstance) ||
+    (design.documentation?.references || []).some(legacyNodeHasSubstance) ||
+    (design.documentation?.mathAnalysis || []).some(legacyNodeHasSubstance) ||
+    design.simulation?.summary ||
+    richHasContent(design.simulation?.summaryRich) ||
+    (design.simulation?.files || []).some(legacyNodeHasSubstance) ||
+    (design.simulation?.results || []).some(legacyNodeHasSubstance)
+  );
+}
+
+function migrateLegacyProjectSections(project) {
+  if (!project) return project;
+  project.sections = Array.isArray(project.sections) ? project.sections : [];
+  if (project.sectionModelVersion === 2) {
+    project.sections = project.sections.map((section) => ({
+      ...section,
+      items: Array.isArray(section.items) ? section.items.map(normalizeBuilderNodeTree) : []
+    }));
+    return project;
+  }
+
+  project.sections = project.sections
+    .map((section) => ({
+      ...section,
+      items: (section.items || []).map(pruneLegacyNode).filter(Boolean)
+    }))
+    .filter(legacySectionHasSubstance);
+
+  const design = project.design || {};
+  if (legacyDesignHasContent(design)) {
+    const designItems = [];
+    if (design.brief?.summary || richHasContent(design.brief?.summaryRich) || (design.brief?.files || []).length) {
+      designItems.push({
+        title: "Design overview",
+        description: design.brief?.summary || "",
+        richDescription: design.brief?.summaryRich || null,
+        children: (design.brief?.files || []).map((item) => legacyFileNode(item, "Design file", "document"))
+      });
+    }
+    if (design.documentation?.summary || richHasContent(design.documentation?.summaryRich) || (design.documentation?.files || []).length || (design.documentation?.references || []).length || (design.documentation?.mathAnalysis || []).length) {
+      designItems.push({
+        title: "Documentation",
+        description: design.documentation?.summary || "",
+        richDescription: design.documentation?.summaryRich || null,
+        children: [
+          ...(design.documentation?.files || []).map((item) => legacyFileNode(item, "Document", "document")),
+          ...(design.documentation?.references || []).map((item) => legacyFileNode(item, "Reference", "reference")),
+          ...(design.documentation?.mathAnalysis || []).map((item) => legacyFileNode(item, "Math / analysis", "analysis"))
+        ]
+      });
+    }
+    if (designItems.length) addMigratedSection(project, "Design", designItems);
+
+    const simulationItems = [
+      ...(design.simulation?.files || []).map((item) => legacyFileNode(item, "Simulation file", "simulation-file")),
+      ...(design.simulation?.results || []).map((item) => legacyFileNode(item, "Simulation result", "simulation-result"))
+    ];
+    if (design.simulation?.summary || richHasContent(design.simulation?.summaryRich) || simulationItems.length) {
+      addMigratedSection(project, "Simulation", simulationItems, design.simulation?.summary || "", design.simulation?.summaryRich || null);
+    }
+  }
+
+  if ((project.documents || []).length) addMigratedSection(project, "Documents", (project.documents || []).map((item) => legacyFileNode(item, "Document", "document")));
+  if ((project.tests || []).length) addMigratedSection(project, "Tests", (project.tests || []).map((item) => legacyFileNode(item, "Test", "test")));
+  if ((project.pcbs || []).length) addMigratedSection(project, "PCBs Built", (project.pcbs || []).map((item) => legacyFileNode(item, "PCB", "pcb")));
+  if ((project.media || []).length) addMigratedSection(project, "Images", (project.media || []).map((item) => legacyFileNode(item, "Image", "image")));
+
+  const toolItems = [
+    ...(project.tools || []).map((item) => ({
+      title: toolName(item) || "Tool",
+      description: toolDescription(item) || "",
+      kind: "tool",
+      type: "Tool",
+      richDescription: item?.richDescription || null
+    })),
+    ...(project.languages || []).map((item) => ({
+      title: typeof item === "string" ? item : itemTitle(item),
+      description: "Language used in this project.",
+      kind: "language",
+      type: "Language"
+    })),
+    ...(project.links || []).map((item) => legacyFileNode(item, "Link", "link"))
+  ];
+  if (toolItems.some(legacyNodeHasSubstance)) addMigratedSection(project, "Tools and Links", toolItems);
+
+  const compileFiles = project.compileCode?.files || [];
+  if (compileFiles.some((file) => file.code || file.savedPath || file.fileName)) {
+    addMigratedSection(project, "Compile Code", compileFiles.map((file) => ({
+      title: file.title || file.fileName || "Source file",
+      description: file.code || file.savedPath || "",
+      kind: "code",
+      type: file.language || "code",
+      richDescription: file.code ? { blocks: [{ type: "code", language: file.language || "text", code: file.code, title: file.fileName || file.title || "Source file" }] } : null
+    })));
+  }
+
+  project.documents = [];
+  project.tests = [];
+  project.pcbs = [];
+  project.media = [];
+  project.tools = [];
+  project.languages = [];
+  project.links = [];
+  delete project.design;
+  project.sectionModelVersion = 2;
+  return project;
+}
+
 function parsedDesignSection(project) {
   if (isAnalogProject(project)) {
     const design = ensureDesignModel(project);
@@ -3176,27 +3552,10 @@ function parseProjectForPortfolio(project) {
         parserItem("Overview", project.summary || "", "", "Overview", "summary", project.summaryRich)
       ]);
     }
-    if (section.id === "design") return parsedDesignSection(project);
-    if (section.id === "simulation") return parsedSimulationSection(project);
-    if (section.id === "tests") return parsedSection("tests", "Tests", resourcesFrom(project, "tests"));
-    if (section.id === "tools") return parsedToolsSection(project);
     if (section.id.startsWith("custom:")) {
       const sectionId = section.id.replace("custom:", "");
       const custom = (project.sections || []).find((item) => item.id === sectionId);
-      return parsedSection(
-        `custom:${sectionId}`,
-        custom?.title || section.label,
-        (custom?.items || []).map((item) => item.url
-          ? parserItem(item.title, item.description, item.url, item.type || item.status || "File", "file", item.richDescription)
-          : parsedSubsection(
-              item.title,
-              item.description,
-              resourcesFromItems(item.children || item.items || item.files || [], "file"),
-              item.richDescription
-            )),
-        custom?.description || "",
-        custom?.richDescription
-      );
+      return custom ? parsedGenericSection(custom) : null;
     }
     return null;
   }).filter(parsedSectionHasContent);
@@ -3229,8 +3588,8 @@ function refreshOpenPreviews() {
   }
 }
 
-function saveSelectedProjectAndClose() {
-  if (saveSelectedProjectToPortfolio()) {
+async function saveSelectedProjectAndClose() {
+  if (await saveSelectedProjectToPortfolio()) {
     closeDialogElement(projectDialog);
   }
 }
@@ -3249,8 +3608,13 @@ async function saveAllSections(options = {}) {
   const settings = options && options.currentTarget ? {} : options;
   if (!(await commitActiveProjectEdits())) return false;
   syncParsedPortfolioGlobalsIntoSaved();
+  (catalog.projects || []).forEach((project) => {
+    migrateLegacyProjectSections(project);
+    ensureCompileCode(project);
+  });
   savedPortfolioCatalog.projects = (catalog.projects || []).map((project) => parseProjectForPortfolio(project));
   markDraftNeedsSave();
+  scheduleAutosave();
   if (projectDialog?.open) closeDialogElement(projectDialog);
   if (settings.refreshOpenPreviews !== false) refreshOpenPreviews();
   setStatus(`Saved ${savedPortfolioCatalog.projects.length} project${savedPortfolioCatalog.projects.length === 1 ? "" : "s"} into the portfolio preview.`);
@@ -3294,6 +3658,9 @@ function openProjectWindow(projectId, sectionId = "brief") {
     "is-resized-dialog"
   );
   delete projectDialog.dataset.restoreWindowState;
+  const project = selectedProject();
+  const category = categoryById(project?.category);
+  if (project) applyProjectTemplateToElement(projectDialog, project, category.accent || "#117c7a");
   renderAll();
   document.body.classList.add("project-window-open");
   if (!projectDialog.open) projectDialog.showModal();
@@ -4180,8 +4547,7 @@ function buildTemplateProject() {
     languages: [],
     links: [],
     sections: [],
-    compileCode: { files: [], activeFileId: "", terminal: "" },
-    design: category === "analog-mixed-signal" ? defaultDesignModel() : undefined
+    compileCode: { files: [], activeFileId: "", terminal: "" }
   };
 }
 
@@ -4294,6 +4660,9 @@ function renderTree() {
             <span>${highlightSearchText(category.label, projectSearchQuery)}</span>
             <small>${allCategoryProjects.length} project${allCategoryProjects.length === 1 ? "" : "s"}</small>
           </button>
+          <div class="tree-category-actions">
+            <button class="tree-category-delete danger-icon" type="button" data-delete-category="${escapeHtml(category.id)}" aria-label="Delete ${escapeHtml(category.label)}" title="Delete category">&times;</button>
+          </div>
         </div>
         <div class="tree-projects" ${isExpanded ? "" : "hidden"}>
           ${categoryProjects.length ? categoryProjects.map((project) => `
@@ -6634,7 +7003,7 @@ function pendingEditorUsesRichDescription(editor = pendingEditor) {
 function pendingEditorFolder(editor = pendingEditor) {
   if (!editor) return "content";
   if (editor.type === "custom-section") return `custom-${slugify(editor.sectionId || "section")}-overview`;
-  if (editor.type === "custom") return `custom-${slugify(editor.sectionId || "section")}-subsection`;
+  if (editor.type === "custom") return `custom-${slugify(editor.sectionId || "section")}-${slugify(editor.nodePath || editor.parentPath || "subsection")}`;
   if (editor.type === "design-object") return `design-${slugify(editor.kind || "content")}`;
   if (editor.type === "object") return slugify(editor.key || "content");
   return slugify(editor.type || "content");
@@ -6761,12 +7130,21 @@ function savePendingEditor(form) {
   if (pendingEditor.type === "custom") {
     const section = (project.sections || []).find((item) => item.id === pendingEditor.sectionId);
     if (!section) return;
-    section.items = section.items || [];
     const nextItem = { title, description, richDescription, type: "Text", status: "draft" };
     if (pendingEditor.mode === "edit") {
-      section.items[Number(pendingEditor.index)] = { ...section.items[Number(pendingEditor.index)], ...nextItem };
+      const path = nodePathFromString(pendingEditor.nodePath || pendingEditor.index || "");
+      const parent = findBuilderNodeParent(section, path);
+      const existing = parent.children[parent.index] || {};
+      parent.children[parent.index] = { ...existing, ...nextItem };
     } else {
-      section.items.push(nextItem);
+      const parentPath = nodePathFromString(pendingEditor.parentPath || "");
+      const parentNode = parentPath.length ? findBuilderNode(section, parentPath) : null;
+      const children = parentNode ? builderNodeChildren(parentNode) : sectionRootChildren(section);
+      children.push({
+        id: slugify(`${title}-${Date.now()}`),
+        ...nextItem,
+        children: []
+      });
     }
   }
 
@@ -6839,12 +7217,15 @@ function openEditorFromButton(button) {
 
   if (type === "custom") {
     const section = (project.sections || []).find((item) => item.id === button.dataset.sectionId);
-    const item = mode === "edit" ? section?.items?.[Number(index)] : {};
+    const nodePath = button.dataset.nodePath || index || "";
+    const item = mode === "edit" ? findBuilderNode(section, nodePathFromString(nodePath)) : {};
     openPendingEditor({
       type,
       mode,
       sectionId: button.dataset.sectionId,
       index,
+      nodePath,
+      parentPath: button.dataset.parentPath || "",
       title: item?.title || "",
       description: item?.description || "",
       richDescription: item?.richDescription || null
@@ -6887,6 +7268,88 @@ function builderPreviewContent(rich, text = "", emptyText = "No content has been
   return `<div class="builder-item-preview">${content}</div>`;
 }
 
+function nodePathFromString(value = "") {
+  if (!value) return [];
+  return String(value).split(".").map((part) => Number(part)).filter((part) => Number.isInteger(part) && part >= 0);
+}
+
+function nodePathToString(path = []) {
+  return path.join(".");
+}
+
+function sectionRootChildren(section) {
+  section.items = section.items || [];
+  return section.items;
+}
+
+function builderNodeChildren(node) {
+  node.children = node.children || [];
+  return node.children;
+}
+
+function findBuilderNode(section, path = []) {
+  let children = sectionRootChildren(section);
+  let node = null;
+  for (const index of path) {
+    node = children[index];
+    if (!node) return null;
+    children = builderNodeChildren(node);
+  }
+  return node;
+}
+
+function findBuilderNodeParent(section, path = []) {
+  if (!path.length) return { children: sectionRootChildren(section), index: -1, node: null };
+  const parentPath = path.slice(0, -1);
+  const parentNode = parentPath.length ? findBuilderNode(section, parentPath) : null;
+  const children = parentNode ? builderNodeChildren(parentNode) : sectionRootChildren(section);
+  return { children, index: path[path.length - 1], node: parentNode };
+}
+
+function builderNodeTitle(node) {
+  return itemTitle(node) || (node?.url || node?.artifact ? "Untitled file" : "Untitled subsection");
+}
+
+function builderNodeKindLabel(node) {
+  if (node?.url || node?.artifact) return node.type || node.status || labelForUrlAssetKind(inferUrlAssetKind(node.url || node.artifact || ""));
+  return "Section";
+}
+
+function renderBuilderExplorerRows(section, items = section.items || [], path = [], depth = 0) {
+  const visibleItems = (items || []).filter(Boolean);
+  if (!visibleItems.length) {
+    return `<p class="evidence-empty explorer-empty">No subsections or files added yet.</p>`;
+  }
+  return `
+    <div class="builder-explorer-list" role="list" data-depth="${depth}">
+      ${visibleItems.map((item, index) => {
+        const itemPath = [...path, index];
+        const pathValue = nodePathToString(itemPath);
+        const hasUrl = Boolean(item.url || item.artifact);
+        const children = item.children || item.items || [];
+        return `
+          <div class="builder-explorer-entry" role="listitem">
+            <div class="builder-explorer-row ${hasUrl ? "is-file" : "is-section"}" style="--builder-depth: ${depth}">
+              <button class="builder-explorer-main" type="button" data-open-editor="custom" data-mode="edit" data-section-id="${escapeHtml(section.id)}" data-node-path="${escapeHtml(pathValue)}">
+                <span class="builder-explorer-icon" aria-hidden="true">${hasUrl ? "file" : "section"}</span>
+                <span class="builder-explorer-title">${escapeHtml(builderNodeTitle(item))}</span>
+                <small>${escapeHtml(builderNodeKindLabel(item))}</small>
+              </button>
+              <div class="builder-explorer-actions">
+                ${hasUrl ? "" : `<button type="button" data-add-node-subsection="${escapeHtml(section.id)}" data-node-path="${escapeHtml(pathValue)}">Add subsection</button>`}
+                ${hasUrl ? "" : `<button type="button" data-upload-node="${escapeHtml(section.id)}" data-node-path="${escapeHtml(pathValue)}">Add file</button>`}
+                <button type="button" data-open-editor="custom" data-mode="edit" data-section-id="${escapeHtml(section.id)}" data-node-path="${escapeHtml(pathValue)}">Edit</button>
+                <button class="danger-icon" type="button" data-delete-node="${escapeHtml(section.id)}" data-node-path="${escapeHtml(pathValue)}">Delete</button>
+              </div>
+            </div>
+            ${!hasUrl && children.length ? renderBuilderExplorerRows(section, children, itemPath, depth + 1) : ""}
+          </div>
+        `;
+      }).join("")}
+    </div>
+  `;
+}
+
 function renderCustomSection(project, sectionId) {
   const section = (project.sections || []).find((item) => item.id === sectionId);
   if (!section) return `<p class="evidence-empty">Section not found.</p>`;
@@ -6901,33 +7364,10 @@ function renderCustomSection(project, sectionId) {
     </div>
     ${builderPreviewContent(section.richDescription, section.description || "", "No section content has been added yet.")}
     <div class="section-actions">
-      <button class="button primary" type="button" data-add-custom-item="${section.id}">Add subsection</button>
-      <button class="button secondary" type="button" data-upload-custom="${section.id}">Add file or image</button>
+      <button class="button primary" type="button" data-add-node-subsection="${section.id}" data-node-path="">Add subsection</button>
+      <button class="button secondary" type="button" data-upload-node="${section.id}" data-node-path="">Add file or image</button>
     </div>
-    <div class="builder-items">
-      ${(section.items || []).map((item, index) => `
-        <article class="builder-item">
-          <div>
-            <strong>${escapeHtml(item.title || (item.url ? "Untitled file" : "Untitled subsection"))}</strong>
-            ${item.url ? `<span>${escapeHtml(item.url)}</span>` : ""}
-            ${(richHasContent(item.richDescription) || item.description) ? builderPreviewContent(item.richDescription, item.description || "", "") : ""}
-            ${(item.children || []).length ? `
-              <div class="builder-child-files">
-                ${(item.children || []).map((child, childIndex) => `
-                  <div>
-                    <span>${escapeHtml(child.title || "Untitled file")}</span>
-                    <button class="danger-icon" type="button" data-delete-custom-child="${escapeHtml(section.id)}" data-index="${index}" data-child-index="${childIndex}">Delete</button>
-                  </div>
-                `).join("")}
-              </div>
-            ` : ""}
-          </div>
-          ${item.url ? "" : `<button type="button" data-upload-custom-subsection="${escapeHtml(section.id)}" data-index="${index}">Add file</button>`}
-          ${item.url ? "" : `<button type="button" data-open-editor="custom" data-mode="edit" data-section-id="${escapeHtml(section.id)}" data-index="${index}">Edit</button>`}
-          <button class="danger-icon" type="button" data-delete-custom-item="${section.id}" data-index="${index}">Delete</button>
-        </article>
-      `).join("") || `<p class="evidence-empty">No subsections added yet.</p>`}
-    </div>
+    ${renderBuilderExplorerRows(section)}
     ${renderPendingEditor()}
   `;
 }
@@ -6985,17 +7425,6 @@ function compileAppendDestinations(project) {
     richPath: "summaryRich",
     textPath: "summary"
   }];
-
-  if (isAnalogProject(project)) {
-    ensureDesignModel(project);
-    [
-      ["design-overview", "Design overview", "design.brief.summary"],
-      ["documentation-overview", "Documentation overview", "design.documentation.summary"],
-      ["simulation-overview", "Simulation overview", "design.simulation.summary"]
-    ].forEach(([id, label, textPath]) => {
-      destinations.push({ id, label, richPath: summaryRichPathFromTextPath(textPath), textPath });
-    });
-  }
 
   (project.sections || []).forEach((section, index) => {
     destinations.push({
@@ -7072,6 +7501,81 @@ function renderCompileMessages(workspace) {
   `).join("");
 }
 
+function compileWorkspaceTree(workspace = {}) {
+  const rootNode = {
+    children: new Map(),
+    files: [],
+    name: "",
+    path: "",
+    type: "folder"
+  };
+  const ensureFolder = (folderPath = "") => {
+    let node = rootNode;
+    let currentPath = "";
+    compilePathSegments(folderPath).forEach((segment) => {
+      const safeSegmentName = safeClientCodeDirectorySegment(segment);
+      currentPath = currentPath ? `${currentPath}/${safeSegmentName}` : safeSegmentName;
+      if (!node.children.has(safeSegmentName)) {
+        node.children.set(safeSegmentName, {
+          children: new Map(),
+          files: [],
+          name: safeSegmentName,
+          path: currentPath,
+          type: "folder"
+        });
+      }
+      node = node.children.get(safeSegmentName);
+    });
+    return node;
+  };
+
+  (workspace.directories || []).forEach((directory) => ensureFolder(directory));
+  (workspace.files || []).forEach((file) => {
+    const relativePath = compileFilePath(file);
+    const segments = compilePathSegments(relativePath);
+    const fileName = segments.pop() || file.fileName || "source";
+    ensureFolder(segments.join("/")).files.push({ ...file, fileName, relativePath });
+  });
+  return rootNode;
+}
+
+function renderCompileTreeFolder(node, activeId = "") {
+  const folders = [...node.children.values()].sort((left, right) => left.name.localeCompare(right.name));
+  const files = [...node.files].sort((left, right) => compileFilePath(left).localeCompare(compileFilePath(right)));
+  const folderHtml = folders.map((folder) => `
+    <details class="compile-code-tree-folder" open data-compile-folder-path="${escapeHtml(folder.path)}">
+      <summary>
+        <span class="compile-tree-folder-icon" aria-hidden="true"></span>
+        <span>${escapeHtml(folder.name)}</span>
+      </summary>
+      <div class="compile-code-tree-children">
+        ${renderCompileTreeFolder(folder, activeId)}
+      </div>
+    </details>
+  `).join("");
+  const fileHtml = files.map((file) => `
+    <button class="compile-code-tree-file${file.id === activeId ? " is-active" : ""}" type="button" data-compile-select="${escapeHtml(file.id)}">
+      <span class="compile-file-extension">${escapeHtml((file.fileName.match(/\.[^.]+$/)?.[0] || "src").replace(".", ""))}</span>
+      <span title="${escapeHtml(compileFilePath(file))}">${escapeHtml(file.fileName)}</span>
+      <small>${escapeHtml(compileFileDirtyLabel(file))}</small>
+    </button>
+  `).join("");
+  return `${folderHtml}${fileHtml}`;
+}
+
+function renderCompileWorkspaceTree(workspace = {}, projectTitle = "Project workspace") {
+  const tree = compileWorkspaceTree(workspace);
+  const contents = renderCompileTreeFolder(tree, workspace.activeFileId || "");
+  return `
+    <details open>
+      <summary>${escapeHtml(projectTitle || "Project workspace")}</summary>
+      <div class="compile-code-tree-files">
+        ${contents || `<p>No source files or folders yet.</p>`}
+      </div>
+    </details>
+  `;
+}
+
 function updateCompileTerminalPanel(project, file = activeCompileFile(project)) {
   const workspace = ensureCompileCode(project);
   const terminal = file?.lastResult?.terminal || workspace?.terminal || compileTerminalStatus || "Compiler output will appear here after you save or run a source file.";
@@ -7088,6 +7592,57 @@ function updateCompileMessagesPanel(project) {
   const log = sectionContent.querySelector("[data-compile-messages]");
   if (!log) return;
   log.innerHTML = renderCompileMessages(workspace);
+}
+
+function updateCompileSystemTerminalPanel(project) {
+  const workspace = ensureCompileCode(project);
+  const terminal = workspace?.systemTerminal || {};
+  const outputElement = sectionContent.querySelector("[data-compile-system-terminal]");
+  const cwdInput = sectionContent.querySelector("[data-compile-terminal-cwd]");
+  if (cwdInput) cwdInput.value = terminal.cwd || "";
+  if (outputElement) {
+    outputElement.textContent = terminal.output || "Run commands from this project workspace here.";
+    requestAnimationFrame(() => {
+      outputElement.scrollTop = outputElement.scrollHeight;
+    });
+  }
+}
+
+function renderCompileSystemTerminal(workspace = {}) {
+  const terminal = workspace.systemTerminal || {};
+  const history = Array.isArray(terminal.history) ? terminal.history : [];
+  return `
+    <section class="compile-system-terminal-panel" aria-label="Real terminal">
+      <div class="compile-terminal-heading">
+        <span class="compile-terminal-title"><span aria-hidden="true" class="terminal-dot"></span> Terminal</span>
+        <span class="compile-terminal-controls">
+          <button type="button" data-compile-terminal-run>Run command</button>
+          <button type="button" data-compile-terminal-clear>Clear terminal</button>
+        </span>
+      </div>
+      <div class="compile-terminal-command-row">
+        <label>
+          <span>Working folder</span>
+          <input type="text" data-compile-terminal-cwd value="${escapeHtml(terminal.cwd || "")}" placeholder="Project root or folder path, e.g. src" />
+        </label>
+        <label>
+          <span>Command</span>
+          <input type="text" data-compile-terminal-command value="${escapeHtml(terminal.command || "")}" placeholder="dir, gcc --version, node --version" />
+        </label>
+      </div>
+      <pre class="compile-terminal compile-system-terminal" data-compile-system-terminal tabindex="0" role="log" aria-live="polite">${escapeHtml(terminal.output || "Run commands from this project workspace here.")}</pre>
+      ${history.length ? `
+        <div class="compile-terminal-history" aria-label="Terminal command history">
+          ${history.slice(0, 8).map((item) => `
+            <button type="button" data-compile-terminal-history="${escapeHtml(item.command)}">
+              <span>${escapeHtml(compileLogTimestamp(item.at))}</span>
+              <strong>${escapeHtml(item.command)}</strong>
+            </button>
+          `).join("")}
+        </div>
+      ` : ""}
+    </section>
+  `;
 }
 
 function showCompileOutput(project, file = activeCompileFile(project)) {
@@ -7203,8 +7758,8 @@ function renderHdlScope(waveform) {
 }
 
 function renderCompileScopePanel(project, file = activeCompileFile(project)) {
+  if (!isHdlLanguage(file?.language)) return "";
   const waveform = activeCompileWaveform(project, file);
-  if (!isHdlLanguage(file?.language) && !waveform) return "";
   return `
     <section class="compile-scope-panel" data-compile-scope-panel aria-label="HDL signal scope">
       <div class="compile-terminal-heading">
@@ -7294,23 +7849,14 @@ function renderCompileCodeSection(project) {
           <small>${workspace.files.length} source file${workspace.files.length === 1 ? "" : "s"}</small>
         </div>
         <div class="compile-code-workspace-tree" aria-label="Project workspace tree">
-          <details open>
-            <summary>${escapeHtml(project.title || "Project workspace")}</summary>
-            <div class="compile-code-tree-files">
-              ${workspace.files.map((file) => `
-                <button class="compile-code-tree-file${file.id === workspace.activeFileId ? " is-active" : ""}" type="button" data-compile-select="${escapeHtml(file.id)}">
-                  <span class="compile-file-extension">${escapeHtml((file.fileName.match(/\.[^.]+$/)?.[0] || "src").replace(".", ""))}</span>
-                  <span>${escapeHtml(file.fileName)}</span>
-                  <small>${escapeHtml(compileFileDirtyLabel(file))}</small>
-                </button>
-              `).join("") || `<p>No source files yet.</p>`}
-            </div>
-          </details>
+          ${renderCompileWorkspaceTree(workspace, project.title || "Project workspace")}
         </div>
         <div class="compile-code-actions">
           <button type="button" data-compile-add>Add code file</button>
+          <button type="button" data-compile-add-directory>Add folder</button>
           <button type="button" data-compile-add-testbench>Add testbench</button>
-          <button type="button" data-compile-import>Import file</button>
+          <button type="button" data-compile-import>Import files</button>
+          <button type="button" data-compile-import-directory>Import directory</button>
           <button type="button" data-compile-tools>Check compilers</button>
         </div>
       </aside>
@@ -7319,12 +7865,8 @@ function renderCompileCodeSection(project) {
         ${activeFile ? `
           <div class="compile-code-meta-grid">
             <label>
-              <span>Title</span>
-              <input type="text" data-compile-field="title" value="${escapeHtml(activeFile.title || "")}" placeholder="Source title" />
-            </label>
-            <label>
-              <span>File name</span>
-              <input type="text" data-compile-field="fileName" value="${escapeHtml(activeFile.fileName || "")}" placeholder="${escapeHtml(defaultCodeFileName(activeFile.language))}" />
+              <span>File path</span>
+              <input type="text" data-compile-field="fileName" value="${escapeHtml(compileFilePath(activeFile))}" placeholder="${escapeHtml(defaultCodeFileName(activeFile.language))}" />
             </label>
             <label>
               <span>Language</span>
@@ -7335,6 +7877,10 @@ function renderCompileCodeSection(project) {
               ${isHdlLanguage(activeFile.language)
                 ? `<select data-compile-field="role">${compileRoleOptions(activeFile.role)}</select>`
                 : `<input type="text" value="Program source" disabled />`}
+            </label>
+            <label>
+              <span>File title</span>
+              <input type="text" value="${escapeHtml(activeFile.fileName || "")}" disabled />
             </label>
           </div>
           <div class="compile-code-editor-grid compile-code-editor-grid-single">
@@ -7384,9 +7930,9 @@ function renderCompileCodeSection(project) {
             <p>Add a source file for C, C++, SystemVerilog, LTspice, Java, JavaScript, Python, or HTML.</p>
           </div>
         `}
-        <section class="compile-terminal-panel" data-compile-terminal-panel aria-label="Compiler terminal output">
+        <section class="compile-terminal-panel" data-compile-terminal-panel aria-label="Compiler console output">
           <div class="compile-terminal-heading">
-            <span class="compile-terminal-title"><span aria-hidden="true" class="terminal-dot"></span> OMB Local Terminal</span>
+            <span class="compile-terminal-title"><span aria-hidden="true" class="terminal-dot"></span> Console</span>
             <span class="compile-terminal-controls">
               <button type="button" data-compile-copy-output>Copy output</button>
               <button type="button" data-compile-clear-output>Clear output</button>
@@ -7394,7 +7940,6 @@ function renderCompileCodeSection(project) {
           </div>
           <pre class="compile-terminal" data-compile-terminal tabindex="0" role="log" aria-live="polite">${escapeHtml(terminal)}</pre>
         </section>
-        ${renderCompileScopePanel(project, activeFile)}
         <section class="compile-messages-panel" aria-label="Compile messages log">
           <div class="compile-terminal-heading">
             <span>Messages log</span>
@@ -7402,9 +7947,16 @@ function renderCompileCodeSection(project) {
           </div>
           <div class="compile-messages-log" data-compile-messages>${renderCompileMessages(workspace)}</div>
         </section>
+        ${renderCompileSystemTerminal(workspace)}
+        ${renderCompileScopePanel(project, activeFile)}
       </section>
     </div>
   `;
+}
+
+function isCompileCodeBuilderSection(section = {}) {
+  const label = normalize(`${section.id || ""} ${section.title || ""}`);
+  return /\bcompile\s+code\b/.test(label) || label.includes("compile-code");
 }
 
 function renderSectionContent(project) {
@@ -7424,51 +7976,16 @@ function renderSectionContent(project) {
   }
 
   if (section.id.startsWith("custom:")) {
-    sectionContent.innerHTML = renderCustomSection(project, section.id.replace("custom:", ""));
+    const customSectionId = section.id.replace("custom:", "");
+    const customSection = (project.sections || []).find((item) => item.id === customSectionId);
+    sectionContent.innerHTML = isCompileCodeBuilderSection(customSection)
+      ? renderCompileCodeSection(project)
+      : renderCustomSection(project, customSectionId);
     requestAnimationFrame(() => populateRichEditors(sectionContent));
     return;
   }
 
-  const renderers = {
-    brief: () => "",
-    design: () => {
-      if (isAnalogProject(project)) return renderAnalogDesignWorkspace(project);
-      const cards = [
-        (project.documents || []).length ? `<section><h3>Documents</h3>${renderObjectSection(project, "documents", "documents", "Documents")}</section>` : "",
-        (project.pcbs || []).length ? `<section><h3>PCBs Built</h3>${renderObjectSection(project, "pcbs", "pcbs", "PCBs")}</section>` : "",
-        (project.media || []).length ? `<section><h3>Images</h3>${renderObjectSection(project, "media", "images", "Images")}</section>` : ""
-      ].filter(Boolean);
-      return `
-        <div class="section-stack">
-          ${cards.join("") || renderEmptyDynamicSectionPrompt("design")}
-          ${renderPendingEditor()}
-        </div>
-      `;
-    },
-    simulation: () => isAnalogProject(project) ? renderAnalogSimulationWorkspace(project) : "",
-    "compile-code": () => renderCompileCodeSection(project),
-    tests: () => `${renderObjectSection(project, "tests", "tests", "Tests")}${renderPendingEditor()}`,
-    tools: () => `
-      <div class="section-stack">
-        <section>
-          <h3>Tools Used</h3>
-          ${renderToolsSection(project)}
-        </section>
-        <section>
-          <h3>Languages</h3>
-          ${renderTextArray(project, "languages", "Language")}
-        </section>
-        <section>
-          <h3>Links</h3>
-          ${renderObjectSection(project, "links", "", "Links")}
-        </section>
-        ${renderPendingEditor()}
-      </div>
-    `
-  };
-
-    sectionContent.innerHTML = renderers[section.id]();
-    requestAnimationFrame(() => populateRichEditors(sectionContent));
+  sectionContent.innerHTML = renderEmptyDynamicSectionPrompt("section");
 }
 
 function fullPortfolioPreviewHtml() {
@@ -7916,19 +8433,46 @@ function editObjectItem(key, index) {
 function chooseFile() {
   return new Promise((resolve) => {
     filePicker.value = "";
+    filePicker.multiple = false;
+    filePicker.removeAttribute("webkitdirectory");
+    filePicker.removeAttribute("directory");
     filePicker.onchange = () => resolve(filePicker.files[0] || null);
+    filePicker.click();
+  });
+}
+
+function chooseFiles(options = {}) {
+  return new Promise((resolve) => {
+    filePicker.value = "";
+    filePicker.multiple = options.multiple !== false;
+    if (options.directory) {
+      filePicker.setAttribute("webkitdirectory", "");
+      filePicker.setAttribute("directory", "");
+    } else {
+      filePicker.removeAttribute("webkitdirectory");
+      filePicker.removeAttribute("directory");
+    }
+    filePicker.onchange = () => {
+      const files = [...(filePicker.files || [])];
+      filePicker.multiple = false;
+      filePicker.removeAttribute("webkitdirectory");
+      filePicker.removeAttribute("directory");
+      resolve(files);
+    };
     filePicker.click();
   });
 }
 
 function newCompileFile(language = "javascript", seed = {}) {
   const normalized = normalizeCodeLanguage(language);
-  const fileName = safeClientCodeFileName(seed.fileName || defaultCodeFileName(normalized), normalized);
+  const relativePath = safeClientCodeRelativePath(seed.relativePath || seed.fileName || defaultCodeFileName(normalized), normalized);
+  const fileName = compileFileNameFromPath(relativePath, normalized);
   const role = normalizeCompileFileRole(seed.role || inferCompileFileRole(fileName, seed.code || "", normalized), normalized);
   return {
     id: slugify(`${fileName}-${Date.now()}-${Math.random().toString(16).slice(2)}`),
-    title: seed.title || fileName,
+    title: fileName,
     fileName,
+    relativePath,
     language: normalized,
     role,
     code: String(seed.code || ""),
@@ -7964,16 +8508,18 @@ function compilePayload(project, file, options = {}) {
   return {
     projectId: project.id,
     fileId: file.id,
-    title: file.title,
+    title: file.fileName,
     fileName: file.fileName,
+    relativePath: compileFilePath(file),
     language: file.language,
     role: file.role || inferCompileFileRole(file.fileName, file.code, file.language),
     code: file.code,
     stdin: file.stdin || "",
     workspaceFiles: (workspace.files || []).map((workspaceFile) => ({
       id: workspaceFile.id,
-      title: workspaceFile.title,
+      title: workspaceFile.fileName,
       fileName: workspaceFile.fileName,
+      relativePath: compileFilePath(workspaceFile),
       language: workspaceFile.language,
       role: workspaceFile.role || inferCompileFileRole(workspaceFile.fileName, workspaceFile.code, workspaceFile.language),
       code: workspaceFile.code || ""
@@ -8031,33 +8577,56 @@ async function saveCompileFile(project, file) {
   file.savedPath = result.saved?.sourcePath || "";
   file.savedAt = result.saved?.savedAt || new Date().toISOString();
   file.fileName = result.saved?.fileName || file.fileName;
+  file.relativePath = result.saved?.relativePath || file.relativePath || file.fileName;
+  file.title = file.fileName;
   file.language = result.saved?.language || file.language;
   file.dirty = false;
   addCompileMessage(project, `Saved ${file.fileName || "source file"}.`, "info");
   return result.saved;
 }
 
-async function importCompileFile(project) {
+async function importCompileFiles(project, options = {}) {
   const workspace = ensureCompileCode(project);
-  const file = await chooseFile();
-  if (!file) return;
+  const files = await chooseFiles({ multiple: true, directory: options.directory === true });
+  if (!files.length) return;
   const allowedExtensions = supportedCodeLanguages.flatMap((item) => item.extensions || []);
-  const extension = `.${String(file.name || "").split(".").pop().toLowerCase()}`;
-  if (!allowedExtensions.includes(extension)) {
-    setStatus("Choose a supported source file: C, C++, Verilog, SystemVerilog, LTspice, Java, JavaScript, Python, or HTML.");
+  let imported = 0;
+  let skipped = 0;
+  for (const file of files) {
+    const extension = `.${String(file.name || "").split(".").pop().toLowerCase()}`;
+    if (!allowedExtensions.includes(extension)) {
+      skipped += 1;
+      continue;
+    }
+    const code = await file.text();
+    const incomingPath = options.directory && file.webkitRelativePath ? file.webkitRelativePath : file.name;
+    const language = detectCodeLanguage(code, incomingPath);
+    const profile = codeLanguageProfile(language);
+    const sourceFile = newCompileFile(profile.id, {
+      relativePath: incomingPath,
+      fileName: incomingPath,
+      code
+    });
+    workspace.files.push(sourceFile);
+    workspace.activeFileId = sourceFile.id;
+    imported += 1;
+  }
+  if (!imported) {
+    setStatus("No supported source files were found. Supported code files include C, C++, Verilog, SystemVerilog, LTspice, Java, JavaScript, Python, and HTML.");
     return;
   }
-  const code = await file.text();
-  const language = detectCodeLanguage(code, file.name);
-  const profile = codeLanguageProfile(language);
-  const sourceFile = newCompileFile(profile.id, {
-    fileName: file.name,
-    title: file.name.replace(/\.[^.]+$/, ""),
-    code
-  });
-  workspace.files.push(sourceFile);
-  workspace.activeFileId = sourceFile.id;
-  setStatus(`Imported ${file.name}. Click Save source before compiling.`);
+  setStatus(`Imported ${imported} source file${imported === 1 ? "" : "s"}${skipped ? ` and skipped ${skipped} unsupported file${skipped === 1 ? "" : "s"}` : ""}. Click Save source before compiling.`);
+  scheduleAutosave();
+  renderSectionContent(project);
+}
+
+async function addCompileDirectory(project) {
+  const workspace = ensureCompileCode(project);
+  const folder = compileDirectoryPath(window.prompt("Folder path inside this project workspace", "src") || "");
+  if (!folder) return;
+  if (!workspace.directories.includes(folder)) workspace.directories.push(folder);
+  addCompileMessage(project, `Folder created: ${folder}`, "success");
+  setStatus(`Created compile folder ${folder}.`);
   scheduleAutosave();
   renderSectionContent(project);
 }
@@ -8142,6 +8711,52 @@ async function compileActiveFile(project, file, options = {}) {
     setStatus(error.message || `${actionLabel} failed.`);
     renderSectionContent(project);
   }
+}
+
+async function runCompileTerminalCommand(project) {
+  const workspace = ensureCompileCode(project);
+  const terminal = workspace.systemTerminal;
+  const commandInput = sectionContent.querySelector("[data-compile-terminal-command]");
+  const cwdInput = sectionContent.querySelector("[data-compile-terminal-cwd]");
+  const command = String(commandInput?.value || terminal.command || "").trim();
+  const cwd = compileDirectoryPath(cwdInput?.value || terminal.cwd || "");
+  if (!command) {
+    addCompileMessage(project, "Type a terminal command before running it.", "warning");
+    return;
+  }
+  terminal.command = command;
+  terminal.cwd = cwd;
+  terminal.output = `Running: ${command}\nWorking folder: ${cwd || "."}\nPlease wait...`;
+  updateCompileSystemTerminalPanel(project);
+  addCompileMessage(project, `Terminal command started: ${command}`, "info");
+  try {
+    const response = await fetch(`/api/code/terminal?t=${Date.now()}`, {
+      method: "POST",
+      cache: "no-store",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        command,
+        cwd,
+        projectId: project.id
+      })
+    });
+    const result = await response.json();
+    if (!response.ok || !result.ok) throw new Error(result.error || "Terminal command failed.");
+    terminal.output = result.output || "Command completed with no output.";
+    terminal.cwd = result.cwd || cwd;
+    terminal.history = [
+      { at: new Date().toISOString(), command, output: terminal.output },
+      ...(terminal.history || [])
+    ].slice(0, 40);
+    addCompileMessage(project, `Terminal command finished: ${command}`, result.exitCode === 0 ? "success" : "warning");
+    setStatus("Terminal command completed.");
+  } catch (error) {
+    terminal.output = error.message || "Terminal command failed.";
+    addCompileMessage(project, `Terminal command failed: ${command}`, "error");
+    setStatus(error.message || "Terminal command failed.");
+  }
+  scheduleAutosave();
+  renderSectionContent(project);
 }
 
 async function checkCompileTools(project) {
@@ -8327,12 +8942,13 @@ function dialogValue(dialog) {
   });
 }
 
-async function openAssetDialog(key) {
+async function openAssetDialog(key, options = {}) {
   const profile = uploadProfile(key);
   assetDialogTitle.textContent = `Add ${profile.label}`;
   assetSource.value = "local";
   assetFile.value = "";
   assetFile.accept = profile.accept;
+  assetFile.multiple = options.multiple === true;
   assetUrl.value = "";
   assetTitle.value = "";
   assetCaption.value = "";
@@ -8344,22 +8960,36 @@ async function openAssetDialog(key) {
   if (!saved) return null;
 
   let file = null;
+  let files = [];
   let url = assetUrl.value.trim();
   let fileName = "";
   let title = assetTitle.value.trim();
 
   if (assetSource.value === "local") {
-    file = assetFile.files[0];
-    if (!file) {
+    files = [...(assetFile.files || [])];
+    file = files[0] || null;
+    if (!files.length) {
       setStatus("Choose a local file first.");
       return null;
     }
-    fileName = withExtension(title, file.name);
-    title = title || file.name;
-    const validation = isAllowedUpload(key, fileName, file.type);
-    if (!validation.ok) {
-      setStatus(validation.message);
-      return null;
+    if (files.length > 1) {
+      const invalid = files.find((selectedFile) => {
+        const validation = isAllowedUpload(key, selectedFile.name, selectedFile.type);
+        return !validation.ok;
+      });
+      if (invalid) {
+        const validation = isAllowedUpload(key, invalid.name, invalid.type);
+        setStatus(validation.message);
+        return null;
+      }
+    } else {
+      fileName = withExtension(title, file.name);
+      title = title || file.name;
+      const validation = isAllowedUpload(key, fileName, file.type);
+      if (!validation.ok) {
+        setStatus(validation.message);
+        return null;
+      }
     }
   } else {
     if (!url) {
@@ -8380,6 +9010,18 @@ async function openAssetDialog(key) {
     caption = await captionFile.files[0].text();
   }
 
+  if (assetSource.value === "local" && files.length > 1) {
+    return files.map((selectedFile) => ({
+      caption,
+      file: selectedFile,
+      fileName: selectedFile.name,
+      kind: "file",
+      source: "local",
+      title: selectedFile.name,
+      url: ""
+    }));
+  }
+
   return {
     caption,
     file,
@@ -8391,64 +9033,76 @@ async function openAssetDialog(key) {
   };
 }
 
-async function uploadToSection(key, folder, customSectionId = "", customItemIndex = null) {
+async function uploadToSection(key, folder, customSectionId = "", customItemIndex = null, customNodePath = "") {
   const project = selectedProject();
   if (!project) return;
 
-  const asset = await openAssetDialog(key);
-  if (!asset) return;
+  const assetResult = await openAssetDialog(key, { multiple: true });
+  if (!assetResult) return;
+  const assets = Array.isArray(assetResult) ? assetResult : [assetResult];
+  let savedCount = 0;
+  let lastUrl = "";
 
-  const validation = validateAssetForSection(key, asset);
-  if (!validation.ok) {
-    setStatus(validation.message);
-    return;
-  }
-
-  const sectionFolder = customSectionId || folder || key;
-  let url = asset.url;
-  let type = asset.source === "local" ? "File" : labelForUrlAssetKind(asset.kind);
-
-  if (asset.file) {
-    const data = await readFileAsDataUrl(asset.file);
-    const response = await fetch("/api/upload", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        projectId: project.id,
-        section: sectionFolder,
-        fileName: asset.fileName,
-        data
-      })
-    });
-    const result = await response.json();
-    if (!response.ok) {
-      setStatus(result.error || "Upload failed.");
+  for (const asset of assets) {
+    const validation = validateAssetForSection(key, asset);
+    if (!validation.ok) {
+      setStatus(validation.message);
       return;
     }
-    url = result.url;
-    type = asset.file.type || "File";
-  }
 
-  if (customSectionId) {
-    const section = (project.sections || []).find((item) => item.id === customSectionId);
-    const uploadedItem = { title: asset.title, description: asset.caption, type, url, status: asset.source === "local" ? "uploaded" : "linked" };
-    if (customItemIndex !== null && customItemIndex !== "") {
-      const parent = section?.items?.[Number(customItemIndex)];
-      if (!parent || parent.url) return;
-      parent.children = parent.children || [];
-      parent.children.push(uploadedItem);
-    } else {
-      section.items = section.items || [];
-      section.items.push(uploadedItem);
+    const sectionFolder = customSectionId || folder || key;
+    let url = asset.url;
+    let type = asset.source === "local" ? "File" : labelForUrlAssetKind(asset.kind);
+
+    if (asset.file) {
+      const data = await readFileAsDataUrl(asset.file);
+      const response = await fetch("/api/upload", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId: project.id,
+          section: sectionFolder,
+          fileName: asset.fileName,
+          data
+        })
+      });
+      const result = await response.json();
+      if (!response.ok) {
+        setStatus(result.error || "Upload failed.");
+        return;
+      }
+      url = result.url;
+      type = asset.file.type || "File";
     }
-  } else {
-    project[key] = project[key] || [];
-    project[key].push(makeItemForSection(key, asset.title, asset.caption, url));
+    lastUrl = url;
+
+    if (customSectionId) {
+      const section = (project.sections || []).find((item) => item.id === customSectionId);
+      const uploadedItem = { title: asset.title, description: asset.caption, type, url, status: asset.source === "local" ? "uploaded" : "linked" };
+      if (customNodePath !== null && customNodePath !== "") {
+        const parent = findBuilderNode(section, nodePathFromString(customNodePath));
+        if (!parent || parent.url || parent.artifact) return;
+        parent.children = parent.children || [];
+        parent.children.push(uploadedItem);
+      } else if (customItemIndex !== null && customItemIndex !== "") {
+        const parent = section?.items?.[Number(customItemIndex)];
+        if (!parent || parent.url) return;
+        parent.children = parent.children || [];
+        parent.children.push(uploadedItem);
+      } else {
+        section.items = section.items || [];
+        section.items.push(uploadedItem);
+      }
+    } else {
+      project[key] = project[key] || [];
+      project[key].push(makeItemForSection(key, asset.title, asset.caption, url));
+    }
+    savedCount += 1;
   }
 
-  setStatus(asset.source === "local"
-    ? `Saved ${asset.fileName} to ${url}. Click Save project to include it in the portfolio preview.`
-    : `Linked ${asset.title}. Click Save project to include it in the portfolio preview.`);
+  setStatus(savedCount > 1
+    ? `Saved ${savedCount} files. Click Save project to include them in the portfolio preview.`
+    : `Saved ${assets[0].fileName || assets[0].title} to ${lastUrl}. Click Save project to include it in the portfolio preview.`);
   scheduleAutosave();
   renderAll();
 }
@@ -8457,46 +9111,56 @@ async function uploadToDesignSection(pathValue, folder, kind = "document") {
   const project = selectedProject();
   if (!project) return;
 
-  const asset = await openAssetDialog(kind === "simulation-result" ? "tests" : "sections");
-  if (!asset) return;
+  const assetResult = await openAssetDialog(kind === "simulation-result" ? "tests" : "sections", { multiple: true });
+  if (!assetResult) return;
+  const assets = Array.isArray(assetResult) ? assetResult : [assetResult];
+  let savedCount = 0;
+  let lastAsset = null;
 
-  const validation = validateAssetForSection(kind === "simulation-result" ? "tests" : "sections", asset);
-  if (!validation.ok) {
-    setStatus(validation.message);
-    return;
-  }
-
-  let url = asset.url;
-  let type = asset.source === "local" ? "File" : labelForUrlAssetKind(asset.kind);
-  if (asset.file) {
-    const data = await readFileAsDataUrl(asset.file);
-    const response = await fetch("/api/upload", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        projectId: project.id,
-        section: folder || "design",
-        fileName: asset.fileName,
-        data
-      })
-    });
-    const result = await response.json();
-    if (!response.ok) {
-      setStatus(result.error || "Upload failed.");
+  for (const asset of assets) {
+    const validation = validateAssetForSection(kind === "simulation-result" ? "tests" : "sections", asset);
+    if (!validation.ok) {
+      setStatus(validation.message);
       return;
     }
-    url = result.url;
-    type = asset.file.type || "File";
+
+    let url = asset.url;
+    let type = asset.source === "local" ? "File" : labelForUrlAssetKind(asset.kind);
+    if (asset.file) {
+      const data = await readFileAsDataUrl(asset.file);
+      const response = await fetch("/api/upload", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId: project.id,
+          section: folder || "design",
+          fileName: asset.fileName,
+          data
+        })
+      });
+      const result = await response.json();
+      if (!response.ok) {
+        setStatus(result.error || "Upload failed.");
+        return;
+      }
+      url = result.url;
+      type = asset.file.type || "File";
+    }
+
+    const items = designArray(project, pathValue);
+    items.push({
+      ...makeDesignItem(kind, asset.title, asset.caption, url),
+      type
+    });
+    savedCount += 1;
+    lastAsset = { ...asset, url };
   }
 
-  const items = designArray(project, pathValue);
-  items.push({
-    ...makeDesignItem(kind, asset.title, asset.caption, url),
-    type
-  });
-  setStatus(asset.source === "local"
-    ? `Saved ${asset.fileName} to ${url}. Click Save project to include it in the portfolio preview.`
-    : `Linked ${asset.title}. Click Save project to include it in the portfolio preview.`);
+  setStatus(savedCount > 1
+    ? `Saved ${savedCount} design files. Click Save project to include them in the portfolio preview.`
+    : lastAsset?.source === "local"
+      ? `Saved ${lastAsset.fileName} to ${lastAsset.url}. Click Save project to include it in the portfolio preview.`
+      : `Linked ${lastAsset?.title || "asset"}. Click Save project to include it in the portfolio preview.`);
   scheduleAutosave();
   renderAll();
 }
@@ -8715,9 +9379,10 @@ async function loadData() {
   catalog.profile = normalizeProfile(catalog.profile || {});
   catalog.siteContent = normalizeSiteContent(catalog.siteContent || {});
   catalog.siteSections = catalog.siteSections || [];
+  templates = templateData.templates || [];
   catalog.projects = (catalog.projects || []).filter((project) => !starterProjectIds.has(project.id));
   catalog.projects.forEach((project) => {
-    if (isAnalogProject(project)) ensureDesignModel(project);
+    migrateLegacyProjectSections(project);
     ensureCompileCode(project);
   });
   savedPortfolioCatalog = {
@@ -8729,10 +9394,9 @@ async function loadData() {
     profileRich: clone(catalog.profileRich || {}),
     siteContent: clone(catalog.siteContent || defaultSiteContent),
     siteContentRich: clone(catalog.siteContentRich || {}),
-    projects: [],
+    projects: (catalog.projects || []).map((project) => parseProjectForPortfolio(project)),
     siteSections: clone(catalog.siteSections || [])
   };
-  templates = templateData.templates || [];
   setStatus(`Loaded ${catalogData.source} catalog. Builder controls are local-only.`);
   draftSavedSinceChanges = true;
   setSaveState("loaded", "Loaded");
@@ -9009,8 +9673,12 @@ projectPreviewContent.addEventListener("click", (event) => {
     previewPathFromString(sectionButton.dataset.previewResourcePath || "")
   );
 });
-saveProjectButton.addEventListener("click", saveSelectedProjectToPortfolio);
-saveProjectCloseButton.addEventListener("click", saveSelectedProjectAndClose);
+saveProjectButton.addEventListener("click", () => {
+  void saveSelectedProjectToPortfolio();
+});
+saveProjectCloseButton.addEventListener("click", () => {
+  void saveSelectedProjectAndClose();
+});
 openPortfolioPreviewButton.addEventListener("click", openPortfolioPreview);
 saveAllSectionsButton.addEventListener("click", saveAllSections);
 portfolioPreviewClose.addEventListener("click", () => {
@@ -9232,8 +9900,14 @@ projectCreateForm.addEventListener("submit", (event) => {
 
 projectTree.addEventListener("click", (event) => {
   const categoryToggle = event.target.closest("[data-toggle-category]");
+  const deleteCategoryButton = event.target.closest("[data-delete-category]");
   const deleteProjectButton = event.target.closest("[data-delete-project]");
   const projectButton = event.target.closest("[data-project-id]");
+  if (deleteCategoryButton) {
+    event.stopPropagation();
+    requestCategoryDelete(deleteCategoryButton.dataset.deleteCategory);
+    return;
+  }
   if (deleteProjectButton) {
     event.stopPropagation();
     requestProjectDelete(deleteProjectButton.dataset.deleteProject);
@@ -10335,6 +11009,10 @@ sectionContent.addEventListener("click", async (event) => {
     renderSectionContent(project);
     return;
   }
+  if (hasDataset("compileAddDirectory")) {
+    await addCompileDirectory(project);
+    return;
+  }
   if (hasDataset("compileAddTestbench")) {
     const workspace = ensureCompileCode(project);
     const activeFile = activeCompileFile(project);
@@ -10342,7 +11020,6 @@ sectionContent.addEventListener("click", async (event) => {
     const designName = firstHdlModuleName(activeFile?.code || "") || "design";
     const extension = language === "verilog" ? ".v" : ".sv";
     const file = newCompileFile(language, {
-      title: `Testbench for ${designName}`,
       fileName: `tb_${slugify(designName).replace(/-/g, "_") || "design"}${extension}`,
       role: "testbench",
       code: hdlTestbenchTemplate(language, designName)
@@ -10356,7 +11033,11 @@ sectionContent.addEventListener("click", async (event) => {
     return;
   }
   if (hasDataset("compileImport")) {
-    await importCompileFile(project);
+    await importCompileFiles(project);
+    return;
+  }
+  if (hasDataset("compileImportDirectory")) {
+    await importCompileFiles(project, { directory: true });
     return;
   }
   if (button.dataset.compileSelect) {
@@ -10432,6 +11113,25 @@ sectionContent.addEventListener("click", async (event) => {
     scheduleAutosave();
     return;
   }
+  if (hasDataset("compileTerminalRun")) {
+    await runCompileTerminalCommand(project);
+    return;
+  }
+  if (hasDataset("compileTerminalClear")) {
+    compileWorkspace.systemTerminal.output = "";
+    updateCompileSystemTerminalPanel(project);
+    addCompileMessage(project, "Terminal output cleared.", "info");
+    scheduleAutosave();
+    return;
+  }
+  if (button.dataset.compileTerminalHistory !== undefined) {
+    const input = sectionContent.querySelector("[data-compile-terminal-command]");
+    if (input) {
+      input.value = button.dataset.compileTerminalHistory || "";
+      compileWorkspace.systemTerminal.command = input.value;
+    }
+    return;
+  }
   if (hasDataset("compileInstall")) {
     await installCompileTools(project, compileFile);
     return;
@@ -10453,6 +11153,38 @@ sectionContent.addEventListener("click", async (event) => {
   if (button.dataset.openEditor) openEditorFromButton(button);
   if (button.dataset.upload) await uploadToSection(button.dataset.upload, button.dataset.folder);
   if (button.dataset.uploadDesign) await uploadToDesignSection(button.dataset.uploadDesign, button.dataset.folder, button.dataset.designKind);
+  if (button.dataset.addNodeSubsection !== undefined) {
+    openPendingEditor({
+      type: "custom",
+      mode: "add",
+      sectionId: button.dataset.addNodeSubsection,
+      parentPath: button.dataset.nodePath || "",
+      title: "",
+      description: ""
+    });
+    return;
+  }
+  if (button.dataset.uploadNode !== undefined) {
+    await uploadToSection("sections", button.dataset.uploadNode, button.dataset.uploadNode, null, button.dataset.nodePath || "");
+    return;
+  }
+  if (button.dataset.deleteNode !== undefined) {
+    const section = project.sections.find((item) => item.id === button.dataset.deleteNode);
+    const path = nodePathFromString(button.dataset.nodePath || "");
+    const parent = section ? findBuilderNodeParent(section, path) : null;
+    const item = parent?.children?.[parent.index];
+    if (!item) return;
+    openDeleteConfirm({
+      title: item?.url || item?.artifact ? "Delete file" : "Delete subsection",
+      message: `Are you sure you want to delete "${itemTitle(item) || "this item"}"?`,
+      onConfirm: () => {
+        parent.children.splice(parent.index, 1);
+        scheduleAutosave();
+        renderAll();
+      }
+    });
+    return;
+  }
   if (button.dataset.clearDesignSummary) {
     const pathValue = button.dataset.clearDesignSummary;
     openDeleteConfirm({
@@ -10595,10 +11327,12 @@ sectionContent.addEventListener("input", (event) => {
       const wasHdl = isHdlLanguage(file.language);
       file.language = normalizeCodeLanguage(event.target.value);
       const isNowHdl = isHdlLanguage(file.language);
-      file.fileName = safeClientCodeFileName(file.fileName || defaultCodeFileName(file.language), file.language);
+      file.relativePath = safeClientCodeRelativePath(file.relativePath || file.fileName || defaultCodeFileName(file.language), file.language);
+      file.fileName = compileFileNameFromPath(file.relativePath, file.language);
+      file.title = file.fileName;
       file.role = normalizeCompileFileRole(file.role || inferCompileFileRole(file.fileName, file.code, file.language), file.language);
       const fileNameInput = sectionContent.querySelector("[data-compile-field='fileName']");
-      if (fileNameInput) fileNameInput.value = file.fileName;
+      if (fileNameInput) fileNameInput.value = file.relativePath;
       const heading = sectionContent.querySelector(".compile-code-preview-heading span");
       if (heading) heading.textContent = `${codeLanguageLabel(file.language)} preview`;
       updateCompilePreview(file);
@@ -10611,7 +11345,9 @@ sectionContent.addEventListener("input", (event) => {
         return;
       }
     } else if (field === "fileName") {
-      file.fileName = safeClientCodeFileName(event.target.value, file.language);
+      file.relativePath = safeClientCodeRelativePath(event.target.value, file.language);
+      file.fileName = compileFileNameFromPath(file.relativePath, file.language);
+      file.title = file.fileName;
       file.role = normalizeCompileFileRole(file.role || inferCompileFileRole(file.fileName, file.code, file.language), file.language);
     } else if (field === "role") {
       file.role = normalizeCompileFileRole(event.target.value, file.language);
@@ -10629,6 +11365,14 @@ sectionContent.addEventListener("input", (event) => {
     file.lastResult = ["code", "role", "language", "fileName"].includes(field) ? null : file.lastResult;
     setStatus("Unsaved compile source changes.");
     scheduleAutosave(field === "code" ? 1600 : 900);
+    return;
+  }
+
+  if (event.target.dataset.compileTerminalCommand !== undefined || event.target.dataset.compileTerminalCwd !== undefined) {
+    const workspace = ensureCompileCode(project);
+    workspace.systemTerminal.command = String(sectionContent.querySelector("[data-compile-terminal-command]")?.value || "");
+    workspace.systemTerminal.cwd = compileDirectoryPath(sectionContent.querySelector("[data-compile-terminal-cwd]")?.value || "");
+    scheduleAutosave(900);
     return;
   }
 
@@ -10657,6 +11401,13 @@ sectionContent.addEventListener("input", (event) => {
     scheduleAutosave();
     schedulePreviewRender();
   }
+});
+
+sectionContent.addEventListener("keydown", async (event) => {
+  if (event.key !== "Enter" || !event.target.matches("[data-compile-terminal-command]")) return;
+  event.preventDefault();
+  const project = selectedProject();
+  if (project) await runCompileTerminalCommand(project);
 });
 
 projectWindowClose.addEventListener("click", () => {
@@ -10701,7 +11452,7 @@ assetSource.addEventListener("change", updateAssetDialogVisibility);
 assetUrl.addEventListener("input", updateAssetDialogVisibility);
 captionSource.addEventListener("change", updateAssetDialogVisibility);
 assetFile.addEventListener("change", () => {
-  if (!assetTitle.value && assetFile.files[0]) assetTitle.value = assetFile.files[0].name;
+  if (!assetTitle.value && assetFile.files.length === 1 && assetFile.files[0]) assetTitle.value = assetFile.files[0].name;
 });
 assetCancel.addEventListener("click", () => {
   closeDialogElement(assetDialog, "cancel");

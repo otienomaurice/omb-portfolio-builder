@@ -1393,7 +1393,8 @@
 .tree-category-heading button,
 .tree-projects button,
 .section-bar button,
-.builder-item button {
+.builder-item button,
+.builder-explorer-actions button {
   border: 1px solid #d6effa;
   border-radius: 8px;
   color: #16384a;
@@ -1413,6 +1414,7 @@
 .tree-projects button:hover,
 .section-bar button:hover,
 .builder-item button:hover,
+.builder-explorer-actions button:hover,
 .local-card-controls button:hover,
 .local-section-controls button:hover {
   color: #16384a;
@@ -1425,6 +1427,7 @@
 .tree-projects button:active,
 .section-bar button:active,
 .builder-item button:active,
+.builder-explorer-actions button:active,
 .local-card-controls button:active,
 .local-section-controls button:active {
   color: #16384a;
@@ -1996,6 +1999,41 @@ body.rich-image-dragging * {
   border-top: 1px solid rgba(14, 116, 144, 0.12);
 }
 
+.compile-code-tree-folder {
+  display: grid;
+  gap: 1px;
+}
+
+.compile-code-tree-folder summary {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 28px;
+  padding: 4px 7px;
+  border-radius: 6px;
+  color: var(--ink);
+  font-size: 0.8rem;
+  font-weight: 850;
+}
+
+.compile-code-tree-folder summary:hover {
+  background: #e0f2fe;
+}
+
+.compile-code-tree-children {
+  display: grid;
+  gap: 1px;
+  padding-left: 14px;
+}
+
+.compile-tree-folder-icon {
+  width: 15px;
+  height: 12px;
+  border-radius: 2px;
+  background: linear-gradient(180deg, #38bdf8, #0ea5e9);
+  box-shadow: inset 0 4px 0 rgba(255, 255, 255, 0.24);
+}
+
 .compile-code-tree-files p {
   margin: 0;
   padding: 8px;
@@ -2354,6 +2392,83 @@ body.rich-image-dragging * {
   white-space: pre-wrap;
   outline: none;
   border-top: 1px solid rgba(148, 163, 184, 0.12);
+}
+
+.compile-system-terminal-panel {
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.compile-terminal-command-row {
+  display: grid;
+  grid-template-columns: minmax(150px, 0.42fr) minmax(220px, 1fr);
+  gap: 10px;
+  padding: 12px;
+  border-bottom: 1px solid rgba(14, 116, 144, 0.12);
+  background: #fbfdff;
+}
+
+.compile-terminal-command-row label {
+  display: grid;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 850;
+}
+
+.compile-terminal-command-row input {
+  min-height: 36px;
+  width: 100%;
+  padding: 7px 9px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #ffffff;
+  color: var(--ink);
+  font: inherit;
+}
+
+.compile-system-terminal {
+  min-height: 180px;
+}
+
+.compile-terminal-history {
+  display: grid;
+  gap: 1px;
+  padding: 8px;
+  border-top: 1px solid rgba(14, 116, 144, 0.12);
+  background: #f8fcff;
+}
+
+.compile-terminal-history button {
+  display: grid;
+  grid-template-columns: 74px minmax(0, 1fr);
+  gap: 8px;
+  min-height: 28px;
+  padding: 4px 7px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.78rem;
+  text-align: left;
+}
+
+.compile-terminal-history button:hover {
+  border-color: #93c5fd;
+  background: #dbeafe;
+}
+
+.compile-terminal-history span {
+  color: var(--muted);
+}
+
+.compile-terminal-history strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .compile-terminal::selection {
@@ -3184,6 +3299,112 @@ body[data-builder-theme="dark"] .summary-context-menu button:hover {
 .builder-item button {
   min-height: 34px;
   padding: 0 10px;
+}
+
+.builder-explorer-list {
+  display: grid;
+  gap: 0;
+  border-top: 1px solid var(--line);
+  background: #ffffff;
+}
+
+.builder-explorer-entry {
+  display: grid;
+}
+
+.builder-explorer-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 30px;
+  padding-left: calc(8px + (var(--builder-depth, 0) * 18px));
+  border-bottom: 1px solid #e6f4fa;
+  background: #ffffff;
+}
+
+.builder-explorer-row:hover {
+  background: var(--template-hover, #1f6ed4);
+}
+
+.builder-explorer-row:hover .builder-explorer-main,
+.builder-explorer-row:hover .builder-explorer-main small,
+.builder-explorer-row:hover .builder-explorer-icon {
+  color: #ffffff;
+}
+
+.builder-explorer-main {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 30px;
+  padding: 3px 8px;
+  border: 0;
+  border-radius: 0;
+  color: var(--ink);
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  box-shadow: none;
+}
+
+.builder-explorer-main:hover,
+.builder-explorer-main:active {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+  transform: none;
+}
+
+.builder-explorer-icon {
+  color: #4a6d80;
+  font-size: 0.68rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.builder-explorer-title {
+  overflow: hidden;
+  color: inherit;
+  font-size: 0.88rem;
+  font-weight: 600;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.builder-explorer-main small {
+  color: #587286;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.builder-explorer-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding-right: 6px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.builder-explorer-row:hover .builder-explorer-actions,
+.builder-explorer-row:focus-within .builder-explorer-actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.builder-explorer-actions button {
+  min-height: 24px;
+  padding: 0 8px;
+  border-radius: 4px;
+  font-size: 0.72rem;
+}
+
+.explorer-empty {
+  padding: 10px 12px;
 }
 
 .tool-item {
@@ -5246,6 +5467,31 @@ body[data-builder-theme="dark"] .tree-project-row:hover {
   background: var(--builder-dark-command-hover);
 }
 
+body[data-builder-theme="dark"] .builder-explorer-list,
+body[data-builder-theme="dark"] .builder-explorer-row {
+  border-color: var(--builder-dark-line);
+  background: var(--builder-dark-surface-2);
+}
+
+body[data-builder-theme="dark"] .builder-explorer-row:hover {
+  background: var(--template-hover, var(--builder-dark-command-hover));
+}
+
+body[data-builder-theme="dark"] .builder-explorer-main {
+  color: var(--builder-dark-text);
+}
+
+body[data-builder-theme="dark"] .builder-explorer-main small,
+body[data-builder-theme="dark"] .builder-explorer-icon {
+  color: var(--builder-dark-muted);
+}
+
+body[data-builder-theme="dark"] .builder-explorer-row:hover .builder-explorer-main,
+body[data-builder-theme="dark"] .builder-explorer-row:hover .builder-explorer-main small,
+body[data-builder-theme="dark"] .builder-explorer-row:hover .builder-explorer-icon {
+  color: #ffffff;
+}
+
 body[data-builder-theme="dark"] .tree-projects button {
   color: var(--builder-dark-text);
 }
@@ -5278,6 +5524,7 @@ body[data-builder-theme="dark"] .site-section-actions button,
 body[data-builder-theme="dark"] .tree-category-heading button,
 body[data-builder-theme="dark"] .section-bar button,
 body[data-builder-theme="dark"] .builder-item button,
+body[data-builder-theme="dark"] .builder-explorer-actions button,
 body[data-builder-theme="dark"] .category-dropdown button,
 body[data-builder-theme="dark"] .local-card-controls button,
 body[data-builder-theme="dark"] .local-section-controls button {
@@ -5302,6 +5549,7 @@ body[data-builder-theme="dark"] .site-section-actions button:hover,
 body[data-builder-theme="dark"] .tree-category-heading button:hover,
 body[data-builder-theme="dark"] .section-bar button:hover,
 body[data-builder-theme="dark"] .builder-item button:hover,
+body[data-builder-theme="dark"] .builder-explorer-actions button:hover,
 body[data-builder-theme="dark"] .category-dropdown button:hover,
 body[data-builder-theme="dark"] .local-card-controls button:hover,
 body[data-builder-theme="dark"] .local-section-controls button:hover {
@@ -5326,6 +5574,7 @@ body[data-builder-theme="dark"] .site-section-actions button:active,
 body[data-builder-theme="dark"] .tree-category-heading button:active,
 body[data-builder-theme="dark"] .section-bar button:active,
 body[data-builder-theme="dark"] .builder-item button:active,
+body[data-builder-theme="dark"] .builder-explorer-actions button:active,
 body[data-builder-theme="dark"] .category-dropdown button:active,
 body[data-builder-theme="dark"] .local-card-controls button:active,
 body[data-builder-theme="dark"] .local-section-controls button:active {
@@ -5453,6 +5702,7 @@ body[data-builder-theme="dark"] .compile-terminal-panel,
 body[data-builder-theme="dark"] .compile-messages-panel,
 body[data-builder-theme="dark"] .compile-append-panel,
 body[data-builder-theme="dark"] .compile-scope-panel,
+body[data-builder-theme="dark"] .compile-system-terminal-panel,
 body[data-builder-theme="dark"] .compile-code-preview-panel,
 body[data-builder-theme="dark"] .compile-code-empty {
   border-color: var(--builder-dark-line);
@@ -5482,18 +5732,39 @@ body[data-builder-theme="dark"] .compile-code-workspace-tree {
 }
 
 body[data-builder-theme="dark"] .compile-code-workspace-tree summary,
+body[data-builder-theme="dark"] .compile-code-tree-folder summary,
 body[data-builder-theme="dark"] .compile-code-tree-file {
   color: #e5edf6;
 }
 
-body[data-builder-theme="dark"] .compile-code-tree-files {
+body[data-builder-theme="dark"] .compile-code-tree-files,
+body[data-builder-theme="dark"] .compile-terminal-command-row,
+body[data-builder-theme="dark"] .compile-terminal-history {
   border-color: var(--builder-dark-line);
+  background: #0f172a;
 }
 
+body[data-builder-theme="dark"] .compile-code-tree-folder summary:hover,
 body[data-builder-theme="dark"] .compile-code-tree-file:hover,
-body[data-builder-theme="dark"] .compile-code-tree-file.is-active {
+body[data-builder-theme="dark"] .compile-code-tree-file.is-active,
+body[data-builder-theme="dark"] .compile-terminal-history button:hover {
   border-color: #38bdf8;
   background: #1e3a5f;
+}
+
+body[data-builder-theme="dark"] .compile-terminal-command-row input {
+  border-color: #c9deea;
+  color: #17202a;
+  background: #ffffff;
+}
+
+body[data-builder-theme="dark"] .compile-terminal-command-row label,
+body[data-builder-theme="dark"] .compile-terminal-history span {
+  color: #9fb4c8;
+}
+
+body[data-builder-theme="dark"] .compile-terminal-history button {
+  color: #e5edf6;
 }
 
 body[data-builder-theme="dark"] .compile-file-extension {
