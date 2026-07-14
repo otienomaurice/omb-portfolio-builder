@@ -11,7 +11,7 @@
     <link rel="shortcut icon" href="assets/favicon.ico" />
     <link rel="apple-touch-icon" sizes="180x180" href="assets/apple-touch-icon.png" />
     <link rel="stylesheet" href="styles.css" />
-    <link rel="stylesheet" href="template-preview.css?v=0.2.39" />
+    <link rel="stylesheet" href="template-preview.css?v=0.2.40" />
   </head>
   <body class="template-preview-page">
       <header class="template-header">
@@ -951,6 +951,42 @@
           </div>
       </dialog>
 
+      <dialog class="asset-dialog profile-asset-dialog" id="profile-asset-dialog">
+          <div class="builder-guide-dialog-content profile-asset-dialog-content">
+              <div class="project-preview-heading">
+                  <div>
+                      <p class="eyebrow">Profile asset</p>
+                      <h2 id="profile-asset-title">Profile asset</h2>
+                  </div>
+                  <button class="project-window-close" id="profile-asset-close" type="button" aria-label="Close profile asset dialog">&times;</button>
+              </div>
+              <div class="profile-asset-body" id="profile-asset-body"></div>
+              <div class="dialog-actions profile-asset-dialog-actions">
+                  <button class="button secondary" id="profile-asset-view" type="button">View current</button>
+                  <button class="button primary" id="profile-asset-change" type="button">Change</button>
+                  <button class="button danger-control" id="profile-asset-remove" type="button">Remove</button>
+                  <button class="button secondary" id="profile-asset-done" type="button">Close</button>
+              </div>
+          </div>
+      </dialog>
+
+      <dialog class="asset-dialog profile-asset-view-dialog" id="profile-asset-view-dialog">
+          <div class="builder-guide-dialog-content profile-asset-view-content">
+              <div class="project-preview-heading">
+                  <div>
+                      <p class="eyebrow">Asset viewer</p>
+                      <h2 id="profile-asset-view-title">Current asset</h2>
+                  </div>
+                  <button class="project-window-close" id="profile-asset-view-close" type="button" aria-label="Close asset viewer">&times;</button>
+              </div>
+              <div class="profile-asset-view-body" id="profile-asset-view-body"></div>
+              <div class="dialog-actions profile-asset-dialog-actions">
+                  <a class="button secondary" id="profile-asset-open-link" href="#" target="_blank" rel="noreferrer">Open file</a>
+                  <button class="button primary" id="profile-asset-view-done" type="button">Close</button>
+              </div>
+          </div>
+      </dialog>
+
       <dialog class="asset-dialog" id="asset-dialog">
           <form method="dialog" id="asset-form">
               <div>
@@ -1343,7 +1379,7 @@
               </label>
           </div>
       </div>
-      <script src="electronics-search.js?v=0.2.39"></script>
-      <script src="template-preview.js?v=0.2.39"></script>
+      <script src="electronics-search.js?v=0.2.40"></script>
+      <script src="template-preview.js?v=0.2.40"></script>
   </body>
 </html>
