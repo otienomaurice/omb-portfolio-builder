@@ -6786,19 +6786,11 @@ function renderSectionTabs(project) {
   }
 
   const rows = sectionOptions(project).map((section) => {
-    const isCustom = section.id.startsWith("custom:");
-    const sectionId = isCustom ? section.id.replace("custom:", "") : "";
     return `
       <div class="project-section-row ${section.id === activeSectionId ? "active" : ""}" role="listitem">
         <button class="project-section-select" type="button" data-section-id="${escapeHtml(section.id)}">
           ${escapeHtml(section.label || "Untitled section")}
         </button>
-        ${isCustom ? `
-          <div class="project-section-actions">
-            <button type="button" data-open-editor="custom-section" data-edit-section-id="${escapeHtml(sectionId)}">Edit</button>
-            <button class="danger-icon" type="button" data-delete-section="${escapeHtml(sectionId)}">Delete</button>
-          </div>
-        ` : ""}
       </div>
     `;
   }).join("");
@@ -7340,7 +7332,7 @@ function builderPreviewContent(rich, text = "", emptyText = "No content has been
     : text
       ? `<p class="rich-paragraph">${renderMultilineInlineText(text)}</p>`
       : `<p class="evidence-empty">${escapeHtml(emptyText)}</p>`;
-  return `<div class="builder-item-preview">${content}</div>`;
+  return `<div class="builder-item-preview section-text-preview">${content}</div>`;
 }
 
 function nodePathFromString(value = "") {
@@ -7468,15 +7460,13 @@ function renderCustomSection(project, sectionId) {
     <div class="section-window-heading">
       <h3>${section.title || "Custom section"}</h3>
       <div>
+        <button class="button primary" type="button" data-add-node-subsection="${section.id}" data-node-path="">Add subsection</button>
+        <button class="button secondary" type="button" data-upload-node="${section.id}" data-node-path="">Add file or image</button>
         <button type="button" data-open-editor="custom-section" data-section-id="${section.id}">Edit section</button>
         <button class="danger-icon" type="button" data-delete-section="${section.id}">Delete section</button>
       </div>
     </div>
     ${builderPreviewContent(section.richDescription, section.description || "", "No section content has been added yet.")}
-    <div class="section-actions">
-      <button class="button primary" type="button" data-add-node-subsection="${section.id}" data-node-path="">Add subsection</button>
-      <button class="button secondary" type="button" data-upload-node="${section.id}" data-node-path="">Add file or image</button>
-    </div>
     ${renderBuilderExplorerRows(section)}
     ${renderPendingEditor()}
   `;

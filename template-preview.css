@@ -4123,6 +4123,29 @@ body[data-builder-theme="dark"] .summary-context-menu button:hover {
   color: var(--ink);
 }
 
+.section-text-preview {
+  justify-items: stretch;
+  align-content: start;
+  gap: 8px;
+  margin: 0;
+  padding: 2px 0 8px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.section-text-preview .rich-content {
+  justify-items: stretch;
+  align-content: start;
+  gap: 8px;
+}
+
+.section-text-preview .rich-paragraph,
+.section-text-preview .evidence-empty {
+  margin: 0;
+  text-align: left;
+}
+
 .builder-item button {
   min-height: 34px;
   padding: 0 10px;
@@ -4151,7 +4174,7 @@ body[data-builder-theme="dark"] .summary-context-menu button:hover {
 }
 
 .builder-explorer-row:hover {
-  background: var(--template-hover, #1f6ed4);
+  background: #1f6ed4;
 }
 
 .builder-explorer-row:hover .builder-explorer-main,
@@ -4208,6 +4231,50 @@ body[data-builder-theme="dark"] .summary-context-menu button:hover {
   font-weight: 700;
 }
 
+.builder-explorer-row.is-file {
+  grid-template-columns: minmax(0, 1fr) auto;
+  min-height: 28px;
+  padding-left: calc(20px + (var(--builder-depth, 0) * 18px));
+  border-bottom: 1px solid #d8ecf5;
+  background: #ffffff;
+}
+
+.builder-explorer-row.is-file .builder-explorer-main {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+  min-height: 28px;
+  padding: 4px 8px 4px 0;
+}
+
+.builder-explorer-row.is-file .builder-explorer-icon,
+.builder-explorer-row.is-file .builder-explorer-main small {
+  display: none;
+}
+
+.builder-explorer-row.is-file .builder-explorer-title {
+  color: #111827;
+  font-size: 0.88rem;
+  font-weight: 500;
+}
+
+.builder-explorer-row.is-file:hover {
+  background: #1f6ed4;
+}
+
+.builder-explorer-row.is-file:hover .builder-explorer-title {
+  color: #ffffff;
+}
+
+.builder-explorer-row.is-file .builder-explorer-actions {
+  padding-right: 5px;
+}
+
+.builder-explorer-row.is-file .builder-explorer-actions button {
+  min-height: 23px;
+  padding: 0 7px;
+  font-size: 0.7rem;
+}
+
 .builder-explorer-actions {
   display: flex;
   align-items: center;
@@ -4247,6 +4314,19 @@ body[data-builder-theme="dark"] .summary-context-menu button:hover {
 
 .section-window-heading h3 {
   margin: 0;
+}
+
+.section-window-heading > div {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.section-window-heading > div button {
+  min-height: 30px;
+  padding: 0 9px;
+  font-size: 0.76rem;
 }
 
 .pending-editor {
@@ -6358,7 +6438,7 @@ body[data-builder-theme="dark"] .project-section-select {
 }
 
 body[data-builder-theme="dark"] .builder-explorer-row:hover {
-  background: var(--template-hover, var(--builder-dark-command-hover));
+  background: #1f6ed4;
 }
 
 body[data-builder-theme="dark"] .builder-explorer-main {
@@ -6374,6 +6454,28 @@ body[data-builder-theme="dark"] .builder-explorer-row:hover .builder-explorer-ma
 body[data-builder-theme="dark"] .builder-explorer-row:hover .builder-explorer-main small,
 body[data-builder-theme="dark"] .builder-explorer-row:hover .builder-explorer-icon {
   color: #ffffff;
+}
+
+body[data-builder-theme="dark"] .builder-explorer-row.is-file {
+  border-color: #d8ecf5;
+  background: #ffffff;
+}
+
+body[data-builder-theme="dark"] .builder-explorer-row.is-file .builder-explorer-title {
+  color: #111827;
+}
+
+body[data-builder-theme="dark"] .builder-explorer-row.is-file:hover {
+  background: #1f6ed4;
+}
+
+body[data-builder-theme="dark"] .builder-explorer-row.is-file:hover .builder-explorer-title {
+  color: #ffffff;
+}
+
+body[data-builder-theme="dark"] .section-text-preview {
+  border-color: transparent;
+  background: transparent;
 }
 
 body[data-builder-theme="dark"] .tree-projects button {
