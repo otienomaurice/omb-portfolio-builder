@@ -173,8 +173,18 @@ const compileToolCandidates = {
     process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, "Programs", "nodejs", "node.exe") : ""
   ],
   python: [process.env.PYTHON, "python", "py"],
-  iverilog: ["iverilog", "C:\\iverilog\\bin\\iverilog.exe"],
-  vvp: ["vvp", "C:\\iverilog\\bin\\vvp.exe"],
+  iverilog: [
+    "iverilog",
+    "C:\\iverilog\\bin\\iverilog.exe",
+    "C:\\Program Files\\Icarus Verilog\\bin\\iverilog.exe",
+    "C:\\Program Files (x86)\\Icarus Verilog\\bin\\iverilog.exe"
+  ],
+  vvp: [
+    "vvp",
+    "C:\\iverilog\\bin\\vvp.exe",
+    "C:\\Program Files\\Icarus Verilog\\bin\\vvp.exe",
+    "C:\\Program Files (x86)\\Icarus Verilog\\bin\\vvp.exe"
+  ],
   ltspice: [
     process.env.LTSPICE_EXE,
     "C:\\Program Files\\ADI\\LTspice\\LTspice.exe",
@@ -528,10 +538,46 @@ function expandBraceCode(code = "") {
     .trimEnd();
 }
 
+function beautifyHdlCode(code = "") {
+  const expanded = String(code || "")
+    .replace(/\r\n?/g, "\n")
+    .replace(/\t/g, "  ")
+    .replace(/;\s*(?=\S)/g, ";\n")
+    .replace(/\b(begin|case|casex|casez|fork|generate)\b\s*(?=\S)/gi, "$1\n")
+    .replace(/\s+\b(end|endcase|endgenerate|endtask|endfunction|endmodule|join|join_any|join_none)\b/gi, "\n$1")
+    .replace(/\belse\b\s*(?=\S)/gi, "else\n")
+    .replace(/\n{3,}/g, "\n\n");
+
+  let depth = 0;
+  return expanded
+    .split("\n")
+    .map((rawLine) => rawLine.trim())
+    .filter((line, index, lines) => line || (index > 0 && index < lines.length - 1))
+    .map((line) => {
+      if (!line) return "";
+      const lower = line.toLowerCase();
+      const closes = /^(end|endcase|endgenerate|endtask|endfunction|endmodule|join|join_any|join_none)\b/.test(lower);
+      const middle = /^(else)\b/.test(lower);
+      if (closes || middle) depth = Math.max(0, depth - 1);
+      const formatted = `${"  ".repeat(depth)}${line}`;
+      if (/^`/.test(line)) return line;
+      if (/\b(module|begin|case|casex|casez|fork|generate|task|function)\b/.test(lower) && !/\bendmodule\b/.test(lower)) {
+        depth += 1;
+      }
+      if (middle) depth += 1;
+      return formatted;
+    })
+    .join("\n")
+    .replace(/[ \t]+$/gm, "")
+    .replace(/\n{4,}/g, "\n\n\n")
+    .trimEnd();
+}
+
 function beautifyCode(code = "", language = "javascript") {
   const normalized = String(code || "").replace(/\r\n?/g, "\n").replace(/\t/g, "  ");
   const lang = normalizeCodeLanguage(language);
-  if (["c", "cpp", "java", "javascript", "verilog", "systemverilog"].includes(lang)) {
+  if (["verilog", "systemverilog"].includes(lang)) return beautifyHdlCode(normalized);
+  if (["c", "cpp", "java", "javascript"].includes(lang)) {
     return indentBraceCode(expandBraceCode(normalized))
       .replace(/[ \t]+$/gm, "")
       .replace(/\n{4,}/g, "\n\n\n");
@@ -613,8 +659,37 @@ async function findTool(toolName) {
     return found || "";
   }
 
+  if (["iverilog", "vvp"].includes(toolName)) {
+    const searchRoots = [
+      "C:\\iverilog",
+      "C:\\Program Files\\Icarus Verilog",
+      "C:\\Program Files (x86)\\Icarus Verilog",
+      process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, "Microsoft", "WinGet", "Packages") : ""
+    ].filter(Boolean);
+    for (const rootFolder of searchRoots) {
+      const found = await findExecutableUnder(rootFolder, [`${toolName}.exe`], 8);
+      if (found) {
+        compileToolCache.set(toolName, found);
+        return found;
+      }
+    }
+  }
+
   compileToolCache.set(toolName, "");
   return "";
+}
+
+async function compileToolPathEnvironment() {
+  const toolNames = ["gcc", "g++", "javac", "java", "iverilog", "vvp", "ltspice"];
+  const folders = [];
+  for (const toolName of toolNames) {
+    const toolPath = await findTool(toolName);
+    if (toolPath) folders.push(path.dirname(toolPath));
+  }
+  const uniqueFolders = [...new Set(folders.filter(Boolean))];
+  return uniqueFolders.length
+    ? { PATH: `${uniqueFolders.join(path.delimiter)}${path.delimiter}${process.env.PATH || ""}` }
+    : {};
 }
 
 function terminalLine(label, text = "") {
@@ -825,13 +900,13 @@ async function saveCompileSource({ projectId, fileId, title, fileName, relativeP
   const projectFolder = safeSegment(projectId, "project");
   const safeRelativePath = safeCodeRelativePath(incomingPath, lang);
   const codeFileName = path.basename(safeRelativePath);
-  const fileFolder = safeSegment(fileId || path.parse(codeFileName).name, path.parse(codeFileName).name);
-  const folder = resolveInsideCompileRoot(projectFolder, fileFolder);
-  const sourcePath = resolveInsideCompileRoot(projectFolder, fileFolder, safeRelativePath);
+  const fileFolder = safeSegment(fileId || safeRelativePath, path.parse(codeFileName).name);
+  const sourcePath = resolveInsideCompileRoot(projectFolder, safeRelativePath);
+  const metadataFolder = resolveInsideCompileRoot(projectFolder, ".omb-meta", fileFolder);
   await mkdir(path.dirname(sourcePath), { recursive: true });
-  await mkdir(folder, { recursive: true });
+  await mkdir(metadataFolder, { recursive: true });
   await writeFile(sourcePath, String(code || ""), "utf8");
-  if (stdin) await writeFile(resolveInsideCompileRoot(projectFolder, fileFolder, "stdin.txt"), String(stdin), "utf8");
+  if (stdin) await writeFile(resolveInsideCompileRoot(projectFolder, ".omb-meta", fileFolder, "stdin.txt"), String(stdin), "utf8");
   const metadata = {
     id: fileFolder,
     title: clampText(title || codeFileName, 180),
@@ -842,7 +917,7 @@ async function saveCompileSource({ projectId, fileId, title, fileName, relativeP
     sourcePath,
     savedAt: new Date().toISOString()
   };
-  await writeFile(resolveInsideCompileRoot(projectFolder, fileFolder, "compile-meta.json"), `${JSON.stringify(metadata, null, 2)}\n`, "utf8");
+  await writeFile(resolveInsideCompileRoot(projectFolder, ".omb-meta", fileFolder, "compile-meta.json"), `${JSON.stringify(metadata, null, 2)}\n`, "utf8");
   return metadata;
 }
 
@@ -880,7 +955,7 @@ function hdlHasWaveDump(code = "") {
 
 function hdlFilesFromPayload(payload = {}, activeFileName = "", activeLanguage = "verilog") {
   const incoming = Array.isArray(payload.workspaceFiles) ? payload.workspaceFiles : [];
-  const byId = new Map();
+  const byPath = new Map();
   const addFile = (item = {}, fallbackId = "") => {
     const code = String(item.code || "");
     const language = normalizeCodeLanguage(item.language || detectCodeLanguageFromSource(code, item.fileName));
@@ -888,7 +963,7 @@ function hdlFilesFromPayload(payload = {}, activeFileName = "", activeLanguage =
     const relativePath = safeCodeRelativePath(item.relativePath || item.fileName || activeFileName || compileLanguageProfiles[language].defaultFile, language);
     const fileName = path.basename(relativePath);
     const id = safeSegment(item.id || fallbackId || fileName, path.parse(fileName).name);
-    byId.set(id, {
+    byPath.set(relativePath.toLowerCase(), {
       id,
       title: clampText(item.title || fileName, 180),
       fileName,
@@ -908,7 +983,7 @@ function hdlFilesFromPayload(payload = {}, activeFileName = "", activeLanguage =
     role: payload.role,
     code: payload.code
   }, "active");
-  return [...byId.values()].sort((a, b) => {
+  return [...byPath.values()].sort((a, b) => {
     if (a.role === b.role) return a.fileName.localeCompare(b.fileName);
     return a.role === "testbench" ? 1 : -1;
   });
@@ -929,7 +1004,7 @@ function compileActionLabel(action = "run", language = "") {
 
 function compileWorkspaceFilesFromPayload(payload = {}, activeFileName = "", activeLanguage = "javascript") {
   const incoming = Array.isArray(payload.workspaceFiles) ? payload.workspaceFiles : [];
-  const byId = new Map();
+  const byPath = new Map();
   const addFile = (item = {}, fallbackId = "") => {
     const code = String(item.code || "");
     if (!code.trim()) return;
@@ -937,7 +1012,7 @@ function compileWorkspaceFilesFromPayload(payload = {}, activeFileName = "", act
     const relativePath = safeCodeRelativePath(item.relativePath || item.fileName || activeFileName || compileLanguageProfiles[language]?.defaultFile || "source.txt", language);
     const fileName = path.basename(relativePath);
     const id = safeSegment(item.id || fallbackId || fileName, path.parse(fileName).name);
-    byId.set(id, {
+    byPath.set(relativePath.toLowerCase(), {
       id,
       title: clampText(item.title || fileName, 180),
       fileName,
@@ -957,7 +1032,7 @@ function compileWorkspaceFilesFromPayload(payload = {}, activeFileName = "", act
     role: payload.role,
     code: payload.code
   }, "active");
-  return [...byId.values()].sort((a, b) => a.fileName.localeCompare(b.fileName));
+  return [...byPath.values()].sort((a, b) => a.fileName.localeCompare(b.fileName));
 }
 
 async function writeCompileWorkspaceSources(files = [], targetDir = "", options = {}) {
@@ -1422,7 +1497,10 @@ async function compileAndRunCode(payload = {}) {
     }
     const usesSystemVerilog = hdlFiles.some((file) => normalizeCodeLanguage(file.language) === "systemverilog");
     const flags = usesSystemVerilog ? ["-g2012", "-Wall"] : ["-g2005-sv", "-Wall"];
-    const topModule = testbenchFiles.flatMap((file) => hdlModuleNames(file.code)).find(Boolean) || "";
+    const testbenchModuleNames = testbenchFiles.flatMap((file) => hdlModuleNames(file.code));
+    const topModule = testbenchModuleNames.find((name) => /^(tb|testbench)(_|$)/i.test(name))
+      || testbenchModuleNames[testbenchModuleNames.length - 1]
+      || "";
     const cacheKey = compileCacheKey({
       language: usesSystemVerilog ? "systemverilog" : "verilog",
       files: hdlFiles.map((file) => ({
@@ -1540,7 +1618,8 @@ async function runCompileTerminalCommand(payload = {}) {
     : ["-lc", terminalCommand];
   const result = await runProcess(shellCommand, shellArgs, {
     cwd,
-    timeoutMs: Number(payload.timeoutMs || 30000)
+    timeoutMs: Number(payload.timeoutMs || 30000),
+    env: await compileToolPathEnvironment()
   });
   const stripped = stripTerminalCwdSentinel(result, sentinel);
   const finalCwdAbsolute = stripped.cwdAbsolute || cwd;
@@ -1551,7 +1630,7 @@ async function runCompileTerminalCommand(payload = {}) {
   const output = processTerminalText(stripped.result);
   return {
     cwd: finalCwdRelative,
-    rootPath: path.dirname(compileRoot),
+    rootPath: compileRoot,
     cwdAbsolute: finalCwdAbsolute,
     promptPath: finalCwdAbsolute,
     exitCode: result.code,

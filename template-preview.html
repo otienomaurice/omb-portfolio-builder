@@ -11,7 +11,7 @@
     <link rel="shortcut icon" href="assets/favicon.ico" />
     <link rel="apple-touch-icon" sizes="180x180" href="assets/apple-touch-icon.png" />
     <link rel="stylesheet" href="styles.css" />
-    <link rel="stylesheet" href="template-preview.css?v=0.2.44" />
+    <link rel="stylesheet" href="template-preview.css?v=0.2.45" />
   </head>
   <body class="template-preview-page">
       <header class="template-header">
@@ -27,9 +27,9 @@
           </a>
           <div class="builder-header-actions">
               <span class="builder-save-state" id="builder-save-state" data-state="loaded">Loaded</span>
-              <button class="button secondary light-mode-return" id="light-mode-return" type="button" aria-label="Return builder to light mode" hidden>
+              <button class="button secondary light-mode-return" id="light-mode-return" type="button" aria-label="Return builder to day view" hidden>
                   <span class="light-mode-icon" aria-hidden="true"></span>
-                  <span>Light</span>
+                  <span>Day view</span>
               </button>
               <a class="button secondary" href="index.html#projects" target="_blank" rel="noreferrer">Portfolio</a>
               <button class="button secondary" id="publish-target-open" type="button">Publishing target</button>
@@ -485,7 +485,7 @@
                               <li>Use Add mathematical formula only when you intentionally want a formula block.</li>
                               <li>Use Code block or Paste as code for C, C++, SystemVerilog, LTspice, Java, JavaScript, Python, and HTML snippets.</li>
                               <li>Choose Basic paste when you want the builder to clean extra trailing whitespace, or Keep source spacing when indentation is important.</li>
-                              <li>Create a project section named Compile Code when you want a small IDE-style workspace with an expandable folder/file explorer, active syntax editor, beautifier, compiler checks, console output, messages, real terminal commands, and project append controls.</li>
+                              <li>Use the built-in Compile Code workspace when you want a small IDE-style workspace with an expandable folder/file explorer, active syntax editor, beautifier, compiler checks, console output, messages, real terminal commands, and project append controls.</li>
                               <li>Use Compile to check or build the active source, Build project to build the project workspace, and Run to execute the built active program when the language supports execution.</li>
                               <li>For Verilog and SystemVerilog, use Simulate to run the simulator. Simulation requires a Testbench file; plain Compile can still check or build HDL design files.</li>
                               <li>Use Add testbench to create a starter testbench with $dumpfile and $dumpvars. Those waveform calls feed the signal scope, where HDL signals can be viewed over time.</li>
@@ -617,7 +617,7 @@
                   <details class="builder-guide-section" data-guide-section="update">
                       <summary>App updates and troubleshooting</summary>
                       <div>
-                          <p>Use Check updates to manually look for a newer builder. Updates come from GitHub Releases after changes are merged into the release branch and a new installer is built. Use Preferences to select dark builder mode. When dark mode is active, use the Light icon in the main header to return to light mode. Dark mode only changes how the builder application is viewed; the portfolio is still built from the saved content colors and selected appearances.</p>
+                          <p>Use Check updates to manually look for a newer builder. Updates come from GitHub Releases after a new installer is built. Use Preferences to select dark builder mode. When dark mode is active, use the Day view control in the main header to return to the normal light editing view. Dark mode only changes how the builder application is viewed; the portfolio is still built from the saved content colors and selected appearances.</p>
                           <p>An update should behave like a repair of the existing app, not like a second installation. It should close the current builder, update the existing install location, and reopen the app with the new files.</p>
                           <ol>
                               <li>When an update is available, click Update.</li>
@@ -1393,7 +1393,7 @@
               </label>
           </div>
       </div>
-      <script src="electronics-search.js?v=0.2.44"></script>
-      <script src="template-preview.js?v=0.2.44"></script>
+      <script src="electronics-search.js?v=0.2.45"></script>
+      <script src="template-preview.js?v=0.2.45"></script>
   </body>
 </html>

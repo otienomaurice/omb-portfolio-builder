@@ -7,8 +7,10 @@
 Var OMB_ToolsDialog
 Var OMB_ShortcutCheckbox
 Var OMB_PublishingToolsCheckbox
+Var OMB_HdlToolsCheckbox
 Var OMB_CreateDesktopShortcutState
 Var OMB_InstallPublishingToolsState
+Var OMB_InstallHdlToolsState
 Var OMB_ExistingInstallLocation
 Var OMB_ExistingInstallVersion
 Var OMB_IsUpdateInstall
@@ -24,7 +26,7 @@ Function OMBToolsPageCreate
   ${NSD_CreateLabel} 0 0 100% 12u "Tools and shortcuts"
   Pop $0
 
-  ${NSD_CreateLabel} 0 18u 100% 36u "The desktop app includes its own runtime. Users do not need to install Node.js or pnpm.$\r$\nGit for Windows with Git Credential Manager is only needed when publishing to GitHub."
+  ${NSD_CreateLabel} 0 18u 100% 36u "The desktop app includes its own runtime. Users do not need to install Node.js or pnpm.$\r$\nGit is only needed for publishing. Icarus Verilog is only needed for Verilog/SystemVerilog simulation and scope viewing."
   Pop $0
 
   ${NSD_CreateCheckbox} 0 62u 100% 12u "Create a desktop shortcut"
@@ -45,7 +47,16 @@ Function OMBToolsPageCreate
     ${NSD_Check} $OMB_PublishingToolsCheckbox
   ${EndIf}
 
-  ${NSD_CreateLabel} 0 114u 100% 38u "Existing shared tools are not uninstalled silently. If a compatible tool is already available, setup skips it. If Git is missing or unusable, setup will try to install Git for Windows side-by-side using Windows Package Manager."
+  ${NSD_CreateCheckbox} 0 110u 100% 24u "Check HDL simulator tools and install Icarus Verilog if iverilog/vvp is missing"
+  Pop $OMB_HdlToolsCheckbox
+  ${If} $OMB_InstallHdlToolsState == ""
+    StrCpy $OMB_InstallHdlToolsState ${BST_CHECKED}
+  ${EndIf}
+  ${If} $OMB_InstallHdlToolsState == ${BST_CHECKED}
+    ${NSD_Check} $OMB_HdlToolsCheckbox
+  ${EndIf}
+
+  ${NSD_CreateLabel} 0 140u 100% 38u "Existing shared tools are not uninstalled silently. If a compatible tool is already available, setup skips it. If a tool is missing, setup will try to install it side-by-side using Windows Package Manager."
   Pop $0
 
   nsDialogs::Show
@@ -54,6 +65,7 @@ FunctionEnd
 Function OMBToolsPageLeave
   ${NSD_GetState} $OMB_ShortcutCheckbox $OMB_CreateDesktopShortcutState
   ${NSD_GetState} $OMB_PublishingToolsCheckbox $OMB_InstallPublishingToolsState
+  ${NSD_GetState} $OMB_HdlToolsCheckbox $OMB_InstallHdlToolsState
   ${If} $OMB_IsUpdateInstall == "1"
   ${AndIf} $INSTDIR != $OMB_ExistingInstallLocation
     MessageBox MB_OK|MB_ICONSTOP "OMB Portfolio Builder is already installed on this machine.$\r$\n$\r$\nUpdates must use the current installed location:$\r$\n$OMB_ExistingInstallLocation$\r$\n$\r$\nSetup will not create another installed copy in a different directory."
@@ -121,6 +133,65 @@ Function OMBInstallGitIfNeeded
     MessageBox MB_OK|MB_ICONINFORMATION "OMB Portfolio Builder was installed, but Git for Windows setup did not complete. Open Publishing target > Install Git inside the app when you are ready to publish."
   ${Else}
     DetailPrint "Git for Windows setup completed."
+  ${EndIf}
+FunctionEnd
+
+Function OMBCheckIcarusVerilogAvailable
+  StrCpy $R9 "0"
+  IfFileExists "C:\iverilog\bin\iverilog.exe" 0 omb_check_icarus_programfiles64
+  IfFileExists "C:\iverilog\bin\vvp.exe" 0 omb_check_icarus_programfiles64
+  StrCpy $R9 "1"
+  Goto omb_check_icarus_done
+
+  omb_check_icarus_programfiles64:
+  IfFileExists "$PROGRAMFILES64\Icarus Verilog\bin\iverilog.exe" 0 omb_check_icarus_programfiles
+  IfFileExists "$PROGRAMFILES64\Icarus Verilog\bin\vvp.exe" 0 omb_check_icarus_programfiles
+  StrCpy $R9 "1"
+  Goto omb_check_icarus_done
+
+  omb_check_icarus_programfiles:
+  IfFileExists "$PROGRAMFILES\Icarus Verilog\bin\iverilog.exe" 0 omb_check_icarus_path
+  IfFileExists "$PROGRAMFILES\Icarus Verilog\bin\vvp.exe" 0 omb_check_icarus_path
+  StrCpy $R9 "1"
+  Goto omb_check_icarus_done
+
+  omb_check_icarus_path:
+  ${If} $R9 == "0"
+    nsExec::ExecToStack 'cmd /c where.exe iverilog && where.exe vvp'
+    Pop $0
+    Pop $1
+    ${If} $0 == 0
+      StrCpy $R9 "1"
+    ${EndIf}
+  ${EndIf}
+
+  omb_check_icarus_done:
+  Push $R9
+FunctionEnd
+
+Function OMBInstallIcarusVerilogIfNeeded
+  Call OMBCheckIcarusVerilogAvailable
+  Pop $R9
+  ${If} $R9 == "1"
+    DetailPrint "Icarus Verilog tools were found. Skipping HDL simulator installation."
+    Return
+  ${EndIf}
+
+  DetailPrint "Icarus Verilog was not found. Checking Windows Package Manager."
+  nsExec::ExecToStack 'where.exe winget'
+  Pop $0
+  Pop $1
+  ${If} $0 != 0
+    MessageBox MB_OK|MB_ICONINFORMATION "OMB Portfolio Builder was installed, but Icarus Verilog was not found and Windows Package Manager is unavailable. Install Icarus Verilog later if you want Verilog/SystemVerilog simulation and scope viewing."
+    Return
+  ${EndIf}
+
+  DetailPrint "Installing Icarus Verilog for HDL simulation. This can take several minutes."
+  ExecWait 'winget install --id Icarus.Verilog -e --source winget --accept-source-agreements --accept-package-agreements' $0
+  ${If} $0 != 0
+    MessageBox MB_OK|MB_ICONINFORMATION "OMB Portfolio Builder was installed, but Icarus Verilog setup did not complete. Open Compile Code > Check compilers after installing Icarus Verilog manually."
+  ${Else}
+    DetailPrint "Icarus Verilog setup completed."
   ${EndIf}
 FunctionEnd
 
@@ -506,6 +577,7 @@ FunctionEnd
   ${EndIf}
   StrCpy $OMB_CreateDesktopShortcutState ${BST_CHECKED}
   StrCpy $OMB_InstallPublishingToolsState ${BST_CHECKED}
+  StrCpy $OMB_InstallHdlToolsState ${BST_CHECKED}
 !macroend
 
 !macro customPageAfterChangeDir
@@ -530,6 +602,12 @@ FunctionEnd
     Call OMBInstallGitIfNeeded
   ${Else}
     DetailPrint "Publishing tool installation was skipped by the user."
+  ${EndIf}
+
+  ${If} $OMB_InstallHdlToolsState == ${BST_CHECKED}
+    Call OMBInstallIcarusVerilogIfNeeded
+  ${Else}
+    DetailPrint "HDL simulator installation was skipped by the user."
   ${EndIf}
 
   ${If} $INSTDIR != "$PROFILE\OMB\application\OMB Portfolio Builder"
