@@ -429,7 +429,7 @@
   position: relative;
   display: block;
   min-height: 0;
-  padding: 13px 82px 13px 38px;
+  padding: 12px 16px;
   color: var(--ink);
   cursor: pointer;
   font-size: 0.92rem;
@@ -446,35 +446,11 @@
 }
 
 .builder-guide-section summary::before {
-  content: "\2192";
-  position: absolute;
-  top: 13px;
-  left: 15px;
-  width: auto;
-  height: auto;
-  border: 0;
-  color: #087f9b;
-  font-weight: 950;
-  line-height: 1.35;
-  transform: none;
+  content: none;
 }
 
 .builder-guide-section summary::after {
-  content: "Open";
-  position: absolute;
-  top: 50%;
-  right: 12px;
-  min-width: 45px;
-  padding: 3px 8px;
-  border: 1px solid #b9d9e8;
-  border-radius: 999px;
-  color: #16384a;
-  background: #e9f8ff;
-  font-size: 0.7rem;
-  font-weight: 950;
-  line-height: 1.1;
-  text-align: center;
-  transform: translateY(-50%);
+  content: none;
 }
 
 .builder-guide-section[open] summary {
@@ -491,21 +467,11 @@
   background: #1f6ed4;
 }
 
-.builder-guide-section summary:hover::before,
-.builder-guide-section summary:hover::after {
-  color: #ffffff;
-}
-
-.builder-guide-section summary:hover::after {
-  border-color: rgba(255, 255, 255, 0.7);
-  background: rgba(255, 255, 255, 0.16);
-}
-
 .builder-guide-section > div {
   display: none;
   gap: 8px;
   min-height: max-content;
-  padding: 12px 14px 16px 36px;
+  padding: 12px 16px 16px;
   overflow: visible;
   background: #ffffff;
 }
@@ -7189,4 +7155,1124 @@ body[data-builder-theme="dark"] .rich-context-color-swatches button:hover,
 body[data-builder-theme="dark"] .selection-color-swatches button:hover {
   border-color: #7dd3fc;
   box-shadow: 0 0 0 2px rgba(125, 211, 252, 0.22);
+}
+
+/* Compact IDE behavior for Compile Code. */
+.compile-code-sidebar {
+  align-content: start;
+  align-items: start;
+  grid-auto-rows: max-content;
+}
+
+.compile-code-sidebar-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.compile-code-mini-actions,
+.compile-code-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 3px;
+}
+
+.compile-code-mini-actions button,
+.compile-code-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  min-width: 24px;
+  height: 24px;
+  min-height: 24px;
+  padding: 0;
+  border-radius: 4px;
+  font-size: 0.68rem;
+  line-height: 1;
+}
+
+.compile-code-workspace-tree {
+  align-self: start;
+  min-height: 0;
+  max-height: 520px;
+}
+
+.compile-ide-menu {
+  position: relative;
+  display: inline-flex;
+}
+
+.compile-ide-menu-button {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 0 10px;
+  border: 0;
+  color: inherit;
+  background: transparent;
+  font: inherit;
+  font-size: 0.76rem;
+  cursor: default;
+}
+
+.compile-ide-menu:hover .compile-ide-menu-button,
+.compile-ide-menu-button:focus-visible {
+  background: #37373d;
+}
+
+.compile-ide-dropdown,
+.compile-tree-context-menu {
+  z-index: 95;
+  min-width: 188px;
+  max-height: min(320px, calc(100vh - 28px));
+  overflow: auto;
+  border: 1px solid #464b53;
+  background: #252526;
+  box-shadow: 0 16px 32px rgba(0, 0, 0, 0.36);
+}
+
+.compile-ide-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  display: none;
+  padding: 4px;
+}
+
+.compile-ide-menu:hover .compile-ide-dropdown,
+.compile-ide-menu:focus-within .compile-ide-dropdown {
+  display: grid;
+}
+
+.compile-ide-dropdown button,
+.compile-tree-context-menu button {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  min-height: 24px;
+  padding: 3px 9px;
+  border: 0;
+  border-radius: 0;
+  color: #f3f4f6;
+  background: transparent;
+  font: inherit;
+  font-size: 0.74rem;
+  text-align: left;
+}
+
+.compile-ide-dropdown button:hover,
+.compile-tree-context-menu button:hover {
+  background: #094771;
+}
+
+.compile-ide-dropdown button:disabled {
+  color: #7f8792;
+  background: transparent;
+}
+
+.compile-ide-dropdown small {
+  color: #aeb6c2;
+  font-size: 0.68rem;
+}
+
+.compile-ide-menu-separator {
+  display: block;
+  height: 1px;
+  margin: 4px 6px;
+  background: #3a3d43;
+}
+
+.compile-tree-context-menu {
+  position: fixed;
+  display: grid;
+  padding: 4px;
+}
+
+.compile-tree-context-menu[hidden] {
+  display: none;
+}
+
+.compile-terminal-screen {
+  display: grid;
+  grid-template-rows: minmax(180px, 1fr) auto;
+  min-height: 240px;
+  background: #1e1e1e;
+}
+
+.compile-system-terminal {
+  min-height: 180px;
+  max-height: 360px;
+  border-top: 0;
+}
+
+.compile-terminal-prompt-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 4px 12px 9px;
+  color: #f8fafc;
+  background: #1e1e1e;
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
+.compile-terminal-prompt {
+  flex: 0 0 auto;
+  color: #f8fafc;
+  white-space: nowrap;
+}
+
+.compile-terminal-command-input {
+  flex: 1 1 auto;
+  min-width: 90px;
+  border: 0;
+  outline: 0;
+  color: #f8fafc;
+  background: transparent;
+  font: inherit;
+}
+
+.compile-append-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  border: 1px solid #333842;
+  border-radius: 0;
+  background: #1e1e1e;
+}
+
+.compile-append-window-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 32px;
+  padding: 5px 8px 5px 10px;
+  border-bottom: 1px solid #333842;
+  background: #252526;
+}
+
+.compile-append-window-title div {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.compile-append-window-title strong {
+  color: #f3f4f6;
+  font-size: 0.78rem;
+}
+
+.compile-append-window-title span {
+  overflow: hidden;
+  color: #9ca3af;
+  font-size: 0.7rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compile-mini-window-close {
+  width: 22px;
+  height: 22px;
+  min-height: 22px;
+  padding: 0;
+  border: 1px solid #7f1d1d;
+  border-radius: 3px;
+  color: #fecaca;
+  background: #2a1114;
+  font: inherit;
+  font-size: 0.9rem;
+  line-height: 1;
+}
+
+.compile-mini-window-close:hover {
+  color: #ffffff;
+  background: #dc2626;
+}
+
+.compile-append-target-browser {
+  display: block;
+  min-width: 0;
+}
+
+.compile-append-tree {
+  max-height: 310px;
+  border: 0;
+}
+
+.compile-append-folder summary {
+  min-height: 24px;
+  padding-top: 2px;
+  padding-bottom: 2px;
+}
+
+.compile-append-target {
+  min-height: 24px;
+  padding-top: 2px;
+  padding-bottom: 2px;
+}
+
+.compile-append-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  padding: 7px 8px;
+  border-top: 1px solid #333842;
+  background: #252526;
+}
+
+.summary-context-menu {
+  width: min(250px, calc(100vw - 24px));
+  min-width: 190px;
+  max-height: min(380px, calc(100vh - 28px));
+  gap: 2px;
+  padding: 5px;
+}
+
+.summary-context-menu button {
+  min-height: 26px;
+  padding: 0 8px;
+  border-radius: 4px;
+  font-size: 0.76rem;
+}
+
+.rich-menu-field select,
+.rich-menu-field input {
+  min-height: 27px;
+  font-size: 0.78rem;
+}
+
+.rich-menu-field {
+  gap: 3px;
+  margin: 1px 0;
+  font-size: 0.68rem;
+}
+
+.rich-context-color-swatches {
+  grid-template-columns: repeat(8, 18px);
+  gap: 3px;
+}
+
+.rich-context-color-swatches button {
+  min-height: 18px;
+  width: 18px;
+  padding: 0;
+}
+
+/* Final builder-only dark-mode layer.
+   This is a display skin for the application chrome. It deliberately does not
+   rewrite catalog data or published portfolio colors. */
+body[data-builder-theme="dark"] {
+  color-scheme: dark;
+  --builder-ui-bg: #07131f;
+  --builder-ui-bg-2: #0b1d2d;
+  --builder-ui-surface: #102033;
+  --builder-ui-surface-2: #13283d;
+  --builder-ui-surface-3: #18334d;
+  --builder-ui-line: #31506c;
+  --builder-ui-line-strong: #4b7191;
+  --builder-ui-text: #eaf5ff;
+  --builder-ui-muted: #a9c0d4;
+  --builder-ui-soft-text: #c9ddec;
+  --builder-ui-command: #143c5e;
+  --builder-ui-command-hover: #1e75ad;
+  --builder-ui-command-active: #f7fbff;
+  --builder-ui-focus: #73d7ff;
+  --builder-ui-danger: #dc2626;
+  --bg: var(--builder-ui-bg);
+  --paper: var(--builder-ui-bg);
+  --panel: var(--builder-ui-surface);
+  --soft: var(--builder-ui-surface-2);
+  --ink: var(--builder-ui-text);
+  --muted: var(--builder-ui-muted);
+  --line: var(--builder-ui-line);
+  --focus: var(--builder-ui-focus);
+  --teal: #38c6d9;
+  --accent: #73d7ff;
+  --accent-deep: #1e75ad;
+  background:
+    radial-gradient(circle at 18% 0%, rgba(56, 198, 217, 0.22), transparent 30%),
+    linear-gradient(180deg, #081522, var(--builder-ui-bg));
+  color: var(--builder-ui-text);
+  accent-color: var(--builder-ui-focus);
+}
+
+body[data-builder-theme="dark"] * {
+  scrollbar-color: #4b7191 #0b1d2d;
+}
+
+body[data-builder-theme="dark"] ::selection {
+  color: #ffffff;
+  background: rgba(56, 198, 217, 0.46);
+}
+
+body[data-builder-theme="dark"] :is(
+  .template-header,
+  .builder-panel,
+  .builder-sidebar,
+  .builder-editor,
+  .builder-inspector,
+  .template-preview,
+  .project-library-tools,
+  .workflow-card,
+  .builder-guide-panel,
+  .builder-guide-dialog-content,
+  .builder-guide-tools,
+  .builder-guide-sections,
+  .builder-guide-section,
+  .builder-guide-topic-body,
+  .project-dialog,
+  .project-window-shell,
+  .project-fields,
+  .project-section-workspace,
+  .project-section-list,
+  .project-section-row,
+  .section-editor,
+  .section-text-preview,
+  .pending-editor,
+  .asset-dialog,
+  .asset-dialog form,
+  .profile-asset-body,
+  .profile-asset-view-body,
+  .profile-asset-preview,
+  .profile-asset-document,
+  .profile-asset-file-card,
+  .profile-asset-empty,
+  .template-dialog-shell,
+  .template-card,
+  .delete-confirm-content,
+  .project-meta-dialog-content,
+  .project-metadata-panel,
+  .publish-target-current,
+  .publish-target-readiness,
+  .publish-result-box,
+  .app-update-body,
+  .security-report-body,
+  .security-report-card,
+  .tree-category,
+  .tree-category-heading,
+  .category-dropdown,
+  .builder-explorer-list,
+  .builder-explorer-row,
+  .site-section-item,
+  .site-subsection-item,
+  .site-link-list span,
+  .summary-context-menu,
+  .text-selection-inspector,
+  .selection-options
+) {
+  border-color: var(--builder-ui-line) !important;
+  background-color: var(--builder-ui-surface) !important;
+  color: var(--builder-ui-text) !important;
+  box-shadow-color: rgba(0, 0, 0, 0.36);
+}
+
+body[data-builder-theme="dark"] :is(
+  .builder-guide-section > div,
+  .builder-guide-section summary,
+  .project-library-tools,
+  .workflow-card,
+  .tree-category-heading,
+  .builder-explorer-row,
+  .site-section-item,
+  .site-subsection-item,
+  .pending-editor,
+  .rich-summary-panel,
+  .summary-rendered-preview,
+  .section-content-editor,
+  .profile-asset-manager,
+  .profile-asset-actions,
+  .front-page-text-fields,
+  .fun-facts-builder-panel,
+  .compile-code-meta-grid,
+  .compile-code-command-bar
+) {
+  background-color: var(--builder-ui-surface-2) !important;
+}
+
+body[data-builder-theme="dark"] :is(
+  .builder-panel h1,
+  .builder-panel h2,
+  .builder-panel h3,
+  .builder-panel h4,
+  .builder-panel label,
+  .project-dialog label,
+  .asset-dialog label,
+  .template-dialog-shell label,
+  .builder-guide-section summary,
+  .project-library-heading h2,
+  .project-preview-heading h2,
+  .portfolio-preview-heading h2,
+  .summary-builder-heading span,
+  .builder-guide-dialog-content h2,
+  .builder-explorer-main,
+  .builder-explorer-title,
+  .project-section-select,
+  .site-section-item strong,
+  .site-subsection-item strong,
+  .security-report-card h3,
+  .project-meta-grid strong
+) {
+  color: var(--builder-ui-text) !important;
+}
+
+body[data-builder-theme="dark"] :is(
+  .builder-item p,
+  .builder-item span,
+  .project-search-field span,
+  .workflow-card span,
+  .tree-empty,
+  .builder-guide-results,
+  .builder-guide-section p,
+  .builder-guide-topic-body p,
+  .publish-target-field-note,
+  .publish-target-note,
+  .profile-asset-status,
+  .profile-asset-manager-copy p,
+  .profile-asset-manager-copy small,
+  .profile-asset-preview figcaption,
+  .asset-detected-note,
+  .preference-note,
+  .app-update-body p,
+  .app-update-release-meta,
+  .security-report-body p,
+  .security-report-card ul,
+  .project-fields label small,
+  .summary-builder-heading small,
+  .rich-editor-hint,
+  .builder-explorer-main small,
+  .builder-explorer-icon,
+  .category-dropdown small,
+  .site-section-item span,
+  .site-subsection-item p
+) {
+  color: var(--builder-ui-muted) !important;
+}
+
+body[data-builder-theme="dark"] :is(
+  button,
+  .button,
+  .portfolio-preview-button,
+  .add-project-button,
+  .builder-guide-topic-bar button,
+  .builder-guide-actions button,
+  .site-section-actions button,
+  .section-bar button,
+  .builder-item button,
+  .builder-explorer-actions button,
+  .category-dropdown button,
+  .local-card-controls button,
+  .local-section-controls button,
+  .summary-save-actions button,
+  .dialog-actions button,
+  .publish-target-tool-actions button,
+  .app-update-dialog-actions button,
+  .delete-confirm-actions button
+):not([data-rich-color-value]):not(.section-open-card):not(.compile-ide-menu-button):not(.compile-mini-window-close) {
+  border-color: var(--builder-ui-line-strong) !important;
+  color: var(--builder-ui-text) !important;
+  background: var(--builder-ui-command) !important;
+  box-shadow: none !important;
+}
+
+body[data-builder-theme="dark"] :is(button, .button) > * {
+  color: inherit !important;
+}
+
+body[data-builder-theme="dark"] :is(
+  button,
+  .button,
+  .portfolio-preview-button,
+  .add-project-button,
+  .builder-guide-topic-bar button,
+  .builder-guide-actions button,
+  .site-section-actions button,
+  .section-bar button,
+  .builder-item button,
+  .builder-explorer-actions button,
+  .category-dropdown button,
+  .local-card-controls button,
+  .local-section-controls button,
+  .summary-save-actions button,
+  .dialog-actions button,
+  .publish-target-tool-actions button,
+  .app-update-dialog-actions button,
+  .delete-confirm-actions button
+):not([data-rich-color-value]):not(.section-open-card):not(.compile-ide-menu-button):not(.compile-mini-window-close):hover {
+  border-color: var(--builder-ui-focus) !important;
+  color: #ffffff !important;
+  background: var(--builder-ui-command-hover) !important;
+  box-shadow: 0 0 0 3px rgba(115, 215, 255, 0.2) !important;
+}
+
+body[data-builder-theme="dark"] :is(
+  button,
+  .button,
+  .portfolio-preview-button,
+  .add-project-button,
+  .builder-guide-topic-bar button,
+  .builder-guide-actions button,
+  .site-section-actions button,
+  .section-bar button,
+  .builder-item button,
+  .builder-explorer-actions button,
+  .category-dropdown button,
+  .local-card-controls button,
+  .local-section-controls button,
+  .summary-save-actions button,
+  .dialog-actions button,
+  .publish-target-tool-actions button,
+  .app-update-dialog-actions button,
+  .delete-confirm-actions button
+):not([data-rich-color-value]):not(.section-open-card):not(.compile-ide-menu-button):not(.compile-mini-window-close):active {
+  border-color: var(--builder-ui-command-active) !important;
+  color: #0b1d2d !important;
+  background: var(--builder-ui-command-active) !important;
+}
+
+body[data-builder-theme="dark"] :is(
+  input:not([type="color"]):not([type="file"]):not([type="checkbox"]):not([type="radio"]),
+  textarea,
+  select,
+  [contenteditable="true"],
+  .rich-summary-editor,
+  .front-rich-field,
+  .main-builder-rich-input,
+  .dialog-rich-input,
+  .summary-code-preview
+) {
+  border-color: var(--builder-ui-line-strong) !important;
+  background: #0c1a2a !important;
+  color: var(--builder-ui-text) !important;
+  caret-color: var(--builder-ui-focus) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+body[data-builder-theme="dark"] :is(
+  input:not([type="color"]):not([type="file"]):not([type="checkbox"]):not([type="radio"]),
+  textarea,
+  select,
+  [contenteditable="true"],
+  .rich-summary-editor,
+  .front-rich-field,
+  .main-builder-rich-input,
+  .dialog-rich-input
+):focus {
+  border-color: var(--builder-ui-focus) !important;
+  box-shadow: 0 0 0 3px rgba(115, 215, 255, 0.18) !important;
+  outline: none;
+}
+
+body[data-builder-theme="dark"] :is(
+  .rich-summary-editor,
+  .front-rich-field,
+  .main-builder-rich-input,
+  .dialog-rich-input
+) :is(.rich-text-block, .rich-inline-style, span:not([class])) {
+  color: var(--builder-ui-text) !important;
+}
+
+body[data-builder-theme="dark"] :is(
+  .rich-summary-editor,
+  .front-rich-field,
+  .main-builder-rich-input,
+  .dialog-rich-input
+) a {
+  color: #7dd3fc !important;
+}
+
+body[data-builder-theme="dark"] :is(
+  input::placeholder,
+  textarea::placeholder,
+  .rich-summary-editor:empty::before,
+  .front-rich-field:empty::before,
+  .main-builder-rich-input:empty::before,
+  .dialog-rich-input:empty::before
+) {
+  color: #7d94a9 !important;
+}
+
+body[data-builder-theme="dark"] input[type="color"] {
+  width: 34px;
+  min-width: 34px;
+  min-height: 28px;
+  padding: 2px;
+  border: 1px solid var(--builder-ui-line-strong) !important;
+  border-radius: 6px;
+  background: #0c1a2a !important;
+}
+
+body[data-builder-theme="dark"] input[type="color"]::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+body[data-builder-theme="dark"] input[type="color"]::-webkit-color-swatch {
+  border: 1px solid rgba(234, 245, 255, 0.74);
+  border-radius: 4px;
+}
+
+body[data-builder-theme="dark"] :is(.rich-context-color-swatches, .selection-color-swatches) button[data-rich-color-value],
+body[data-builder-theme="dark"] :is(.rich-context-color-swatches, .selection-color-swatches) button {
+  border-color: rgba(234, 245, 255, 0.48) !important;
+  box-shadow:
+    inset 0 0 0 1px rgba(0, 0, 0, 0.18),
+    0 0 0 1px rgba(7, 19, 31, 0.62) !important;
+}
+
+body[data-builder-theme="dark"] :is(.rich-context-color-swatches, .selection-color-swatches) button:hover {
+  border-color: var(--builder-ui-focus) !important;
+  box-shadow: 0 0 0 2px rgba(115, 215, 255, 0.28) !important;
+}
+
+body[data-builder-theme="dark"] :is(
+  .summary-context-menu,
+  .text-selection-inspector,
+  .project-title-menu,
+  .compile-tree-context-menu,
+  .compile-ide-dropdown,
+  .selection-options
+) {
+  border-color: var(--builder-ui-line-strong) !important;
+  background: #0f1f31 !important;
+  color: var(--builder-ui-text) !important;
+}
+
+body[data-builder-theme="dark"] :is(
+  .summary-context-menu button,
+  .project-title-menu button,
+  .compile-tree-context-menu button,
+  .compile-ide-dropdown button,
+  .selection-options button
+):not([data-rich-color-value]) {
+  color: var(--builder-ui-text) !important;
+  background: transparent !important;
+}
+
+body[data-builder-theme="dark"] :is(
+  .summary-context-menu button,
+  .project-title-menu button,
+  .compile-tree-context-menu button,
+  .compile-ide-dropdown button,
+  .selection-options button
+):not([data-rich-color-value]):hover {
+  color: #ffffff !important;
+  background: #075985 !important;
+}
+
+body[data-builder-theme="dark"] :is(
+  .rich-menu-field select,
+  .rich-menu-field input:not([type="color"]),
+  .selection-combo > input,
+  .selection-color-options > input[type="color"]
+) {
+  border-color: var(--builder-ui-line-strong) !important;
+  color: var(--builder-ui-text) !important;
+  background: #0c1a2a !important;
+}
+
+body[data-builder-theme="dark"] .selection-text-preview {
+  border-color: var(--builder-ui-line) !important;
+  color: var(--builder-ui-soft-text) !important;
+  background: #0c1a2a !important;
+}
+
+body[data-builder-theme="dark"] :is(
+  .dialog-window-control,
+  .dialog-minimize-button,
+  .project-window-close,
+  .close-control,
+  .project-control,
+  .section-view-back,
+  .section-view-forward,
+  .dialog-window-back-control,
+  .dialog-window-forward-control,
+  .dialog-window-refresh-control,
+  .dialog-window-minimize-control,
+  .dialog-window-hide-control,
+  .dialog-window-maximize-control
+) {
+  border-color: var(--builder-ui-line-strong) !important;
+  color: var(--builder-ui-text) !important;
+  background: #12304b !important;
+}
+
+body[data-builder-theme="dark"] :is(
+  .dialog-window-control,
+  .dialog-minimize-button,
+  .section-view-back,
+  .section-view-forward,
+  .dialog-window-back-control,
+  .dialog-window-forward-control,
+  .dialog-window-refresh-control,
+  .dialog-window-minimize-control,
+  .dialog-window-hide-control,
+  .dialog-window-maximize-control
+):hover {
+  border-color: var(--builder-ui-focus) !important;
+  color: #ffffff !important;
+  background: var(--builder-ui-command-hover) !important;
+}
+
+body[data-builder-theme="dark"] :is(
+  .project-window-close,
+  .close-control,
+  .dialog-close-button,
+  .danger-button,
+  .danger-icon,
+  .danger-control,
+  .tree-project-delete
+) {
+  border-color: #7f3944 !important;
+  color: #fecaca !important;
+  background: #2d1720 !important;
+}
+
+body[data-builder-theme="dark"] :is(
+  .project-window-close,
+  .close-control,
+  .dialog-close-button,
+  .danger-button,
+  .danger-icon,
+  .danger-control,
+  .tree-project-delete
+):hover {
+  border-color: #f87171 !important;
+  color: #ffffff !important;
+  background: var(--builder-ui-danger) !important;
+}
+
+body[data-builder-theme="dark"] :is(
+  .tree-project-row,
+  .builder-explorer-row,
+  .project-section-row,
+  .compile-code-tree-file,
+  .compile-append-target,
+  .compile-append-folder summary
+) {
+  background: transparent !important;
+  color: var(--builder-ui-text) !important;
+}
+
+body[data-builder-theme="dark"] :is(
+  .tree-project-row,
+  .builder-explorer-row,
+  .project-section-row,
+  .compile-code-tree-file,
+  .compile-append-target,
+  .compile-append-folder summary
+):hover,
+body[data-builder-theme="dark"] :is(
+  .project-section-row.active,
+  .compile-code-tree-file.is-active,
+  .compile-append-target.is-active
+) {
+  color: #ffffff !important;
+  background: #075985 !important;
+}
+
+body[data-builder-theme="dark"] :is(
+  .compile-code-workspace,
+  .compile-code-sidebar,
+  .compile-code-main,
+  .compile-code-workspace-tree,
+  .compile-output-workbench,
+  .compile-output-dock,
+  .compile-code-preview-panel,
+  .compile-terminal-panel,
+  .compile-messages-panel,
+  .compile-system-terminal-panel,
+  .compile-scope-panel,
+  .compile-terminal-screen,
+  .compile-system-terminal,
+  .compile-terminal-prompt-line
+) {
+  border-color: #333842 !important;
+  background: #1e1e1e !important;
+  color: #f3f4f6 !important;
+}
+
+body[data-builder-theme="dark"] :is(
+  .compile-code-sidebar,
+  .compile-code-actions,
+  .compile-code-preview-heading,
+  .compile-terminal-heading,
+  .compile-panel-tabs,
+  .compile-append-window-title,
+  .compile-append-actions
+) {
+  background: #252526 !important;
+}
+
+body[data-builder-theme="dark"] :is(.compile-terminal-prompt, .compile-terminal-command-input) {
+  color: #f8fafc !important;
+}
+
+body[data-builder-theme="dark"] .compile-ide-status-bar {
+  border-top-color: #333842 !important;
+  color: #ffffff !important;
+  background: #007acc !important;
+}
+
+body[data-builder-theme="dark"] :is(
+  .project-preview-dialog,
+  .portfolio-preview-dialog,
+  .builder-file-view-dialog
+) {
+  border-color: var(--builder-ui-line) !important;
+  background: var(--builder-ui-bg) !important;
+  color: var(--builder-ui-text) !important;
+}
+
+body[data-builder-theme="dark"] :is(.project-preview-shell, .portfolio-preview-shell, .builder-file-view-shell) {
+  background: var(--builder-ui-bg) !important;
+  color: var(--builder-ui-text) !important;
+}
+
+body[data-builder-theme="dark"] :is(.project-preview-heading, .portfolio-window-heading) {
+  border-color: var(--builder-ui-line) !important;
+  background: #0d1d2d !important;
+  color: var(--builder-ui-text) !important;
+}
+
+body[data-builder-theme="dark"] :is(.portfolio-preview-frame, .project-preview-frame) {
+  color-scheme: light;
+  background: #ffffff !important;
+}
+
+body[data-builder-theme="dark"] .project-preview-content.is-website-preview {
+  background: #ffffff !important;
+}
+
+body[data-builder-theme="dark"] .project-preview-content:not(.is-website-preview) {
+  background: transparent !important;
+}
+
+body[data-builder-theme="dark"] .project-preview-content :is(
+  .portfolio-preview-article,
+  .portfolio-preview-section,
+  .parsed-subsection
+) {
+  --ink: #17202a;
+  --muted: #526d82;
+  --line: #c9deea;
+  --paper: #eef8fc;
+  color: #17202a;
+  background: #ffffff;
+}
+
+body[data-builder-theme="dark"] .project-template {
+  color-scheme: light;
+}
+
+body[data-builder-theme="dark"] :is(.project-template, .project-template *) {
+  color: var(--template-text, inherit);
+}
+
+body[data-builder-theme="dark"] .project-template :is(.section-open-card:hover, .dialog-minimize-button:hover) {
+  color: #ffffff !important;
+  background: var(--template-hover, #1f6ed4) !important;
+}
+
+.light-mode-return {
+  gap: 8px;
+}
+
+.light-mode-icon {
+  position: relative;
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  border: 2px solid currentColor;
+  border-radius: 50%;
+}
+
+.light-mode-icon::before,
+.light-mode-icon::after {
+  position: absolute;
+  content: "";
+  inset: -6px;
+  border-top: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  opacity: 0.8;
+}
+
+.light-mode-icon::after {
+  transform: rotate(90deg);
+}
+
+body[data-builder-theme="dark"] .light-mode-return {
+  border-color: #facc15 !important;
+  color: #fff7c2 !important;
+  background: #3a310d !important;
+}
+
+body[data-builder-theme="dark"] .light-mode-return:hover {
+  border-color: #fde68a !important;
+  color: #0b1d2d !important;
+  background: #facc15 !important;
+}
+
+/* Compact project/subsection window controls. */
+.project-dialog :is(
+  .project-control,
+  .project-window-close,
+  .dialog-window-control,
+  .dialog-minimize-button,
+  .section-view-back,
+  .section-view-forward,
+  .project-section-actions button,
+  .summary-save-actions button,
+  .rich-block-actions button,
+  .project-title-menu button,
+  .title-rename-actions button,
+  [data-add-node-subsection],
+  [data-upload-node],
+  [data-delete-node],
+  [data-delete-section],
+  [data-summary-save],
+  [data-summary-delete]
+),
+.project-preview-dialog :is(
+  .project-window-close,
+  .dialog-window-control,
+  .dialog-minimize-button,
+  .section-view-back,
+  .section-view-forward
+),
+.asset-dialog :is(
+  .project-window-close,
+  .dialog-window-control,
+  .dialog-minimize-button
+) {
+  min-height: 24px;
+  height: 24px;
+  padding: 0 8px;
+  border-radius: 4px;
+  font-size: 0.72rem;
+  line-height: 1;
+}
+
+.project-dialog :is(
+  .project-window-close,
+  .dialog-window-control,
+  .dialog-minimize-button,
+  .section-view-back,
+  .section-view-forward
+),
+.project-preview-dialog :is(
+  .project-window-close,
+  .dialog-window-control,
+  .dialog-minimize-button,
+  .section-view-back,
+  .section-view-forward
+),
+.asset-dialog :is(
+  .project-window-close,
+  .dialog-window-control,
+  .dialog-minimize-button
+) {
+  width: 24px;
+  min-width: 24px;
+  padding: 0;
+  font-size: 0.78rem;
+}
+
+.project-dialog .project-window-actions {
+  align-items: stretch;
+  min-height: 24px;
+}
+
+.project-dialog .project-window-actions :is(#view-project-preview, #project-window-delete, #project-window-close) {
+  min-height: 24px;
+  height: 24px;
+  padding-top: 0;
+  padding-bottom: 0;
+  font-size: 0.72rem;
+}
+
+.project-dialog .project-window-actions #project-window-close {
+  width: 24px;
+  min-width: 24px;
+  padding: 0;
+}
+
+.project-save-bar {
+  gap: 8px;
+}
+
+.project-save-bar .save-project-button {
+  min-height: 30px;
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 6px;
+  font-size: 0.78rem;
+}
+
+.section-content > .project-section-actions,
+.section-content .project-section-actions,
+.section-content .summary-save-actions,
+.project-fields .summary-save-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.section-content > .project-section-actions,
+.section-content .project-section-actions {
+  margin: 0 0 8px;
+}
+
+.section-content :is(
+  [data-add-node-subsection],
+  [data-upload-node],
+  [data-delete-node],
+  [data-delete-section],
+  [data-summary-save],
+  [data-summary-delete]
+) {
+  min-height: 26px;
+  height: 26px;
+  padding: 0 9px;
+  border-radius: 5px;
+  font-size: 0.74rem;
+}
+
+.project-dialog .section-bar button {
+  min-height: 30px;
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 7px;
+  font-size: 0.82rem;
+}
+
+body[data-builder-theme="dark"] .project-dialog :is(
+  .project-control,
+  .project-window-close,
+  .dialog-window-control,
+  .dialog-minimize-button,
+  .section-view-back,
+  .section-view-forward,
+  .project-section-actions button,
+  .summary-save-actions button,
+  .rich-block-actions button,
+  .project-title-menu button,
+  .title-rename-actions button,
+  [data-add-node-subsection],
+  [data-upload-node],
+  [data-delete-node],
+  [data-delete-section],
+  [data-summary-save],
+  [data-summary-delete]
+) {
+  color: var(--builder-ui-text) !important;
 }

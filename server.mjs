@@ -354,6 +354,48 @@ function safeCodeDirectoryPath(value = "") {
     .join("/");
 }
 
+function escapeRegExp(value = "") {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function windowsTerminalCommand(command = "", sentinel = "") {
+  const normalized = String(command || "").trim();
+  const rewritten = /^where\s+/i.test(normalized) ? normalized.replace(/^where\s+/i, "where.exe ") : normalized;
+  return [
+    "$ErrorActionPreference = 'Continue'",
+    "$global:LASTEXITCODE = $null",
+    "$__ombExitCode = 0",
+    "try {",
+    `  & { ${rewritten} }`,
+    "  if ($global:LASTEXITCODE -is [int]) { $__ombExitCode = $global:LASTEXITCODE }",
+    "} catch {",
+    "  Write-Error $_",
+    "  $__ombExitCode = 1",
+    "}",
+    `Write-Output "${sentinel}$((Get-Location).ProviderPath)"`,
+    "exit $__ombExitCode"
+  ].join("\n");
+}
+
+function stripTerminalCwdSentinel(result = {}, sentinel = "") {
+  if (!sentinel) return { result, cwdAbsolute: "" };
+  const marker = new RegExp(`^${escapeRegExp(sentinel)}(.+)$`, "m");
+  let cwdAbsolute = "";
+  const stdout = String(result.stdout || "")
+    .split(/\r?\n/)
+    .filter((line) => {
+      const match = line.match(marker);
+      if (match) {
+        cwdAbsolute = match[1].trim();
+        return false;
+      }
+      return true;
+    })
+    .join("\n")
+    .trimEnd();
+  return { result: { ...result, stdout }, cwdAbsolute };
+}
+
 function indentBraceCode(code = "") {
   let depth = 0;
   return String(code || "")
@@ -1478,27 +1520,43 @@ async function runCompileTerminalCommand(payload = {}) {
   if (command.length > 2000) throw new Error("Terminal command is too long.");
   const projectFolder = safeSegment(payload.projectId, "project");
   const cwdRelative = safeCodeDirectoryPath(payload.cwd || "");
-  const cwd = cwdRelative
+  const requestedAbsolute = String(payload.cwdAbsolute || "").trim();
+  let cwd = cwdRelative
     ? resolveInsideCompileRoot(projectFolder, cwdRelative)
     : resolveInsideCompileRoot(projectFolder);
-  await mkdir(cwd, { recursive: true });
+  let cwdFromAbsolute = false;
+  if (requestedAbsolute && path.isAbsolute(requestedAbsolute) && await pathExists(requestedAbsolute)) {
+    cwd = requestedAbsolute;
+    cwdFromAbsolute = true;
+  }
+  if (!cwdFromAbsolute) await mkdir(cwd, { recursive: true });
   const shellCommand = process.platform === "win32" ? "powershell.exe" : "bash";
+  const sentinel = `__OMB_TERMINAL_CWD_${Date.now()}_${Math.random().toString(16).slice(2)}__`;
+  const terminalCommand = process.platform === "win32"
+    ? windowsTerminalCommand(command, sentinel)
+    : `${command}\nprintf '\\n${sentinel}%s\\n' "$PWD"`;
   const shellArgs = process.platform === "win32"
-    ? ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", command]
-    : ["-lc", command];
+    ? ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", terminalCommand]
+    : ["-lc", terminalCommand];
   const result = await runProcess(shellCommand, shellArgs, {
     cwd,
     timeoutMs: Number(payload.timeoutMs || 30000)
   });
-  const output = [
-    `${cwdRelative || "."}> ${command}`,
-    processTerminalText(result)
-  ].filter(Boolean).join("\n");
+  const stripped = stripTerminalCwdSentinel(result, sentinel);
+  const finalCwdAbsolute = stripped.cwdAbsolute || cwd;
+  const relativeToProject = path.relative(resolveInsideCompileRoot(projectFolder), finalCwdAbsolute);
+  const finalCwdRelative = relativeToProject && !relativeToProject.startsWith("..") && !path.isAbsolute(relativeToProject)
+    ? safeCodeDirectoryPath(relativeToProject)
+    : "";
+  const output = processTerminalText(stripped.result);
   return {
-    cwd: cwdRelative,
+    cwd: finalCwdRelative,
+    rootPath: path.dirname(compileRoot),
+    cwdAbsolute: finalCwdAbsolute,
+    promptPath: finalCwdAbsolute,
     exitCode: result.code,
     ok: result.ok,
-    output
+    output: output || "Command completed with no output."
   };
 }
 

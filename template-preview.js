@@ -148,6 +148,7 @@ const deleteConfirmNo = document.querySelector("#delete-confirm-no");
 const saveDraftButton = document.querySelector("#save-draft");
 const applyCatalogButton = document.querySelector("#apply-catalog");
 const builderSaveState = document.querySelector("#builder-save-state");
+const lightModeReturnButton = document.querySelector("#light-mode-return");
 const builderStatus = document.querySelector("#builder-status");
 const workflowSelectedProject = document.querySelector("#workflow-selected-project");
 const workflowTotalProjects = document.querySelector("#workflow-total-projects");
@@ -2050,6 +2051,9 @@ function ensureCompileCode(project) {
     cwd: compileDirectoryPath(project.compileCode.systemTerminal?.cwd || project.compileCode.terminalCwd || ""),
     command: String(project.compileCode.systemTerminal?.command || ""),
     output: String(project.compileCode.systemTerminal?.output || ""),
+    rootPath: String(project.compileCode.systemTerminal?.rootPath || ""),
+    cwdAbsolute: String(project.compileCode.systemTerminal?.cwdAbsolute || ""),
+    promptPath: String(project.compileCode.systemTerminal?.promptPath || ""),
     history: Array.isArray(project.compileCode.systemTerminal?.history)
       ? project.compileCode.systemTerminal.history.slice(0, 40).map((item) => ({
         at: item.at || new Date().toISOString(),
@@ -2065,6 +2069,7 @@ function ensureCompileCode(project) {
   if (!project.compileCode.appendTargetId || !appendDestinations.some((destination) => destination.id === project.compileCode.appendTargetId)) {
     project.compileCode.appendTargetId = appendDestinations[0]?.id || "";
   }
+  project.compileCode.appendPanelOpen = Boolean(project.compileCode.appendPanelOpen);
   project.compileCode.messages = Array.isArray(project.compileCode.messages)
     ? project.compileCode.messages.map((message) => ({
       id: message.id || slugify(`message-${Date.now()}-${Math.random().toString(16).slice(2)}`),
@@ -2365,6 +2370,7 @@ function applyBuilderPreferences() {
   document.documentElement.dataset.builderTheme = theme;
   document.body.dataset.builderTheme = theme;
   if (preferenceTheme) preferenceTheme.value = theme;
+  if (lightModeReturnButton) lightModeReturnButton.hidden = theme !== "dark";
 }
 
 function setBuilderTheme(theme = "light") {
@@ -6437,6 +6443,29 @@ function hideSummaryContextMenu() {
   activePlainTextSelection = null;
 }
 
+function positionCompactContextMenu(menu, event, host = document.body, options = {}) {
+  if (!menu) return;
+  const hostRect = host?.getBoundingClientRect?.() || {
+    bottom: window.innerHeight,
+    left: 0,
+    right: window.innerWidth,
+    top: 0
+  };
+  const bounds = {
+    bottom: Math.min(window.innerHeight - 8, hostRect.bottom - 8),
+    left: Math.max(8, hostRect.left + 8),
+    right: Math.min(window.innerWidth - 8, hostRect.right - 8),
+    top: Math.max(8, hostRect.top + 8)
+  };
+  const maxHeight = Math.min(options.maxHeight || 320, Math.max(options.minHeight || 150, bounds.bottom - bounds.top));
+  menu.style.maxHeight = `${maxHeight}px`;
+  const menuRect = menu.getBoundingClientRect();
+  const left = Math.max(bounds.left, Math.min(event.clientX, bounds.right - menuRect.width));
+  const top = Math.max(bounds.top, Math.min(event.clientY, bounds.bottom - menuRect.height));
+  menu.style.left = `${left}px`;
+  menu.style.top = `${top}px`;
+}
+
 async function editSelectedRichBlock(editor) {
   const block = selectedRichBlock(editor);
   if (!block) return;
@@ -7863,7 +7892,7 @@ function renderCompileAppendNode(project, section, sectionIndex, item, itemPath,
         <small>${childSections.length} child section${childSections.length === 1 ? "" : "s"}</small>
       </summary>
       <div class="compile-append-children">
-        ${compileAppendTargetButton(destination, selectedId, "Append to this overview")}
+        ${compileAppendTargetButton(destination, selectedId, "Overview")}
         ${children}
       </div>
     </details>
@@ -7900,7 +7929,7 @@ function renderCompileAppendTree(project, selectedId = "") {
           <small>${childSections.length} subsection${childSections.length === 1 ? "" : "s"}</small>
         </summary>
         <div class="compile-append-children">
-          ${compileAppendTargetButton(destination, currentId, "Append to this section overview")}
+          ${compileAppendTargetButton(destination, currentId, "Overview")}
           ${children || `<p class="compile-append-empty">No subsections under this section yet.</p>`}
         </div>
       </details>
@@ -8122,49 +8151,62 @@ function updateCompileSystemTerminalPanel(project) {
   const workspace = ensureCompileCode(project);
   const terminal = workspace?.systemTerminal || {};
   const outputElement = sectionContent.querySelector("[data-compile-system-terminal]");
-  const cwdInput = sectionContent.querySelector("[data-compile-terminal-cwd]");
-  if (cwdInput) cwdInput.value = terminal.cwd || "";
+  const promptElement = sectionContent.querySelector("[data-compile-terminal-prompt]");
+  const commandInput = sectionContent.querySelector("[data-compile-terminal-command]");
+  if (promptElement) promptElement.textContent = compileTerminalPromptText(terminal);
+  if (commandInput) commandInput.value = terminal.command || "";
   if (outputElement) {
-    outputElement.textContent = terminal.output || "Run commands from this project workspace here.";
+    outputElement.textContent = compileTerminalDisplayText(terminal);
     requestAnimationFrame(() => {
       outputElement.scrollTop = outputElement.scrollHeight;
     });
   }
 }
 
+function compileTerminalBasePath() {
+  return "C:\\Users\\otien\\AppData\\Local\\OMB Portfolio Builder";
+}
+
+function compileTerminalPromptPath(terminal = {}) {
+  if (terminal.promptPath) return terminal.promptPath;
+  if (terminal.cwdAbsolute) return terminal.cwdAbsolute;
+  const rootPath = terminal.rootPath || compileTerminalBasePath();
+  const relativePath = compileDirectoryPath(terminal.cwd || "");
+  if (!relativePath) return rootPath;
+  return `${rootPath}\\${relativePath.replace(/\//g, "\\")}`;
+}
+
+function compileTerminalPromptText(terminal = {}) {
+  return `PS ${compileTerminalPromptPath(terminal)}>`;
+}
+
+function compileTerminalDisplayText(terminal = {}) {
+  return String(terminal.output || "").trimEnd();
+}
+
+function appendCompileTerminalOutput(existing = "", next = "") {
+  const previous = String(existing || "").trimEnd();
+  const addition = String(next || "").trimEnd();
+  return [previous, addition].filter(Boolean).join("\n");
+}
+
 function renderCompileSystemTerminal(workspace = {}) {
   const terminal = workspace.systemTerminal || {};
-  const history = Array.isArray(terminal.history) ? terminal.history : [];
   return `
     <section class="compile-system-terminal-panel" data-compile-output-panel="terminal" aria-label="Real terminal">
       <div class="compile-terminal-heading">
         <span class="compile-terminal-title"><span aria-hidden="true" class="terminal-dot"></span> Terminal</span>
         <span class="compile-terminal-controls">
-          <button type="button" data-compile-terminal-run>Run command</button>
           <button type="button" data-compile-terminal-clear>Clear terminal</button>
         </span>
       </div>
-      <div class="compile-terminal-command-row">
-        <label>
-          <span>Working folder</span>
-          <input type="text" data-compile-terminal-cwd value="${escapeHtml(terminal.cwd || "")}" placeholder="Project root or folder path, e.g. src" />
-        </label>
-        <label>
-          <span>Command</span>
-          <input type="text" data-compile-terminal-command value="${escapeHtml(terminal.command || "")}" placeholder="dir, gcc --version, node --version" />
+      <div class="compile-terminal-screen" data-compile-terminal-screen>
+        <pre class="compile-terminal compile-system-terminal" data-compile-system-terminal tabindex="0" role="log" aria-live="polite">${escapeHtml(compileTerminalDisplayText(terminal))}</pre>
+        <label class="compile-terminal-prompt-line">
+          <span class="compile-terminal-prompt" data-compile-terminal-prompt>${escapeHtml(compileTerminalPromptText(terminal))}</span>
+          <input class="compile-terminal-command-input" type="text" data-compile-terminal-command value="${escapeHtml(terminal.command || "")}" autocomplete="off" spellcheck="false" aria-label="Terminal command" />
         </label>
       </div>
-      <pre class="compile-terminal compile-system-terminal" data-compile-system-terminal tabindex="0" role="log" aria-live="polite">${escapeHtml(terminal.output || "Run commands from this project workspace here.")}</pre>
-      ${history.length ? `
-        <div class="compile-terminal-history" aria-label="Terminal command history">
-          ${history.slice(0, 8).map((item) => `
-            <button type="button" data-compile-terminal-history="${escapeHtml(item.command)}">
-              <span>${escapeHtml(compileLogTimestamp(item.at))}</span>
-              <strong>${escapeHtml(item.command)}</strong>
-            </button>
-          `).join("")}
-        </div>
-      ` : ""}
     </section>
   `;
 }
@@ -8416,37 +8458,192 @@ function renderCompileActiveOutputPanel(project, file = activeCompileFile(projec
   return renderCompileConsolePanel(project, file);
 }
 
+function renderCompileMenuItems(items = []) {
+  return items.map((item) => {
+    if (item.separator) return `<span class="compile-ide-menu-separator" role="separator"></span>`;
+    return `
+      <button type="button" data-compile-menu-action="${escapeHtml(item.action)}"${item.disabled ? " disabled" : ""}>
+        <span>${escapeHtml(item.label)}</span>
+        ${item.shortcut ? `<small>${escapeHtml(item.shortcut)}</small>` : ""}
+      </button>
+    `;
+  }).join("");
+}
+
+function renderCompileIdeMenuBar(project, file = activeCompileFile(project)) {
+  const hasFile = Boolean(file);
+  const hdlFile = isHdlLanguage(file?.language);
+  const menus = [
+    {
+      label: "File",
+      items: [
+        { label: "New code file", action: "new-file" },
+        { label: "New folder", action: "new-folder" },
+        { label: "Add testbench", action: "add-testbench" },
+        { separator: true },
+        { label: "Import files", action: "import-files" },
+        { label: "Import directory", action: "import-directory" },
+        { separator: true },
+        { label: "Save source", action: "save-source", shortcut: "Ctrl+S", disabled: !hasFile },
+        { label: "Save project", action: "save-project" }
+      ]
+    },
+    {
+      label: "Edit",
+      items: [
+        { label: "Beautify source", action: "beautify", disabled: !hasFile },
+        { label: "Append code to section", action: "append-code", disabled: !hasFile },
+        { separator: true },
+        { label: "Copy console output", action: "copy-output", disabled: !hasFile },
+        { label: "Clear console output", action: "clear-output", disabled: !hasFile },
+        { label: "Clear messages", action: "clear-messages" },
+        { label: "Clear terminal", action: "clear-terminal" }
+      ]
+    },
+    {
+      label: "View",
+      items: [
+        { label: "Console", action: "view-console" },
+        { label: "Messages", action: "view-messages" },
+        { label: "Terminal", action: "view-terminal" },
+        { label: "Scope", action: "view-scope", disabled: !hdlFile },
+        { separator: true },
+        { label: "Project preview", action: "project-preview" },
+        { label: "Portfolio preview", action: "portfolio-preview" }
+      ]
+    },
+    {
+      label: "Project",
+      items: [
+        { label: "Save project", action: "save-project" },
+        { label: "View project preview", action: "project-preview" },
+        { label: "Append code to selected section", action: "append-code", disabled: !hasFile }
+      ]
+    },
+    {
+      label: "Build",
+      items: [
+        { label: "Compile", action: "compile", disabled: !hasFile },
+        { label: "Build project", action: "build", disabled: !hasFile },
+        { label: "Run", action: "run", disabled: !hasFile || hdlFile },
+        { label: "Simulate", action: "simulate", disabled: !hasFile || !hdlFile },
+        { separator: true },
+        { label: "Install tools", action: "install-tools", disabled: !hasFile },
+        { label: "Check compilers", action: "check-tools" }
+      ]
+    },
+    {
+      label: "Debug",
+      items: [
+        { label: "Show output", action: "show-output", disabled: !hasFile },
+        { label: "Show scope", action: "show-scope", disabled: !hasFile || !hdlFile },
+        { label: "Open terminal", action: "view-terminal" },
+        { label: "Open messages", action: "view-messages" }
+      ]
+    },
+    {
+      label: "Tools",
+      items: [
+        { label: "Check compilers", action: "check-tools" },
+        { label: "Install active toolchain", action: "install-tools", disabled: !hasFile },
+        { label: "Preferences", action: "preferences" }
+      ]
+    },
+    {
+      label: "Help",
+      items: [
+        { label: "Builder guide", action: "builder-guide" },
+        { label: "Check updates", action: "check-updates" }
+      ]
+    }
+  ];
+
+  return `
+    <div class="compile-ide-menu-bar" aria-label="Compile code menu bar">
+      ${menus.map((menu) => `
+        <div class="compile-ide-menu">
+          <button class="compile-ide-menu-button" type="button" aria-haspopup="true">
+            ${escapeHtml(menu.label)}
+          </button>
+          <div class="compile-ide-dropdown" role="menu">
+            ${renderCompileMenuItems(menu.items)}
+          </div>
+        </div>
+      `).join("")}
+      <strong>${escapeHtml(project.title || "Project workspace")}</strong>
+    </div>
+  `;
+}
+
+function renderCompileTreeContextMenu() {
+  const items = [
+    { label: "New code file", action: "new-file" },
+    { label: "New folder", action: "new-folder" },
+    { label: "Add testbench", action: "add-testbench" },
+    { label: "Import files", action: "import-files" },
+    { label: "Import directory", action: "import-directory" },
+    { label: "Check compilers", action: "check-tools" }
+  ];
+  return `
+    <div class="compile-tree-context-menu" data-compile-tree-context-menu hidden>
+      ${items.map((item) => `<button type="button" data-compile-menu-action="${escapeHtml(item.action)}">${escapeHtml(item.label)}</button>`).join("")}
+    </div>
+  `;
+}
+
+function renderCompileAppendChooser(project, workspace = {}) {
+  if (!workspace.appendPanelOpen) return "";
+  const selectedDestination = selectedCompileAppendDestination(project);
+  return `
+    <section class="compile-append-panel" aria-label="Append code to project section">
+      <div class="compile-append-window-title">
+        <div>
+          <strong>Append code to project</strong>
+          <span>${escapeHtml(selectedDestination?.label || "Choose a destination")}</span>
+        </div>
+        <button class="compile-mini-window-close" type="button" data-compile-toggle-append aria-label="Close append chooser">&times;</button>
+      </div>
+      <div class="compile-append-target-browser">
+        ${renderCompileAppendTree(project, workspace.appendTargetId)}
+      </div>
+      <div class="compile-append-actions">
+        <button type="button" data-compile-append-code>Append code</button>
+        <button type="button" data-compile-toggle-append>Close</button>
+      </div>
+    </section>
+  `;
+}
+
 function renderCompileCodeSection(project) {
   const workspace = ensureCompileCode(project);
   const activeFile = activeCompileFile(project);
   return `
     <div class="compile-code-workspace">
-      <div class="compile-ide-menu-bar" aria-label="Compile code menu bar">
-        <span>File</span>
-        <span>Edit</span>
-        <span>View</span>
-        <span>Project</span>
-        <span>Build</span>
-        <span>Debug</span>
-        <span>Tools</span>
-        <span>Help</span>
-        <strong>${escapeHtml(project.title || "Project workspace")}</strong>
-      </div>
+      ${renderCompileIdeMenuBar(project, activeFile)}
       <aside class="compile-code-sidebar" aria-label="Compile code files">
         <div class="compile-code-sidebar-heading">
-          <h3>Solution Explorer</h3>
-          <small>${workspace.files.length} source file${workspace.files.length === 1 ? "" : "s"}</small>
+          <div>
+            <h3>Solution Explorer</h3>
+            <small>${workspace.files.length} source file${workspace.files.length === 1 ? "" : "s"}</small>
+          </div>
+          <div class="compile-code-mini-actions" aria-label="Solution Explorer quick actions">
+            <button type="button" data-compile-add title="Add code file" aria-label="Add code file">+</button>
+            <button type="button" data-compile-add-directory title="Add folder" aria-label="Add folder">F</button>
+            <button type="button" data-compile-import title="Import files" aria-label="Import files">I</button>
+            <button type="button" data-compile-tools title="Check compilers" aria-label="Check compilers">T</button>
+          </div>
         </div>
         <div class="compile-code-workspace-tree" aria-label="Project workspace tree">
           ${renderCompileWorkspaceTree(workspace, project.title || "Project workspace")}
         </div>
+        ${renderCompileTreeContextMenu()}
         <div class="compile-code-actions">
-          <button type="button" data-compile-add>Add code file</button>
-          <button type="button" data-compile-add-directory>Add folder</button>
-          <button type="button" data-compile-add-testbench>Add testbench</button>
-          <button type="button" data-compile-import>Import files</button>
-          <button type="button" data-compile-import-directory>Import directory</button>
-          <button type="button" data-compile-tools>Check compilers</button>
+          <button type="button" data-compile-add title="Add code file" aria-label="Add code file">+</button>
+          <button type="button" data-compile-add-directory title="Add folder" aria-label="Add folder">F</button>
+          <button type="button" data-compile-add-testbench title="Add testbench" aria-label="Add testbench">T</button>
+          <button type="button" data-compile-import title="Import files" aria-label="Import files">I</button>
+          <button type="button" data-compile-import-directory title="Import directory" aria-label="Import directory">D</button>
+          <button type="button" data-compile-tools title="Check compilers" aria-label="Check compilers">?</button>
         </div>
       </aside>
 
@@ -8499,22 +8696,11 @@ function renderCompileCodeSection(project) {
               : `<button type="button" data-compile-run>Run</button>`}
             <button class="compile-output-button" type="button" data-compile-show-output title="Open the terminal output for this source"><span class="compile-command-icon" aria-hidden="true">&gt;_</span><span>Show output</span></button>
             ${isHdlLanguage(activeFile.language) ? `<button class="compile-output-button" type="button" data-compile-show-scope title="Open the HDL waveform scope"><span class="compile-command-icon" aria-hidden="true">~</span><span>Show scope</span></button>` : ""}
+            <button class="compile-output-button compile-append-icon-button" type="button" data-compile-toggle-append title="Append this source to a project section" aria-label="Append this source to a project section"><span class="compile-command-icon" aria-hidden="true">&gt;&gt;</span></button>
             <button type="button" data-compile-install>Install tools</button>
             <button class="danger-icon" type="button" data-compile-delete>Delete source</button>
           </div>
-          <section class="compile-append-panel" aria-label="Append code to project section">
-            <div class="compile-append-summary">
-              <strong>Append code to project</strong>
-              <span>Choose the exact project section or nested subsection that should receive this source file as a formatted code block.</span>
-            </div>
-            <div class="compile-append-target-browser">
-              <strong>Destination tree</strong>
-              ${renderCompileAppendTree(project, workspace.appendTargetId)}
-            </div>
-            <div class="compile-append-actions">
-              <button type="button" data-compile-append-code>Append code to project</button>
-            </div>
-          </section>
+          ${renderCompileAppendChooser(project, workspace)}
         ` : `
           <div class="compile-code-empty">
             <h3>No compile file selected</h3>
@@ -8965,6 +9151,69 @@ function endTitleRename(saveChanges) {
   }
 }
 
+function activeRichEditorFromTarget(target = document.activeElement) {
+  return target?.closest?.("[data-rich-editor]") || activeSummaryEditor || null;
+}
+
+function activePlainTextControlFromTarget(target = document.activeElement) {
+  return plainTextControlFromContextEvent({ target });
+}
+
+async function saveCurrentBuilderContext() {
+  saveVisibleRichEditors();
+  if (projectWindowTitle?.isContentEditable) endTitleRename(true);
+  if (projectDialog?.open && selectedProject()) {
+    await saveSelectedProjectToPortfolio();
+    return;
+  }
+  if (preferencesDialog?.open) {
+    saveBuilderPreferencesFromDialog();
+    closeDialogElement(preferencesDialog, "save");
+    return;
+  }
+  syncSiteContentFromInputs();
+  syncProfileFromInputs();
+  syncFunFactsFromInput();
+  await saveCatalog("/api/save-draft", "Draft saved");
+}
+
+async function handleGlobalKeyboardShortcuts(event) {
+  const key = String(event.key || "").toLowerCase();
+  const modifier = event.ctrlKey || event.metaKey;
+  if (!modifier || event.altKey) return;
+
+  if (key === "s") {
+    event.preventDefault();
+    await saveCurrentBuilderContext();
+    return;
+  }
+
+  const target = event.target;
+  const richEditor = activeRichEditorFromTarget(target);
+  const plainControl = activePlainTextControlFromTarget(target);
+
+  if (richEditor && ["b", "i", "u"].includes(key)) {
+    event.preventDefault();
+    const action = key === "b" ? "toggle-bold" : key === "i" ? "toggle-italic" : "toggle-underline";
+    await handleRichAction(action, richEditor);
+    return;
+  }
+
+  if (richEditor && ["a", "c", "x"].includes(key)) {
+    event.preventDefault();
+    const action = key === "a" ? "select-all-text" : key === "c" ? "copy-text" : "cut-text";
+    await handleRichAction(action, richEditor);
+    return;
+  }
+
+  if (plainControl && ["b", "i", "u"].includes(key)) {
+    event.preventDefault();
+    activePlainTextControl = plainControl;
+    const action = key === "b" ? "toggle-bold" : key === "i" ? "toggle-italic" : "toggle-underline";
+    await handlePlainTextAction(action);
+  }
+}
+
 function makeItemForSection(key, title, description = "", url = "") {
   if (key === "documents") return { title, type: "Document", url, status: url ? "uploaded" : "draft" };
   if (key === "tests") return { name: title, method: description || "Validation notes", status: url ? "uploaded" : "draft", artifact: url, result: description };
@@ -9072,6 +9321,34 @@ function newCompileFile(language = "javascript", seed = {}) {
 function activeCompileWorkspaceAndFile(project = selectedProject()) {
   const workspace = ensureCompileCode(project);
   return { workspace, file: activeCompileFile(project) };
+}
+
+function addCompileSourceFile(project, file = newCompileFile("javascript")) {
+  const workspace = ensureCompileCode(project);
+  workspace.files.push(file);
+  workspace.activeFileId = file.id;
+  setStatus("New compile source created. Type or paste code, then save source.");
+  scheduleAutosave();
+  renderSectionContent(project);
+}
+
+function addCompileTestbenchFile(project) {
+  const workspace = ensureCompileCode(project);
+  const activeFile = activeCompileFile(project);
+  const language = isHdlLanguage(activeFile?.language) ? normalizeCodeLanguage(activeFile.language) : "systemverilog";
+  const designName = firstHdlModuleName(activeFile?.code || "") || "design";
+  const extension = language === "verilog" ? ".v" : ".sv";
+  const file = newCompileFile(language, {
+    fileName: `tb_${slugify(designName).replace(/-/g, "_") || "design"}${extension}`,
+    role: "testbench",
+    code: hdlTestbenchTemplate(language, designName)
+  });
+  workspace.files.push(file);
+  workspace.activeFileId = file.id;
+  setStatus("Testbench created. Connect it to the design, keep the waveform dump calls, then run the simulation.");
+  addCompileMessage(project, "Created an HDL testbench with $dumpfile and $dumpvars for the signal scope.", "info");
+  scheduleAutosave();
+  renderSectionContent(project);
 }
 
 function updateCompilePreview(file) {
@@ -9299,17 +9576,27 @@ async function runCompileTerminalCommand(project) {
   const workspace = ensureCompileCode(project);
   const terminal = workspace.systemTerminal;
   const commandInput = sectionContent.querySelector("[data-compile-terminal-command]");
-  const cwdInput = sectionContent.querySelector("[data-compile-terminal-cwd]");
   const command = String(commandInput?.value || terminal.command || "").trim();
-  const cwd = compileDirectoryPath(cwdInput?.value || terminal.cwd || "");
   if (!command) {
     addCompileMessage(project, "Type a terminal command before running it.", "warning");
     return;
   }
+  const prompt = compileTerminalPromptText(terminal);
+  if (/^(?:cls|clear)$/i.test(command)) {
+    terminal.output = "";
+    terminal.command = "";
+    workspace.activePanel = "terminal";
+    scheduleAutosave();
+    renderSectionContent(project);
+    requestAnimationFrame(() => sectionContent.querySelector("[data-compile-terminal-command]")?.focus?.());
+    return;
+  }
+  const cwd = compileDirectoryPath(terminal.cwd || "");
   terminal.command = command;
   terminal.cwd = cwd;
   workspace.activePanel = "terminal";
-  terminal.output = `Running: ${command}\nWorking folder: ${cwd || "."}\nPlease wait...`;
+  const previousOutput = terminal.output || "";
+  terminal.output = appendCompileTerminalOutput(previousOutput, `${prompt} ${command}\nPlease wait...`);
   addCompileMessage(project, `Terminal command started: ${command}`, "info");
   renderSectionContent(project);
   try {
@@ -9320,26 +9607,33 @@ async function runCompileTerminalCommand(project) {
       body: JSON.stringify({
         command,
         cwd,
+        cwdAbsolute: terminal.cwdAbsolute || "",
         projectId: project.id
       })
     });
     const result = await response.json();
     if (!response.ok || !result.ok) throw new Error(result.error || "Terminal command failed.");
-    terminal.output = result.output || "Command completed with no output.";
+    terminal.output = appendCompileTerminalOutput(previousOutput, `${prompt} ${command}\n${result.output || "Command completed with no output."}`);
     terminal.cwd = result.cwd || cwd;
+    terminal.rootPath = result.rootPath || terminal.rootPath || compileTerminalBasePath();
+    terminal.cwdAbsolute = result.cwdAbsolute || terminal.cwdAbsolute || "";
+    terminal.promptPath = result.promptPath || terminal.cwdAbsolute || "";
+    terminal.command = "";
     terminal.history = [
-      { at: new Date().toISOString(), command, output: terminal.output },
+      { at: new Date().toISOString(), command, output: result.output || "" },
       ...(terminal.history || [])
     ].slice(0, 40);
     addCompileMessage(project, `Terminal command finished: ${command}`, result.exitCode === 0 ? "success" : "warning");
     setStatus("Terminal command completed.");
   } catch (error) {
-    terminal.output = error.message || "Terminal command failed.";
+    terminal.output = appendCompileTerminalOutput(previousOutput, `${prompt} ${command}\n${error.message || "Terminal command failed."}`);
+    terminal.command = "";
     addCompileMessage(project, `Terminal command failed: ${command}`, "error");
     setStatus(error.message || "Terminal command failed.");
   }
   scheduleAutosave();
   renderSectionContent(project);
+  requestAnimationFrame(() => sectionContent.querySelector("[data-compile-terminal-command]")?.focus?.());
 }
 
 async function checkCompileTools(project) {
@@ -9383,6 +9677,91 @@ async function installCompileTools(project, file) {
     renderSectionContent(project);
   } catch (error) {
     file.lastResult = { ok: false, terminal: error.message || "Tool installation failed." };
+    renderSectionContent(project);
+  }
+}
+
+async function runCompileIdeAction(project, action = "") {
+  if (!project || !action) return;
+  const workspace = ensureCompileCode(project);
+  const file = activeCompileFile(project);
+  if (action === "new-file") return addCompileSourceFile(project);
+  if (action === "new-folder") return addCompileDirectory(project);
+  if (action === "add-testbench") return addCompileTestbenchFile(project);
+  if (action === "import-files") return importCompileFiles(project);
+  if (action === "import-directory") return importCompileFiles(project, { directory: true });
+  if (action === "save-project") return saveSelectedProjectToPortfolio();
+  if (action === "project-preview") return openProjectPortfolioPreview();
+  if (action === "portfolio-preview") return openPortfolioPreview();
+  if (action === "builder-guide") return builderGuideOpen?.click();
+  if (action === "preferences") return openPreferencesDialog();
+  if (action === "check-updates") return checkForAppUpdates({ force: true, manual: true });
+  if (action === "check-tools") return checkCompileTools(project);
+  if (action === "clear-messages") {
+    workspace.messages = [];
+    updateCompileMessagesPanel(project);
+    setStatus("Compile messages log cleared.");
+    scheduleAutosave();
+    return;
+  }
+  if (action === "clear-terminal") {
+    workspace.systemTerminal.output = "";
+    workspace.systemTerminal.command = "";
+    workspace.activePanel = "terminal";
+    scheduleAutosave();
+    renderSectionContent(project);
+    return;
+  }
+  if (action.startsWith("view-")) {
+    setCompilePanel(project, action.replace("view-", ""));
+    renderSectionContent(project);
+    return;
+  }
+  if (!file) {
+    setStatus("Add or select a source file first.");
+    return;
+  }
+  if (action === "save-source") {
+    try {
+      await saveCompileFile(project, file);
+      setStatus("Compile source saved.");
+      scheduleAutosave();
+      renderSectionContent(project);
+    } catch (error) {
+      setStatus(error.message || "Compile source could not be saved.");
+    }
+    return;
+  }
+  if (action === "beautify") return beautifyCompileFile(project, file);
+  if (action === "compile") return compileActiveFile(project, file, { action: "compile" });
+  if (action === "build") return compileActiveFile(project, file, { action: "build", forceRebuild: true });
+  if (action === "run") return compileActiveFile(project, file, { action: "run" });
+  if (action === "simulate") return compileActiveFile(project, file, { action: "simulate" });
+  if (action === "install-tools") return installCompileTools(project, file);
+  if (action === "show-output") {
+    showCompileOutput(project, file);
+    addCompileMessage(project, `Displayed terminal output for ${file?.fileName || "the active source"}.`, "info");
+    return;
+  }
+  if (action === "show-scope") {
+    showCompileScope(project, file);
+    if (isHdlLanguage(file?.language)) addCompileMessage(project, `Displayed HDL scope for ${file?.fileName || "the active source"}.`, "info");
+    return;
+  }
+  if (action === "copy-output") {
+    await copyCompileOutput(project, file);
+    updateCompileMessagesPanel(project);
+    return;
+  }
+  if (action === "clear-output") {
+    clearCompileOutput(project, file);
+    updateCompileMessagesPanel(project);
+    return;
+  }
+  if (action === "append-code") {
+    workspace.appendPanelOpen = !workspace.appendPanelOpen;
+    setStatus(workspace.appendPanelOpen ? "Choose where to append the active source." : "Append chooser closed.");
+    scheduleAutosave();
     renderSectionContent(project);
   }
 }
@@ -10788,19 +11167,7 @@ function handleRichEditorContextMenu(event) {
     summaryContextMenu.style.top = `${event.clientY}px`;
     summaryContextMenu.style.maxHeight = "";
     summaryContextMenu.hidden = false;
-    const hostRect = menuHost.getBoundingClientRect();
-    const bounds = {
-      bottom: Math.min(window.innerHeight - 8, hostRect.bottom - 8),
-      left: Math.max(8, hostRect.left + 8),
-      right: Math.min(window.innerWidth - 8, hostRect.right - 8),
-      top: Math.max(8, hostRect.top + 8)
-    };
-    summaryContextMenu.style.maxHeight = `${Math.max(180, bounds.bottom - bounds.top)}px`;
-    const menuRect = summaryContextMenu.getBoundingClientRect();
-    const left = Math.max(bounds.left, Math.min(event.clientX, bounds.right - menuRect.width));
-    const top = Math.max(bounds.top, Math.min(event.clientY, bounds.bottom - menuRect.height));
-    summaryContextMenu.style.left = `${left}px`;
-    summaryContextMenu.style.top = `${top}px`;
+    positionCompactContextMenu(summaryContextMenu, event, menuHost, { minHeight: 180, maxHeight: 340 });
 }
 
 projectFields.addEventListener("contextmenu", handleRichEditorContextMenu);
@@ -10849,19 +11216,7 @@ function handlePlainTextContextMenu(event) {
   summaryContextMenu.style.top = `${event.clientY}px`;
   summaryContextMenu.style.maxHeight = "";
   summaryContextMenu.hidden = false;
-  const hostRect = menuHost.getBoundingClientRect();
-  const bounds = {
-    bottom: Math.min(window.innerHeight - 8, hostRect.bottom - 8),
-    left: Math.max(8, hostRect.left + 8),
-    right: Math.min(window.innerWidth - 8, hostRect.right - 8),
-    top: Math.max(8, hostRect.top + 8)
-  };
-  summaryContextMenu.style.maxHeight = `${Math.max(140, bounds.bottom - bounds.top)}px`;
-  const menuRect = summaryContextMenu.getBoundingClientRect();
-  const left = Math.max(bounds.left, Math.min(event.clientX, bounds.right - menuRect.width));
-  const top = Math.max(bounds.top, Math.min(event.clientY, bounds.bottom - menuRect.height));
-  summaryContextMenu.style.left = `${left}px`;
-  summaryContextMenu.style.top = `${top}px`;
+  positionCompactContextMenu(summaryContextMenu, event, menuHost, { minHeight: 140, maxHeight: 300 });
 }
 
 document.addEventListener("contextmenu", handlePlainTextContextMenu);
@@ -11767,6 +12122,10 @@ sectionContent.addEventListener("click", async (event) => {
   if (!button || !project) return;
 
   const hasDataset = (key) => Object.prototype.hasOwnProperty.call(button.dataset, key);
+  if (button.dataset.compileMenuAction) {
+    await runCompileIdeAction(project, button.dataset.compileMenuAction);
+    return;
+  }
   if (button.dataset.addSection) {
     await addCustomSection();
     return;
@@ -11785,14 +12144,16 @@ sectionContent.addEventListener("click", async (event) => {
     renderSectionContent(project);
     return;
   }
-  if (hasDataset("compileAdd")) {
+  if (hasDataset("compileToggleAppend")) {
     const workspace = ensureCompileCode(project);
-    const file = newCompileFile("javascript");
-    workspace.files.push(file);
-    workspace.activeFileId = file.id;
-    setStatus("New compile source created. Type or paste code, then save source.");
+    workspace.appendPanelOpen = !workspace.appendPanelOpen;
+    setStatus(workspace.appendPanelOpen ? "Choose where to append the active source." : "Append chooser closed.");
     scheduleAutosave();
     renderSectionContent(project);
+    return;
+  }
+  if (hasDataset("compileAdd")) {
+    addCompileSourceFile(project);
     return;
   }
   if (hasDataset("compileAddDirectory")) {
@@ -11800,22 +12161,7 @@ sectionContent.addEventListener("click", async (event) => {
     return;
   }
   if (hasDataset("compileAddTestbench")) {
-    const workspace = ensureCompileCode(project);
-    const activeFile = activeCompileFile(project);
-    const language = isHdlLanguage(activeFile?.language) ? normalizeCodeLanguage(activeFile.language) : "systemverilog";
-    const designName = firstHdlModuleName(activeFile?.code || "") || "design";
-    const extension = language === "verilog" ? ".v" : ".sv";
-    const file = newCompileFile(language, {
-      fileName: `tb_${slugify(designName).replace(/-/g, "_") || "design"}${extension}`,
-      role: "testbench",
-      code: hdlTestbenchTemplate(language, designName)
-    });
-    workspace.files.push(file);
-    workspace.activeFileId = file.id;
-    setStatus("Testbench created. Connect it to the design, keep the waveform dump calls, then run the simulation.");
-    addCompileMessage(project, "Created an HDL testbench with $dumpfile and $dumpvars for the signal scope.", "info");
-    scheduleAutosave();
-    renderSectionContent(project);
+    addCompileTestbenchFile(project);
     return;
   }
   if (hasDataset("compileImport")) {
@@ -11891,6 +12237,8 @@ sectionContent.addEventListener("click", async (event) => {
   }
   if (hasDataset("compileAppendCode")) {
     appendCompileCodeToProject(project, compileFile);
+    compileWorkspace.appendPanelOpen = false;
+    renderSectionContent(project);
     updateCompileMessagesPanel(project);
     return;
   }
@@ -11899,10 +12247,6 @@ sectionContent.addEventListener("click", async (event) => {
     updateCompileMessagesPanel(project);
     setStatus("Compile messages log cleared.");
     scheduleAutosave();
-    return;
-  }
-  if (hasDataset("compileTerminalRun")) {
-    await runCompileTerminalCommand(project);
     return;
   }
   if (hasDataset("compileTerminalClear")) {
@@ -12117,6 +12461,31 @@ sectionContent.addEventListener("click", async (event) => {
   }
 });
 
+function hideCompileTreeContextMenus() {
+  sectionContent.querySelectorAll("[data-compile-tree-context-menu]").forEach((menu) => {
+    menu.hidden = true;
+  });
+}
+
+sectionContent.addEventListener("contextmenu", (event) => {
+  const sidebar = event.target.closest(".compile-code-sidebar");
+  if (!sidebar) return;
+  const menu = sidebar.querySelector("[data-compile-tree-context-menu]");
+  if (!menu) return;
+  event.preventDefault();
+  hideCompileTreeContextMenus();
+  menu.hidden = false;
+  const width = 190;
+  const height = 210;
+  menu.style.left = `${Math.min(event.clientX, window.innerWidth - width - 8)}px`;
+  menu.style.top = `${Math.min(event.clientY, window.innerHeight - height - 8)}px`;
+});
+
+document.addEventListener("click", (event) => {
+  if (event.target.closest("[data-compile-tree-context-menu]")) return;
+  hideCompileTreeContextMenus();
+});
+
 sectionContent.addEventListener("submit", (event) => {
   if (event.target.id !== "pending-editor") return;
   event.preventDefault();
@@ -12188,10 +12557,9 @@ sectionContent.addEventListener("input", (event) => {
     return;
   }
 
-  if (event.target.dataset.compileTerminalCommand !== undefined || event.target.dataset.compileTerminalCwd !== undefined) {
+  if (event.target.dataset.compileTerminalCommand !== undefined) {
     const workspace = ensureCompileCode(project);
-    workspace.systemTerminal.command = String(sectionContent.querySelector("[data-compile-terminal-command]")?.value || "");
-    workspace.systemTerminal.cwd = compileDirectoryPath(sectionContent.querySelector("[data-compile-terminal-cwd]")?.value || "");
+    workspace.systemTerminal.command = String(event.target.value || "");
     scheduleAutosave(900);
     return;
   }
@@ -12337,6 +12705,9 @@ preferencesForm?.addEventListener("submit", (event) => {
   saveBuilderPreferencesFromDialog();
   closeDialogElement(preferencesDialog, "save");
 });
+lightModeReturnButton?.addEventListener("click", () => {
+  setBuilderTheme("light");
+});
 
 saveDraftButton.addEventListener("click", () => saveCatalog("/api/save-draft", "Draft saved"));
 applyCatalogButton.addEventListener("click", () => {
@@ -12355,6 +12726,10 @@ window.addEventListener("builder-menu-action", (event) => {
   if (type === "preferences") openPreferencesDialog();
   if (type === "set-theme") setBuilderTheme(event.detail?.theme || "light");
 });
+
+document.addEventListener("keydown", (event) => {
+  void handleGlobalKeyboardShortcuts(event);
+}, true);
 
 loadBuilderPreferences();
 renderSelectionInspectorOptions();
