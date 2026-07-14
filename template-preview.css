@@ -3226,6 +3226,70 @@ body[data-builder-theme="dark"] .summary-context-menu button:hover {
   background: #b8e6f7;
 }
 
+.project-section-list {
+  display: grid;
+  flex: 1 1 100%;
+  width: 100%;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.project-section-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  min-height: 34px;
+  border-bottom: 1px solid #e6f4fa;
+  background: #ffffff;
+}
+
+.project-section-row:last-child {
+  border-bottom: 0;
+}
+
+.project-section-row:hover,
+.project-section-row.active {
+  background: var(--template-hover, #b8e6f7);
+}
+
+.project-section-select {
+  justify-content: flex-start;
+  width: 100%;
+  min-height: 34px;
+  padding: 5px 12px;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  color: var(--ink) !important;
+  font-size: 0.88rem;
+  font-weight: 650;
+  text-align: left;
+}
+
+.project-section-select:hover,
+.project-section-select:active {
+  background: transparent !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
+
+.project-section-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 6px;
+}
+
+.project-section-actions button {
+  min-height: 24px;
+  padding: 0 8px;
+  border-radius: 4px;
+  font-size: 0.72rem;
+}
+
 .section-content {
   display: grid;
   gap: 14px;
@@ -3386,12 +3450,6 @@ body[data-builder-theme="dark"] .summary-context-menu button:hover {
   align-items: center;
   gap: 4px;
   padding-right: 6px;
-  opacity: 0;
-  pointer-events: none;
-}
-
-.builder-explorer-row:hover .builder-explorer-actions,
-.builder-explorer-row:focus-within .builder-explorer-actions {
   opacity: 1;
   pointer-events: auto;
 }
@@ -3981,14 +4039,20 @@ body.full-window-open {
 
 .project-dialog-heading,
 .project-preview-heading,
-.portfolio-preview-heading {
+.portfolio-preview-heading,
+.template-dialog-heading,
+.asset-dialog form > div:first-child,
+.builder-guide-dialog-content .project-preview-heading {
+  --dialog-left-control-width: 82px;
+  --dialog-right-control-width: 108px;
   position: relative;
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
   min-height: 42px;
-  padding: 0 86px 0 90px;
+  padding: 0 calc(var(--dialog-right-control-width) + 8px) 0 calc(var(--dialog-left-control-width) + 8px);
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #f7fcff;
@@ -4004,7 +4068,7 @@ body.full-window-open {
 .is-hidden-dialog .asset-dialog form > div:first-child {
   min-height: 30px;
   padding-left: 8px;
-  padding-right: 82px;
+  padding-right: calc(var(--dialog-right-control-width) + 8px);
 }
 
 .is-minimized-dialog .dialog-window-left-controls,
@@ -4047,13 +4111,13 @@ body.full-window-open {
   position: sticky;
   top: 0;
   z-index: 5;
-  padding: 0 86px 0 90px;
+  padding: 0 calc(var(--dialog-right-control-width) + 8px) 0 calc(var(--dialog-left-control-width) + 8px);
 }
 
 .project-preview-dialog .project-preview-heading,
 .portfolio-preview-dialog .portfolio-window-heading {
   width: 100%;
-  padding: 0 86px 0 90px;
+  padding: 0 calc(var(--dialog-right-control-width) + 8px) 0 calc(var(--dialog-left-control-width) + 8px);
   border: 0;
   border-bottom: 1px solid var(--line);
   border-radius: 0;
@@ -4140,6 +4204,12 @@ body.full-window-open {
   min-width: 0;
 }
 
+.project-dialog-heading > div:first-child,
+.project-preview-heading > div:first-child,
+.portfolio-preview-heading > div:first-child {
+  overflow: hidden;
+}
+
 .project-dialog-heading .eyebrow,
 .project-preview-heading .eyebrow,
 .portfolio-preview-heading .eyebrow,
@@ -4185,6 +4255,9 @@ body.full-window-open {
   align-self: flex-start;
   gap: 8px;
   min-width: 0;
+  max-width: 100%;
+  padding-right: 0;
+  overflow: hidden;
 }
 
 .dialog-window-left-controls,
@@ -4212,6 +4285,9 @@ body.full-window-open {
   align-self: flex-start;
   justify-content: flex-end;
   margin-left: 0;
+  width: 108px;
+  min-width: 108px;
+  overflow: visible;
 }
 
 .dialog-window-control {
@@ -4681,9 +4757,11 @@ body.full-window-open {
 .asset-dialog form > div:first-child {
   position: relative;
   display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: flex-start;
   gap: 4px;
   margin: 0 -22px;
-  padding: 6px 86px 10px 90px;
+  padding: 6px calc(var(--dialog-right-control-width) + 8px) 10px calc(var(--dialog-left-control-width) + 8px);
   border: 0;
   border-bottom: 1px solid var(--line);
   border-radius: 0;
@@ -4751,9 +4829,12 @@ body.full-window-open {
 }
 
 .template-dialog-heading {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 18px;
+  padding: 0 calc(var(--dialog-right-control-width) + 8px) 0 calc(var(--dialog-left-control-width) + 8px);
 }
 
 .template-dialog h2,
@@ -5471,6 +5552,21 @@ body[data-builder-theme="dark"] .builder-explorer-list,
 body[data-builder-theme="dark"] .builder-explorer-row {
   border-color: var(--builder-dark-line);
   background: var(--builder-dark-surface-2);
+}
+
+body[data-builder-theme="dark"] .project-section-list,
+body[data-builder-theme="dark"] .project-section-row {
+  border-color: var(--builder-dark-line);
+  background: var(--builder-dark-surface-2);
+}
+
+body[data-builder-theme="dark"] .project-section-row:hover,
+body[data-builder-theme="dark"] .project-section-row.active {
+  background: var(--template-hover, var(--builder-dark-command-hover));
+}
+
+body[data-builder-theme="dark"] .project-section-select {
+  color: var(--builder-dark-text) !important;
 }
 
 body[data-builder-theme="dark"] .builder-explorer-row:hover {
