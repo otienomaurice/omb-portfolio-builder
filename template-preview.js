@@ -148,6 +148,7 @@ const deleteConfirmNo = document.querySelector("#delete-confirm-no");
 const saveDraftButton = document.querySelector("#save-draft");
 const applyCatalogButton = document.querySelector("#apply-catalog");
 const builderSaveState = document.querySelector("#builder-save-state");
+const lightModeReturnButton = document.querySelector("#light-mode-return");
 const builderStatus = document.querySelector("#builder-status");
 const workflowSelectedProject = document.querySelector("#workflow-selected-project");
 const workflowTotalProjects = document.querySelector("#workflow-total-projects");
@@ -2369,6 +2370,7 @@ function applyBuilderPreferences() {
   document.documentElement.dataset.builderTheme = theme;
   document.body.dataset.builderTheme = theme;
   if (preferenceTheme) preferenceTheme.value = theme;
+  if (lightModeReturnButton) lightModeReturnButton.hidden = theme !== "dark";
 }
 
 function setBuilderTheme(theme = "light") {
@@ -12702,6 +12704,9 @@ preferencesForm?.addEventListener("submit", (event) => {
   event.preventDefault();
   saveBuilderPreferencesFromDialog();
   closeDialogElement(preferencesDialog, "save");
+});
+lightModeReturnButton?.addEventListener("click", () => {
+  setBuilderTheme("light");
 });
 
 saveDraftButton.addEventListener("click", () => saveCatalog("/api/save-draft", "Draft saved"));

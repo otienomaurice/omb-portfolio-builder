@@ -11,7 +11,7 @@
     <link rel="shortcut icon" href="assets/favicon.ico" />
     <link rel="apple-touch-icon" sizes="180x180" href="assets/apple-touch-icon.png" />
     <link rel="stylesheet" href="styles.css" />
-    <link rel="stylesheet" href="template-preview.css?v=0.2.43" />
+    <link rel="stylesheet" href="template-preview.css?v=0.2.44" />
   </head>
   <body class="template-preview-page">
       <header class="template-header">
@@ -27,6 +27,10 @@
           </a>
           <div class="builder-header-actions">
               <span class="builder-save-state" id="builder-save-state" data-state="loaded">Loaded</span>
+              <button class="button secondary light-mode-return" id="light-mode-return" type="button" aria-label="Return builder to light mode" hidden>
+                  <span class="light-mode-icon" aria-hidden="true"></span>
+                  <span>Light</span>
+              </button>
               <a class="button secondary" href="index.html#projects" target="_blank" rel="noreferrer">Portfolio</a>
               <button class="button secondary" id="publish-target-open" type="button">Publishing target</button>
               <button class="button secondary" id="security-report-open" type="button">Security report</button>
@@ -363,7 +367,7 @@
               </div>
               <div class="builder-guide-sections" id="builder-guide-sections">
                   <details class="builder-guide-section" data-guide-section="setup profile" open>
-                      <summary>1. First setup: identity, branding, and contact details</summary>
+                      <summary>First setup: identity, branding, and contact details</summary>
                       <div>
                           <p>Start here when the builder is blank, when you are setting up a new machine, or when the public website still has placeholder identity details. This information becomes the stable identity layer of the portfolio: the name recruiters see, the contact links they use, and the visual brand that makes the site recognizable.</p>
                           <p>Think of this step as setting the portfolio header, business card, and public identity before adding project evidence. Projects can change often, but the profile section should stay clean, accurate, and easy to verify.</p>
@@ -385,7 +389,7 @@
                       </div>
                   </details>
                   <details class="builder-guide-section" data-guide-section="setup">
-                      <summary>2. Front page text and Fun facts</summary>
+                      <summary>Front page text and Fun facts</summary>
                       <div>
                           <p>Front page text controls the first message recruiters see before they click into projects. It should explain the portfolio in plain language: what kind of engineering work is shown, what strengths the site is meant to prove, and why the visitor should keep exploring.</p>
                           <p>Fun facts sit near the top of the site and make the portfolio feel human without interrupting the engineering content. They should be short, memorable, and safe for a professional audience.</p>
@@ -406,7 +410,7 @@
                       </div>
                   </details>
                   <details class="builder-guide-section" data-guide-section="projects" open>
-                      <summary>3. Project categories and project creation</summary>
+                      <summary>Project categories and project creation</summary>
                       <div>
                           <p>All project creation starts from the main Add project control. This keeps project creation consistent and prevents hidden category-specific add buttons from creating projects with incomplete metadata.</p>
                           <p>Categories are the top-level filing system for engineering work. Use them like a recruiter would scan them: Analog and Mixed Signal, Digital, Embedded, PCB, Verification, Power Electronics, or any other category that describes the work clearly.</p>
@@ -427,7 +431,7 @@
                       </div>
                   </details>
                   <details class="builder-guide-section" data-guide-section="projects editor">
-                      <summary>4. Project structure and parser rules</summary>
+                      <summary>Project structure and parser rules</summary>
                       <div>
                           <p>Projects are built by the parser from the sections you save. The parser reads typed content, rich text, files, images, links, and section order, then builds the project page in the same style used by the public website.</p>
                           <p>The goal is to avoid hand-editing website code. You organize the project in the builder, save it, preview it, and let the parser produce the clean recruiter-facing version.</p>
@@ -448,7 +452,7 @@
                       </div>
                   </details>
                   <details class="builder-guide-section" data-guide-section="editor">
-                      <summary>5. Rich text editing and right-click menu</summary>
+                      <summary>Rich text editing and right-click menu</summary>
                       <div>
                           <p>Rich text fields behave like document editors. Click where you want to type, highlight the exact words you want to edit, then apply formatting to that selection. Formatting should not change an entire paragraph unless the whole paragraph is selected.</p>
                           <p>The builder stores the text as structured content so the portfolio can render it cleanly later. That means the editor may standardize pasted formatting, but it should preserve intentional choices such as bold text, font size, color, links, hard line breaks, images, formulas, and code blocks.</p>
@@ -472,7 +476,7 @@
                       </div>
                   </details>
                   <details class="builder-guide-section" data-guide-section="editor">
-                      <summary>6. Links, formulas, code, and pasted content</summary>
+                      <summary>Links, formulas, code, and pasted content</summary>
                       <div>
                           <p>The builder distinguishes normal links from mathematical formulas because they behave differently on the public website. A link should take the visitor to a webpage or resource. A formula should render as math and stay readable inside the project explanation.</p>
                           <p>Use this section when pasting content from ChatGPT, documentation, GitHub, LinkedIn, LTspice notes, equations, source code, or lab references. The builder tries to recognize the content, but you should still check the preview before publishing.</p>
@@ -504,7 +508,7 @@
                       </div>
                   </details>
                   <details class="builder-guide-section" data-guide-section="editor projects">
-                      <summary>7. Images and file evidence</summary>
+                      <summary>Images and file evidence</summary>
                       <div>
                           <p>Add evidence where it belongs so the final portfolio reads like a technical record, not a file dump. Recruiters should be able to click into a project and understand what was designed, what was tested, which tools were used, and what files support the claims.</p>
                           <p>Images are best for visual evidence: schematics, PCB layouts, test benches, oscilloscope captures, simulation plots, block diagrams, timing diagrams, microscope photos, assembled boards, or setup photos. Files are best for downloadable proof: PDFs, reports, source files, code archives, simulation decks, datasheets, or design notes.</p>
@@ -527,7 +531,7 @@
                       </div>
                   </details>
                   <details class="builder-guide-section" data-guide-section="preview">
-                      <summary>8. Project preview and full portfolio preview</summary>
+                      <summary>Project preview and full portfolio preview</summary>
                       <div>
                           <p>Preview is the checkpoint before anything is published. It lets you inspect the generated portfolio exactly the way a visitor will experience it, without pushing changes to GitHub Pages yet.</p>
                           <p>There are two preview levels. Project preview isolates one project and shows how that project will appear inside the final portfolio. Full portfolio preview shows the whole website, including profile, front page text, fun facts, project categories, personal sections, AI area, and contact section.</p>
@@ -548,7 +552,7 @@
                       </div>
                   </details>
                   <details class="builder-guide-section" data-guide-section="mobile preview">
-                      <summary>9. Mobile and desktop output</summary>
+                      <summary>Mobile and desktop output</summary>
                       <div>
                           <p>The parser saves responsive layout instructions when projects are saved. The same content must work on a laptop screen, a desktop monitor, and a phone. This is especially important because recruiters may open the resume link from a phone before they ever view it on a computer.</p>
                           <p>Good mobile output is not just smaller desktop output. It should keep titles readable, controls reachable, images contained, and contact information easy to use.</p>
@@ -569,7 +573,7 @@
                       </div>
                   </details>
                   <details class="builder-guide-section" data-guide-section="publish security">
-                      <summary>10. Publishing target and authentication</summary>
+                      <summary>Publishing target and authentication</summary>
                       <div>
                           <p>Publishing target controls where Apply to site can push. A target is saved only after write access is verified, because the builder should never publish to a website unless the current user has permission to update that repository.</p>
                           <p>This protects your portfolio from accidental pushes and also lets another user install the builder for their own site without getting access to your website. The target describes where the public portfolio will live; authentication proves the current user can write there.</p>
@@ -590,7 +594,7 @@
                       </div>
                   </details>
                   <details class="builder-guide-section" data-guide-section="publish">
-                      <summary>11. Save draft, Apply to site, and offline work</summary>
+                      <summary>Save draft, Apply to site, and offline work</summary>
                       <div>
                           <p>These buttons do different jobs, and using them in the right order prevents lost work. Save draft protects the builder state on the local machine. Apply to site publishes the already-saved public version to the selected website target.</p>
                           <p>The builder can be used offline for most editing work. Publishing is the only part that needs the network and a Git target with write access.</p>
@@ -611,9 +615,9 @@
                       </div>
                   </details>
                   <details class="builder-guide-section" data-guide-section="update">
-                      <summary>12. App updates and troubleshooting</summary>
+                      <summary>App updates and troubleshooting</summary>
                       <div>
-                          <p>Use Check updates to manually look for a newer builder. Updates come from GitHub Releases after changes are merged into the release branch and a new installer is built. Use the Preferences menu to switch between light and dark builder mode without changing the public portfolio appearance.</p>
+                          <p>Use Check updates to manually look for a newer builder. Updates come from GitHub Releases after changes are merged into the release branch and a new installer is built. Use Preferences to select dark builder mode. When dark mode is active, use the Light icon in the main header to return to light mode. Dark mode only changes how the builder application is viewed; the portfolio is still built from the saved content colors and selected appearances.</p>
                           <p>An update should behave like a repair of the existing app, not like a second installation. It should close the current builder, update the existing install location, and reopen the app with the new files.</p>
                           <ol>
                               <li>When an update is available, click Update.</li>
@@ -632,7 +636,7 @@
                       </div>
                   </details>
                   <details class="builder-guide-section" data-guide-section="security publish">
-                      <summary>13. Safety rules for public websites</summary>
+                      <summary>Safety rules for public websites</summary>
                       <div>
                           <p>Anything pushed to the portfolio repository can become public. Treat the portfolio as a public engineering document. If a file would be unsafe in a public GitHub repository, it should not be uploaded or published through the builder.</p>
                           <p>Good portfolio evidence is public-safe, clearly labeled, and useful to a visitor. Private credentials, private lab data, personal identity documents, and unpublished confidential work should stay out of the portfolio.</p>
@@ -654,7 +658,7 @@
                       </div>
                   </details>
                   <details class="builder-guide-section" data-guide-section="setup projects editor preview publish update mobile security">
-                      <summary>14. Recommended build routine</summary>
+                      <summary>Recommended build routine</summary>
                       <div>
                           <p>Use this routine when you sit down to add or edit portfolio content. It keeps the builder state, project previews, full portfolio preview, saved draft, and public website aligned.</p>
                           <p>The routine is intentionally repetitive because publishing is safer when every project has been parsed and every section has been previewed before Git pushes anything.</p>
@@ -1389,7 +1393,7 @@
               </label>
           </div>
       </div>
-      <script src="electronics-search.js?v=0.2.43"></script>
-      <script src="template-preview.js?v=0.2.43"></script>
+      <script src="electronics-search.js?v=0.2.44"></script>
+      <script src="template-preview.js?v=0.2.44"></script>
   </body>
 </html>

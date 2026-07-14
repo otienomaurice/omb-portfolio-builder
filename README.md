@@ -117,9 +117,9 @@ For example, a SystemVerilog file attached to a design section might be saved as
 
 The portfolio parser carries those rich text fields into project previews, full portfolio previews, saved drafts, and generated website catalogs. Use **Save project** or **Save all sections** before previewing or publishing so the parsed site output includes the latest front-page, profile, contact, fun fact, and project text formatting.
 
-The top application menu includes **Preferences**. Use it to open builder preferences or switch the builder between light and dark mode. This changes the builder workspace only; public portfolio appearance still comes from the selected site and project appearances.
+The top application menu includes **Preferences**. Use Preferences to select dark builder mode. When dark mode is active, a **Light** icon appears in the main builder header so the app can be returned to light mode quickly. The main page does not expose a dark-mode shortcut; dark mode starts from Preferences.
 
-Dark mode applies to builder panels, dialogs, guide windows, menus, status chips, and window/icon controls. Editing fields and selected project appearances keep their own colors so typed content, field formatting, and project templates remain predictable.
+Dark mode is only a viewing skin for the builder application. It recolors builder panels, dialogs, guide windows, menus, status chips, inputs, lists, editor frames, and window/icon controls so the application feels consistent with the site palette while remaining readable. Portfolio content is still built from the saved light-mode/content values in the catalog, including field colors selected while editing.
 
 ## Publishing
 
@@ -262,6 +262,7 @@ Use the workflow in [BRANCHING.md](BRANCHING.md):
 | `codex/fix-beautify-section-actions-0.2.41` | Removes edit/delete controls from the project section tab row, keeps delete inside the opened section, improves code beautify so one-line brace code is visibly formatted, and makes builder file rows match the clean project-list style. | `development` | `development` | Active |
 | `codex/nested-section-window-editor-0.2.42` | Makes project sections and subsections open as nested builder views, removes duplicate edit/preview rendering while actively editing, routes file clicks to PDF/text viewers or downloads, aligns project window controls, and bumps the builder release version to `0.2.42`. | `development` | `development` | Active |
 | `codex/ide-terminal-prompt-0.2.43` | Converts the Compile Code terminal into an IDE-style prompt with no separate command/directory form, makes File/Edit/View/Project/Build/Debug/Tools/Help execute real compile workspace commands, compacts Solution Explorer controls into small icons and right-click menus, and moves Append Code into an icon-opened destination chooser. | `development` | `development` | Active |
+| `codex/dark-mode-recolor-0.2.44` | Makes dark mode a builder-only viewing skin that automatically recolors app chrome, dialogs, menus, inputs, lists, icons, and editor frames while preserving light-mode portfolio content colors for published output; adds a header Light icon, compacts project/subsection/window controls, and cleans the builder guide so each topic row opens directly without arrows, numbering, or Open pills. | `development` | `development` | Active |
 
 ## Uninstall
 
