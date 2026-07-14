@@ -244,6 +244,8 @@ const standardSections = [
 const preferenceStorageKey = "omb-builder-preferences";
 const defaultBuilderPreferences = { theme: "light" };
 let builderPreferences = { ...defaultBuilderPreferences };
+let activeCompileTreeContext = null;
+let activeOutputDockDrag = null;
 
 const supportedCodeLanguages = [
   { id: "c", label: "C", aliases: ["c"], extensions: [".c", ".h"], defaultFile: "main.c" },
@@ -2062,6 +2064,12 @@ function ensureCompileCode(project) {
       })).filter((item) => item.command)
       : []
   };
+  project.compileCode.outputDockUnlocked = Boolean(project.compileCode.outputDockUnlocked);
+  const dockPosition = project.compileCode.outputDockPosition || {};
+  project.compileCode.outputDockPosition = {
+    x: Number.isFinite(Number(dockPosition.x)) ? Number(dockPosition.x) : 72,
+    y: Number.isFinite(Number(dockPosition.y)) ? Number(dockPosition.y) : 120
+  };
   project.compileCode.activePanel = ["console", "messages", "terminal", "scope"].includes(project.compileCode.activePanel)
     ? project.compileCode.activePanel
     : "console";
@@ -2176,6 +2184,45 @@ function safeClientCodeRelativePath(value = "", language = "javascript") {
 
 function compileFilePath(file = {}) {
   return safeClientCodeRelativePath(file.relativePath || file.fileName || defaultCodeFileName(file.language), file.language);
+}
+
+function compileProjectFolderName(project = selectedProject()) {
+  return safeClientCodeDirectorySegment(project?.id || "project");
+}
+
+function compileTerminalBasePath() {
+  return "C:\\Users\\otien\\AppData\\Local\\OMB Portfolio Builder\\compile-code";
+}
+
+function compileProjectRootPath(project = selectedProject()) {
+  return `${compileTerminalBasePath()}\\${compileProjectFolderName(project)}`;
+}
+
+function compileAbsolutePath(project, relativePath = "") {
+  const cleanRelative = compilePathSegments(relativePath).join("\\");
+  return cleanRelative ? `${compileProjectRootPath(project)}\\${cleanRelative}` : compileProjectRootPath(project);
+}
+
+function compileFileAbsolutePath(project, file = {}) {
+  return compileAbsolutePath(project, compileFilePath(file));
+}
+
+function compileRelativePathFromInput(value = "", file = {}, project = selectedProject()) {
+  const raw = String(value || "").trim();
+  if (!raw) return compileFilePath(file);
+  const normalizedRaw = raw.replace(/\//g, "\\");
+  const projectRoot = compileProjectRootPath(project).replace(/\//g, "\\");
+  const projectRootLower = projectRoot.toLowerCase();
+  const rawLower = normalizedRaw.toLowerCase();
+  if (rawLower === projectRootLower) return compileFilePath(file);
+  if (rawLower.startsWith(`${projectRootLower}\\`)) {
+    return safeClientCodeRelativePath(normalizedRaw.slice(projectRoot.length + 1), file.language);
+  }
+  if (/^[a-zA-Z]:\\/.test(normalizedRaw)) {
+    const segments = compilePathSegments(normalizedRaw);
+    return safeClientCodeRelativePath(segments.slice(-Math.min(segments.length, 3)).join("/"), file.language);
+  }
+  return safeClientCodeRelativePath(raw, file.language);
 }
 
 function compileFileNameFromPath(relativePath = "", language = "javascript") {
@@ -4952,6 +4999,10 @@ function createRichTextBlock(text = "", fontSize = "normal", align = "left", fon
 
 function richBlockActions(label = "block", options = {}) {
   return `
+    ${options.typingRails ? `
+      <button class="rich-block-typing-rail rich-block-typing-before" type="button" data-rich-caret="before" aria-label="Type before ${escapeHtml(label)}"></button>
+      <button class="rich-block-typing-rail rich-block-typing-after" type="button" data-rich-caret="after" aria-label="Type after ${escapeHtml(label)}"></button>
+    ` : ""}
     <div class="rich-block-actions">
       ${options.movable ? `<button class="rich-drag-handle" type="button" draggable="true" data-rich-drag-handle aria-label="Move ${escapeHtml(label)}">Move</button>` : ""}
       <button type="button" data-rich-block-action="edit" aria-label="Edit ${escapeHtml(label)}">Edit</button>
@@ -4980,7 +5031,7 @@ function createRichImageBlock(blockData) {
   figure.draggable = true;
   figure.title = "Drag image to move it between text.";
   figure.innerHTML = `
-    ${richBlockActions("overview image", { movable: true })}
+    ${richBlockActions("overview image", { movable: true, typingRails: true })}
     ${figure.dataset.display === "download" ? `<span class="rich-download-badge">Download only</span>` : ""}
     <span class="rich-image-viewport crop-${figure.dataset.cropAspect === "original" ? "original" : "active"}"${richImageCropStyle(blockData)}>
       <img src="${escapeHtml(normalizeLinkTarget(blockData.url, { assumeWeb: true }))}" alt="${escapeHtml(title || "Overview image")}" draggable="true" data-rich-image-drag="true">
@@ -4999,7 +5050,7 @@ function createRichFormulaBlock(blockData) {
   block.dataset.align = align;
   block.contentEditable = "false";
   block.innerHTML = `
-    ${richBlockActions("formula")}
+    ${richBlockActions("formula", { typingRails: true })}
     <span class="formula-text">${escapeHtml(unwrapFormula(blockData.formula || ""))}</span>
   `;
   return block;
@@ -5017,7 +5068,7 @@ function createRichCodeBlock(blockData = {}) {
   block.dataset.code = code;
   block.contentEditable = "false";
   block.innerHTML = `
-    ${richBlockActions("code block")}
+    ${richBlockActions("code block", { typingRails: true })}
     <figcaption><span>&lt;/&gt;</span> ${escapeHtml(codeLanguageLabel(language))}<button type="button" data-rich-block-action="copy-code">Copy code</button></figcaption>
     <pre><code>${tokenizedCodeHtml(code, language)}</code></pre>
   `;
@@ -5042,7 +5093,7 @@ function refreshRichImageBlock(block, blockData) {
   block.classList.add(`justify-${align}`);
   const title = cleanRichImageTitle({ title: block.dataset.title });
   block.innerHTML = `
-    ${richBlockActions("overview image", { movable: true })}
+    ${richBlockActions("overview image", { movable: true, typingRails: true })}
     ${block.dataset.display === "download" ? `<span class="rich-download-badge">Download only</span>` : ""}
     <span class="rich-image-viewport crop-${block.dataset.cropAspect === "original" ? "original" : "active"}"${richImageCropStyle({
       cropAspect: block.dataset.cropAspect,
@@ -5064,7 +5115,7 @@ function refreshRichFormulaBlock(block, blockData) {
   block.classList.remove("justify-left", "justify-center", "justify-right");
   block.classList.add(`justify-${align}`);
   block.innerHTML = `
-    ${richBlockActions("formula")}
+    ${richBlockActions("formula", { typingRails: true })}
     <span class="formula-text">${escapeHtml(formula)}</span>
   `;
 }
@@ -5078,7 +5129,7 @@ function refreshRichCodeBlock(block, blockData = {}) {
   block.dataset.code = code;
   block.className = `rich-block rich-code-block rich-code-language-${language}`;
   block.innerHTML = `
-    ${richBlockActions("code block")}
+    ${richBlockActions("code block", { typingRails: true })}
     <figcaption><span>&lt;/&gt;</span> ${escapeHtml(codeLanguageLabel(language))}<button type="button" data-rich-block-action="copy-code">Copy code</button></figcaption>
     <pre><code>${tokenizedCodeHtml(code, language)}</code></pre>
   `;
@@ -6137,7 +6188,28 @@ function refreshSummaryCodeDialogPreview() {
 function beautifyCodeClient(code = "", language = "javascript") {
   const normalized = String(code || "").replace(/\r\n?/g, "\n").replace(/\t/g, "  ");
   const lang = normalizeCodeLanguage(language);
-  if (["c", "cpp", "java", "javascript", "verilog", "systemverilog"].includes(lang)) {
+  if (["verilog", "systemverilog"].includes(lang)) {
+    const expanded = normalized
+      .replace(/;\s*(?=\S)/g, ";\n")
+      .replace(/\b(begin|case|casex|casez|fork|generate)\b\s*(?=\S)/gi, "$1\n")
+      .replace(/\s+\b(end|endcase|endgenerate|endtask|endfunction|endmodule|join|join_any|join_none)\b/gi, "\n$1")
+      .replace(/\belse\b\s*(?=\S)/gi, "else\n")
+      .replace(/\n{3,}/g, "\n\n");
+    let depth = 0;
+    return expanded.split("\n").map((rawLine) => {
+      const line = rawLine.trim();
+      if (!line) return "";
+      const lower = line.toLowerCase();
+      const closes = /^(end|endcase|endgenerate|endtask|endfunction|endmodule|join|join_any|join_none)\b/.test(lower);
+      const middle = /^(else)\b/.test(lower);
+      if (closes || middle) depth = Math.max(0, depth - 1);
+      const nextLine = /^`/.test(line) ? line : `${"  ".repeat(depth)}${line}`;
+      if (/\b(module|begin|case|casex|casez|fork|generate|task|function)\b/.test(lower) && !/\bendmodule\b/.test(lower)) depth += 1;
+      if (middle) depth += 1;
+      return nextLine;
+    }).join("\n").replace(/\n{4,}/g, "\n\n\n").trimEnd();
+  }
+  if (["c", "cpp", "java", "javascript"].includes(lang)) {
     let depth = 0;
     return normalized.split("\n").map((rawLine) => {
       const line = rawLine.trim();
@@ -7637,24 +7709,22 @@ function renderNestedSectionNav(section, currentChildren = [], currentPath = [])
   if (!childRows.length) return "";
 
   return `
-    <div class="project-section-list nested-section-list" role="list" aria-label="Subsections">
+    <nav class="nested-section-link-strip" aria-label="Subsections in this section">
       ${childRows.map(({ item, index }) => {
         const pathValue = customViewPathValue([...currentPath, index]);
         return `
-          <div class="project-section-row nested-section-row" role="listitem">
-            <button
-              class="project-section-select nested-section-select"
-              type="button"
-              data-open-node-view="true"
-              data-section-id="${escapeHtml(section.id)}"
-              data-node-path="${escapeHtml(pathValue)}"
-            >
-              ${escapeHtml(builderNodeTitle(item))}
-            </button>
-          </div>
+          <button
+            class="nested-section-link"
+            type="button"
+            data-open-node-view="true"
+            data-section-id="${escapeHtml(section.id)}"
+            data-node-path="${escapeHtml(pathValue)}"
+          >
+            ${escapeHtml(builderNodeTitle(item))}
+          </button>
         `;
       }).join("")}
-    </div>
+    </nav>
   `;
 }
 
@@ -7687,20 +7757,6 @@ function renderCustomFilesList(section, currentChildren = [], currentPath = []) 
   `;
 }
 
-function renderCustomViewBreadcrumb(section, path = []) {
-  if (!path.length) return "";
-  const parts = [];
-  let current = null;
-  path.forEach((_, index) => {
-    const partialPath = path.slice(0, index + 1);
-    current = findBuilderNode(section, partialPath);
-    if (current) parts.push(builderNodeTitle(current));
-  });
-  return parts.length
-    ? `<p class="custom-section-breadcrumb">${escapeHtml(section.title || "Section")} / ${parts.map(escapeHtml).join(" / ")}</p>`
-    : "";
-}
-
 function renderCustomSection(project, sectionId) {
   const section = (project.sections || []).find((item) => item.id === sectionId);
   if (!section) return `<p class="evidence-empty">Section not found.</p>`;
@@ -7722,7 +7778,6 @@ function renderCustomSection(project, sectionId) {
     <div class="section-window-heading">
       <div>
         <h3>${escapeHtml(title)}</h3>
-        ${renderCustomViewBreadcrumb(section, currentPath)}
       </div>
       <div>
         <button class="button primary" type="button" data-add-node-subsection="${escapeHtml(section.id)}" data-node-path="${escapeHtml(pathValue)}">Add subsection</button>
@@ -8104,7 +8159,13 @@ function renderCompileTreeFolder(node, activeId = "") {
     </details>
   `).join("");
   const fileHtml = files.map((file) => `
-    <button class="compile-code-tree-file${file.id === activeId ? " is-active" : ""}" type="button" data-compile-select="${escapeHtml(file.id)}">
+    <button
+      class="compile-code-tree-file${file.id === activeId ? " is-active" : ""}"
+      type="button"
+      data-compile-select="${escapeHtml(file.id)}"
+      data-compile-tree-file-id="${escapeHtml(file.id)}"
+      data-compile-tree-file-path="${escapeHtml(compileFilePath(file))}"
+    >
       <span class="compile-file-extension">${escapeHtml((file.fileName.match(/\.[^.]+$/)?.[0] || "src").replace(".", ""))}</span>
       <span title="${escapeHtml(compileFilePath(file))}">${escapeHtml(file.fileName)}</span>
       <small>${escapeHtml(compileFileDirtyLabel(file))}</small>
@@ -8153,7 +8214,7 @@ function updateCompileSystemTerminalPanel(project) {
   const outputElement = sectionContent.querySelector("[data-compile-system-terminal]");
   const promptElement = sectionContent.querySelector("[data-compile-terminal-prompt]");
   const commandInput = sectionContent.querySelector("[data-compile-terminal-command]");
-  if (promptElement) promptElement.textContent = compileTerminalPromptText(terminal);
+  if (promptElement) promptElement.textContent = compileTerminalPromptText(terminal, project);
   if (commandInput) commandInput.value = terminal.command || "";
   if (outputElement) {
     outputElement.textContent = compileTerminalDisplayText(terminal);
@@ -8163,21 +8224,17 @@ function updateCompileSystemTerminalPanel(project) {
   }
 }
 
-function compileTerminalBasePath() {
-  return "C:\\Users\\otien\\AppData\\Local\\OMB Portfolio Builder";
-}
-
-function compileTerminalPromptPath(terminal = {}) {
+function compileTerminalPromptPath(terminal = {}, project = selectedProject()) {
   if (terminal.promptPath) return terminal.promptPath;
   if (terminal.cwdAbsolute) return terminal.cwdAbsolute;
-  const rootPath = terminal.rootPath || compileTerminalBasePath();
+  const rootPath = terminal.rootPath || compileProjectRootPath(project);
   const relativePath = compileDirectoryPath(terminal.cwd || "");
   if (!relativePath) return rootPath;
   return `${rootPath}\\${relativePath.replace(/\//g, "\\")}`;
 }
 
-function compileTerminalPromptText(terminal = {}) {
-  return `PS ${compileTerminalPromptPath(terminal)}>`;
+function compileTerminalPromptText(terminal = {}, project = selectedProject()) {
+  return `PS ${compileTerminalPromptPath(terminal, project)}>`;
 }
 
 function compileTerminalDisplayText(terminal = {}) {
@@ -8190,7 +8247,7 @@ function appendCompileTerminalOutput(existing = "", next = "") {
   return [previous, addition].filter(Boolean).join("\n");
 }
 
-function renderCompileSystemTerminal(workspace = {}) {
+function renderCompileSystemTerminal(workspace = {}, project = selectedProject()) {
   const terminal = workspace.systemTerminal || {};
   return `
     <section class="compile-system-terminal-panel" data-compile-output-panel="terminal" aria-label="Real terminal">
@@ -8203,7 +8260,7 @@ function renderCompileSystemTerminal(workspace = {}) {
       <div class="compile-terminal-screen" data-compile-terminal-screen>
         <pre class="compile-terminal compile-system-terminal" data-compile-system-terminal tabindex="0" role="log" aria-live="polite">${escapeHtml(compileTerminalDisplayText(terminal))}</pre>
         <label class="compile-terminal-prompt-line">
-          <span class="compile-terminal-prompt" data-compile-terminal-prompt>${escapeHtml(compileTerminalPromptText(terminal))}</span>
+          <span class="compile-terminal-prompt" data-compile-terminal-prompt>${escapeHtml(compileTerminalPromptText(terminal, project))}</span>
           <input class="compile-terminal-command-input" type="text" data-compile-terminal-command value="${escapeHtml(terminal.command || "")}" autocomplete="off" spellcheck="false" aria-label="Terminal command" />
         </label>
       </div>
@@ -8453,7 +8510,7 @@ function renderCompileActiveOutputPanel(project, file = activeCompileFile(projec
   const workspace = ensureCompileCode(project);
   const activePanel = activeCompilePanel(project, file);
   if (activePanel === "messages") return renderCompileMessagesPanel(workspace);
-  if (activePanel === "terminal") return renderCompileSystemTerminal(workspace);
+  if (activePanel === "terminal") return renderCompileSystemTerminal(workspace, project);
   if (activePanel === "scope") return renderCompileScopePanel(project, file);
   return renderCompileConsolePanel(project, file);
 }
@@ -8582,11 +8639,17 @@ function renderCompileTreeContextMenu() {
     { label: "Add testbench", action: "add-testbench" },
     { label: "Import files", action: "import-files" },
     { label: "Import directory", action: "import-directory" },
+    { separator: true },
+    { label: "Move selected file", action: "move-tree-file" },
+    { label: "Delete selected", action: "delete-tree-target" },
+    { separator: true },
     { label: "Check compilers", action: "check-tools" }
   ];
   return `
     <div class="compile-tree-context-menu" data-compile-tree-context-menu hidden>
-      ${items.map((item) => `<button type="button" data-compile-menu-action="${escapeHtml(item.action)}">${escapeHtml(item.label)}</button>`).join("")}
+      ${items.map((item) => item.separator
+        ? `<span class="compile-ide-menu-separator" role="separator"></span>`
+        : `<button type="button" data-compile-menu-action="${escapeHtml(item.action)}">${escapeHtml(item.label)}</button>`).join("")}
     </div>
   `;
 }
@@ -8617,6 +8680,11 @@ function renderCompileAppendChooser(project, workspace = {}) {
 function renderCompileCodeSection(project) {
   const workspace = ensureCompileCode(project);
   const activeFile = activeCompileFile(project);
+  const dockUnlocked = Boolean(workspace.outputDockUnlocked);
+  const dockPosition = workspace.outputDockPosition || { x: 72, y: 120 };
+  const dockStyle = dockUnlocked
+    ? ` style="left:${Math.max(8, Number(dockPosition.x) || 72)}px; top:${Math.max(8, Number(dockPosition.y) || 120)}px;"`
+    : "";
   return `
     <div class="compile-code-workspace">
       ${renderCompileIdeMenuBar(project, activeFile)}
@@ -8654,7 +8722,7 @@ function renderCompileCodeSection(project) {
           <div class="compile-code-meta-grid">
             <label>
               <span>File path</span>
-              <input type="text" data-compile-field="fileName" value="${escapeHtml(compileFilePath(activeFile))}" placeholder="${escapeHtml(defaultCodeFileName(activeFile.language))}" />
+              <input type="text" data-compile-field="fileName" value="${escapeHtml(compileFileAbsolutePath(project, activeFile))}" placeholder="${escapeHtml(compileFileAbsolutePath(project, { ...activeFile, relativePath: defaultCodeFileName(activeFile.language) }))}" />
             </label>
             <label>
               <span>Language</span>
@@ -8707,7 +8775,19 @@ function renderCompileCodeSection(project) {
             <p>Add a source file for C, C++, SystemVerilog, LTspice, Java, JavaScript, Python, or HTML.</p>
           </div>
         `}
-        <section class="compile-output-workbench" aria-label="Compile output workbench">
+        <section class="compile-output-workbench ${dockUnlocked ? "is-output-dock-unlocked" : "is-output-dock-locked"}" aria-label="Compile output workbench"${dockStyle}>
+          <div class="compile-output-dock-toolbar">
+            <button
+              class="compile-output-dock-toggle"
+              type="button"
+              data-compile-toggle-output-dock
+              aria-pressed="${dockUnlocked ? "true" : "false"}"
+              title="${dockUnlocked ? "Lock output panel to the compile workspace" : "Unlock output panel so it can be moved"}"
+            >
+              <span aria-hidden="true">${dockUnlocked ? "L" : "M"}</span>
+            </button>
+            <span class="compile-output-dock-title" data-compile-output-drag>${dockUnlocked ? "Move output panel" : "Output panel locked"}</span>
+          </div>
           ${compilePanelTabs(project, activeFile)}
           <div class="compile-output-dock">
             ${renderCompileActiveOutputPanel(project, activeFile)}
@@ -9492,6 +9572,75 @@ async function addCompileDirectory(project) {
   renderSectionContent(project);
 }
 
+function deleteCompileTreeTarget(project, context = activeCompileTreeContext) {
+  const workspace = ensureCompileCode(project);
+  if (!context?.type) {
+    setStatus("Right-click a compile file or folder before deleting.");
+    return;
+  }
+  if (context.type === "file") {
+    const file = workspace.files.find((item) => item.id === context.fileId);
+    if (!file) return;
+    openDeleteConfirm({
+      title: "Delete source file",
+      message: `Are you sure you want to delete "${file.fileName || compileFilePath(file)}"?`,
+      onConfirm: () => {
+        workspace.files = workspace.files.filter((item) => item.id !== file.id);
+        workspace.activeFileId = workspace.files[0]?.id || "";
+        activeCompileTreeContext = null;
+        addCompileMessage(project, `Deleted ${file.fileName || "source file"}.`, "warning");
+        scheduleAutosave();
+        renderSectionContent(project);
+      }
+    });
+    return;
+  }
+
+  const folder = compileDirectoryPath(context.path || "");
+  if (!folder) return;
+  const filesInFolder = workspace.files.filter((file) => compileFilePath(file).startsWith(`${folder}/`));
+  const childFolders = workspace.directories.filter((directory) => directory === folder || directory.startsWith(`${folder}/`));
+  openDeleteConfirm({
+    title: "Delete compile folder",
+    message: `Delete "${folder}" and ${filesInFolder.length} source file${filesInFolder.length === 1 ? "" : "s"} from this local compile workspace?`,
+    onConfirm: () => {
+      const removedIds = new Set(filesInFolder.map((file) => file.id));
+      workspace.files = workspace.files.filter((file) => !removedIds.has(file.id));
+      workspace.directories = workspace.directories.filter((directory) => !childFolders.includes(directory));
+      if (!workspace.files.some((file) => file.id === workspace.activeFileId)) {
+        workspace.activeFileId = workspace.files[0]?.id || "";
+      }
+      activeCompileTreeContext = null;
+      addCompileMessage(project, `Deleted compile folder ${folder}.`, "warning");
+      scheduleAutosave();
+      renderSectionContent(project);
+    }
+  });
+}
+
+function moveCompileTreeFile(project, context = activeCompileTreeContext) {
+  const workspace = ensureCompileCode(project);
+  const file = context?.type === "file"
+    ? workspace.files.find((item) => item.id === context.fileId)
+    : activeCompileFile(project);
+  if (!file) {
+    setStatus("Right-click a source file before moving it.");
+    return;
+  }
+  const currentPath = compileFilePath(file);
+  const nextPath = compileRelativePathFromInput(window.prompt("Save this source file as", compileFileAbsolutePath(project, file)) || "", file, project);
+  if (!nextPath || nextPath === currentPath) return;
+  file.relativePath = nextPath;
+  file.fileName = compileFileNameFromPath(nextPath, file.language);
+  file.title = file.fileName;
+  file.role = normalizeCompileFileRole(file.role || inferCompileFileRole(file.fileName, file.code, file.language), file.language);
+  file.dirty = true;
+  addCompileMessage(project, `Moved source to ${nextPath}. Click Save source to write it to disk.`, "info");
+  setStatus(`Source path changed to ${nextPath}.`);
+  scheduleAutosave();
+  renderSectionContent(project);
+}
+
 async function beautifyCompileFile(project, file) {
   if (!file) return;
   try {
@@ -9581,7 +9730,7 @@ async function runCompileTerminalCommand(project) {
     addCompileMessage(project, "Type a terminal command before running it.", "warning");
     return;
   }
-  const prompt = compileTerminalPromptText(terminal);
+  const prompt = compileTerminalPromptText(terminal, project);
   if (/^(?:cls|clear)$/i.test(command)) {
     terminal.output = "";
     terminal.command = "";
@@ -9697,6 +9846,8 @@ async function runCompileIdeAction(project, action = "") {
   if (action === "preferences") return openPreferencesDialog();
   if (action === "check-updates") return checkForAppUpdates({ force: true, manual: true });
   if (action === "check-tools") return checkCompileTools(project);
+  if (action === "delete-tree-target") return deleteCompileTreeTarget(project);
+  if (action === "move-tree-file") return moveCompileTreeFile(project);
   if (action === "clear-messages") {
     workspace.messages = [];
     updateCompileMessagesPanel(project);
@@ -11655,7 +11806,7 @@ selectionColorPicker?.addEventListener("input", (event) => {
   applySelectionInspectorFormat("color", event.target.value);
 });
 
-function focusAdjacentImageText(block, direction) {
+function focusAdjacentRichBlockText(block, direction) {
   const editor = block?.closest("[data-rich-editor]");
   if (!editor) return;
   const sibling = direction === "before" ? block.previousElementSibling : block.nextElementSibling;
@@ -11671,7 +11822,7 @@ function focusAdjacentImageText(block, direction) {
 function handleRichCaretClick(event) {
   const caretButton = event.target.closest("[data-rich-caret]");
   if (!caretButton) return false;
-  focusAdjacentImageText(caretButton.closest(".rich-image-block"), caretButton.dataset.richCaret);
+  focusAdjacentRichBlockText(caretButton.closest(".rich-block"), caretButton.dataset.richCaret);
   return true;
 }
 
@@ -11810,7 +11961,7 @@ function moveRichBlockToPoint(editor, movingBlock, x, y, eventTarget = null, opt
   }
 
   cleanupEmptyRichTextBlocks(editor);
-  if (options.focusAfter !== false) focusAdjacentImageText(movingBlock, "after");
+  if (options.focusAfter !== false) focusAdjacentRichBlockText(movingBlock, "after");
   if (options.commit !== false) saveRichEditorToProject(editor);
   if (options.focusAfter === false) selectRichBlock(movingBlock);
 }
@@ -12124,6 +12275,7 @@ sectionContent.addEventListener("click", async (event) => {
   const hasDataset = (key) => Object.prototype.hasOwnProperty.call(button.dataset, key);
   if (button.dataset.compileMenuAction) {
     await runCompileIdeAction(project, button.dataset.compileMenuAction);
+    hideCompileTreeContextMenus();
     return;
   }
   if (button.dataset.addSection) {
@@ -12262,6 +12414,22 @@ sectionContent.addEventListener("click", async (event) => {
       input.value = button.dataset.compileTerminalHistory || "";
       compileWorkspace.systemTerminal.command = input.value;
     }
+    return;
+  }
+  if (hasDataset("compileToggleOutputDock")) {
+    compileWorkspace.outputDockUnlocked = !compileWorkspace.outputDockUnlocked;
+    if (compileWorkspace.outputDockUnlocked) {
+      compileWorkspace.outputDockPosition = compileWorkspace.outputDockPosition || { x: 72, y: 120 };
+      setStatus("Compile output panel unlocked. Drag its title area to move it.");
+    } else {
+      setStatus("Compile output panel locked back into the workspace.");
+    }
+    scheduleAutosave();
+    renderSectionContent(project);
+    return;
+  }
+  if (event.target.closest("[data-compile-terminal-screen]")) {
+    sectionContent.querySelector("[data-compile-terminal-command]")?.focus?.({ preventScroll: true });
     return;
   }
   if (hasDataset("compileInstall")) {
@@ -12465,6 +12633,7 @@ function hideCompileTreeContextMenus() {
   sectionContent.querySelectorAll("[data-compile-tree-context-menu]").forEach((menu) => {
     menu.hidden = true;
   });
+  activeCompileTreeContext = null;
 }
 
 sectionContent.addEventListener("contextmenu", (event) => {
@@ -12473,6 +12642,21 @@ sectionContent.addEventListener("contextmenu", (event) => {
   const menu = sidebar.querySelector("[data-compile-tree-context-menu]");
   if (!menu) return;
   event.preventDefault();
+  const fileButton = event.target.closest("[data-compile-tree-file-id]");
+  const folderNode = event.target.closest("[data-compile-folder-path]");
+  activeCompileTreeContext = fileButton
+    ? {
+      type: "file",
+      fileId: fileButton.dataset.compileTreeFileId || "",
+      path: fileButton.dataset.compileTreeFilePath || ""
+    }
+    : folderNode
+      ? {
+        type: "folder",
+        path: folderNode.dataset.compileFolderPath || ""
+      }
+      : { type: "workspace", path: "" };
+  menu.dataset.contextType = activeCompileTreeContext.type;
   hideCompileTreeContextMenus();
   menu.hidden = false;
   const width = 190;
@@ -12480,6 +12664,48 @@ sectionContent.addEventListener("contextmenu", (event) => {
   menu.style.left = `${Math.min(event.clientX, window.innerWidth - width - 8)}px`;
   menu.style.top = `${Math.min(event.clientY, window.innerHeight - height - 8)}px`;
 });
+
+sectionContent.addEventListener("pointerdown", (event) => {
+  const dragHandle = event.target.closest("[data-compile-output-drag]");
+  const dock = dragHandle?.closest(".compile-output-workbench.is-output-dock-unlocked");
+  if (!dock || event.button !== 0) return;
+  const rect = dock.getBoundingClientRect();
+  activeOutputDockDrag = {
+    offsetX: event.clientX - rect.left,
+    offsetY: event.clientY - rect.top,
+    pointerId: event.pointerId
+  };
+  dragHandle.setPointerCapture?.(event.pointerId);
+  dock.classList.add("is-dragging");
+  event.preventDefault();
+});
+
+document.addEventListener("pointermove", (event) => {
+  if (!activeOutputDockDrag) return;
+  const project = selectedProject();
+  if (!project) return;
+  const workspace = ensureCompileCode(project);
+  const dock = sectionContent.querySelector(".compile-output-workbench.is-output-dock-unlocked");
+  if (!dock) return;
+  const rect = dock.getBoundingClientRect();
+  const margin = 8;
+  const x = Math.max(margin, Math.min(event.clientX - activeOutputDockDrag.offsetX, window.innerWidth - rect.width - margin));
+  const y = Math.max(margin, Math.min(event.clientY - activeOutputDockDrag.offsetY, window.innerHeight - rect.height - margin));
+  workspace.outputDockPosition = { x, y };
+  dock.style.left = `${x}px`;
+  dock.style.top = `${y}px`;
+});
+
+function endOutputDockDrag(event) {
+  if (!activeOutputDockDrag) return;
+  sectionContent.querySelector("[data-compile-output-drag]")?.releasePointerCapture?.(activeOutputDockDrag.pointerId);
+  sectionContent.querySelector(".compile-output-workbench.is-output-dock-unlocked")?.classList.remove("is-dragging");
+  activeOutputDockDrag = null;
+  scheduleAutosave(900);
+}
+
+document.addEventListener("pointerup", endOutputDockDrag);
+document.addEventListener("pointercancel", endOutputDockDrag);
 
 document.addEventListener("click", (event) => {
   if (event.target.closest("[data-compile-tree-context-menu]")) return;
@@ -12521,7 +12747,7 @@ sectionContent.addEventListener("input", (event) => {
       file.title = file.fileName;
       file.role = normalizeCompileFileRole(file.role || inferCompileFileRole(file.fileName, file.code, file.language), file.language);
       const fileNameInput = sectionContent.querySelector("[data-compile-field='fileName']");
-      if (fileNameInput) fileNameInput.value = file.relativePath;
+      if (fileNameInput) fileNameInput.value = compileFileAbsolutePath(project, file);
       const heading = sectionContent.querySelector(".compile-code-preview-heading span");
       if (heading) heading.textContent = `${codeLanguageLabel(file.language)} preview`;
       updateCompilePreview(file);
@@ -12534,7 +12760,7 @@ sectionContent.addEventListener("input", (event) => {
         return;
       }
     } else if (field === "fileName") {
-      file.relativePath = safeClientCodeRelativePath(event.target.value, file.language);
+      file.relativePath = compileRelativePathFromInput(event.target.value, file, project);
       file.fileName = compileFileNameFromPath(file.relativePath, file.language);
       file.title = file.fileName;
       file.role = normalizeCompileFileRole(file.role || inferCompileFileRole(file.fileName, file.code, file.language), file.language);
