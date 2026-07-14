@@ -215,7 +215,8 @@ const templatePalette = document.querySelector("#template-palette");
 const templatePreviewClose = document.querySelector("#template-preview-close");
 
 const standardSections = [
-  { id: "brief", label: "Overview", folder: "" }
+  { id: "brief", label: "Overview", folder: "" },
+  { id: "compile-code", label: "Compile Code", folder: "compile-code" }
 ];
 
 const preferenceStorageKey = "omb-builder-preferences";
@@ -6410,11 +6411,13 @@ function renderFields(project) {
 }
 
 function sectionOptions(project) {
-  const custom = (project.sections || []).map((section) => ({
-    id: `custom:${section.id}`,
-    label: section.title,
-    folder: section.id
-  }));
+  const custom = (project.sections || [])
+    .filter((section) => !isCompileCodeBuilderSection(section))
+    .map((section) => ({
+      id: `custom:${section.id}`,
+      label: section.title,
+      folder: section.id
+    }));
   return [
     ...standardSections.filter((section) => !section.analogOnly || isAnalogProject(project)),
     ...custom
@@ -8063,6 +8066,11 @@ function renderSectionContent(project) {
   sectionContent.hidden = isOverview;
   if (isOverview) {
     sectionContent.innerHTML = "";
+    return;
+  }
+
+  if (section.id === "compile-code") {
+    sectionContent.innerHTML = renderCompileCodeSection(project);
     return;
   }
 
