@@ -257,6 +257,7 @@ Use the workflow in [BRANCHING.md](BRANCHING.md):
 | `codex/fix-guide-and-bump-0.2.36` | Corrects the in-app guide so new projects are documented as Overview-only by default and bumps the builder release version to `0.2.36` so installed `0.2.35` apps can detect the next update. | `development` | `development` | Ready for `development` |
 | `codex/fix-nested-section-editor-0.2.37` | Repairs nested project section editing, prunes empty section trees while preserving content-bearing sections/subsections, and bumps the builder release version to `0.2.37`. | `development` | `development` | Ready for `main` |
 | `codex/fix-section-subsection-render-controls-0.2.38` | Normalizes legacy `items` and current `children` nested section data, makes custom project sections visible as editable/deletable rows, keeps subsection/file controls visible, and bumps the builder release version to `0.2.38`. | `development` | `development` | Active |
+| `codex/fix-local-builder-default-compile-0.2.39` | Adds builder asset cache-busting, makes Compile Code a built-in non-deletable project workspace beside Overview, syncs the fixed section/subsection renderer into the local app folders, and aligns the builder window controls so hide/minimize/maximize/close appear together on open. | `development` | `development` | Active |
 
 ## Uninstall
 

@@ -4039,14 +4039,20 @@ body.full-window-open {
 
 .project-dialog-heading,
 .project-preview-heading,
-.portfolio-preview-heading {
+.portfolio-preview-heading,
+.template-dialog-heading,
+.asset-dialog form > div:first-child,
+.builder-guide-dialog-content .project-preview-heading {
+  --dialog-left-control-width: 82px;
+  --dialog-right-control-width: 108px;
   position: relative;
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
   min-height: 42px;
-  padding: 0 86px 0 90px;
+  padding: 0 calc(var(--dialog-right-control-width) + 8px) 0 calc(var(--dialog-left-control-width) + 8px);
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #f7fcff;
@@ -4062,7 +4068,7 @@ body.full-window-open {
 .is-hidden-dialog .asset-dialog form > div:first-child {
   min-height: 30px;
   padding-left: 8px;
-  padding-right: 82px;
+  padding-right: calc(var(--dialog-right-control-width) + 8px);
 }
 
 .is-minimized-dialog .dialog-window-left-controls,
@@ -4105,13 +4111,13 @@ body.full-window-open {
   position: sticky;
   top: 0;
   z-index: 5;
-  padding: 0 86px 0 90px;
+  padding: 0 calc(var(--dialog-right-control-width) + 8px) 0 calc(var(--dialog-left-control-width) + 8px);
 }
 
 .project-preview-dialog .project-preview-heading,
 .portfolio-preview-dialog .portfolio-window-heading {
   width: 100%;
-  padding: 0 86px 0 90px;
+  padding: 0 calc(var(--dialog-right-control-width) + 8px) 0 calc(var(--dialog-left-control-width) + 8px);
   border: 0;
   border-bottom: 1px solid var(--line);
   border-radius: 0;
@@ -4198,6 +4204,12 @@ body.full-window-open {
   min-width: 0;
 }
 
+.project-dialog-heading > div:first-child,
+.project-preview-heading > div:first-child,
+.portfolio-preview-heading > div:first-child {
+  overflow: hidden;
+}
+
 .project-dialog-heading .eyebrow,
 .project-preview-heading .eyebrow,
 .portfolio-preview-heading .eyebrow,
@@ -4243,6 +4255,9 @@ body.full-window-open {
   align-self: flex-start;
   gap: 8px;
   min-width: 0;
+  max-width: 100%;
+  padding-right: 0;
+  overflow: hidden;
 }
 
 .dialog-window-left-controls,
@@ -4270,6 +4285,9 @@ body.full-window-open {
   align-self: flex-start;
   justify-content: flex-end;
   margin-left: 0;
+  width: 108px;
+  min-width: 108px;
+  overflow: visible;
 }
 
 .dialog-window-control {
@@ -4739,9 +4757,11 @@ body.full-window-open {
 .asset-dialog form > div:first-child {
   position: relative;
   display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: flex-start;
   gap: 4px;
   margin: 0 -22px;
-  padding: 6px 86px 10px 90px;
+  padding: 6px calc(var(--dialog-right-control-width) + 8px) 10px calc(var(--dialog-left-control-width) + 8px);
   border: 0;
   border-bottom: 1px solid var(--line);
   border-radius: 0;
@@ -4809,9 +4829,12 @@ body.full-window-open {
 }
 
 .template-dialog-heading {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 18px;
+  padding: 0 calc(var(--dialog-right-control-width) + 8px) 0 calc(var(--dialog-left-control-width) + 8px);
 }
 
 .template-dialog h2,
