@@ -7190,3 +7190,314 @@ body[data-builder-theme="dark"] .selection-color-swatches button:hover {
   border-color: #7dd3fc;
   box-shadow: 0 0 0 2px rgba(125, 211, 252, 0.22);
 }
+
+/* Compact IDE behavior for Compile Code. */
+.compile-code-sidebar {
+  align-content: start;
+  align-items: start;
+  grid-auto-rows: max-content;
+}
+
+.compile-code-sidebar-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.compile-code-mini-actions,
+.compile-code-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 3px;
+}
+
+.compile-code-mini-actions button,
+.compile-code-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  min-width: 24px;
+  height: 24px;
+  min-height: 24px;
+  padding: 0;
+  border-radius: 4px;
+  font-size: 0.68rem;
+  line-height: 1;
+}
+
+.compile-code-workspace-tree {
+  align-self: start;
+  min-height: 0;
+  max-height: 520px;
+}
+
+.compile-ide-menu {
+  position: relative;
+  display: inline-flex;
+}
+
+.compile-ide-menu-button {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 0 10px;
+  border: 0;
+  color: inherit;
+  background: transparent;
+  font: inherit;
+  font-size: 0.76rem;
+  cursor: default;
+}
+
+.compile-ide-menu:hover .compile-ide-menu-button,
+.compile-ide-menu-button:focus-visible {
+  background: #37373d;
+}
+
+.compile-ide-dropdown,
+.compile-tree-context-menu {
+  z-index: 95;
+  min-width: 188px;
+  max-height: min(320px, calc(100vh - 28px));
+  overflow: auto;
+  border: 1px solid #464b53;
+  background: #252526;
+  box-shadow: 0 16px 32px rgba(0, 0, 0, 0.36);
+}
+
+.compile-ide-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  display: none;
+  padding: 4px;
+}
+
+.compile-ide-menu:hover .compile-ide-dropdown,
+.compile-ide-menu:focus-within .compile-ide-dropdown {
+  display: grid;
+}
+
+.compile-ide-dropdown button,
+.compile-tree-context-menu button {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  min-height: 24px;
+  padding: 3px 9px;
+  border: 0;
+  border-radius: 0;
+  color: #f3f4f6;
+  background: transparent;
+  font: inherit;
+  font-size: 0.74rem;
+  text-align: left;
+}
+
+.compile-ide-dropdown button:hover,
+.compile-tree-context-menu button:hover {
+  background: #094771;
+}
+
+.compile-ide-dropdown button:disabled {
+  color: #7f8792;
+  background: transparent;
+}
+
+.compile-ide-dropdown small {
+  color: #aeb6c2;
+  font-size: 0.68rem;
+}
+
+.compile-ide-menu-separator {
+  display: block;
+  height: 1px;
+  margin: 4px 6px;
+  background: #3a3d43;
+}
+
+.compile-tree-context-menu {
+  position: fixed;
+  display: grid;
+  padding: 4px;
+}
+
+.compile-tree-context-menu[hidden] {
+  display: none;
+}
+
+.compile-terminal-screen {
+  display: grid;
+  grid-template-rows: minmax(180px, 1fr) auto;
+  min-height: 240px;
+  background: #1e1e1e;
+}
+
+.compile-system-terminal {
+  min-height: 180px;
+  max-height: 360px;
+  border-top: 0;
+}
+
+.compile-terminal-prompt-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 4px 12px 9px;
+  color: #f8fafc;
+  background: #1e1e1e;
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
+.compile-terminal-prompt {
+  flex: 0 0 auto;
+  color: #f8fafc;
+  white-space: nowrap;
+}
+
+.compile-terminal-command-input {
+  flex: 1 1 auto;
+  min-width: 90px;
+  border: 0;
+  outline: 0;
+  color: #f8fafc;
+  background: transparent;
+  font: inherit;
+}
+
+.compile-append-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  border: 1px solid #333842;
+  border-radius: 0;
+  background: #1e1e1e;
+}
+
+.compile-append-window-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 32px;
+  padding: 5px 8px 5px 10px;
+  border-bottom: 1px solid #333842;
+  background: #252526;
+}
+
+.compile-append-window-title div {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.compile-append-window-title strong {
+  color: #f3f4f6;
+  font-size: 0.78rem;
+}
+
+.compile-append-window-title span {
+  overflow: hidden;
+  color: #9ca3af;
+  font-size: 0.7rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compile-mini-window-close {
+  width: 22px;
+  height: 22px;
+  min-height: 22px;
+  padding: 0;
+  border: 1px solid #7f1d1d;
+  border-radius: 3px;
+  color: #fecaca;
+  background: #2a1114;
+  font: inherit;
+  font-size: 0.9rem;
+  line-height: 1;
+}
+
+.compile-mini-window-close:hover {
+  color: #ffffff;
+  background: #dc2626;
+}
+
+.compile-append-target-browser {
+  display: block;
+  min-width: 0;
+}
+
+.compile-append-tree {
+  max-height: 310px;
+  border: 0;
+}
+
+.compile-append-folder summary {
+  min-height: 24px;
+  padding-top: 2px;
+  padding-bottom: 2px;
+}
+
+.compile-append-target {
+  min-height: 24px;
+  padding-top: 2px;
+  padding-bottom: 2px;
+}
+
+.compile-append-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  padding: 7px 8px;
+  border-top: 1px solid #333842;
+  background: #252526;
+}
+
+.summary-context-menu {
+  width: min(250px, calc(100vw - 24px));
+  min-width: 190px;
+  max-height: min(380px, calc(100vh - 28px));
+  gap: 2px;
+  padding: 5px;
+}
+
+.summary-context-menu button {
+  min-height: 26px;
+  padding: 0 8px;
+  border-radius: 4px;
+  font-size: 0.76rem;
+}
+
+.rich-menu-field select,
+.rich-menu-field input {
+  min-height: 27px;
+  font-size: 0.78rem;
+}
+
+.rich-menu-field {
+  gap: 3px;
+  margin: 1px 0;
+  font-size: 0.68rem;
+}
+
+.rich-context-color-swatches {
+  grid-template-columns: repeat(8, 18px);
+  gap: 3px;
+}
+
+.rich-context-color-swatches button {
+  min-height: 18px;
+  width: 18px;
+  padding: 0;
+}

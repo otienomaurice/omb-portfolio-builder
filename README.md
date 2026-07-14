@@ -261,6 +261,7 @@ Use the workflow in [BRANCHING.md](BRANCHING.md):
 | `codex/compile-code-ide-layout-0.2.40` | Restyles Compile Code as a Visual Studio-like IDE workspace with an explorer tree, editor tabs, breadcrumbs, exclusive Console/Messages/Terminal/Scope panes, a nested append-destination tree, stable file-list rows, and profile asset manager/viewer dialogs. | `development` | `development` | Active |
 | `codex/fix-beautify-section-actions-0.2.41` | Removes edit/delete controls from the project section tab row, keeps delete inside the opened section, improves code beautify so one-line brace code is visibly formatted, and makes builder file rows match the clean project-list style. | `development` | `development` | Active |
 | `codex/nested-section-window-editor-0.2.42` | Makes project sections and subsections open as nested builder views, removes duplicate edit/preview rendering while actively editing, routes file clicks to PDF/text viewers or downloads, aligns project window controls, and bumps the builder release version to `0.2.42`. | `development` | `development` | Active |
+| `codex/ide-terminal-prompt-0.2.43` | Converts the Compile Code terminal into an IDE-style prompt with no separate command/directory form, makes File/Edit/View/Project/Build/Debug/Tools/Help execute real compile workspace commands, compacts Solution Explorer controls into small icons and right-click menus, and moves Append Code into an icon-opened destination chooser. | `development` | `development` | Active |
 
 ## Uninstall
 
