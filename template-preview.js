@@ -37,6 +37,20 @@ const profileHeroUploadButton = document.querySelector("#profile-hero-upload");
 const profileResumeUploadButton = document.querySelector("#profile-resume-upload");
 const profileBrandUploadButton = document.querySelector("#profile-brand-upload");
 const profileAssetStatus = document.querySelector("#profile-asset-status");
+const profileAssetDialog = document.querySelector("#profile-asset-dialog");
+const profileAssetTitle = document.querySelector("#profile-asset-title");
+const profileAssetBody = document.querySelector("#profile-asset-body");
+const profileAssetClose = document.querySelector("#profile-asset-close");
+const profileAssetView = document.querySelector("#profile-asset-view");
+const profileAssetChange = document.querySelector("#profile-asset-change");
+const profileAssetRemove = document.querySelector("#profile-asset-remove");
+const profileAssetDone = document.querySelector("#profile-asset-done");
+const profileAssetViewDialog = document.querySelector("#profile-asset-view-dialog");
+const profileAssetViewTitle = document.querySelector("#profile-asset-view-title");
+const profileAssetViewBody = document.querySelector("#profile-asset-view-body");
+const profileAssetViewClose = document.querySelector("#profile-asset-view-close");
+const profileAssetViewDone = document.querySelector("#profile-asset-view-done");
+const profileAssetOpenLink = document.querySelector("#profile-asset-open-link");
 const categoryDropdown = document.querySelector("#category-dropdown");
 const siteSectionList = document.querySelector("#site-section-list");
 const projectCreateDialog = document.querySelector("#project-create-dialog");
@@ -503,6 +517,7 @@ let projectWindowBackStack = [];
 let projectWindowForwardStack = [];
 let suppressProjectWindowHistory = false;
 let compileTerminalStatus = "";
+let activeProfileAssetKind = "";
 
 function setStatus(message) {
   builderStatus.textContent = message;
@@ -2034,6 +2049,9 @@ function ensureCompileCode(project) {
       })).filter((item) => item.command)
       : []
   };
+  project.compileCode.activePanel = ["console", "messages", "terminal", "scope"].includes(project.compileCode.activePanel)
+    ? project.compileCode.activePanel
+    : "console";
   const appendDestinations = compileAppendDestinations(project);
   if (!project.compileCode.appendTargetId || !appendDestinations.some((destination) => destination.id === project.compileCode.appendTargetId)) {
     project.compileCode.appendTargetId = appendDestinations[0]?.id || "";
@@ -7514,6 +7532,9 @@ function compileAppendDestinations(project) {
   const destinations = [{
     id: "project-overview",
     label: "Project overview",
+    title: "Project overview",
+    kind: "Project",
+    depth: 0,
     richPath: "summaryRich",
     textPath: "summary"
   }];
@@ -7523,6 +7544,10 @@ function compileAppendDestinations(project) {
     destinations.push({
       id: `custom-${section.id || index}`,
       label: `${section.title || `Custom section ${index + 1}`} overview`,
+      title: section.title || `Custom section ${index + 1}`,
+      kind: "Section",
+      depth: 0,
+      sectionId: section.id || "",
       richPath: `sections.${index}.richDescription`,
       textPath: `sections.${index}.description`
     });
@@ -7535,6 +7560,11 @@ function compileAppendDestinations(project) {
           destinations.push({
             id: `custom-${section.id || index}-${itemPath}`,
             label: `${labelPrefix} / ${itemTitle} overview`,
+            title: itemTitle,
+            kind: "Subsection",
+            depth: itemPath.split(".children.").length,
+            sectionId: section.id || "",
+            nodePath: itemPath,
             richPath: `${itemPath}.richDescription`,
             textPath: `${itemPath}.description`
           });
@@ -7556,6 +7586,153 @@ function compileAppendDestinationOptions(project, selectedId = "") {
   return destinations.map((destination) => `
     <option value="${escapeHtml(destination.id)}"${destination.id === selected ? " selected" : ""}>${escapeHtml(destination.label)}</option>
   `).join("");
+}
+
+function compileAppendDestinationById(project, id = "") {
+  const destinations = compileAppendDestinations(project);
+  return destinations.find((destination) => destination.id === id) || destinations[0] || null;
+}
+
+function compileAppendTargetButton(destination, selectedId = "", labelOverride = "") {
+  if (!destination) return "";
+  const active = destination.id === selectedId;
+  return `
+    <button
+      class="compile-append-target${active ? " is-active" : ""}"
+      type="button"
+      data-compile-append-target-id="${escapeHtml(destination.id)}"
+      aria-pressed="${active ? "true" : "false"}"
+    >
+      <span class="compile-append-target-title">${escapeHtml(labelOverride || destination.title || destination.label)}</span>
+      <small>${escapeHtml(destination.kind || "Destination")}</small>
+    </button>
+  `;
+}
+
+function compileAppendNodeDestinationId(section, sectionIndex, itemPath = "") {
+  return `custom-${section.id || sectionIndex}-${itemPath}`;
+}
+
+function renderCompileAppendNode(project, section, sectionIndex, item, itemPath, pathPrefix, labelPrefix, selectedId, depth = 1) {
+  if (!item || item.url || item.artifact) return "";
+  normalizeBuilderNodeStorage(item);
+  const childSections = builderNodeChildren(item).filter((child) => child && !child.url && !child.artifact);
+  const destination = compileAppendDestinationById(project, compileAppendNodeDestinationId(section, sectionIndex, itemPath));
+  const title = item.title || `Subsection ${depth}`;
+  const children = childSections.map((child, childIndex) => {
+    const childItemPath = `${itemPath}.children.${childIndex}`;
+    return renderCompileAppendNode(project, section, sectionIndex, child, childItemPath, `${pathPrefix}.${childIndex}`, `${labelPrefix} / ${title}`, selectedId, depth + 1);
+  }).join("");
+
+  return `
+    <details class="compile-append-folder" open style="--append-depth: ${depth}">
+      <summary>
+        <span class="compile-tree-folder-icon" aria-hidden="true"></span>
+        <span>${escapeHtml(title)}</span>
+        <small>${childSections.length} child section${childSections.length === 1 ? "" : "s"}</small>
+      </summary>
+      <div class="compile-append-children">
+        ${compileAppendTargetButton(destination, selectedId, "Append to this overview")}
+        ${children}
+      </div>
+    </details>
+  `;
+}
+
+function renderCompileAppendTree(project, selectedId = "") {
+  const selected = compileAppendDestinationById(project, selectedId);
+  const currentId = selected?.id || "";
+  const sections = (project?.sections || []).filter((section) => !isCompileCodeBuilderSection(section));
+  const projectDestination = compileAppendDestinationById(project, "project-overview");
+  const sectionTrees = sections.map((section, sectionIndex) => {
+    normalizeBuilderSectionStorage(section);
+    const destination = compileAppendDestinationById(project, `custom-${section.id || sectionIndex}`);
+    const childSections = sectionRootChildren(section).filter((child) => child && !child.url && !child.artifact);
+    const children = childSections.map((child, childIndex) => (
+      renderCompileAppendNode(
+        project,
+        section,
+        sectionIndex,
+        child,
+        `sections.${sectionIndex}.items.${childIndex}`,
+        String(childIndex),
+        section.title || `Section ${sectionIndex + 1}`,
+        currentId,
+        1
+      )
+    )).join("");
+    return `
+      <details class="compile-append-folder" open style="--append-depth: 0">
+        <summary>
+          <span class="compile-tree-folder-icon" aria-hidden="true"></span>
+          <span>${escapeHtml(section.title || `Section ${sectionIndex + 1}`)}</span>
+          <small>${childSections.length} subsection${childSections.length === 1 ? "" : "s"}</small>
+        </summary>
+        <div class="compile-append-children">
+          ${compileAppendTargetButton(destination, currentId, "Append to this section overview")}
+          ${children || `<p class="compile-append-empty">No subsections under this section yet.</p>`}
+        </div>
+      </details>
+    `;
+  }).join("");
+
+  return `
+    <div class="compile-append-tree" role="tree" aria-label="Append destination tree">
+      ${compileAppendTargetButton(projectDestination, currentId)}
+      ${sectionTrees || `<p class="compile-append-empty">Create project sections before choosing a section destination.</p>`}
+    </div>
+  `;
+}
+
+function compileEditorTabs(project, file = activeCompileFile(project)) {
+  const workspace = ensureCompileCode(project);
+  const files = workspace.files || [];
+  if (!files.length) return "";
+  return `
+    <div class="compile-editor-tabs" role="tablist" aria-label="Open source files">
+      ${files.map((sourceFile) => `
+        <button
+          class="${sourceFile.id === file?.id ? "active" : ""}"
+          type="button"
+          role="tab"
+          aria-selected="${sourceFile.id === file?.id ? "true" : "false"}"
+          data-compile-select="${escapeHtml(sourceFile.id)}"
+          title="${escapeHtml(compileFilePath(sourceFile))}"
+        >
+          <span>${escapeHtml(sourceFile.fileName || "source")}</span>
+          ${sourceFile.dirty ? `<small aria-label="Unsaved changes">*</small>` : ""}
+        </button>
+      `).join("")}
+    </div>
+  `;
+}
+
+function compileFileBreadcrumbs(file) {
+  const segments = compilePathSegments(compileFilePath(file));
+  if (!segments.length) return "";
+  return `
+    <nav class="compile-breadcrumbs" aria-label="Active file path">
+      ${segments.map((segment, index) => `
+        <span>${escapeHtml(segment)}</span>${index < segments.length - 1 ? `<b aria-hidden="true">/</b>` : ""}
+      `).join("")}
+    </nav>
+  `;
+}
+
+function compileIdeStatusBar(project, file = activeCompileFile(project)) {
+  const workspace = ensureCompileCode(project);
+  const code = String(file?.code || "");
+  const lineCount = code ? code.split(/\r\n|\r|\n/).length : 0;
+  const selectedDestination = selectedCompileAppendDestination(project);
+  return `
+    <div class="compile-ide-status-bar" aria-label="Compile workspace status">
+      <span>${escapeHtml(file ? codeLanguageLabel(file.language) : "No language")}</span>
+      <span>${file?.dirty ? "Unsaved changes" : "Saved state ready"}</span>
+      <span>${lineCount} line${lineCount === 1 ? "" : "s"}</span>
+      <span>${workspace.files.length} file${workspace.files.length === 1 ? "" : "s"}</span>
+      <span>Append: ${escapeHtml(selectedDestination?.label || "Project overview")}</span>
+    </div>
+  `;
 }
 
 function activeCompileFile(project) {
@@ -7593,6 +7770,25 @@ function renderCompileMessages(workspace) {
       <span>${escapeHtml(message.text)}</span>
     </div>
   `).join("");
+}
+
+function normalizeCompilePanel(panel = "console", file = activeCompileFile(selectedProject())) {
+  const value = String(panel || "console").toLowerCase();
+  if (value === "scope" && !isHdlLanguage(file?.language)) return "console";
+  return ["console", "messages", "terminal", "scope"].includes(value) ? value : "console";
+}
+
+function activeCompilePanel(project, file = activeCompileFile(project)) {
+  const workspace = ensureCompileCode(project);
+  const panel = normalizeCompilePanel(workspace.activePanel, file);
+  workspace.activePanel = panel;
+  return panel;
+}
+
+function setCompilePanel(project, panel) {
+  const workspace = ensureCompileCode(project);
+  workspace.activePanel = normalizeCompilePanel(panel, activeCompileFile(project));
+  scheduleAutosave(900);
 }
 
 function compileWorkspaceTree(workspace = {}) {
@@ -7661,8 +7857,11 @@ function renderCompileWorkspaceTree(workspace = {}, projectTitle = "Project work
   const tree = compileWorkspaceTree(workspace);
   const contents = renderCompileTreeFolder(tree, workspace.activeFileId || "");
   return `
-    <details open>
-      <summary>${escapeHtml(projectTitle || "Project workspace")}</summary>
+    <details class="compile-code-root-folder" open>
+      <summary>
+        <span class="compile-tree-folder-icon" aria-hidden="true"></span>
+        <span>${escapeHtml(projectTitle || "Project workspace")}</span>
+      </summary>
       <div class="compile-code-tree-files">
         ${contents || `<p>No source files or folders yet.</p>`}
       </div>
@@ -7706,7 +7905,7 @@ function renderCompileSystemTerminal(workspace = {}) {
   const terminal = workspace.systemTerminal || {};
   const history = Array.isArray(terminal.history) ? terminal.history : [];
   return `
-    <section class="compile-system-terminal-panel" aria-label="Real terminal">
+    <section class="compile-system-terminal-panel" data-compile-output-panel="terminal" aria-label="Real terminal">
       <div class="compile-terminal-heading">
         <span class="compile-terminal-title"><span aria-hidden="true" class="terminal-dot"></span> Terminal</span>
         <span class="compile-terminal-controls">
@@ -7740,17 +7939,12 @@ function renderCompileSystemTerminal(workspace = {}) {
 }
 
 function showCompileOutput(project, file = activeCompileFile(project)) {
-  updateCompileTerminalPanel(project, file);
-  const panel = sectionContent.querySelector("[data-compile-terminal-panel]");
-  const terminal = sectionContent.querySelector("[data-compile-terminal]");
-  if (!panel || !terminal) return;
-  panel.classList.add("is-focused");
-  panel.scrollIntoView({ behavior: "smooth", block: "center" });
+  setCompilePanel(project, "console");
+  renderSectionContent(project);
   requestAnimationFrame(() => {
-    terminal.focus?.({ preventScroll: true });
-    terminal.scrollTop = terminal.scrollHeight;
+    updateCompileTerminalPanel(project, file);
+    sectionContent.querySelector("[data-compile-terminal]")?.focus?.({ preventScroll: true });
   });
-  window.setTimeout(() => panel.classList.remove("is-focused"), 1400);
 }
 
 function activeCompileWaveform(project, file = activeCompileFile(project)) {
@@ -7855,10 +8049,9 @@ function renderCompileScopePanel(project, file = activeCompileFile(project)) {
   if (!isHdlLanguage(file?.language)) return "";
   const waveform = activeCompileWaveform(project, file);
   return `
-    <section class="compile-scope-panel" data-compile-scope-panel aria-label="HDL signal scope">
+    <section class="compile-scope-panel" data-compile-scope-panel data-compile-output-panel="scope" aria-label="HDL signal scope">
       <div class="compile-terminal-heading">
         <span class="compile-terminal-title"><span aria-hidden="true" class="scope-dot"></span> Signal scope</span>
-        <button type="button" data-compile-show-scope>Show scope</button>
       </div>
       ${renderHdlScope(waveform)}
     </section>
@@ -7866,14 +8059,12 @@ function renderCompileScopePanel(project, file = activeCompileFile(project)) {
 }
 
 function showCompileScope(project, file = activeCompileFile(project)) {
-  const panel = sectionContent.querySelector("[data-compile-scope-panel]");
-  if (!panel) {
+  if (!isHdlLanguage(file?.language)) {
     addCompileMessage(project, "No HDL scope is available for the active source yet.", "warning");
     return;
   }
-  panel.classList.add("is-focused");
-  panel.scrollIntoView({ behavior: "smooth", block: "center" });
-  window.setTimeout(() => panel.classList.remove("is-focused"), 1400);
+  setCompilePanel(project, "scope");
+  renderSectionContent(project);
 }
 
 async function copyCompileOutput(project, file = activeCompileFile(project)) {
@@ -7931,15 +8122,88 @@ function compileFileDirtyLabel(file) {
   return "Draft";
 }
 
+function renderCompileConsolePanel(project, file = activeCompileFile(project)) {
+  const workspace = ensureCompileCode(project);
+  const terminal = file?.lastResult?.terminal || workspace.terminal || compileTerminalStatus || "Compiler output will appear here after you save or run a source file.";
+  return `
+    <section class="compile-terminal-panel" data-compile-terminal-panel data-compile-output-panel="console" aria-label="Compiler console output">
+      <div class="compile-terminal-heading">
+        <span class="compile-terminal-title"><span aria-hidden="true" class="terminal-dot"></span> Console</span>
+        <span class="compile-terminal-controls">
+          <button type="button" data-compile-copy-output>Copy output</button>
+          <button type="button" data-compile-clear-output>Clear output</button>
+        </span>
+      </div>
+      <pre class="compile-terminal" data-compile-terminal tabindex="0" role="log" aria-live="polite">${escapeHtml(terminal)}</pre>
+    </section>
+  `;
+}
+
+function renderCompileMessagesPanel(workspace = {}) {
+  return `
+    <section class="compile-messages-panel" data-compile-output-panel="messages" aria-label="Compile messages log">
+      <div class="compile-terminal-heading">
+        <span class="compile-terminal-title">Messages log</span>
+        <button type="button" data-compile-clear-messages>Clear log</button>
+      </div>
+      <div class="compile-messages-log" data-compile-messages>${renderCompileMessages(workspace)}</div>
+    </section>
+  `;
+}
+
+function compilePanelTabs(project, file = activeCompileFile(project)) {
+  const workspace = ensureCompileCode(project);
+  const activePanel = activeCompilePanel(project, file);
+  const messageCount = Array.isArray(workspace.messages) ? workspace.messages.length : 0;
+  const tabs = [
+    { id: "console", label: "Console" },
+    { id: "messages", label: messageCount ? `Messages (${messageCount})` : "Messages" },
+    { id: "terminal", label: "Terminal" },
+    ...(isHdlLanguage(file?.language) ? [{ id: "scope", label: "Scope" }] : [])
+  ];
+  return `
+    <div class="compile-panel-tabs" role="tablist" aria-label="Compile output views">
+      ${tabs.map((tab) => `
+        <button
+          class="${tab.id === activePanel ? "active" : ""}"
+          type="button"
+          role="tab"
+          aria-selected="${tab.id === activePanel ? "true" : "false"}"
+          data-compile-open-panel="${tab.id}"
+        >${escapeHtml(tab.label)}</button>
+      `).join("")}
+    </div>
+  `;
+}
+
+function renderCompileActiveOutputPanel(project, file = activeCompileFile(project)) {
+  const workspace = ensureCompileCode(project);
+  const activePanel = activeCompilePanel(project, file);
+  if (activePanel === "messages") return renderCompileMessagesPanel(workspace);
+  if (activePanel === "terminal") return renderCompileSystemTerminal(workspace);
+  if (activePanel === "scope") return renderCompileScopePanel(project, file);
+  return renderCompileConsolePanel(project, file);
+}
+
 function renderCompileCodeSection(project) {
   const workspace = ensureCompileCode(project);
   const activeFile = activeCompileFile(project);
-  const terminal = activeFile?.lastResult?.terminal || workspace.terminal || compileTerminalStatus || "Compiler output will appear here after you save or run a source file.";
   return `
     <div class="compile-code-workspace">
+      <div class="compile-ide-menu-bar" aria-label="Compile code menu bar">
+        <span>File</span>
+        <span>Edit</span>
+        <span>View</span>
+        <span>Project</span>
+        <span>Build</span>
+        <span>Debug</span>
+        <span>Tools</span>
+        <span>Help</span>
+        <strong>${escapeHtml(project.title || "Project workspace")}</strong>
+      </div>
       <aside class="compile-code-sidebar" aria-label="Compile code files">
         <div class="compile-code-sidebar-heading">
-          <h3>Compile Code</h3>
+          <h3>Solution Explorer</h3>
           <small>${workspace.files.length} source file${workspace.files.length === 1 ? "" : "s"}</small>
         </div>
         <div class="compile-code-workspace-tree" aria-label="Project workspace tree">
@@ -7956,7 +8220,9 @@ function renderCompileCodeSection(project) {
       </aside>
 
       <section class="compile-code-main" aria-label="Compile code editor">
+        ${compileEditorTabs(project, activeFile)}
         ${activeFile ? `
+          ${compileFileBreadcrumbs(activeFile)}
           <div class="compile-code-meta-grid">
             <label>
               <span>File path</span>
@@ -8006,14 +8272,14 @@ function renderCompileCodeSection(project) {
             <button class="danger-icon" type="button" data-compile-delete>Delete source</button>
           </div>
           <section class="compile-append-panel" aria-label="Append code to project section">
-            <div>
+            <div class="compile-append-summary">
               <strong>Append code to project</strong>
-              <span>Insert the active source as a formatted code block into this project.</span>
+              <span>Choose the exact project section or nested subsection that should receive this source file as a formatted code block.</span>
             </div>
-            <label>
-              <span>Destination</span>
-              <select data-compile-append-target>${compileAppendDestinationOptions(project, workspace.appendTargetId)}</select>
-            </label>
+            <div class="compile-append-target-browser">
+              <strong>Destination tree</strong>
+              ${renderCompileAppendTree(project, workspace.appendTargetId)}
+            </div>
             <div class="compile-append-actions">
               <button type="button" data-compile-append-code>Append code to project</button>
             </div>
@@ -8024,25 +8290,13 @@ function renderCompileCodeSection(project) {
             <p>Add a source file for C, C++, SystemVerilog, LTspice, Java, JavaScript, Python, or HTML.</p>
           </div>
         `}
-        <section class="compile-terminal-panel" data-compile-terminal-panel aria-label="Compiler console output">
-          <div class="compile-terminal-heading">
-            <span class="compile-terminal-title"><span aria-hidden="true" class="terminal-dot"></span> Console</span>
-            <span class="compile-terminal-controls">
-              <button type="button" data-compile-copy-output>Copy output</button>
-              <button type="button" data-compile-clear-output>Clear output</button>
-            </span>
+        <section class="compile-output-workbench" aria-label="Compile output workbench">
+          ${compilePanelTabs(project, activeFile)}
+          <div class="compile-output-dock">
+            ${renderCompileActiveOutputPanel(project, activeFile)}
           </div>
-          <pre class="compile-terminal" data-compile-terminal tabindex="0" role="log" aria-live="polite">${escapeHtml(terminal)}</pre>
         </section>
-        <section class="compile-messages-panel" aria-label="Compile messages log">
-          <div class="compile-terminal-heading">
-            <span>Messages log</span>
-            <button type="button" data-compile-clear-messages>Clear log</button>
-          </div>
-          <div class="compile-messages-log" data-compile-messages>${renderCompileMessages(workspace)}</div>
-        </section>
-        ${renderCompileSystemTerminal(workspace)}
-        ${renderCompileScopePanel(project, activeFile)}
+        ${compileIdeStatusBar(project, activeFile)}
       </section>
     </div>
   `;
@@ -8757,14 +9011,14 @@ async function compileActiveFile(project, file, options = {}) {
   const workspace = ensureCompileCode(project);
   const action = options.action || (isHdlLanguage(file.language) ? "simulate" : "run");
   const actionLabel = action === "compile" ? "Compile" : action === "build" ? "Build project" : action === "simulate" ? "Simulate" : "Run";
+  workspace.activePanel = "console";
   file.lastResult = {
     ok: null,
     terminal: `${actionLabel} started. Please wait...`
   };
   workspace.terminal = file.lastResult.terminal;
   addCompileMessage(project, `${actionLabel} started for ${file.fileName || file.title || "source file"}.`, "info");
-  updateCompileTerminalPanel(project, file);
-  updateCompileMessagesPanel(project);
+  renderSectionContent(project);
   try {
     await saveCompileFile(project, file);
     const response = await fetch(`/api/code/compile?t=${Date.now()}`, {
@@ -8793,7 +9047,6 @@ async function compileActiveFile(project, file, options = {}) {
     }
     file.dirty = false;
     ensureCompileCode(project).terminal = file.lastResult.terminal;
-    updateCompileTerminalPanel(project, file);
     addCompileMessage(project, result.ok ? `${actionLabel} succeeded for ${file.fileName}.` : `${actionLabel} completed with errors for ${file.fileName}.`, result.ok ? "success" : "error");
     setStatus(result.ok ? `${actionLabel} succeeded.` : `${actionLabel} completed with errors.`);
     scheduleAutosave();
@@ -8805,7 +9058,6 @@ async function compileActiveFile(project, file, options = {}) {
       finishedAt: new Date().toISOString()
     };
     ensureCompileCode(project).terminal = file.lastResult.terminal;
-    updateCompileTerminalPanel(project, file);
     addCompileMessage(project, `${actionLabel} failed for ${file.fileName || "source file"}.`, "error");
     setStatus(error.message || `${actionLabel} failed.`);
     renderSectionContent(project);
@@ -8825,9 +9077,10 @@ async function runCompileTerminalCommand(project) {
   }
   terminal.command = command;
   terminal.cwd = cwd;
+  workspace.activePanel = "terminal";
   terminal.output = `Running: ${command}\nWorking folder: ${cwd || "."}\nPlease wait...`;
-  updateCompileSystemTerminalPanel(project);
   addCompileMessage(project, `Terminal command started: ${command}`, "info");
+  renderSectionContent(project);
   try {
     const response = await fetch(`/api/code/terminal?t=${Date.now()}`, {
       method: "POST",
@@ -8868,7 +9121,9 @@ async function checkCompileTools(project) {
       return `${status.ready ? "READY" : "MISSING"} ${status.label} (${id}) - ${toolText}`;
     });
     compileTerminalStatus = [`Compile workspace: ${result.tools?.compileRoot || ""}`, ...lines].join("\n");
-    ensureCompileCode(project).terminal = compileTerminalStatus;
+    const workspace = ensureCompileCode(project);
+    workspace.terminal = compileTerminalStatus;
+    workspace.activePanel = "console";
     renderSectionContent(project);
   } catch (error) {
     setStatus(error.message || "Compiler status failed.");
@@ -8877,6 +9132,7 @@ async function checkCompileTools(project) {
 
 async function installCompileTools(project, file) {
   if (!file) return;
+  ensureCompileCode(project).activePanel = "console";
   file.lastResult = { ok: null, terminal: `Installing tools for ${codeLanguageLabel(file.language)}. This can take several minutes...` };
   renderSectionContent(project);
   try {
@@ -8900,6 +9156,172 @@ async function installCompileTools(project, file) {
   }
 }
 
+const profileAssetDefinitions = {
+  profileImage: {
+    label: "Profile photo",
+    description: "This image appears with your contact/profile information.",
+    type: "image"
+  },
+  heroImage: {
+    label: "Main background",
+    description: "This image controls the main website background near the top of the portfolio.",
+    type: "image"
+  },
+  resumeUrl: {
+    label: "Resume",
+    description: "This document opens from the resume area and recruiter-facing links.",
+    type: "document"
+  },
+  brandImage: {
+    label: "Brand icon",
+    description: "This is the small trademark/brand icon used by the portfolio and builder.",
+    type: "image"
+  }
+};
+
+function profileAssetDefinition(kind = "") {
+  return profileAssetDefinitions[kind] || {
+    label: "Profile asset",
+    description: "Portfolio profile asset.",
+    type: "file"
+  };
+}
+
+function profileAssetValue(kind = "") {
+  const profile = normalizeProfile(catalog.profile || {});
+  return String(profile[kind] || "").trim();
+}
+
+function profileAssetDisplayName(url = "") {
+  const clean = String(url || "").trim();
+  if (!clean) return "No file selected";
+  if (/^data:/i.test(clean)) return "Embedded file";
+  const withoutQuery = clean.split(/[?#]/)[0];
+  const segment = withoutQuery.split(/[\\/]/).filter(Boolean).pop() || clean;
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    return segment;
+  }
+}
+
+function isProfileAssetImage(kind = "", url = "") {
+  return profileAssetDefinition(kind).type === "image" || urlLooksLikeDirectImage(url);
+}
+
+function profileAssetPreviewHtml(kind = "", options = {}) {
+  const definition = profileAssetDefinition(kind);
+  const url = profileAssetValue(kind);
+  const large = options.large === true;
+  if (!url) {
+    return `
+      <div class="profile-asset-empty">
+        <strong>No ${escapeHtml(definition.label.toLowerCase())} has been added yet.</strong>
+        <span>Use Change to choose a file from this machine.</span>
+      </div>
+    `;
+  }
+  const target = normalizeLinkTarget(url);
+  const displayName = profileAssetDisplayName(url);
+  const extension = extensionFromUrl(url);
+  if (isProfileAssetImage(kind, url)) {
+    return `
+      <figure class="profile-asset-preview ${large ? "is-large-preview" : ""}">
+        <img src="${escapeHtml(target)}" alt="${escapeHtml(definition.label)} preview" />
+        <figcaption>
+          <strong>${escapeHtml(displayName)}</strong>
+          <span>${escapeHtml(definition.description)}</span>
+        </figcaption>
+      </figure>
+    `;
+  }
+  if (extension === ".pdf") {
+    return `
+      <div class="profile-asset-document ${large ? "is-large-preview" : ""}">
+        <iframe title="${escapeHtml(definition.label)} preview" src="${escapeHtml(target)}"></iframe>
+        <div>
+          <strong>${escapeHtml(displayName)}</strong>
+          <span>PDF preview. Use Open file if your browser blocks embedded viewing.</span>
+        </div>
+      </div>
+    `;
+  }
+  return `
+    <div class="profile-asset-file-card">
+      <strong>${escapeHtml(displayName)}</strong>
+      <span>${escapeHtml(definition.description)}</span>
+      <a href="${escapeHtml(target)}" target="_blank" rel="noreferrer">Open file</a>
+    </div>
+  `;
+}
+
+function renderProfileAssetManager(kind = activeProfileAssetKind) {
+  const definition = profileAssetDefinition(kind);
+  const url = profileAssetValue(kind);
+  if (profileAssetTitle) profileAssetTitle.textContent = definition.label;
+  if (profileAssetBody) {
+    profileAssetBody.innerHTML = `
+      <div class="profile-asset-manager-copy">
+        <strong>${escapeHtml(definition.label)}</strong>
+        <p>${escapeHtml(definition.description)}</p>
+        <small>${url ? `Current file: ${profileAssetDisplayName(url)}` : "Nothing has been added for this asset yet."}</small>
+      </div>
+      ${profileAssetPreviewHtml(kind)}
+    `;
+  }
+  if (profileAssetView) profileAssetView.disabled = !url;
+  if (profileAssetRemove) profileAssetRemove.disabled = !url;
+}
+
+function openProfileAssetManager(kind) {
+  activeProfileAssetKind = kind;
+  syncProfileFromInputs();
+  renderProfileAssetManager(kind);
+  if (!profileAssetDialog?.open) profileAssetDialog.showModal();
+}
+
+function openProfileAssetViewer(kind = activeProfileAssetKind) {
+  const definition = profileAssetDefinition(kind);
+  const url = profileAssetValue(kind);
+  if (!url) {
+    setStatus(`No ${definition.label.toLowerCase()} has been added yet.`);
+    return;
+  }
+  if (profileAssetViewTitle) profileAssetViewTitle.textContent = definition.label;
+  if (profileAssetViewBody) profileAssetViewBody.innerHTML = profileAssetPreviewHtml(kind, { large: true });
+  if (profileAssetOpenLink) {
+    profileAssetOpenLink.href = normalizeLinkTarget(url);
+    profileAssetOpenLink.hidden = false;
+  }
+  if (!profileAssetViewDialog?.open) profileAssetViewDialog.showModal();
+}
+
+function removeProfileAsset(kind = activeProfileAssetKind) {
+  const definition = profileAssetDefinition(kind);
+  const url = profileAssetValue(kind);
+  if (!url) {
+    renderProfileAssetManager(kind);
+    return;
+  }
+  openDeleteConfirm({
+    title: `Remove ${definition.label.toLowerCase()}`,
+    message: `Remove the current ${definition.label.toLowerCase()} from the local portfolio draft? The uploaded file may still exist in the assets folder until cleanup.`,
+    onConfirm: () => {
+      const profile = normalizeProfile({
+        ...(catalog.profile || {}),
+        [kind]: ""
+      });
+      catalog.profile = profile;
+      markDraftNeedsSave();
+      setStatus(`${definition.label} removed locally. Click Save draft before applying to site.`);
+      scheduleAutosave();
+      schedulePreviewRender();
+      renderProfileEditor();
+      renderProfileAssetManager(kind);
+    }
+  });
+}
+
 function readFileAsDataUrl(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -8912,19 +9334,19 @@ function readFileAsDataUrl(file) {
 async function uploadProfileAsset(kind) {
   const profile = syncProfileFromInputs();
   const file = await chooseFile();
-  if (!file) return;
+  if (!file) return false;
 
   const imageKinds = new Set(["profileImage", "heroImage", "brandImage"]);
   if (imageKinds.has(kind) && !file.type.startsWith("image/")) {
     setStatus("Choose an image file for this profile asset.");
-    return;
+    return false;
   }
 
   if (kind === "resumeUrl") {
     const allowedResume = [".pdf", ".doc", ".docx"].includes(extensionFor(file.name).toLowerCase());
     if (!allowedResume) {
       setStatus("Choose a PDF, DOC, or DOCX resume file.");
-      return;
+      return false;
     }
   }
 
@@ -8943,7 +9365,7 @@ async function uploadProfileAsset(kind) {
   const result = await response.json();
   if (!response.ok) {
     setStatus(result.error || "Profile asset upload failed.");
-    return;
+    return false;
   }
 
   profile[kind] = result.url;
@@ -8953,6 +9375,7 @@ async function uploadProfileAsset(kind) {
   scheduleAutosave();
   schedulePreviewRender();
   renderProfileEditor();
+  return true;
 }
 
 function extensionFor(fileName) {
@@ -9967,10 +10390,22 @@ saveProfileContentButton?.addEventListener("click", () => {
   schedulePreviewRender();
 });
 
-profileImageUploadButton?.addEventListener("click", () => uploadProfileAsset("profileImage"));
-profileHeroUploadButton?.addEventListener("click", () => uploadProfileAsset("heroImage"));
-profileResumeUploadButton?.addEventListener("click", () => uploadProfileAsset("resumeUrl"));
-profileBrandUploadButton?.addEventListener("click", () => uploadProfileAsset("brandImage"));
+profileImageUploadButton?.addEventListener("click", () => openProfileAssetManager("profileImage"));
+profileHeroUploadButton?.addEventListener("click", () => openProfileAssetManager("heroImage"));
+profileResumeUploadButton?.addEventListener("click", () => openProfileAssetManager("resumeUrl"));
+profileBrandUploadButton?.addEventListener("click", () => openProfileAssetManager("brandImage"));
+
+profileAssetClose?.addEventListener("click", () => closeDialogElement(profileAssetDialog, "close"));
+profileAssetDone?.addEventListener("click", () => closeDialogElement(profileAssetDialog, "close"));
+profileAssetView?.addEventListener("click", () => openProfileAssetViewer(activeProfileAssetKind));
+profileAssetRemove?.addEventListener("click", () => removeProfileAsset(activeProfileAssetKind));
+profileAssetChange?.addEventListener("click", async () => {
+  const kind = activeProfileAssetKind;
+  const changed = await uploadProfileAsset(kind);
+  if (changed && profileAssetDialog?.open) renderProfileAssetManager(kind);
+});
+profileAssetViewClose?.addEventListener("click", () => closeDialogElement(profileAssetViewDialog, "close"));
+profileAssetViewDone?.addEventListener("click", () => closeDialogElement(profileAssetViewDialog, "close"));
 
 siteSectionList.addEventListener("click", (event) => {
   const toggleButton = event.target.closest("[data-site-section-toggle]");
@@ -11126,6 +11561,20 @@ sectionContent.addEventListener("click", async (event) => {
     await addCustomSection();
     return;
   }
+  if (button.dataset.compileOpenPanel) {
+    setCompilePanel(project, button.dataset.compileOpenPanel);
+    renderSectionContent(project);
+    return;
+  }
+  if (button.dataset.compileAppendTargetId) {
+    const workspace = ensureCompileCode(project);
+    workspace.appendTargetId = button.dataset.compileAppendTargetId;
+    addCompileMessage(project, `Append destination set to ${selectedCompileAppendDestination(project)?.label || "project overview"}.`, "info");
+    setStatus("Compile append destination updated.");
+    scheduleAutosave();
+    renderSectionContent(project);
+    return;
+  }
   if (hasDataset("compileAdd")) {
     const workspace = ensureCompileCode(project);
     const file = newCompileFile("javascript");
@@ -11215,7 +11664,9 @@ sectionContent.addEventListener("click", async (event) => {
   }
   if (hasDataset("compileShowScope")) {
     showCompileScope(project, compileFile);
-    addCompileMessage(project, `Displayed HDL scope for ${compileFile?.fileName || "the active source"}.`, "info");
+    if (isHdlLanguage(compileFile?.language)) {
+      addCompileMessage(project, `Displayed HDL scope for ${compileFile?.fileName || "the active source"}.`, "info");
+    }
     return;
   }
   if (hasDataset("compileCopyOutput")) {

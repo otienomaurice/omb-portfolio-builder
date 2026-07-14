@@ -258,6 +258,7 @@ Use the workflow in [BRANCHING.md](BRANCHING.md):
 | `codex/fix-nested-section-editor-0.2.37` | Repairs nested project section editing, prunes empty section trees while preserving content-bearing sections/subsections, and bumps the builder release version to `0.2.37`. | `development` | `development` | Ready for `main` |
 | `codex/fix-section-subsection-render-controls-0.2.38` | Normalizes legacy `items` and current `children` nested section data, makes custom project sections visible as editable/deletable rows, keeps subsection/file controls visible, and bumps the builder release version to `0.2.38`. | `development` | `development` | Active |
 | `codex/fix-local-builder-default-compile-0.2.39` | Adds builder asset cache-busting, makes Compile Code a built-in non-deletable project workspace beside Overview, syncs the fixed section/subsection renderer into the local app folders, and aligns the builder window controls so hide/minimize/maximize/close appear together on open. | `development` | `development` | Active |
+| `codex/compile-code-ide-layout-0.2.40` | Restyles Compile Code as a Visual Studio-like IDE workspace with an explorer tree, editor tabs, breadcrumbs, exclusive Console/Messages/Terminal/Scope panes, a nested append-destination tree, stable file-list rows, and profile asset manager/viewer dialogs. | `development` | `development` | Active |
 
 ## Uninstall
 
