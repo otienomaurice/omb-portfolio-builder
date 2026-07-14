@@ -92,6 +92,13 @@ const projectPreviewContent = document.querySelector("#project-preview-content")
 const projectPreviewClose = document.querySelector("#project-preview-close");
 const projectPreviewBack = document.querySelector("#project-preview-back");
 const projectPreviewForward = document.querySelector("#project-preview-forward");
+const builderFileViewDialog = document.querySelector("#builder-file-view-dialog");
+const builderFileViewEyebrow = document.querySelector("#builder-file-view-eyebrow");
+const builderFileViewTitle = document.querySelector("#builder-file-view-title");
+const builderFileViewContent = document.querySelector("#builder-file-view-content");
+const builderFileViewClose = document.querySelector("#builder-file-view-close");
+const builderFileViewOpen = document.querySelector("#builder-file-view-open");
+const builderFileViewDownload = document.querySelector("#builder-file-view-download");
 const openPortfolioPreviewButton = document.querySelector("#open-portfolio-preview");
 const saveAllSectionsButton = document.querySelector("#save-all-sections");
 const portfolioPreviewDialog = document.querySelector("#portfolio-preview-dialog");
@@ -482,6 +489,7 @@ let activeProjectPreviewProject = null;
 let activeProjectPreviewSectionIndex = -1;
 let activeProjectPreviewPath = [];
 let activeProjectPreviewForwardStack = [];
+let activeCustomSectionView = { sectionId: "", path: [] };
 let currentPublishTarget = null;
 let summaryEditorProjectId = "";
 let activeSummaryEditor = null;
@@ -996,7 +1004,8 @@ function dialogCanStepForward(dialog) {
 
 function renderProjectWindowSectionFromHistory(sectionId) {
   suppressProjectWindowHistory = true;
-  activeSectionId = sectionId || "brief";
+  applyProjectWindowStateKey(sectionId || "brief");
+  pendingEditor = null;
   renderAll();
   suppressProjectWindowHistory = false;
   updateDialogWindowButtons(projectDialog);
@@ -1004,13 +1013,13 @@ function renderProjectWindowSectionFromHistory(sectionId) {
 
 function stepProjectWindowBack() {
   if (!projectWindowBackStack.length) return;
-  projectWindowForwardStack.push(activeSectionId);
+  projectWindowForwardStack.push(projectWindowStateKey());
   renderProjectWindowSectionFromHistory(projectWindowBackStack.pop());
 }
 
 function stepProjectWindowForward() {
   if (!projectWindowForwardStack.length) return;
-  projectWindowBackStack.push(activeSectionId);
+  projectWindowBackStack.push(projectWindowStateKey());
   renderProjectWindowSectionFromHistory(projectWindowForwardStack.pop());
 }
 
@@ -3687,6 +3696,36 @@ function sectionWindowId(sectionId) {
   return sectionId || "brief";
 }
 
+function activeCustomSectionPath(sectionId = "") {
+  return activeCustomSectionView.sectionId === sectionId
+    ? [...activeCustomSectionView.path]
+    : [];
+}
+
+function setActiveCustomSectionPath(sectionId = "", path = []) {
+  activeCustomSectionView = {
+    sectionId,
+    path: Array.isArray(path) ? [...path] : nodePathFromString(path)
+  };
+}
+
+function projectWindowStateKey(sectionId = activeSectionId) {
+  if (String(sectionId || "").startsWith("custom:")) {
+    const customSectionId = String(sectionId).replace("custom:", "");
+    const pathValue = nodePathToString(activeCustomSectionPath(customSectionId));
+    return pathValue ? `${sectionId}|${pathValue}` : sectionId;
+  }
+  return sectionId || "brief";
+}
+
+function applyProjectWindowStateKey(stateKey = "brief") {
+  const [sectionId, pathValue = ""] = String(stateKey || "brief").split("|");
+  activeSectionId = sectionId || "brief";
+  if (activeSectionId.startsWith("custom:")) {
+    setActiveCustomSectionPath(activeSectionId.replace("custom:", ""), nodePathFromString(pathValue));
+  }
+}
+
 function resetProjectWindowScroll() {
   projectWindowContent.scrollTop = 0;
   requestAnimationFrame(() => {
@@ -3701,6 +3740,7 @@ function openProjectWindow(projectId, sectionId = "brief") {
   selectedProjectId = projectId;
   projectWindowTitle.dataset.projectId = projectId;
   activeSectionId = sectionWindowId(sectionId);
+  setActiveCustomSectionPath("", []);
   projectWindowBackStack = [];
   projectWindowForwardStack = [];
   projectTitleMenu.hidden = true;
@@ -3761,6 +3801,95 @@ function isLocalDownloadTarget(target = "") {
 function downloadAttribute(target = "", item = {}) {
   const value = normalizeLinkTarget(target, { assumeWeb: isWebsiteLinkItem(item, target) });
   return isLocalDownloadTarget(value) ? " download" : "";
+}
+
+function builderFileUrl(item = {}) {
+  return item?.url || item?.artifact || item?.href || item?.file || item?.path || item?.src || "";
+}
+
+function builderFileDisplayName(item = {}) {
+  return itemTitle(item) || displayNameFromUrl(builderFileUrl(item), "Project file");
+}
+
+function isBuilderPdfFile(item = {}) {
+  const url = builderFileUrl(item);
+  return extensionFromUrl(url) === ".pdf" || /pdf/i.test(item?.type || "");
+}
+
+function isBuilderTextFile(item = {}) {
+  const url = builderFileUrl(item);
+  const extension = extensionFromUrl(url);
+  return extension === ".txt" || /^text\/plain\b/i.test(item?.type || "");
+}
+
+function downloadBuilderFile(item = {}) {
+  const rawUrl = builderFileUrl(item);
+  const target = normalizeLinkTarget(rawUrl, { assumeWeb: isWebsiteLinkItem(item, rawUrl) });
+  if (!target) return false;
+  const anchor = document.createElement("a");
+  anchor.href = target;
+  anchor.download = builderFileDisplayName(item);
+  if (/^https?:\/\//i.test(target)) {
+    anchor.target = "_blank";
+    anchor.rel = "noreferrer";
+  }
+  document.body.append(anchor);
+  anchor.click();
+  anchor.remove();
+  return true;
+}
+
+async function openBuilderFileWindow(item = {}) {
+  const rawUrl = builderFileUrl(item);
+  const target = normalizeLinkTarget(rawUrl, { assumeWeb: isWebsiteLinkItem(item, rawUrl) });
+  if (!target) {
+    setStatus("This file has no URL to open.");
+    return;
+  }
+
+  const title = builderFileDisplayName(item);
+  if (!isBuilderPdfFile(item) && !isBuilderTextFile(item)) {
+    if (downloadBuilderFile(item)) setStatus(`Downloading ${title}.`);
+    return;
+  }
+
+  if (builderFileViewTitle) builderFileViewTitle.textContent = title;
+  if (builderFileViewEyebrow) builderFileViewEyebrow.textContent = isBuilderPdfFile(item) ? "PDF viewer" : "Text file viewer";
+  if (builderFileViewOpen) {
+    builderFileViewOpen.href = target;
+    builderFileViewOpen.hidden = false;
+  }
+  if (builderFileViewDownload) {
+    builderFileViewDownload.href = target;
+    builderFileViewDownload.download = title;
+    builderFileViewDownload.hidden = false;
+  }
+
+  if (isBuilderPdfFile(item)) {
+    builderFileViewContent.innerHTML = `
+      <iframe class="builder-file-pdf-frame" title="${escapeHtml(title)}" src="${escapeHtml(target)}"></iframe>
+    `;
+  } else {
+    builderFileViewContent.innerHTML = `<div class="builder-file-loading">Loading text file...</div>`;
+    try {
+      const response = await fetch(target, { cache: "no-store" });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const text = await response.text();
+      builderFileViewContent.innerHTML = `
+        <textarea class="builder-file-text-editor" spellcheck="false" readonly>${escapeHtml(text)}</textarea>
+      `;
+    } catch (error) {
+      builderFileViewContent.innerHTML = `
+        <div class="builder-file-error">
+          <strong>Text preview failed.</strong>
+          <p>${escapeHtml(error.message || "The file could not be loaded into the text viewer.")}</p>
+        </div>
+      `;
+    }
+  }
+
+  if (!builderFileViewDialog?.open) builderFileViewDialog.showModal();
+  updateDialogWindowButtons(builderFileViewDialog);
 }
 
 function resourceLink(item, label = item.label || item.title || item.name) {
@@ -7206,11 +7335,13 @@ function savePendingEditor(form) {
       const parentPath = nodePathFromString(pendingEditor.parentPath || "");
       const parentNode = parentPath.length ? findBuilderNode(section, parentPath) : null;
       const children = parentNode ? builderNodeChildren(parentNode) : sectionRootChildren(section);
+      const nextPath = [...parentPath, children.length];
       children.push({
         id: slugify(`${title}-${Date.now()}`),
         ...nextItem,
         children: []
       });
+      setActiveCustomSectionPath(section.id, nextPath);
     }
   }
 
@@ -7431,7 +7562,9 @@ function renderBuilderExplorerRows(section, items = sectionRootChildren(section)
         return `
           <div class="builder-explorer-entry" role="listitem">
             <div class="builder-explorer-row ${hasUrl ? "is-file" : "is-section"}" style="--builder-depth: ${depth}">
-              <button class="builder-explorer-main" type="button" data-open-editor="custom" data-mode="edit" data-section-id="${escapeHtml(section.id)}" data-node-path="${escapeHtml(pathValue)}">
+              <button class="builder-explorer-main" type="button" ${hasUrl
+                ? `data-open-file-view="true" data-section-id="${escapeHtml(section.id)}" data-node-path="${escapeHtml(pathValue)}"`
+                : `data-open-node-view="true" data-section-id="${escapeHtml(section.id)}" data-node-path="${escapeHtml(pathValue)}"`}>
                 <span class="builder-explorer-icon" aria-hidden="true">${hasUrl ? "file" : "section"}</span>
                 <span class="builder-explorer-title">${escapeHtml(builderNodeTitle(item))}</span>
                 <small>${escapeHtml(builderNodeKindLabel(item))}</small>
@@ -7451,24 +7584,132 @@ function renderBuilderExplorerRows(section, items = sectionRootChildren(section)
   `;
 }
 
+function customViewPathValue(path = []) {
+  return nodePathToString(path);
+}
+
+function pendingEditorMatchesCustomView(sectionId, path = []) {
+  if (!pendingEditor || pendingEditor.sectionId !== sectionId) return false;
+  const pathValue = customViewPathValue(path);
+  if (pendingEditor.type === "custom-section") return !pathValue;
+  if (pendingEditor.type !== "custom") return false;
+  if (pendingEditor.mode === "add") return (pendingEditor.parentPath || "") === pathValue;
+  const editPath = nodePathFromString(pendingEditor.nodePath || pendingEditor.index || "");
+  const editPathValue = customViewPathValue(editPath);
+  const parentPathValue = customViewPathValue(editPath.slice(0, -1));
+  return editPathValue === pathValue || parentPathValue === pathValue;
+}
+
+function renderNestedSectionNav(section, currentChildren = [], currentPath = []) {
+  const childRows = (currentChildren || [])
+    .map((item, index) => ({ item, index }))
+    .filter(({ item }) => item && !item.url && !item.artifact);
+
+  if (!childRows.length) return "";
+
+  return `
+    <div class="project-section-list nested-section-list" role="list" aria-label="Subsections">
+      ${childRows.map(({ item, index }) => {
+        const pathValue = customViewPathValue([...currentPath, index]);
+        return `
+          <div class="project-section-row nested-section-row" role="listitem">
+            <button
+              class="project-section-select nested-section-select"
+              type="button"
+              data-open-node-view="true"
+              data-section-id="${escapeHtml(section.id)}"
+              data-node-path="${escapeHtml(pathValue)}"
+            >
+              ${escapeHtml(builderNodeTitle(item))}
+            </button>
+          </div>
+        `;
+      }).join("")}
+    </div>
+  `;
+}
+
+function renderCustomFilesList(section, currentChildren = [], currentPath = []) {
+  const fileRows = (currentChildren || [])
+    .map((item, index) => ({ item, index }))
+    .filter(({ item }) => item && (item.url || item.artifact));
+
+  if (!fileRows.length) return "";
+
+  return `
+    <div class="builder-explorer-list custom-file-list" role="list" aria-label="Files and images">
+      ${fileRows.map(({ item, index }) => {
+        const pathValue = customViewPathValue([...currentPath, index]);
+        return `
+          <div class="builder-explorer-entry" role="listitem">
+            <div class="builder-explorer-row is-file" style="--builder-depth: 0">
+              <button class="builder-explorer-main" type="button" data-open-file-view="true" data-section-id="${escapeHtml(section.id)}" data-node-path="${escapeHtml(pathValue)}">
+                <span class="builder-explorer-title">${escapeHtml(builderNodeTitle(item))}</span>
+              </button>
+              <div class="builder-explorer-actions">
+                <button type="button" data-open-editor="custom" data-mode="edit" data-section-id="${escapeHtml(section.id)}" data-node-path="${escapeHtml(pathValue)}">Edit</button>
+                <button class="danger-icon" type="button" data-delete-node="${escapeHtml(section.id)}" data-node-path="${escapeHtml(pathValue)}">Delete</button>
+              </div>
+            </div>
+          </div>
+        `;
+      }).join("")}
+    </div>
+  `;
+}
+
+function renderCustomViewBreadcrumb(section, path = []) {
+  if (!path.length) return "";
+  const parts = [];
+  let current = null;
+  path.forEach((_, index) => {
+    const partialPath = path.slice(0, index + 1);
+    current = findBuilderNode(section, partialPath);
+    if (current) parts.push(builderNodeTitle(current));
+  });
+  return parts.length
+    ? `<p class="custom-section-breadcrumb">${escapeHtml(section.title || "Section")} / ${parts.map(escapeHtml).join(" / ")}</p>`
+    : "";
+}
+
 function renderCustomSection(project, sectionId) {
   const section = (project.sections || []).find((item) => item.id === sectionId);
   if (!section) return `<p class="evidence-empty">Section not found.</p>`;
   normalizeBuilderSectionStorage(section);
+  const currentPath = activeCustomSectionPath(sectionId);
+  const currentNode = currentPath.length ? findBuilderNode(section, currentPath) : section;
+  if (currentPath.length && !currentNode) {
+    setActiveCustomSectionPath(sectionId, []);
+    return renderCustomSection(project, sectionId);
+  }
+  const currentChildren = currentPath.length ? builderNodeChildren(currentNode) : sectionRootChildren(section);
+  const pathValue = customViewPathValue(currentPath);
+  const title = currentPath.length ? builderNodeTitle(currentNode) : section.title || "Custom section";
+  const description = currentPath.length ? currentNode?.description || "" : section.description || "";
+  const richDescription = currentPath.length ? currentNode?.richDescription : section.richDescription;
+  const editingCurrentView = pendingEditorMatchesCustomView(sectionId, currentPath);
 
   return `
     <div class="section-window-heading">
-      <h3>${section.title || "Custom section"}</h3>
       <div>
-        <button class="button primary" type="button" data-add-node-subsection="${section.id}" data-node-path="">Add subsection</button>
-        <button class="button secondary" type="button" data-upload-node="${section.id}" data-node-path="">Add file or image</button>
-        <button type="button" data-open-editor="custom-section" data-section-id="${section.id}">Edit section</button>
-        <button class="danger-icon" type="button" data-delete-section="${section.id}">Delete section</button>
+        <h3>${escapeHtml(title)}</h3>
+        ${renderCustomViewBreadcrumb(section, currentPath)}
+      </div>
+      <div>
+        <button class="button primary" type="button" data-add-node-subsection="${escapeHtml(section.id)}" data-node-path="${escapeHtml(pathValue)}">Add subsection</button>
+        <button class="button secondary" type="button" data-upload-node="${escapeHtml(section.id)}" data-node-path="${escapeHtml(pathValue)}">Add file or image</button>
+        ${currentPath.length
+          ? `<button type="button" data-open-editor="custom" data-mode="edit" data-section-id="${escapeHtml(section.id)}" data-node-path="${escapeHtml(pathValue)}">Edit current</button>
+             <button class="danger-icon" type="button" data-delete-node="${escapeHtml(section.id)}" data-node-path="${escapeHtml(pathValue)}">Delete current</button>`
+          : `<button type="button" data-open-editor="custom-section" data-section-id="${escapeHtml(section.id)}">Edit section</button>
+             <button class="danger-icon" type="button" data-delete-section="${escapeHtml(section.id)}">Delete section</button>`}
       </div>
     </div>
-    ${builderPreviewContent(section.richDescription, section.description || "", "No section content has been added yet.")}
-    ${renderBuilderExplorerRows(section)}
-    ${renderPendingEditor()}
+    ${editingCurrentView ? renderPendingEditor() : `
+      ${renderNestedSectionNav(section, currentChildren, currentPath)}
+      ${builderPreviewContent(richDescription, description, "No section content has been added yet.")}
+      ${renderCustomFilesList(section, currentChildren, currentPath) || (!currentChildren.length ? `<p class="evidence-empty explorer-empty">No subsections or files added yet.</p>` : "")}
+    `}
   `;
 }
 
@@ -9218,10 +9459,6 @@ function profileAssetPreviewHtml(kind = "", options = {}) {
     return `
       <figure class="profile-asset-preview ${large ? "is-large-preview" : ""}">
         <img src="${escapeHtml(target)}" alt="${escapeHtml(definition.label)} preview" />
-        <figcaption>
-          <strong>${escapeHtml(displayName)}</strong>
-          <span>${escapeHtml(definition.description)}</span>
-        </figcaption>
       </figure>
     `;
   }
@@ -9229,17 +9466,12 @@ function profileAssetPreviewHtml(kind = "", options = {}) {
     return `
       <div class="profile-asset-document ${large ? "is-large-preview" : ""}">
         <iframe title="${escapeHtml(definition.label)} preview" src="${escapeHtml(target)}"></iframe>
-        <div>
-          <strong>${escapeHtml(displayName)}</strong>
-          <span>PDF preview. Use Open file if your browser blocks embedded viewing.</span>
-        </div>
       </div>
     `;
   }
   return `
     <div class="profile-asset-file-card">
       <strong>${escapeHtml(displayName)}</strong>
-      <span>${escapeHtml(definition.description)}</span>
       <a href="${escapeHtml(target)}" target="_blank" rel="noreferrer">Open file</a>
     </div>
   `;
@@ -9251,11 +9483,6 @@ function renderProfileAssetManager(kind = activeProfileAssetKind) {
   if (profileAssetTitle) profileAssetTitle.textContent = definition.label;
   if (profileAssetBody) {
     profileAssetBody.innerHTML = `
-      <div class="profile-asset-manager-copy">
-        <strong>${escapeHtml(definition.label)}</strong>
-        <p>${escapeHtml(definition.description)}</p>
-        <small>${url ? `Current file: ${profileAssetDisplayName(url)}` : "Nothing has been added for this asset yet."}</small>
-      </div>
       ${profileAssetPreviewHtml(kind)}
     `;
   }
@@ -9284,6 +9511,24 @@ function openProfileAssetViewer(kind = activeProfileAssetKind) {
     profileAssetOpenLink.hidden = false;
   }
   if (!profileAssetViewDialog?.open) profileAssetViewDialog.showModal();
+}
+
+function openProfileAssetDirect(kind = activeProfileAssetKind) {
+  const definition = profileAssetDefinition(kind);
+  const url = profileAssetValue(kind);
+  if (!url) {
+    setStatus(`No ${definition.label.toLowerCase()} has been added yet.`);
+    return;
+  }
+  const target = normalizeLinkTarget(url);
+  const anchor = document.createElement("a");
+  anchor.href = target;
+  anchor.target = "_blank";
+  anchor.rel = "noreferrer";
+  document.body.append(anchor);
+  anchor.click();
+  anchor.remove();
+  setStatus(`Opened ${definition.label}.`);
 }
 
 function removeProfileAsset(kind = activeProfileAssetKind) {
@@ -10019,33 +10264,6 @@ function setBuilderGuideTopic(topic = "all") {
   filterBuilderGuide();
 }
 
-function closeGuideAndFocus(target) {
-  closeDialogElement(builderGuideDialog);
-  requestAnimationFrame(() => {
-    target?.scrollIntoView?.({ behavior: "smooth", block: "center" });
-    if (target?.focus) target.focus({ preventScroll: true });
-  });
-}
-
-function handleBuilderGuideAction(action = "") {
-  if (action === "profile") closeGuideAndFocus(profileDisplayNameInput);
-  if (action === "site-content") closeGuideAndFocus(siteHeroTitleInput);
-  if (action === "fun-facts") closeGuideAndFocus(funFactsInput);
-  if (action === "projects") closeGuideAndFocus(projectTree);
-  if (action === "preview") {
-    closeDialogElement(builderGuideDialog);
-    openPortfolioPreviewButton?.click();
-  }
-  if (action === "target") {
-    closeDialogElement(builderGuideDialog);
-    publishTargetOpen?.click();
-  }
-  if (action === "updates") {
-    closeDialogElement(builderGuideDialog);
-    appUpdateCheckButton?.click();
-  }
-}
-
 function openBuilderGuideTopic(section) {
   if (!section || !builderGuideTopicDialog || !builderGuideTopicTitle || !builderGuideTopicBody) return;
   const summary = section.querySelector("summary");
@@ -10096,8 +10314,6 @@ builderGuideDialog?.addEventListener("click", (event) => {
     setBuilderGuideTopic(topic.dataset.guideTopic || "all");
     return;
   }
-  const action = event.target.closest("[data-guide-action]");
-  if (action) handleBuilderGuideAction(action.dataset.guideAction || "");
   const guideSummary = event.target.closest(".builder-guide-section > summary");
   if (guideSummary && builderGuideSections?.contains(guideSummary)) {
     event.preventDefault();
@@ -10187,6 +10403,7 @@ projectMetaClose.addEventListener("click", () => closeDialogElement(projectMetaD
 
 viewProjectPreviewButton.addEventListener("click", openProjectPortfolioPreview);
 projectPreviewClose.addEventListener("click", closeProjectPreviewWindow);
+builderFileViewClose?.addEventListener("click", () => closeDialogElement(builderFileViewDialog, "close"));
 projectPreviewDialog.addEventListener("close", () => {
   document.body.classList.remove("full-window-open");
 });
@@ -10387,7 +10604,7 @@ profileBrandUploadButton?.addEventListener("click", () => openProfileAssetManage
 
 profileAssetClose?.addEventListener("click", () => closeDialogElement(profileAssetDialog, "close"));
 profileAssetDone?.addEventListener("click", () => closeDialogElement(profileAssetDialog, "close"));
-profileAssetView?.addEventListener("click", () => openProfileAssetViewer(activeProfileAssetKind));
+profileAssetView?.addEventListener("click", () => openProfileAssetDirect(activeProfileAssetKind));
 profileAssetRemove?.addEventListener("click", () => removeProfileAsset(activeProfileAssetKind));
 profileAssetChange?.addEventListener("click", async () => {
   const kind = activeProfileAssetKind;
@@ -11531,10 +11748,13 @@ sectionTabs.addEventListener("click", async (event) => {
   const nextSectionId = button.dataset.sectionId;
   if (!nextSectionId) return;
   if (nextSectionId && nextSectionId !== activeSectionId && !suppressProjectWindowHistory) {
-    projectWindowBackStack.push(activeSectionId);
+    projectWindowBackStack.push(projectWindowStateKey());
     projectWindowForwardStack = [];
   }
   activeSectionId = nextSectionId;
+  if (activeSectionId.startsWith("custom:")) {
+    setActiveCustomSectionPath(activeSectionId.replace("custom:", ""), []);
+  }
   pendingEditor = null;
   renderAll();
   resetProjectWindowScroll();
@@ -11730,6 +11950,26 @@ sectionContent.addEventListener("click", async (event) => {
     await uploadToDesignSection(button.dataset.uploadDesign, button.dataset.folder, button.dataset.designKind);
     return;
   }
+  if (button.dataset.openNodeView) {
+    const sectionId = button.dataset.sectionId || "";
+    const path = nodePathFromString(button.dataset.nodePath || "");
+    if (!sectionId) return;
+    projectWindowBackStack.push(projectWindowStateKey());
+    projectWindowForwardStack = [];
+    activeSectionId = `custom:${sectionId}`;
+    setActiveCustomSectionPath(sectionId, path);
+    pendingEditor = null;
+    renderAll();
+    resetProjectWindowScroll();
+    updateDialogWindowButtons(projectDialog);
+    return;
+  }
+  if (button.dataset.openFileView) {
+    const section = (project.sections || []).find((item) => item.id === button.dataset.sectionId);
+    const item = section ? findBuilderNode(section, nodePathFromString(button.dataset.nodePath || "")) : null;
+    if (item) await openBuilderFileWindow(item);
+    return;
+  }
   if (button.dataset.addNodeSubsection !== undefined) {
     openPendingEditor({
       type: "custom",
@@ -11756,6 +11996,13 @@ sectionContent.addEventListener("click", async (event) => {
       message: `Are you sure you want to delete "${itemTitle(item) || "this item"}"?`,
       onConfirm: () => {
         parent.children.splice(parent.index, 1);
+        if (!item.url && !item.artifact && activeCustomSectionView.sectionId === section.id) {
+          const activePath = activeCustomSectionPath(section.id);
+          const deletedPathValue = nodePathToString(path);
+          if (nodePathToString(activePath).startsWith(deletedPathValue)) {
+            setActiveCustomSectionPath(section.id, path.slice(0, -1));
+          }
+        }
         scheduleAutosave();
         renderAll();
       }
