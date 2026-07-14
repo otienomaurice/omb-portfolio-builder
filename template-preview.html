@@ -11,7 +11,7 @@
     <link rel="shortcut icon" href="assets/favicon.ico" />
     <link rel="apple-touch-icon" sizes="180x180" href="assets/apple-touch-icon.png" />
     <link rel="stylesheet" href="styles.css" />
-    <link rel="stylesheet" href="template-preview.css?v=0.2.39" />
+    <link rel="stylesheet" href="template-preview.css?v=0.2.42" />
   </head>
   <body class="template-preview-page">
       <header class="template-header">
@@ -360,15 +360,6 @@
                   <button type="button" data-guide-topic="update">Updates</button>
                   </div>
                   <p class="builder-guide-results" id="builder-guide-results">Showing all guide topics.</p>
-              </div>
-              <div class="builder-guide-actions" aria-label="Open builder areas">
-                  <button type="button" data-guide-action="profile">Profile</button>
-                  <button type="button" data-guide-action="site-content">Front page text</button>
-                  <button type="button" data-guide-action="fun-facts">Fun facts</button>
-                  <button type="button" data-guide-action="projects">Projects</button>
-                  <button type="button" data-guide-action="preview">Portfolio preview</button>
-                  <button type="button" data-guide-action="target">Publishing target</button>
-                  <button type="button" data-guide-action="updates">Check updates</button>
               </div>
               <div class="builder-guide-sections" id="builder-guide-sections">
                   <details class="builder-guide-section" data-guide-section="setup profile" open>
@@ -828,6 +819,25 @@
           </div>
       </dialog>
 
+      <dialog class="project-preview-dialog builder-file-view-dialog" id="builder-file-view-dialog">
+          <div class="project-preview-shell builder-file-view-shell">
+              <div class="project-preview-heading">
+                  <div>
+                      <p class="eyebrow" id="builder-file-view-eyebrow">Project file</p>
+                      <h2 id="builder-file-view-title">File viewer</h2>
+                  </div>
+                  <div class="section-view-actions">
+                      <button class="project-window-close" id="builder-file-view-close" type="button" aria-label="Close file viewer">&times;</button>
+                  </div>
+              </div>
+              <div class="project-preview-content builder-file-view-content" id="builder-file-view-content"></div>
+              <div class="dialog-actions builder-file-view-actions">
+                  <a class="button secondary" id="builder-file-view-open" href="#" target="_blank" rel="noreferrer">Open file</a>
+                  <a class="button primary" id="builder-file-view-download" href="#" download>Download</a>
+              </div>
+          </div>
+      </dialog>
+
       <dialog class="portfolio-preview-dialog" id="portfolio-preview-dialog">
           <div class="portfolio-preview-shell">
               <div class="project-preview-heading portfolio-window-heading">
@@ -947,6 +957,42 @@
               <div class="dialog-actions delete-confirm-actions">
                   <button class="button danger-control" id="delete-confirm-yes" type="button">Yes</button>
                   <button class="button secondary" type="button" data-delete-cancel="true">No</button>
+              </div>
+          </div>
+      </dialog>
+
+      <dialog class="asset-dialog profile-asset-dialog" id="profile-asset-dialog">
+          <div class="builder-guide-dialog-content profile-asset-dialog-content">
+              <div class="project-preview-heading">
+                  <div>
+                      <p class="eyebrow" hidden></p>
+                      <h2 id="profile-asset-title">Profile asset</h2>
+                  </div>
+                  <button class="project-window-close" id="profile-asset-close" type="button" aria-label="Close profile asset dialog">&times;</button>
+              </div>
+              <div class="profile-asset-body" id="profile-asset-body"></div>
+              <div class="dialog-actions profile-asset-dialog-actions">
+                  <button class="button secondary" id="profile-asset-view" type="button">Open</button>
+                  <button class="button primary" id="profile-asset-change" type="button">Change</button>
+                  <button class="button danger-control" id="profile-asset-remove" type="button">Remove</button>
+                  <button class="button secondary" id="profile-asset-done" type="button">Close</button>
+              </div>
+          </div>
+      </dialog>
+
+      <dialog class="asset-dialog profile-asset-view-dialog" id="profile-asset-view-dialog">
+          <div class="builder-guide-dialog-content profile-asset-view-content">
+              <div class="project-preview-heading">
+                  <div>
+                      <p class="eyebrow" hidden></p>
+                      <h2 id="profile-asset-view-title">Current asset</h2>
+                  </div>
+                  <button class="project-window-close" id="profile-asset-view-close" type="button" aria-label="Close asset viewer">&times;</button>
+              </div>
+              <div class="profile-asset-view-body" id="profile-asset-view-body"></div>
+              <div class="dialog-actions profile-asset-dialog-actions">
+                  <a class="button secondary" id="profile-asset-open-link" href="#" target="_blank" rel="noreferrer">Open file</a>
+                  <button class="button primary" id="profile-asset-view-done" type="button">Close</button>
               </div>
           </div>
       </dialog>
@@ -1343,7 +1389,7 @@
               </label>
           </div>
       </div>
-      <script src="electronics-search.js?v=0.2.39"></script>
-      <script src="template-preview.js?v=0.2.39"></script>
+      <script src="electronics-search.js?v=0.2.42"></script>
+      <script src="template-preview.js?v=0.2.42"></script>
   </body>
 </html>

@@ -362,10 +362,12 @@ function indentBraceCode(code = "") {
     .map((rawLine) => {
       const line = rawLine.trim();
       if (!line) return "";
-      if (/^[}\])]/.test(line)) depth = Math.max(0, depth - 1);
+      const hasLeadingClose = /^[}\])]/.test(line);
+      if (hasLeadingClose) depth = Math.max(0, depth - 1);
       const formatted = `${"  ".repeat(depth)}${line}`;
       const opens = (line.match(/[{\[(]/g) || []).length;
-      const closes = (line.match(/[}\])]/g) || []).length;
+      const closeCount = (line.match(/[}\])]/g) || []).length;
+      const closes = Math.max(0, closeCount - (hasLeadingClose ? 1 : 0));
       depth = Math.max(0, depth + opens - closes);
       return formatted;
     })
@@ -373,11 +375,122 @@ function indentBraceCode(code = "") {
     .trimEnd();
 }
 
+function expandBraceCode(code = "") {
+  const source = String(code || "").replace(/\r\n?/g, "\n");
+  let result = "";
+  let quote = "";
+  let escaped = false;
+  let lineComment = false;
+  let blockComment = false;
+  let parenDepth = 0;
+
+  const appendNewline = () => {
+    result = result.replace(/[ \t]+$/g, "");
+    if (!result.endsWith("\n")) result += "\n";
+  };
+
+  for (let index = 0; index < source.length; index += 1) {
+    const char = source[index];
+    const next = source[index + 1] || "";
+
+    if (lineComment) {
+      result += char;
+      if (char === "\n") lineComment = false;
+      continue;
+    }
+
+    if (blockComment) {
+      result += char;
+      if (char === "*" && next === "/") {
+        result += next;
+        index += 1;
+        blockComment = false;
+      }
+      continue;
+    }
+
+    if (quote) {
+      result += char;
+      if (escaped) {
+        escaped = false;
+      } else if (char === "\\") {
+        escaped = true;
+      } else if (char === quote) {
+        quote = "";
+      }
+      continue;
+    }
+
+    if (char === "/" && next === "/") {
+      result += char + next;
+      index += 1;
+      lineComment = true;
+      continue;
+    }
+
+    if (char === "/" && next === "*") {
+      result += char + next;
+      index += 1;
+      blockComment = true;
+      continue;
+    }
+
+    if (char === "\"" || char === "`") {
+      quote = char;
+      result += char;
+      continue;
+    }
+
+    const previous = source[index - 1] || "";
+    const systemVerilogWidthLiteral = char === "'" && /[0-9a-zA-Z_$\])]/.test(previous) && /[bBdDhHoOsS01xzXZ]/.test(next);
+    if (char === "'" && !systemVerilogWidthLiteral) {
+      quote = char;
+      result += char;
+      continue;
+    }
+
+    if (char === "(" || char === "[") parenDepth += 1;
+    if (char === ")" || char === "]") parenDepth = Math.max(0, parenDepth - 1);
+
+    if (char === "{") {
+      result = result.replace(/[ \t]+$/g, "");
+      result += " {";
+      appendNewline();
+      continue;
+    }
+
+    if (char === "}") {
+      appendNewline();
+      result += "}";
+      if (next && next !== ";" && next !== "," && next !== ")" && next !== "\n") appendNewline();
+      continue;
+    }
+
+    if (char === ";" && parenDepth === 0) {
+      result += ";";
+      appendNewline();
+      continue;
+    }
+
+    if (char === "\n") {
+      appendNewline();
+      continue;
+    }
+
+    result += char;
+  }
+
+  return result
+    .replace(/[ \t]+$/gm, "")
+    .replace(/\n{4,}/g, "\n\n\n")
+    .trimEnd();
+}
+
 function beautifyCode(code = "", language = "javascript") {
   const normalized = String(code || "").replace(/\r\n?/g, "\n").replace(/\t/g, "  ");
   const lang = normalizeCodeLanguage(language);
   if (["c", "cpp", "java", "javascript", "verilog", "systemverilog"].includes(lang)) {
-    return indentBraceCode(normalized)
+    return indentBraceCode(expandBraceCode(normalized))
       .replace(/[ \t]+$/gm, "")
       .replace(/\n{4,}/g, "\n\n\n");
   }
