@@ -271,6 +271,7 @@ Use the workflow in [BRANCHING.md](BRANCHING.md):
 | `codex/nested-subsection-windows-0.2.45` | Makes nested project subsections open as focused full-window builder views with horizontal child subsection links, removes breadcrumb-style subsection titles, improves code beautification, strengthens Icarus Verilog discovery/scope support, and adds HDL simulator tool installation to the app dependency flow. | `development` | `development` | Active |
 | `codex/fix-compile-terminal-icons-0.2.46` | Makes Compile Code folders real expandable workspace folders, lets right-click actions create/import inside the selected folder, keeps open tabs separate from files, replaces dirty asterisks with close-view buttons, and locks the Console/Messages/Terminal/Scope panel as a top-edge-resizable IDE output area. | `development` | `development` | Active |
 | `codex/fix-terminal-tree-output-0.2.47` | Removes the form-style terminal command box, keeps PowerShell commands inline with the prompt, lets unlocked output panels resize, preserves imported directory trees, and imports readable support files without treating them as compiler targets. | `development` | `development` | Active |
+| `codex/scope-themes-uvm-0.2.48` | Adds selectable Compile Code appearances, per-signal scope color/radix controls, HDL timing/assertion/UVM-style diagnostics, UVM-style testbench creation, cleaner section/subsection icon rows, category right-click editing, compact Solution Explorer styling, and terminal/output panel fixes. | `development` | `development` | Active |
 
 </details>
 

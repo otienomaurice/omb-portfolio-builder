@@ -59,6 +59,7 @@ const projectCreateCategory = document.querySelector("#project-create-category")
 const projectCreateCancel = document.querySelector("#project-create-cancel");
 const categoryDialog = document.querySelector("#category-dialog");
 const categoryForm = document.querySelector("#category-form");
+const categoryDialogTitle = document.querySelector("#category-dialog-title");
 const categoryTitle = document.querySelector("#category-title");
 const categoryDescription = document.querySelector("#category-description");
 const categoryAccent = document.querySelector("#category-accent");
@@ -75,6 +76,7 @@ const viewProjectPreviewButton = document.querySelector("#view-project-preview")
 const saveProjectButton = document.querySelector("#save-project");
 const saveProjectCloseButton = document.querySelector("#save-project-close");
 const projectTitleMenu = document.querySelector("#project-title-menu");
+const categoryTitleMenu = document.querySelector("#category-title-menu");
 const titleRenameActions = document.querySelector("#title-rename-actions");
 const titleRenameSave = document.querySelector("#title-rename-save");
 const titleRenameCancel = document.querySelector("#title-rename-cancel");
@@ -211,6 +213,7 @@ const summaryCodeCancel = document.querySelector("#summary-code-cancel");
 const preferencesDialog = document.querySelector("#preferences-dialog");
 const preferencesForm = document.querySelector("#preferences-form");
 const preferenceTheme = document.querySelector("#preference-theme");
+const preferenceCompileTheme = document.querySelector("#preference-compile-theme");
 const preferencesClose = document.querySelector("#preferences-close");
 const summaryContextMenu = document.querySelector("#summary-context-menu");
 const richFontSelect = document.querySelector("#rich-font-select");
@@ -242,7 +245,16 @@ const standardSections = [
 ];
 
 const preferenceStorageKey = "omb-builder-preferences";
-const defaultBuilderPreferences = { theme: "light", zoom: 1 };
+const compileThemeIds = [
+  "dark-vs",
+  "dark-navy",
+  "dark-graphite",
+  "dark-emerald",
+  "dark-violet",
+  "light-sky",
+  "light-paper"
+];
+const defaultBuilderPreferences = { theme: "light", compileTheme: "dark-vs", zoom: 1 };
 let builderPreferences = { ...defaultBuilderPreferences };
 let activeCompileTreeContext = null;
 let activeOutputDockDrag = null;
@@ -268,7 +280,7 @@ function isHdlLanguage(language = "") {
 function inferCompileFileRole(fileName = "", code = "", language = "") {
   if (!isHdlLanguage(language)) return "source";
   const haystack = `${fileName}\n${code}`.toLowerCase();
-  if (/\b(tb|testbench)\b|(^|[_-])tb([_-]|\.)|test[_-]?bench|\$dumpfile|\$dumpvars|module\s+tb[_a-z0-9]*/i.test(haystack)) {
+  if (/\b(tb|testbench|uvm_test|uvm_env|uvm_component|uvm_sequence)\b|(^|[_-])tb([_-]|\.)|test[_-]?bench|\$dumpfile|\$dumpvars|module\s+tb[_a-z0-9]*/i.test(haystack)) {
     return "testbench";
   }
   return "design";
@@ -277,7 +289,7 @@ function inferCompileFileRole(fileName = "", code = "", language = "") {
 function normalizeCompileFileRole(value = "", language = "") {
   if (!isHdlLanguage(language)) return "source";
   const clean = String(value || "").trim().toLowerCase().replace(/[_\s-]+/g, "");
-  return ["tb", "testbench", "bench"].includes(clean) ? "testbench" : "design";
+  return ["tb", "testbench", "bench", "uvm", "uvmtest"].includes(clean) ? "testbench" : "design";
 }
 
 function compileFileRoleLabel(role = "source") {
@@ -486,6 +498,7 @@ let selectedProjectId = "";
 let activeSectionId = "brief";
 let expandedCategories = new Set();
 let pendingCreateCategoryId = "";
+let editingCategoryId = "";
 let previewRenderTimer = 0;
 let chromeRenderTimer = 0;
 let pendingEditor = null;
@@ -635,18 +648,13 @@ function dialogWindowActionTarget(handle) {
 
 function updateDialogWindowButtons(dialog) {
   const isMinimized = dialog.classList.contains("is-minimized-dialog");
-  const isHidden = dialog.classList.contains("is-hidden-dialog");
   const isMaximized = dialog.classList.contains("is-maximized-dialog");
   dialog.querySelectorAll("[data-dialog-minimize='true']").forEach((button) => {
     button.textContent = isMinimized ? "+" : "\u2212";
     button.title = isMinimized ? "Restore window" : "Minimize window";
     button.setAttribute("aria-label", isMinimized ? "Restore window" : "Minimize window");
   });
-  dialog.querySelectorAll("[data-dialog-hide='true']").forEach((button) => {
-    button.textContent = isHidden ? "\u25b4" : "\u25be";
-    button.title = isHidden ? "Show window" : "Hide window";
-    button.setAttribute("aria-label", isHidden ? "Show window" : "Hide window");
-  });
+  dialog.querySelectorAll("[data-dialog-hide='true']").forEach((button) => button.remove());
   dialog.querySelectorAll("[data-dialog-maximize='true']").forEach((button) => {
     button.textContent = isMaximized ? "\u2750" : "\u25a1";
     button.title = isMaximized ? "Restore size" : "Maximize window";
@@ -710,11 +718,7 @@ function ensureDialogWindowControls(dialog, handle) {
     target.append(cluster);
   }
 
-  if (!cluster.querySelector("[data-dialog-hide='true']")) {
-    const hide = makeDialogControl("hide", "\u25be", "Hide window");
-    hide.dataset.dialogHide = "true";
-    cluster.append(hide);
-  }
+  cluster.querySelectorAll("[data-dialog-hide='true']").forEach((button) => button.remove());
   if (!cluster.querySelector("[data-dialog-minimize='true']")) {
     const minimize = makeDialogControl("minimize", "\u2212", "Minimize window");
     minimize.dataset.dialogMinimize = "true";
@@ -942,10 +946,7 @@ function endDialogDrag() {
 
 function toggleDialogMinimized(dialog) {
   if (!dialog) return;
-  if (dialog.classList.contains("is-hidden-dialog")) {
-    toggleDialogHidden(dialog);
-    return;
-  }
+  if (dialog.classList.contains("is-hidden-dialog")) dialog.classList.remove("is-hidden-dialog");
   anchorDialogForDrag(dialog);
   dialog.classList.remove("is-maximized-dialog");
   dialog.classList.toggle("is-minimized-dialog");
@@ -1055,7 +1056,7 @@ function handleDialogWindowAction(button) {
   const dialog = button.closest("dialog");
   if (!dialog?.open) return;
   const action = button.dataset.dialogAction;
-  if (action === "hide") toggleDialogHidden(dialog);
+  if (action === "hide") toggleDialogMinimized(dialog);
   if (action === "minimize") toggleDialogMinimized(dialog);
   if (action === "maximize") toggleDialogMaximized(dialog);
   if (action === "refresh") refreshDialogWindow(dialog);
@@ -2067,6 +2068,19 @@ function ensureCompileCode(project) {
     project.compileCode.activeFileId = project.compileCode.openFileIds[0];
   }
   project.compileCode.terminal = String(project.compileCode.terminal || "");
+  project.compileCode.scopeSettings = project.compileCode.scopeSettings && typeof project.compileCode.scopeSettings === "object"
+    ? project.compileCode.scopeSettings
+    : {};
+  Object.entries(project.compileCode.scopeSettings).forEach(([key, settings]) => {
+    project.compileCode.scopeSettings[key] = {
+      color: normalizeScopeColor(settings?.color, scopeDefaultColorForIndex(Object.keys(project.compileCode.scopeSettings).indexOf(key))),
+      radix: normalizeScopeRadix(settings?.radix)
+    };
+  });
+  const simulationTimeout = Number(project.compileCode.hdlSimulationTimeoutMs);
+  project.compileCode.hdlSimulationTimeoutMs = Number.isFinite(simulationTimeout)
+    ? Math.max(5000, Math.min(120000, Math.round(simulationTimeout)))
+    : 30000;
   project.compileCode.systemTerminal = {
     cwd: compileDirectoryPath(project.compileCode.systemTerminal?.cwd || project.compileCode.terminalCwd || ""),
     command: String(project.compileCode.systemTerminal?.command || ""),
@@ -2483,6 +2497,7 @@ function loadBuilderPreferences() {
       ...defaultBuilderPreferences,
       ...stored,
       theme: ["light", "dark"].includes(stored.theme) ? stored.theme : defaultBuilderPreferences.theme,
+      compileTheme: compileThemeIds.includes(stored.compileTheme) ? stored.compileTheme : defaultBuilderPreferences.compileTheme,
       zoom: normalizeBuilderZoom(stored.zoom)
     };
   } catch {
@@ -2499,19 +2514,24 @@ function normalizeBuilderZoom(value = 1) {
 
 function normalizeCompileOutputHeight(value) {
   const numeric = Number(value);
-  if (!Number.isFinite(numeric)) return 260;
-  return Math.max(132, Math.min(620, Math.round(numeric)));
+  if (!Number.isFinite(numeric)) return 190;
+  return Math.max(104, Math.min(320, Math.round(numeric)));
 }
 
 function applyBuilderPreferences() {
   const theme = ["light", "dark"].includes(builderPreferences.theme) ? builderPreferences.theme : "light";
+  const compileTheme = compileThemeIds.includes(builderPreferences.compileTheme) ? builderPreferences.compileTheme : defaultBuilderPreferences.compileTheme;
   const zoom = normalizeBuilderZoom(builderPreferences.zoom);
   builderPreferences.zoom = zoom;
+  builderPreferences.compileTheme = compileTheme;
   document.documentElement.dataset.builderTheme = theme;
   document.body.dataset.builderTheme = theme;
+  document.documentElement.dataset.compileTheme = compileTheme;
+  document.body.dataset.compileTheme = compileTheme;
   document.documentElement.style.setProperty("--builder-app-zoom", String(zoom));
   document.body.style.zoom = String(zoom);
   if (preferenceTheme) preferenceTheme.value = theme;
+  if (preferenceCompileTheme) preferenceCompileTheme.value = compileTheme;
   if (lightModeReturnButton) lightModeReturnButton.hidden = theme !== "dark";
 }
 
@@ -2520,6 +2540,13 @@ function setBuilderTheme(theme = "light") {
   localStorage.setItem(preferenceStorageKey, JSON.stringify(builderPreferences));
   applyBuilderPreferences();
   setStatus(`Builder ${builderPreferences.theme} mode enabled.`);
+}
+
+function setCompileTheme(theme = defaultBuilderPreferences.compileTheme) {
+  builderPreferences.compileTheme = compileThemeIds.includes(theme) ? theme : defaultBuilderPreferences.compileTheme;
+  localStorage.setItem(preferenceStorageKey, JSON.stringify(builderPreferences));
+  applyBuilderPreferences();
+  setStatus(`Compile Code appearance set to ${builderPreferences.compileTheme.replace(/-/g, " ")}.`);
 }
 
 function setBuilderZoom(value = 1, options = {}) {
@@ -2538,6 +2565,7 @@ function openPreferencesDialog() {
 
 function saveBuilderPreferencesFromDialog() {
   setBuilderTheme(preferenceTheme?.value || "light");
+  setCompileTheme(preferenceCompileTheme?.value || defaultBuilderPreferences.compileTheme);
   setStatus("Preferences saved.");
 }
 
@@ -3167,6 +3195,61 @@ function requestCategoryDelete(categoryId) {
       : `Are you sure you want to delete "${category.label}"?`,
     onConfirm: () => deleteCategoryById(category.id)
   });
+}
+
+function showCategoryTitleMenu(categoryId, clientX, clientY) {
+  if (!categoryTitleMenu) return;
+  const category = categoryById(categoryId);
+  if (!category?.id) return;
+  categoryTitleMenu.dataset.categoryId = category.id;
+  categoryTitleMenu.style.left = `${clientX + window.scrollX}px`;
+  categoryTitleMenu.style.top = `${clientY + window.scrollY}px`;
+  categoryTitleMenu.hidden = false;
+}
+
+function hideCategoryTitleMenu() {
+  if (!categoryTitleMenu) return;
+  categoryTitleMenu.hidden = true;
+  categoryTitleMenu.dataset.categoryId = "";
+}
+
+async function handleCategoryTitleAction(action, categoryId) {
+  const category = categoryById(categoryId);
+  if (!category?.id) {
+    hideCategoryTitleMenu();
+    return;
+  }
+  if (action === "close") {
+    hideCategoryTitleMenu();
+    return;
+  }
+  if (action === "copy") {
+    await navigator.clipboard.writeText(category.label || "");
+    hideCategoryTitleMenu();
+    return;
+  }
+  if (action === "paste") {
+    const text = (await navigator.clipboard.readText()).trim();
+    if (text) {
+      category.label = text;
+      savedPortfolioCatalog.categories = clone(catalog.categories || []);
+      refreshCategoryControls();
+      renderAll();
+      scheduleAutosave();
+      setStatus(`Category renamed to "${category.label}".`);
+    }
+    hideCategoryTitleMenu();
+    return;
+  }
+  if (action === "rename" || action === "details") {
+    hideCategoryTitleMenu();
+    openCategoryDialog(category.id);
+    return;
+  }
+  if (action === "delete") {
+    hideCategoryTitleMenu();
+    requestCategoryDelete(category.id);
+  }
 }
 
 function parserItem(title, description = "", url = "", meta = "", kind = "text", rich = null, children = []) {
@@ -4889,7 +4972,7 @@ function buildTemplateProject() {
     links: [],
     sections: [],
     sectionModelVersion: 3,
-    compileCode: { files: [], directories: [], openFileIds: [], activeFileId: "", terminal: "", outputDockHeight: 260 }
+    compileCode: { files: [], directories: [], openFileIds: [], activeFileId: "", terminal: "", outputDockHeight: 190 }
   };
 }
 
@@ -4997,8 +5080,8 @@ function renderTree() {
     const isExpanded = cleanQuery ? true : expandedCategories.has(category.id);
     return `
       <section class="tree-category">
-        <div class="tree-category-heading">
-          <button class="tree-category-toggle" type="button" data-toggle-category="${escapeHtml(category.id)}" aria-expanded="${isExpanded}">
+        <div class="tree-category-heading" data-category-heading="${escapeHtml(category.id)}" title="Right-click to edit this category">
+          <button class="tree-category-toggle" type="button" data-toggle-category="${escapeHtml(category.id)}" data-category-title-target="${escapeHtml(category.id)}" aria-expanded="${isExpanded}">
             <span>${highlightSearchText(category.label, projectSearchQuery)}</span>
             <small>${allCategoryProjects.length} project${allCategoryProjects.length === 1 ? "" : "s"}</small>
           </button>
@@ -7873,17 +7956,19 @@ function renderCustomSection(project, sectionId) {
   }
   const currentChildren = currentPath.length ? builderNodeChildren(currentNode) : sectionRootChildren(section);
   const pathValue = customViewPathValue(currentPath);
-  const title = currentPath.length ? builderNodeTitle(currentNode) : section.title || "Custom section";
   const description = currentPath.length ? currentNode?.description || "" : section.description || "";
   const richDescription = currentPath.length ? currentNode?.richDescription : section.richDescription;
   const editingCurrentView = pendingEditorMatchesCustomView(sectionId, currentPath);
+  const hasViewContent = richHasContent(richDescription) || Boolean(String(description || "").trim());
+  const fileListHtml = renderCustomFilesList(section, currentChildren, currentPath);
+  const hasChildSections = (currentChildren || []).some((item) => item && !item.url && !item.artifact);
+  const emptyMetadata = !hasChildSections && !fileListHtml
+    ? `<p class="evidence-empty explorer-empty section-window-bottom-metadata">No subsections or files added yet.</p>`
+    : "";
 
   return `
-    <div class="section-window-heading">
-      <div>
-        <h3>${escapeHtml(title)}</h3>
-      </div>
-      <div>
+    <div class="section-window-heading section-window-heading-actions-only">
+      <div class="section-window-action-row">
         <button class="button primary" type="button" data-add-node-subsection="${escapeHtml(section.id)}" data-node-path="${escapeHtml(pathValue)}">Add subsection</button>
         <button class="button secondary" type="button" data-upload-node="${escapeHtml(section.id)}" data-node-path="${escapeHtml(pathValue)}">Add file or image</button>
         ${currentPath.length
@@ -7895,8 +7980,13 @@ function renderCustomSection(project, sectionId) {
     </div>
     ${editingCurrentView ? renderPendingEditor() : `
       ${renderNestedSectionNav(section, currentChildren, currentPath)}
-      ${builderPreviewContent(richDescription, description, "No section content has been added yet.")}
-      ${renderCustomFilesList(section, currentChildren, currentPath) || (!currentChildren.length ? `<p class="evidence-empty explorer-empty">No subsections or files added yet.</p>` : "")}
+      <div class="section-window-view-canvas${hasViewContent || fileListHtml ? "" : " is-empty"}">
+        <div class="section-window-content-stack">
+          ${hasViewContent ? builderPreviewContent(richDescription, description, "") : ""}
+          ${fileListHtml}
+        </div>
+        ${emptyMetadata}
+      </div>
     `}
   `;
 }
@@ -7937,6 +8027,48 @@ function hdlTestbenchTemplate(language = "systemverilog", designName = "design")
     "    #100;",
     "    $finish;",
     "  end",
+    "endmodule"
+  ].join("\n");
+}
+
+function hdlUvmStyleTestbenchTemplate(designName = "design") {
+  const tbName = `tb_${slugify(designName || "design").replace(/-/g, "_") || "design"}`;
+  const dutName = slugify(designName || "design").replace(/-/g, "_") || "design";
+  return [
+    "`timescale 1ns/1ps",
+    "",
+    `module ${tbName};`,
+    "  logic clk = 0;",
+    "  logic reset_n = 0;",
+    "  logic done;",
+    "",
+    "  always #5 clk = ~clk;",
+    "",
+    `  // Connect this instance to the real design ports before simulating.`,
+    `  // ${dutName} dut (.clk(clk), .reset_n(reset_n), .done(done));`,
+    "",
+    "  task build_phase();",
+    "    // Allocate scoreboards, monitors, or interfaces here in a fuller UVM environment.",
+    "  endtask",
+    "",
+    "  task run_phase();",
+    "    reset_n = 0;",
+    "    repeat (4) @(posedge clk);",
+    "    reset_n = 1;",
+    "    repeat (20) @(posedge clk);",
+    "  endtask",
+    "",
+    "  always @(posedge clk) begin",
+    '    if (reset_n) assert (!$isunknown(done)) else $error("done became X/Z after reset was released");',
+    "  end",
+    "",
+    "  initial begin",
+    '    $dumpfile("waveform.vcd");',
+    `    $dumpvars(0, ${tbName});`,
+    "    build_phase();",
+    "    run_phase();",
+    "    $finish;",
+  "  end",
     "endmodule"
   ].join("\n");
 }
@@ -8340,8 +8472,8 @@ function updateCompileSystemTerminalPanel(project) {
   const promptElement = sectionContent.querySelector("[data-compile-terminal-prompt]");
   const commandInput = sectionContent.querySelector("[data-compile-terminal-command]");
   if (promptElement) promptElement.textContent = compileTerminalPromptText(terminal, project);
-  if (commandInput && commandInput.textContent !== String(terminal.command || "")) {
-    commandInput.textContent = terminal.command || "";
+  if (commandInput && commandInput.value !== String(terminal.command || "")) {
+    commandInput.value = terminal.command || "";
   }
   if (outputElement) {
     outputElement.textContent = compileTerminalDisplayText(terminal);
@@ -8355,13 +8487,10 @@ function focusTerminalCommandLine() {
   const commandLine = sectionContent.querySelector("[data-compile-terminal-command]");
   if (!commandLine) return;
   commandLine.focus?.({ preventScroll: true });
-  const selection = window.getSelection?.();
-  if (!selection || !document.createRange) return;
-  const range = document.createRange();
-  range.selectNodeContents(commandLine);
-  range.collapse(false);
-  selection.removeAllRanges();
-  selection.addRange(range);
+  if (typeof commandLine.setSelectionRange === "function") {
+    const end = commandLine.value.length;
+    commandLine.setSelectionRange(end, end);
+  }
 }
 
 function compileTerminalPromptPath(terminal = {}, project = selectedProject()) {
@@ -8401,7 +8530,7 @@ function renderCompileSystemTerminal(workspace = {}, project = selectedProject()
         <pre class="compile-terminal compile-system-terminal" data-compile-system-terminal tabindex="0" role="log" aria-live="polite">${escapeHtml(compileTerminalDisplayText(terminal))}</pre>
         <div class="compile-terminal-prompt-line">
           <span class="compile-terminal-prompt" data-compile-terminal-prompt>${escapeHtml(compileTerminalPromptText(terminal, project))}</span>
-          <span class="compile-terminal-command-input" data-compile-terminal-command contenteditable="true" role="textbox" spellcheck="false" aria-label="Terminal command">${escapeHtml(terminal.command || "")}</span>
+          <input class="compile-terminal-command-input" data-compile-terminal-command type="text" spellcheck="false" autocomplete="off" autocapitalize="off" aria-label="Terminal command" value="${escapeHtml(terminal.command || "")}" />
         </div>
       </div>
     </section>
@@ -8420,6 +8549,73 @@ function showCompileOutput(project, file = activeCompileFile(project)) {
 function activeCompileWaveform(project, file = activeCompileFile(project)) {
   const workspace = ensureCompileCode(project);
   return file?.lastResult?.waveform || file?.waveform || workspace?.waveform || null;
+}
+
+const scopeSignalDefaultColors = ["#38bdf8", "#facc15", "#34d399", "#f472b6", "#a78bfa", "#fb923c", "#60a5fa", "#f87171"];
+const scopeRadixOptions = [
+  { id: "bin", label: "Binary" },
+  { id: "hex", label: "Hex" },
+  { id: "unsigned", label: "Unsigned" },
+  { id: "signed", label: "Signed" },
+  { id: "oct", label: "Octal" },
+  { id: "ascii", label: "ASCII" }
+];
+
+function scopeDefaultColorForIndex(index = 0) {
+  return scopeSignalDefaultColors[Math.abs(Number(index) || 0) % scopeSignalDefaultColors.length];
+}
+
+function normalizeScopeColor(value = "", fallback = "#38bdf8") {
+  const clean = String(value || "").trim();
+  return /^#[0-9a-f]{6}$/i.test(clean) ? clean.toLowerCase() : fallback;
+}
+
+function normalizeScopeRadix(value = "bin") {
+  const clean = String(value || "").trim().toLowerCase();
+  return scopeRadixOptions.some((option) => option.id === clean) ? clean : "bin";
+}
+
+function scopeSignalKey(signal = {}, index = 0) {
+  return slugify(String(signal.name || signal.reference || signal.code || `signal-${index + 1}`)) || `signal-${index + 1}`;
+}
+
+function scopeSignalSettings(project, signal, index = 0) {
+  const workspace = ensureCompileCode(project);
+  const key = scopeSignalKey(signal, index);
+  workspace.scopeSettings[key] = {
+    color: normalizeScopeColor(workspace.scopeSettings[key]?.color, scopeDefaultColorForIndex(index)),
+    radix: normalizeScopeRadix(workspace.scopeSettings[key]?.radix)
+  };
+  return { key, ...workspace.scopeSettings[key] };
+}
+
+function vcdBitsForValue(value = "", width = 1) {
+  const clean = String(value || "x").toLowerCase().replace(/[^01xz]/g, "");
+  if (!clean || /[xz]/.test(clean)) return "";
+  return clean.padStart(Math.max(1, Number(width) || clean.length), "0");
+}
+
+function formatScopeValue(value = "", width = 1, radix = "bin") {
+  const clean = String(value || "x").toLowerCase();
+  const bits = vcdBitsForValue(clean, width);
+  if (!bits) return clean;
+  const unsigned = BigInt(`0b${bits}`);
+  if (radix === "hex") return `0x${unsigned.toString(16).toUpperCase()}`;
+  if (radix === "oct") return `0o${unsigned.toString(8)}`;
+  if (radix === "unsigned") return unsigned.toString(10);
+  if (radix === "signed") {
+    const signBit = bits[0] === "1";
+    const signed = signBit ? unsigned - (1n << BigInt(bits.length)) : unsigned;
+    return signed.toString(10);
+  }
+  if (radix === "ascii") {
+    const chars = bits.match(/.{1,8}/g)?.map((byte) => {
+      const code = Number.parseInt(byte.padStart(8, "0"), 2);
+      return code >= 32 && code <= 126 ? String.fromCharCode(code) : ".";
+    }).join("") || "";
+    return chars ? `"${chars}"` : clean;
+  }
+  return bits.length > 1 ? `0b${bits}` : bits;
 }
 
 function scopeSignalValueAt(changes = [], index = 0) {
@@ -8452,19 +8648,46 @@ function renderScalarWavePath(changes = [], maxTime = 1, rowY = 0, left = 150, w
   return path;
 }
 
-function renderBusWaveLabels(changes = [], maxTime = 1, rowY = 0, left = 150, width = 680) {
+function renderBusWaveLabels(changes = [], maxTime = 1, rowY = 0, left = 150, width = 680, radix = "bin", signalWidth = 1) {
   const normalized = (Array.isArray(changes) && changes.length ? changes : [{ time: 0, value: "x" }])
     .map((change) => ({ time: Number(change.time) || 0, value: String(change.value ?? "x") }))
     .sort((a, b) => a.time - b.time)
     .slice(0, 12);
   return normalized.map((change, index) => {
     const x = left + Math.max(0, Math.min(1, change.time / Math.max(1, maxTime))) * width;
-    const value = change.value.length > 12 ? `${change.value.slice(0, 12)}...` : change.value;
+    const formatted = formatScopeValue(change.value, signalWidth, radix);
+    const value = formatted.length > 14 ? `${formatted.slice(0, 14)}...` : formatted;
     return `<text x="${Math.min(left + width - 70, x + 4).toFixed(1)}" y="${rowY + 19}" class="scope-value-label">${escapeHtml(value)}</text>${index ? `<line x1="${x.toFixed(1)}" x2="${x.toFixed(1)}" y1="${rowY + 5}" y2="${rowY + 25}" class="scope-transition" />` : ""}`;
   }).join("");
 }
 
-function renderHdlScope(waveform) {
+function renderScopeSignalControls(project, signals = []) {
+  return `
+    <div class="compile-scope-controls" aria-label="Scope signal display controls">
+      <label>
+        <span>Simulation timeout</span>
+        <select data-scope-timeout>
+          ${[10000, 20000, 30000, 60000, 120000].map((value) => `<option value="${value}"${ensureCompileCode(project).hdlSimulationTimeoutMs === value ? " selected" : ""}>${Math.round(value / 1000)} s</option>`).join("")}
+        </select>
+      </label>
+      ${signals.map((signal, index) => {
+        const settings = scopeSignalSettings(project, signal, index);
+        const name = String(signal.name || signal.reference || `signal_${index + 1}`);
+        return `
+          <label class="scope-signal-control">
+            <span title="${escapeHtml(name)}">${escapeHtml(name.length > 22 ? `${name.slice(0, 22)}...` : name)}</span>
+            <input type="color" value="${escapeHtml(settings.color)}" data-scope-signal="${escapeHtml(settings.key)}" data-scope-control="color" />
+            <select data-scope-signal="${escapeHtml(settings.key)}" data-scope-control="radix">
+              ${scopeRadixOptions.map((option) => `<option value="${escapeHtml(option.id)}"${option.id === settings.radix ? " selected" : ""}>${escapeHtml(option.label)}</option>`).join("")}
+            </select>
+          </label>
+        `;
+      }).join("")}
+    </div>
+  `;
+}
+
+function renderHdlScope(waveform, project = selectedProject()) {
   const signals = Array.isArray(waveform?.signals) ? waveform.signals.slice(0, 16) : [];
   if (!signals.length) {
     return `
@@ -8490,13 +8713,14 @@ function renderHdlScope(waveform) {
     const name = String(signal.name || signal.reference || `signal_${index + 1}`);
     const changes = Array.isArray(signal.changes) ? signal.changes : [];
     const scalar = Number(signal.width || 1) <= 1;
+    const settings = scopeSignalSettings(project, signal, index);
     return `
       <g class="scope-row">
         <text x="12" y="${y + 20}" class="scope-signal-label">${escapeHtml(name.length > 24 ? `${name.slice(0, 24)}...` : name)}</text>
         <line x1="${left}" x2="${left + width}" y1="${y + 27}" y2="${y + 27}" class="scope-row-line" />
         ${scalar
-          ? `<path d="${renderScalarWavePath(changes, maxTime, y, left, width)}" class="scope-wave" />`
-          : `<line x1="${left}" x2="${left + width}" y1="${y + 15}" y2="${y + 15}" class="scope-bus" />${renderBusWaveLabels(changes, maxTime, y, left, width)}`}
+          ? `<path d="${renderScalarWavePath(changes, maxTime, y, left, width)}" class="scope-wave" style="stroke:${escapeHtml(settings.color)}" />`
+          : `<line x1="${left}" x2="${left + width}" y1="${y + 15}" y2="${y + 15}" class="scope-bus" style="stroke:${escapeHtml(settings.color)}" />${renderBusWaveLabels(changes, maxTime, y, left, width, settings.radix, signal.width)}`}
       </g>
     `;
   }).join("");
@@ -8506,6 +8730,7 @@ function renderHdlScope(waveform) {
       <span>${signals.length} signal${signals.length === 1 ? "" : "s"}</span>
       <span>0 to ${escapeHtml(maxTime)} ${escapeHtml(waveform.timeScale || "ticks")}</span>
     </div>
+    ${renderScopeSignalControls(project, signals)}
     <div class="compile-scope-scroll">
       <svg class="compile-scope-svg" viewBox="0 0 ${left + width + 20} ${height}" role="img" aria-label="HDL waveform scope">
         ${grid}
@@ -8523,7 +8748,7 @@ function renderCompileScopePanel(project, file = activeCompileFile(project)) {
       <div class="compile-terminal-heading">
         <span class="compile-terminal-title"><span aria-hidden="true" class="scope-dot"></span> Signal scope</span>
       </div>
-      ${renderHdlScope(waveform)}
+      ${renderHdlScope(waveform, project)}
     </section>
   `;
 }
@@ -8682,6 +8907,7 @@ function renderCompileIdeMenuBar(project, file = activeCompileFile(project)) {
         { label: "New code file", action: "new-file" },
         { label: "New folder", action: "new-folder" },
         { label: "Add testbench", action: "add-testbench" },
+        { label: "Add UVM-style testbench", action: "add-uvm-testbench" },
         { separator: true },
         { label: "Import files", action: "import-files" },
         { label: "Import directory", action: "import-directory" },
@@ -8709,6 +8935,8 @@ function renderCompileIdeMenuBar(project, file = activeCompileFile(project)) {
         { label: "Messages", action: "view-messages" },
         { label: "Terminal", action: "view-terminal" },
         { label: "Scope", action: "view-scope", disabled: !hdlFile },
+        { separator: true },
+        { label: "Preferences", action: "preferences" },
         { separator: true },
         { label: "Project preview", action: "project-preview" },
         { label: "Portfolio preview", action: "portfolio-preview" }
@@ -8782,6 +9010,7 @@ function renderCompileTreeContextMenu() {
     { label: "New code file", action: "new-file" },
     { label: "New folder", action: "new-folder" },
     { label: "Add testbench", action: "add-testbench" },
+    { label: "Add UVM-style testbench", action: "add-uvm-testbench" },
     { label: "Import files", action: "import-files" },
     { label: "Import directory", action: "import-directory" },
     { separator: true },
@@ -9437,18 +9666,15 @@ async function handleGlobalKeyboardShortcuts(event) {
     return;
   }
 
-  if (richEditor && ["a", "c", "x"].includes(key)) {
-    event.preventDefault();
-    const action = key === "a" ? "select-all-text" : key === "c" ? "copy-text" : "cut-text";
-    await handleRichAction(action, richEditor);
-    return;
-  }
+  if (richEditor && ["a", "c", "v", "x"].includes(key)) return;
+  if (target?.matches?.("input, textarea, [contenteditable='true']") && ["a", "c", "v", "x"].includes(key)) return;
 
   if (plainControl && ["b", "i", "u"].includes(key)) {
     event.preventDefault();
     activePlainTextControl = plainControl;
     const action = key === "b" ? "toggle-bold" : key === "i" ? "toggle-italic" : "toggle-underline";
     await handlePlainTextAction(action);
+    return;
   }
 }
 
@@ -9675,6 +9901,29 @@ function addCompileTestbenchFile(project, options = {}) {
   renderSectionContent(project);
 }
 
+function addCompileUvmStyleTestbenchFile(project, options = {}) {
+  const workspace = ensureCompileCode(project);
+  const activeFile = activeCompileFile(project);
+  const designName = firstHdlModuleName(activeFile?.code || "") || "design";
+  const targetDirectory = compileDirectoryPath(options.directory || compileFileDirectory(activeFile?.relativePath || ""));
+  const file = newCompileFile("systemverilog", {
+    relativePath: uniqueCompileFilePath(
+      workspace,
+      `${targetDirectory ? `${targetDirectory}/` : ""}tb_${slugify(designName).replace(/-/g, "_") || "design"}_uvm_style.sv`,
+      "systemverilog"
+    ),
+    role: "testbench",
+    code: hdlUvmStyleTestbenchTemplate(designName)
+  });
+  addCompileDirectoryPath(workspace, compileFileDirectory(file.relativePath));
+  workspace.files.push(file);
+  openCompileFileView(workspace, file.id);
+  setStatus("UVM-style SystemVerilog testbench created. Connect the DUT ports, then simulate.");
+  addCompileMessage(project, "Created a UVM-style testbench skeleton with build/run phases, an immediate assertion, $dumpfile, and $dumpvars.", "info");
+  scheduleAutosave();
+  renderSectionContent(project);
+}
+
 function updateCompilePreview(file) {
   const preview = sectionContent.querySelector("[data-compile-preview]");
   if (preview && file) preview.innerHTML = tokenizedCodeHtml(file.code || "", file.language);
@@ -9710,7 +9959,8 @@ function compilePayload(project, file, options = {}) {
       code: workspaceFile.code || ""
     })),
     action: options.action || "",
-    forceRebuild: options.forceRebuild === true
+    forceRebuild: options.forceRebuild === true,
+    hdlSimulationTimeoutMs: workspace.hdlSimulationTimeoutMs || 30000
   };
 }
 
@@ -10017,9 +10267,10 @@ async function runCompileTerminalCommand(project) {
   const workspace = ensureCompileCode(project);
   const terminal = workspace.systemTerminal;
   const commandInput = sectionContent.querySelector("[data-compile-terminal-command]");
-  const command = String(commandInput?.textContent || commandInput?.value || terminal.command || "").trim();
+  const command = String(commandInput?.value || terminal.command || "").trim();
   if (!command) {
     addCompileMessage(project, "Type a terminal command before running it.", "warning");
+    requestAnimationFrame(focusTerminalCommandLine);
     return;
   }
   const prompt = compileTerminalPromptText(terminal, project);
@@ -10040,6 +10291,7 @@ async function runCompileTerminalCommand(project) {
   terminal.output = appendCompileTerminalOutput(previousOutput, `${prompt} ${command}\nPlease wait...`);
   addCompileMessage(project, `Terminal command started: ${command}`, "info");
   renderSectionContent(project);
+  requestAnimationFrame(focusTerminalCommandLine);
   try {
     const response = await fetch(`/api/code/terminal?t=${Date.now()}`, {
       method: "POST",
@@ -10053,7 +10305,7 @@ async function runCompileTerminalCommand(project) {
       })
     });
     const result = await response.json();
-    if (!response.ok || !result.ok) throw new Error(result.error || "Terminal command failed.");
+    if (!response.ok) throw new Error(result.error || "Terminal command failed.");
     terminal.output = appendCompileTerminalOutput(previousOutput, `${prompt} ${command}\n${result.output || "Command completed with no output."}`);
     terminal.cwd = result.cwd || cwd;
     terminal.rootPath = result.rootPath || terminal.rootPath || compileTerminalBasePath();
@@ -10065,7 +10317,7 @@ async function runCompileTerminalCommand(project) {
       ...(terminal.history || [])
     ].slice(0, 40);
     addCompileMessage(project, `Terminal command finished: ${command}`, result.exitCode === 0 ? "success" : "warning");
-    setStatus("Terminal command completed.");
+    setStatus(result.exitCode === 0 ? "Terminal command completed." : `Terminal command exited with code ${result.exitCode}.`);
   } catch (error) {
     terminal.output = appendCompileTerminalOutput(previousOutput, `${prompt} ${command}\n${error.message || "Terminal command failed."}`);
     terminal.command = "";
@@ -10130,6 +10382,7 @@ async function runCompileIdeAction(project, action = "") {
   if (action === "new-file") return addCompileSourceFile(project, null, { directory: contextDirectory });
   if (action === "new-folder") return addCompileDirectory(project, { baseDirectory: contextDirectory });
   if (action === "add-testbench") return addCompileTestbenchFile(project, { directory: contextDirectory });
+  if (action === "add-uvm-testbench") return addCompileUvmStyleTestbenchFile(project, { directory: contextDirectory });
   if (action === "import-files") return importCompileFiles(project, { targetDirectory: contextDirectory });
   if (action === "import-directory") return importCompileFiles(project, { directory: true, targetDirectory: contextDirectory });
   if (action === "save-project") return saveSelectedProjectToPortfolio();
@@ -10764,10 +11017,13 @@ async function openSectionDialog() {
   };
 }
 
-function openCategoryDialog() {
-  categoryTitle.value = "";
-  categoryDescription.value = "";
-  categoryAccent.value = "#1677a8";
+function openCategoryDialog(categoryId = "") {
+  const category = categoryId ? categoryById(categoryId) : {};
+  editingCategoryId = category?.id || "";
+  if (categoryDialogTitle) categoryDialogTitle.textContent = editingCategoryId ? "Edit category" : "Add category";
+  categoryTitle.value = category?.label || "";
+  categoryDescription.value = category?.description || "";
+  categoryAccent.value = category?.accent || "#1677a8";
   categoryDialog.showModal();
   setTimeout(() => categoryTitle.focus(), 0);
 }
@@ -10776,6 +11032,24 @@ function saveCategoryFromDialog() {
   const label = categoryTitle.value.trim();
   if (!label) {
     setStatus("Type a category name before saving.");
+    return;
+  }
+  if (editingCategoryId) {
+    const category = (catalog.categories || []).find((item) => item.id === editingCategoryId);
+    if (!category) {
+      editingCategoryId = "";
+      setStatus("That category no longer exists.");
+      return;
+    }
+    category.label = label;
+    category.description = categoryDescription.value.trim();
+    category.accent = normalizeTextColor(categoryAccent.value || "") || category.accent || "#1677a8";
+    savedPortfolioCatalog.categories = clone(catalog.categories || []);
+    refreshCategoryControls();
+    renderAll();
+    scheduleAutosave();
+    setStatus(`Category "${category.label}" updated locally.`);
+    editingCategoryId = "";
     return;
   }
   const baseId = slugify(label);
@@ -11346,12 +11620,17 @@ quickPreviewSelected?.addEventListener("click", () => {
   openProjectPortfolioPreview();
 });
 
-addCategoryButton?.addEventListener("click", openCategoryDialog);
+addCategoryButton?.addEventListener("click", () => openCategoryDialog());
 categoryCancel?.addEventListener("click", () => closeDialogElement(categoryDialog, "cancel"));
 categoryForm?.addEventListener("submit", (event) => {
   event.preventDefault();
   saveCategoryFromDialog();
   closeDialogElement(categoryDialog, "save");
+});
+categoryDialog?.addEventListener("close", () => {
+  editingCategoryId = "";
+  hideCategoryTitleMenu();
+  if (categoryDialogTitle) categoryDialogTitle.textContent = "Add category";
 });
 
 addSiteSectionButton.addEventListener("click", addSiteSection);
@@ -11480,6 +11759,7 @@ projectCreateForm.addEventListener("submit", (event) => {
 });
 
 projectTree.addEventListener("click", (event) => {
+  hideCategoryTitleMenu();
   const categoryToggle = event.target.closest("[data-toggle-category]");
   const deleteCategoryButton = event.target.closest("[data-delete-category]");
   const deleteProjectButton = event.target.closest("[data-delete-project]");
@@ -11509,11 +11789,30 @@ projectTree.addEventListener("click", (event) => {
   }
 });
 
+projectTree.addEventListener("contextmenu", (event) => {
+  const categoryTarget = event.target.closest("[data-category-heading], [data-category-title-target]");
+  if (!categoryTarget) return;
+  const categoryId = categoryTarget.dataset.categoryHeading || categoryTarget.dataset.categoryTitleTarget || "";
+  if (!categoryId) return;
+  event.preventDefault();
+  event.stopPropagation();
+  showCategoryTitleMenu(categoryId, event.clientX, event.clientY);
+});
+
+categoryTitleMenu?.addEventListener("click", async (event) => {
+  const button = event.target.closest("[data-category-action]");
+  if (!button) return;
+  await handleCategoryTitleAction(button.dataset.categoryAction, categoryTitleMenu.dataset.categoryId || "");
+});
+
 document.addEventListener("click", (event) => {
   if (!event.target.closest(".add-project-wrap")) toggleCategoryDropdown(false);
   if (!event.target.closest("#summary-context-menu")) hideSummaryContextMenu();
   if (!event.target.closest("#project-title-menu") && !event.target.closest("#project-window-title")) {
     projectTitleMenu.hidden = true;
+  }
+  if (!event.target.closest("#category-title-menu") && !event.target.closest("[data-category-heading], [data-category-title-target]")) {
+    hideCategoryTitleMenu();
   }
 });
 
@@ -13060,6 +13359,30 @@ sectionContent.addEventListener("submit", (event) => {
 sectionContent.addEventListener("change", (event) => {
   const project = selectedProject();
   if (!project) return;
+  if (event.target.dataset.scopeControl) {
+    const workspace = ensureCompileCode(project);
+    const key = event.target.dataset.scopeSignal || "";
+    if (key) {
+      workspace.scopeSettings[key] = workspace.scopeSettings[key] || {};
+      if (event.target.dataset.scopeControl === "color") {
+        workspace.scopeSettings[key].color = normalizeScopeColor(event.target.value, workspace.scopeSettings[key].color || "#38bdf8");
+      }
+      if (event.target.dataset.scopeControl === "radix") {
+        workspace.scopeSettings[key].radix = normalizeScopeRadix(event.target.value);
+      }
+      scheduleAutosave(900);
+      renderSectionContent(project);
+      return;
+    }
+  }
+  if (event.target.dataset.scopeTimeout !== undefined) {
+    const workspace = ensureCompileCode(project);
+    workspace.hdlSimulationTimeoutMs = Math.max(5000, Math.min(120000, Number(event.target.value) || 30000));
+    addCompileMessage(project, `HDL simulation timeout set to ${Math.round(workspace.hdlSimulationTimeoutMs / 1000)} seconds.`, "info");
+    scheduleAutosave(900);
+    renderSectionContent(project);
+    return;
+  }
   if (event.target.dataset.compileAppendTarget !== undefined) {
     const workspace = ensureCompileCode(project);
     workspace.appendTargetId = event.target.value;
@@ -13168,14 +13491,19 @@ sectionContent.addEventListener("input", (event) => {
   const project = selectedProject();
   if (!project) return;
   const workspace = ensureCompileCode(project);
-  workspace.systemTerminal.command = String(event.target.textContent || event.target.value || "");
+  workspace.systemTerminal.command = String(event.target.value || "");
 });
 
 sectionContent.addEventListener("paste", (event) => {
   if (!event.target.matches("[data-compile-terminal-command]")) return;
   event.preventDefault();
-  const text = event.clipboardData?.getData("text/plain") || "";
-  document.execCommand("insertText", false, text.replace(/\r?\n/g, " "));
+  const text = (event.clipboardData?.getData("text/plain") || "").replace(/\r?\n/g, " ");
+  const input = event.target;
+  const start = input.selectionStart ?? input.value.length;
+  const end = input.selectionEnd ?? input.value.length;
+  input.value = `${input.value.slice(0, start)}${text}${input.value.slice(end)}`;
+  input.setSelectionRange?.(start + text.length, start + text.length);
+  input.dispatchEvent(new Event("input", { bubbles: true }));
 });
 
 projectWindowClose.addEventListener("click", () => {
