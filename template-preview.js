@@ -246,6 +246,8 @@ const standardSections = [
   { id: "compile-code", label: "Compile Code", folder: "compile-code" }
 ];
 
+const projectStatusOptions = ["Draft", "In progress", "Completed", "Archived"];
+
 const preferenceStorageKey = "omb-builder-preferences";
 const compileThemeIds = [
   "dark-vs",
@@ -523,6 +525,7 @@ let activePlainTextControl = null;
 let activePlainTextSelection = null;
 let activeRichSelectionRange = null;
 let activeTextSelectionRange = null;
+let activeStaticSelectionText = "";
 const persistentSelectionHighlightName = "builder-text-selection";
 let persistentSelectionOverlay = null;
 let activeSelectionInspectorDrag = null;
@@ -533,6 +536,7 @@ let selectionGestureProducedRange = false;
 let selectionInspectorRefreshTimer = 0;
 let selectionGestureFinishTimer = 0;
 let selectionInspectorInputTimer = 0;
+let selectionCopyMenu = null;
 let activeRichDragBlock = null;
 let activeImageCropDrag = null;
 let activeRichImageMoveDrag = null;
@@ -2152,6 +2156,44 @@ function escapeHtml(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
+}
+
+function normalizeProjectStatus(value = "") {
+  const clean = String(value || "").trim().toLowerCase().replace(/[-_]+/g, " ");
+  if (!clean) return "Draft";
+  if (["inprogress", "in progress", "progress", "ongoing", "in work"].includes(clean)) return "In progress";
+  const match = projectStatusOptions.find((status) => status.toLowerCase() === clean);
+  return match || "Draft";
+}
+
+function projectStatusClass(status = "") {
+  return slugify(normalizeProjectStatus(status)).replace(/-/g, "_") || "draft";
+}
+
+function projectStatusVisible(project = {}) {
+  if (project?.portfolioView && Object.prototype.hasOwnProperty.call(project.portfolioView, "showStatus")) {
+    return project.portfolioView.showStatus !== false;
+  }
+  return project?.showStatusOnPortfolio !== false;
+}
+
+function projectStatusText(project = {}) {
+  return normalizeProjectStatus(project?.portfolioView?.status || project?.status || "Draft");
+}
+
+function projectStatusBadge(project = {}) {
+  if (!projectStatusVisible(project)) return "";
+  const status = projectStatusText(project);
+  return `<span class="project-status-badge project-status-${escapeHtml(projectStatusClass(status))}">${escapeHtml(status)}</span>`;
+}
+
+function projectTitleHeading(title, project = {}) {
+  return `
+    <div class="project-title-row">
+      <h3>${escapeHtml(title || "Untitled project")}</h3>
+      ${projectStatusBadge(project)}
+    </div>
+  `;
 }
 
 function escapeCodeHtml(value) {
@@ -3901,6 +3943,7 @@ function parsedToolsSection(project) {
 
 function parseProjectForPortfolio(project) {
   const template = projectTemplateFor(project);
+  project.status = normalizeProjectStatus(project.status);
   const parsedSections = sectionOptions(project).flatMap((section) => {
     if (section.id === "brief") {
       return parsedSection("brief", "Overview", [
@@ -3926,6 +3969,8 @@ function parseProjectForPortfolio(project) {
         visual: template.visual ? clone(template.visual) : projectTemplateVisual(project)
       },
       responsive: buildResponsiveProfile(project, parsedSections),
+      showStatus: project.showStatusOnPortfolio !== false,
+      status: normalizeProjectStatus(project.status),
       title: project.title,
       sections: parsedSections
     }
@@ -4754,7 +4799,7 @@ function publicProjectCard(project) {
   return `
     <article class="project-card catalog-card ${projectTemplateClass(project)} ${projectResponsiveClass(project)}" id="${project.id}" style="${projectTemplateStyle(project, accent)}">
       <div class="project-body">
-        <h3>${project.title}</h3>
+        ${projectTitleHeading(project.title, project)}
         <p>${project.summary || ""}</p>
 
         ${project.highlights && project.highlights.length ? detailBlock("Project highlights", "project-drawer", `
@@ -4964,7 +5009,7 @@ function parsedPublicProjectCard(project) {
   return `
     <article class="project-card catalog-card ${projectTemplateClass(project)} ${projectResponsiveClass(project)}" id="${project.id}" style="${projectTemplateStyle(project, accent)}">
       <div class="project-body">
-        <h3>${view.title || project.title}</h3>
+        ${projectTitleHeading(view.title || project.title, project)}
         ${renderParsedBriefBlock(briefSection, project.summary)}
         <div class="evidence-grid" aria-label="${project.title} parsed project content">
           ${otherSections.map((section, index) => parsedPublicSection(section, index)).join("")}
@@ -5002,8 +5047,13 @@ function renderedPublicProjects() {
   }
   return savedPortfolioCatalog.categories.map((category) => {
     const categoryProjects = savedPortfolioCatalog.projects.filter((project) => project.category === category.id);
-    return publicCategorySection(category, categoryProjects);
-  }).join("");
+    return categoryProjects.length ? publicCategorySection(category, categoryProjects) : "";
+  }).join("") || `
+    <div class="empty-state">
+      <h3>No parsed projects saved yet.</h3>
+      <p>Open a project, edit it, then click Save to build it into this portfolio preview.</p>
+    </div>
+  `;
 }
 
 function sectionControls(sectionId, uploadKey = "", folder = "") {
@@ -5124,6 +5174,7 @@ function buildTemplateProject() {
     templateVisual: template?.visual ? clone(template.visual) : null,
     category,
     status: "Draft",
+    showStatusOnPortfolio: true,
     summary: "",
     summaryRich: null,
     focus: [],
@@ -5291,7 +5342,21 @@ function renderSummaryBuilder(project) {
   const isEditing = summaryEditorProjectId === project.id;
   const summaryWords = summaryWordCount(project);
   const hasSummary = summaryWords > 0 || Boolean(project.summaryRich?.blocks?.length);
+  const status = normalizeProjectStatus(project.status);
+  const showStatus = project.showStatusOnPortfolio !== false;
   return `
+    <div class="project-status-controls wide-field" aria-label="Project status controls">
+      <label>
+        <span>Project status</span>
+        <select data-field="status">
+          ${projectStatusOptions.map((option) => `<option value="${escapeHtml(option)}"${option === status ? " selected" : ""}>${escapeHtml(option)}</option>`).join("")}
+        </select>
+      </label>
+      <label class="status-visibility-toggle">
+        <input type="checkbox" data-field="showStatusOnPortfolio"${showStatus ? " checked" : ""}>
+        <span>Show status on portfolio</span>
+      </label>
+    </div>
     <div class="summary-builder wide-field">
       <div class="summary-builder-heading">
         <div>
@@ -5863,27 +5928,12 @@ function positionSelectionInspector(range) {
 }
 
 function showTextSelectionInspector(editor, range) {
-  if (!textSelectionInspector || !editor || !range || range.collapsed) return;
-  const selectedText = range.toString().trim();
-  if (!selectedText) return;
-  const inspectorHost = editor.closest("dialog") || document.body;
-  if (textSelectionInspector.parentElement !== inspectorHost) inspectorHost.append(textSelectionInspector);
+  if (!editor || !range || range.collapsed) return;
   activeSummaryEditor = editor;
   activeRichSelectionRange = range.cloneRange();
   activeTextSelectionRange = range.cloneRange();
   showPersistentTextSelection(range);
-  const state = richSelectionStyleState(range, editor);
-  selectionTextPreview.textContent = selectedText.length > 120 ? `${selectedText.slice(0, 117)}...` : selectedText;
-  selectionTextPreview.title = selectedText;
-  selectionFontInput.value = state.font;
-  selectionColorInput.value = state.color;
-  selectionSizeInput.value = state.size;
-  selectionFontInput.placeholder = state.font ? "" : "Mixed";
-  selectionColorInput.placeholder = state.color ? "" : "Mixed";
-  selectionSizeInput.placeholder = state.size ? "" : "Mixed";
-  if (state.color && /^#[0-9a-f]{6}$/i.test(state.color)) selectionColorPicker.value = state.color;
-  textSelectionInspector.hidden = false;
-  positionSelectionInspector(range);
+  hideTextSelectionInspector();
 }
 
 function hideTextSelectionInspector() {
@@ -5894,30 +5944,12 @@ function hideTextSelectionInspector() {
 }
 
 function refreshTextSelectionInspector() {
-  if (!textSelectionInspector || selectionInspectorPointerInside || textSelectionInspector.matches(":focus-within")) return;
-  const selection = window.getSelection();
-  if (!selection?.rangeCount || selection.isCollapsed) {
-    if (activeTextSelectionRange && !activeTextSelectionRange.collapsed && activeSummaryEditor) {
-      showTextSelectionInspector(activeSummaryEditor, activeTextSelectionRange);
-      return;
-    }
-    hideTextSelectionInspector();
-    return;
-  }
-  const range = selection.getRangeAt(0);
-  let node = range.commonAncestorContainer;
-  if (node.nodeType === Node.TEXT_NODE) node = node.parentElement;
-  const editor = node?.closest?.("[data-rich-editor]");
-  if (!editor) {
-    hideTextSelectionInspector();
-    return;
-  }
-  showTextSelectionInspector(editor, range);
+  hideTextSelectionInspector();
 }
 
 function scheduleTextSelectionInspectorRefresh(delay = 0) {
   clearTimeout(selectionInspectorRefreshTimer);
-  selectionInspectorRefreshTimer = setTimeout(refreshTextSelectionInspector, delay);
+  selectionInspectorRefreshTimer = setTimeout(hideTextSelectionInspector, delay);
 }
 
 function applySelectionInspectorFormat(kind, rawValue) {
@@ -6793,13 +6825,15 @@ function configureSummaryContextMenu(mode = "rich", options = {}) {
     "toggle-italic",
     "toggle-underline"
   ]);
+  const selectionActions = new Set(["copy-text"]);
   summaryContextMenu.querySelectorAll("[data-rich-action]").forEach((button) => {
     const action = button.dataset.richAction;
-    button.hidden = mode === "plain" ? !plainActions.has(action) : false;
+    button.hidden = mode === "selection" ? !selectionActions.has(action) : mode === "plain" ? !plainActions.has(action) : false;
   });
   summaryContextMenu.querySelectorAll(".rich-menu-field").forEach((field) => {
-    field.hidden = false;
+    field.hidden = mode === "selection";
   });
+  if (richContextColorSwatches) richContextColorSwatches.hidden = true;
   if (mode === "rich") {
     const textOnly = Boolean(options.textOnly);
     summaryContextMenu.querySelectorAll("[data-rich-action='add-image'], [data-rich-action='add-formula'], [data-rich-action='add-code'], [data-rich-action='paste-code']").forEach((button) => {
@@ -7025,6 +7059,8 @@ function hideSummaryContextMenu() {
   summaryContextMenu.hidden = true;
   activePlainTextControl = null;
   activePlainTextSelection = null;
+  activeStaticSelectionText = "";
+  if (richContextColorSwatches) richContextColorSwatches.hidden = true;
 }
 
 function positionCompactContextMenu(menu, event, host = document.body, options = {}) {
@@ -7539,11 +7575,27 @@ function renderSectionTabs(project) {
   }).join("");
 
   sectionTabs.innerHTML = `
-    <div class="project-section-list" role="list">
-      ${rows}
+    <div class="project-section-row-strip">
+      <div class="project-section-list" role="list">
+        ${rows}
+      </div>
+      <button type="button" data-add-section="true">Add section</button>
     </div>
-    <button type="button" data-add-section="true">Add section</button>
+    ${renderActiveSubsectionStrip(project)}
   `;
+}
+
+function renderActiveSubsectionStrip(project) {
+  if (!project || !String(activeSectionId || "").startsWith("custom:")) return "";
+  const sectionId = activeSectionId.slice("custom:".length);
+  const section = (project.sections || []).find((item) => item.id === sectionId);
+  if (!section) return "";
+  normalizeBuilderSectionStorage(section);
+  const currentPath = activeCustomSectionPath(sectionId);
+  const currentNode = currentPath.length ? findBuilderNode(section, currentPath) : section;
+  if (!currentNode) return "";
+  const currentChildren = currentPath.length ? builderNodeChildren(currentNode) : sectionRootChildren(section);
+  return renderNestedSectionNav(section, currentChildren, currentPath, "section-bar-subsections");
 }
 
 function renderProjectViewTabs(project) {
@@ -8263,7 +8315,7 @@ function pendingEditorMatchesCustomView(sectionId, path = []) {
   return editPathValue === pathValue || parentPathValue === pathValue;
 }
 
-function renderNestedSectionNav(section, currentChildren = [], currentPath = []) {
+function renderNestedSectionNav(section, currentChildren = [], currentPath = [], extraClass = "") {
   const childRows = (currentChildren || [])
     .map((item, index) => ({ item, index }))
     .filter(({ item }) => item && !item.url && !item.artifact);
@@ -8271,7 +8323,7 @@ function renderNestedSectionNav(section, currentChildren = [], currentPath = [])
   if (!childRows.length) return "";
 
   return `
-    <nav class="nested-section-link-strip" aria-label="Subsections in this section">
+    <nav class="nested-section-link-strip ${escapeHtml(extraClass)}" aria-label="Subsections in this section">
       ${childRows.map(({ item, index }) => {
         const pathValue = customViewPathValue([...currentPath, index]);
         return `
@@ -8343,17 +8395,20 @@ function renderCustomSection(project, sectionId) {
   return `
     <div class="section-window-heading section-window-heading-actions-only">
       <div class="section-window-action-row">
-        <button class="button primary" type="button" data-add-node-subsection="${escapeHtml(section.id)}" data-node-path="${escapeHtml(pathValue)}">Add subsection</button>
-        <button class="button secondary" type="button" data-upload-node="${escapeHtml(section.id)}" data-node-path="${escapeHtml(pathValue)}">Add file or image</button>
-        ${currentPath.length
-          ? `<button type="button" data-open-editor="custom" data-mode="edit" data-section-id="${escapeHtml(section.id)}" data-node-path="${escapeHtml(pathValue)}">Edit current</button>
-             <button class="danger-icon" type="button" data-delete-node="${escapeHtml(section.id)}" data-node-path="${escapeHtml(pathValue)}">Delete current</button>`
-          : `<button type="button" data-open-editor="custom-section" data-section-id="${escapeHtml(section.id)}">Edit section</button>
-             <button class="danger-icon" type="button" data-delete-section="${escapeHtml(section.id)}">Delete section</button>`}
+        <div class="section-window-action-group section-window-action-group-left">
+          <button class="button primary" type="button" data-add-node-subsection="${escapeHtml(section.id)}" data-node-path="${escapeHtml(pathValue)}">Add subsection</button>
+          <button class="button secondary" type="button" data-upload-node="${escapeHtml(section.id)}" data-node-path="${escapeHtml(pathValue)}">Add file or image</button>
+        </div>
+        <div class="section-window-action-group section-window-action-group-right">
+          ${currentPath.length
+            ? `<button type="button" data-open-editor="custom" data-mode="edit" data-section-id="${escapeHtml(section.id)}" data-node-path="${escapeHtml(pathValue)}">Edit current</button>
+               <button class="danger-icon" type="button" data-delete-node="${escapeHtml(section.id)}" data-node-path="${escapeHtml(pathValue)}">Delete current</button>`
+            : `<button type="button" data-open-editor="custom-section" data-section-id="${escapeHtml(section.id)}">Edit section</button>
+               <button class="danger-icon" type="button" data-delete-section="${escapeHtml(section.id)}">Delete section</button>`}
+        </div>
       </div>
     </div>
     ${editingCurrentView ? renderPendingEditor() : `
-      ${renderNestedSectionNav(section, currentChildren, currentPath)}
       <div class="section-window-view-canvas${hasViewContent || fileListHtml ? "" : " is-empty"}">
         <div class="section-window-content-stack">
           ${hasViewContent ? builderPreviewContent(richDescription, description, "") : ""}
@@ -9948,6 +10003,12 @@ function updateProjectField(field, value) {
     project.id = nextId;
     selectedProjectId = nextId;
     needsChromeRender = true;
+  } else if (field === "status") {
+    project.status = normalizeProjectStatus(value);
+    needsChromeRender = true;
+  } else if (field === "showStatusOnPortfolio") {
+    project.showStatusOnPortfolio = Boolean(value);
+    needsChromeRender = true;
   } else {
     project[field] = value;
     needsChromeRender = ["title", "category", "status"].includes(field);
@@ -9997,6 +10058,7 @@ function projectMetaRows(project) {
     ["Project ID / folder", project.id || "Not assigned"],
     ["Category", category.label || project.category || "Not assigned"],
     ["Status", project.status || "Draft"],
+    ["Status visibility", project.showStatusOnPortfolio === false ? "Hidden from portfolio" : "Visible on portfolio"],
     ["Appearance", template.label || project.templateLabel || "No appearance - white project layout"],
     ["Appearance ID", project.templateId || "None"],
     ["Portfolio preview", savedProject ? "Saved into parsed portfolio preview" : "Not yet saved into portfolio preview"],
@@ -10014,9 +10076,18 @@ function openProjectMetaDetails() {
   projectTitleMenu.hidden = true;
   projectMetaTitle.textContent = project.title || "Project details";
   projectMetaGrid.innerHTML = projectMetaRows(project).map(([label, value]) => `
-    <article>
+    <article${label === "Status" ? ' class="project-meta-status-card"' : ""}>
       <span>${label}</span>
-      <strong>${value}</strong>
+      ${label === "Status" ? `
+        <select data-meta-status>
+          ${projectStatusOptions.map((option) => `<option value="${escapeHtml(option)}"${option === normalizeProjectStatus(project.status) ? " selected" : ""}>${escapeHtml(option)}</option>`).join("")}
+        </select>
+      ` : label === "Status visibility" ? `
+        <label class="project-meta-status-toggle">
+          <input type="checkbox" data-meta-status-visible${project.showStatusOnPortfolio === false ? "" : " checked"}>
+          <strong>${project.showStatusOnPortfolio === false ? "Hidden from portfolio" : "Visible on portfolio"}</strong>
+        </label>
+      ` : `<strong>${value}</strong>`}
     </article>
   `).join("");
   if (!projectMetaDialog.open) projectMetaDialog.showModal();
@@ -12034,6 +12105,17 @@ projectTitleMenu.addEventListener("click", async (event) => {
 titleRenameSave.addEventListener("click", () => endTitleRename(true));
 titleRenameCancel.addEventListener("click", () => endTitleRename(false));
 projectMetaClose.addEventListener("click", () => closeDialogElement(projectMetaDialog));
+projectMetaGrid?.addEventListener("change", (event) => {
+  if (event.target.matches("[data-meta-status]")) {
+    updateProjectField("status", event.target.value);
+    openProjectMetaDetails();
+    return;
+  }
+  if (event.target.matches("[data-meta-status-visible]")) {
+    updateProjectField("showStatusOnPortfolio", event.target.checked);
+    openProjectMetaDetails();
+  }
+});
 
 viewProjectPreviewButton.addEventListener("click", openProjectPortfolioPreview);
 projectPreviewClose.addEventListener("click", closeProjectPreviewWindow);
@@ -12498,6 +12580,39 @@ function handlePlainTextContextMenu(event) {
   summaryContextMenu.hidden = false;
   positionCompactContextMenu(summaryContextMenu, event, menuHost, { minHeight: 140, maxHeight: 300 });
 }
+
+function selectedDocumentText() {
+  const selection = window.getSelection();
+  return selection && !selection.isCollapsed ? String(selection.toString() || "").trim() : "";
+}
+
+function showStaticSelectionContextMenu(event, selectedText) {
+  if (!summaryContextMenu || !selectedText) return;
+  event.preventDefault();
+  event.stopPropagation();
+  hideTextSelectionInspector();
+  activeStaticSelectionText = selectedText;
+  activePlainTextControl = null;
+  activePlainTextSelection = null;
+  activeSummaryEditor = null;
+  activeSummaryBlock = null;
+  configureSummaryContextMenu("selection");
+  const menuHost = event.target.closest?.("dialog") || document.body;
+  if (summaryContextMenu.parentElement !== menuHost) menuHost.append(summaryContextMenu);
+  summaryContextMenu.style.left = `${event.clientX}px`;
+  summaryContextMenu.style.top = `${event.clientY}px`;
+  summaryContextMenu.style.maxHeight = "";
+  summaryContextMenu.hidden = false;
+  positionCompactContextMenu(summaryContextMenu, event, menuHost, { minHeight: 48, maxHeight: 120 });
+}
+
+document.addEventListener("contextmenu", (event) => {
+  if (event.target.closest?.("#summary-context-menu")) return;
+  const selectedText = selectedDocumentText();
+  if (!selectedText) return;
+  if (richEditorFromContextEvent(event) || plainTextControlFromContextEvent(event)) return;
+  showStaticSelectionContextMenu(event, selectedText);
+}, true);
 
 document.addEventListener("contextmenu", handlePlainTextContextMenu);
 
@@ -13230,9 +13345,18 @@ summaryContextMenu.addEventListener("click", async (event) => {
     }
     return;
   }
+  if (event.target === richColorInput && richContextColorSwatches) {
+    richContextColorSwatches.hidden = !richContextColorSwatches.hidden;
+    return;
+  }
   const actionButton = event.target.closest("[data-rich-action]");
   if (!actionButton) return;
   const action = actionButton.dataset.richAction;
+  if (activeStaticSelectionText) {
+    if (action === "copy-text") await navigator.clipboard.writeText(activeStaticSelectionText);
+    hideSummaryContextMenu();
+    return;
+  }
   if (activePlainTextControl) {
     await handlePlainTextAction(action);
     if (["copy-text", "paste-text", "cut-text", "select-all-text"].includes(action)) {
@@ -13364,7 +13488,13 @@ projectFields.addEventListener("input", (event) => {
     const countLabel = event.target.closest("label")?.querySelector("small");
     if (countLabel) countLabel.textContent = `${Math.min(wordCount(event.target.value), 1000)}/1000 words`;
   }
-  if (field) updateProjectField(field, event.target.value);
+  if (field) updateProjectField(field, event.target.type === "checkbox" ? event.target.checked : event.target.value);
+});
+
+projectFields.addEventListener("change", (event) => {
+  const field = event.target.dataset.field;
+  if (!field) return;
+  updateProjectField(field, event.target.type === "checkbox" ? event.target.checked : event.target.value);
 });
 
 sectionTabs.addEventListener("click", async (event) => {

@@ -426,7 +426,7 @@
                           <ul>
                               <li>Project titles should describe the actual system or circuit, not just the class or assignment name.</li>
                               <li>Appearance templates only control look and interaction behavior. They should not add project claims or sample text.</li>
-                              <li>Only categories that contain projects show project rows. Empty categories stay as clean category headers until a project is added.</li>
+                              <li>Empty categories stay available inside the builder but are not published in the portfolio preview or website until they contain at least one saved project.</li>
                               <li>Use placement to keep your strongest or most relevant projects near the top.</li>
                           </ul>
                           <p>After creating a project, open it and fill the Overview, then manually add the evidence sections the project actually needs. A project with only a title should not be published because it gives the visitor no evidence to inspect.</p>
@@ -442,6 +442,7 @@
                               <li>Every other section, such as Design, Simulation, Tests, Tools, PCB Builds, Documentation, References, Results, or Compile Code, must be added manually.</li>
                               <li>Sections and subsections are nested manually. A section can contain subsections, and each subsection can contain its own child sections when the project needs that depth.</li>
                               <li>An overview appears automatically when it exists; it is not shown as a separate clickable Overview icon.</li>
+                              <li>Project status can be Draft, In progress, Completed, or Archived. You can choose whether that status is shown on the public portfolio; when shown, it appears at the far right of the project title.</li>
                               <li>Empty sections, empty subsections, and empty files do not render on the website.</li>
                           </ol>
                           <ul>
@@ -458,11 +459,11 @@
                       <div>
                           <p>Rich text fields behave like document editors. Click where you want to type, highlight the exact words you want to edit, then apply formatting to that selection. Formatting should not change an entire paragraph unless the whole paragraph is selected.</p>
                           <p>The builder stores the text as structured content so the portfolio can render it cleanly later. That means the editor may standardize pasted formatting, but it should preserve intentional choices such as bold text, font size, color, links, hard line breaks, images, formulas, and code blocks.</p>
-                          <p>Front-page, profile, contact, fun facts, and project overview fields now use the same selection-level text behavior. Highlight the exact words you want to edit, then use the right-click menu or floating selection inspector to change font, size, color, bold, italic, or underline. Identity and contact fields remain text-only, so image, formula, and code block insertion is intentionally disabled there.</p>
+                          <p>Front-page, profile, contact, fun facts, and project overview fields now use the same selection-level text behavior. Highlight the exact words you want to edit, then right-click the highlighted text to copy, paste, cut, change font, change size, change color, bold, italicize, or underline where that field supports formatting. Identity and contact fields remain text-only, so image, formula, and code block insertion is intentionally disabled there.</p>
                           <ol>
                               <li>Right-click highlighted text in any builder text field to copy, cut, paste, select all, change font, change size, change color, and apply bold, italic, or underline.</li>
                               <li>The default typing font is Arial.</li>
-                              <li>If selected text has mixed font, size, or color, the inspector fields are blank so you know the selection is mixed.</li>
+                              <li>Static text such as guide text, titles, and labels can also be copied by highlighting it and right-clicking the selection.</li>
                               <li>Use Enter for a new paragraph. Pasted line breaks remain line breaks.</li>
                               <li>Typing and wrapping should not create fake new paragraphs; only hard enters and pasted line breaks do.</li>
                               <li>Use the Code block command or Paste as code for source snippets so they render differently from general text.</li>
@@ -1355,7 +1356,7 @@
           <label class="rich-menu-field">
               <span>Text color</span>
               <input id="rich-color-input" type="color" value="#17202a" data-rich-color-input />
-              <div class="rich-context-color-swatches" id="rich-context-color-swatches" aria-label="Common text colors"></div>
+              <div class="rich-context-color-swatches" id="rich-context-color-swatches" aria-label="Common text colors" hidden></div>
           </label>
           <label class="rich-menu-field">
               <span>Font</span>
@@ -1410,43 +1411,7 @@
           <button type="button" data-rich-action="edit-block">Edit selected block</button>
           <button class="danger-menu-item" type="button" data-rich-action="delete-block">Delete selected block</button>
       </div>
-      <div class="text-selection-inspector" id="text-selection-inspector" hidden>
-          <div class="selection-inspector-heading" data-selection-inspector-drag>
-              <strong>Selection</strong>
-              <button type="button" data-selection-inspector-close aria-label="Close selection formatting">&times;</button>
-          </div>
-          <p class="selection-text-preview" id="selection-text-preview"></p>
-          <div class="selection-inspector-fields">
-              <label>
-                  <span>Font</span>
-                  <div class="selection-combo">
-                      <input id="selection-font-input" type="text" autocomplete="off" placeholder="Mixed" aria-label="Selected text font">
-                      <button type="button" data-selection-options-toggle="font" aria-label="Show font choices"><span class="selection-wedge"></span></button>
-                      <div class="selection-options" data-selection-options="font" hidden></div>
-                  </div>
-              </label>
-              <label>
-                  <span>Color</span>
-                  <div class="selection-combo">
-                      <input id="selection-color-input" type="text" autocomplete="off" placeholder="Mixed" aria-label="Selected text color">
-                      <button type="button" data-selection-options-toggle="color" aria-label="Show color choices"><span class="selection-wedge"></span></button>
-                      <div class="selection-options selection-color-options" data-selection-options="color" hidden>
-                          <input id="selection-color-picker" type="color" value="#17202a" aria-label="Choose selected text color">
-                          <div class="selection-color-swatches" id="selection-color-swatches"></div>
-                      </div>
-                  </div>
-              </label>
-              <label>
-                  <span>Size</span>
-                  <div class="selection-combo">
-                      <input id="selection-size-input" type="number" min="8" max="24" step="1" placeholder="Mixed" aria-label="Selected text size">
-                      <button type="button" data-selection-options-toggle="size" aria-label="Show size choices"><span class="selection-wedge"></span></button>
-                      <div class="selection-options" data-selection-options="size" hidden></div>
-                  </div>
-              </label>
-          </div>
-      </div>
-      <script src="electronics-search.js?v=0.2.46"></script>
-      <script src="template-preview.js?v=0.2.48"></script>
+      <script src="electronics-search.js?v=0.2.52"></script>
+      <script src="template-preview.js?v=0.2.52"></script>
   </body>
 </html>
