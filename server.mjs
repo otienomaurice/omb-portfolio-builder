@@ -808,6 +808,66 @@ function beautifyHdlCode(code = "") {
     .trimEnd();
 }
 
+function beautifyPythonCode(code = "") {
+  let depth = 0;
+  const blockStarters = /:\s*(?:#.*)?$/;
+  const blockClosers = /^(elif|else|except|finally)\b/;
+  return String(code || "")
+    .replace(/\r\n?/g, "\n")
+    .replace(/\t/g, "    ")
+    .split("\n")
+    .map((rawLine) => rawLine.trimEnd())
+    .map((rawLine) => {
+      const line = rawLine.trim();
+      if (!line) return "";
+      if (blockClosers.test(line)) depth = Math.max(0, depth - 1);
+      const formatted = `${"    ".repeat(depth)}${line}`;
+      if (blockStarters.test(line) && !line.startsWith("#")) depth += 1;
+      if (/^(return|raise|break|continue|pass)\b/.test(line)) depth = Math.max(0, depth - 1);
+      return formatted;
+    })
+    .join("\n")
+    .replace(/\n{4,}/g, "\n\n\n")
+    .trimEnd();
+}
+
+function beautifyHtmlCode(code = "") {
+  const voidTags = new Set(["area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source", "track", "wbr"]);
+  const source = String(code || "")
+    .replace(/\r\n?/g, "\n")
+    .replace(/>\s+</g, ">\n<")
+    .replace(/(<[^>]+>)/g, "\n$1\n")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+  let depth = 0;
+  return source.map((line) => {
+    const closing = /^<\//.test(line);
+    const tagName = (line.match(/^<\/?\s*([a-zA-Z0-9:-]+)/) || [])[1]?.toLowerCase() || "";
+    const selfClosing = /\/>$/.test(line) || voidTags.has(tagName) || /^<!|^<\?/.test(line);
+    if (closing) depth = Math.max(0, depth - 1);
+    const formatted = `${"  ".repeat(depth)}${line}`;
+    if (!closing && !selfClosing && /^</.test(line) && !line.includes(`</${tagName}>`)) depth += 1;
+    return formatted;
+  }).join("\n").trimEnd();
+}
+
+function beautifyLtspiceCode(code = "") {
+  return String(code || "")
+    .replace(/\r\n?/g, "\n")
+    .split("\n")
+    .map((rawLine) => {
+      const trimmed = rawLine.trim();
+      if (!trimmed) return "";
+      if (/^[+]/.test(trimmed)) return `+ ${trimmed.slice(1).trim()}`;
+      if (/^[*.]/.test(trimmed)) return trimmed;
+      return trimmed.replace(/\s+/g, " ");
+    })
+    .join("\n")
+    .replace(/\n{4,}/g, "\n\n\n")
+    .trimEnd();
+}
+
 function beautifyCode(code = "", language = "javascript") {
   const normalized = String(code || "").replace(/\r\n?/g, "\n").replace(/\t/g, "  ");
   const lang = normalizeCodeLanguage(language);
@@ -817,14 +877,9 @@ function beautifyCode(code = "", language = "javascript") {
       .replace(/[ \t]+$/gm, "")
       .replace(/\n{4,}/g, "\n\n\n");
   }
-  if (lang === "html") {
-    return normalized
-      .replace(/>\s+</g, ">\n<")
-      .split("\n")
-      .map((line) => line.trim())
-      .join("\n")
-      .trim();
-  }
+  if (lang === "python") return beautifyPythonCode(code);
+  if (lang === "html") return beautifyHtmlCode(code);
+  if (lang === "ltspice") return beautifyLtspiceCode(code);
   return normalized
     .split("\n")
     .map((line) => line.trimEnd())
