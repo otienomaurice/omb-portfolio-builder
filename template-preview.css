@@ -2871,6 +2871,11 @@ body.rich-image-dragging * {
   stroke: rgba(148, 163, 184, 0.1);
 }
 
+.scope-row.is-scope-cursor-row .scope-row-line {
+  stroke: rgba(250, 204, 21, 0.5);
+  stroke-width: 1.4;
+}
+
 .scope-wave {
   fill: none;
   stroke: #38bdf8;
@@ -2905,6 +2910,46 @@ body.rich-image-dragging * {
   stroke: rgba(250, 204, 21, 0.45);
   stroke-width: 1;
   stroke-dasharray: 3 3;
+}
+
+.scope-cursor {
+  cursor: ew-resize;
+  pointer-events: all;
+}
+
+.scope-cursor-line {
+  stroke: #facc15;
+  stroke-width: 2.2;
+  stroke-dasharray: 7 5;
+  filter: drop-shadow(0 0 4px rgba(250, 204, 21, 0.7));
+  pointer-events: stroke;
+}
+
+.scope-cursor-handle {
+  fill: #facc15;
+  stroke: #111827;
+  stroke-width: 2;
+  filter: drop-shadow(0 2px 5px rgba(0, 0, 0, 0.45));
+  pointer-events: all;
+}
+
+.scope-cursor-readout-object {
+  overflow: visible;
+  pointer-events: none;
+}
+
+.scope-cursor-readout-box {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 38px;
+  border: 1px solid rgba(250, 204, 21, 0.88);
+  border-radius: 6px;
+  padding: 6px 8px;
+  color: #fef9c3;
+  background: rgba(15, 23, 42, 0.96);
+  font: 700 11px/1.35 Consolas, "Courier New", monospace;
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.36);
+  white-space: normal;
 }
 
 .compile-messages-log {
@@ -11493,6 +11538,23 @@ body[data-builder-theme="dark"] .project-dialog .project-section-toolbar {
   border: 1px solid var(--compile-active, #007acc) !important;
   color: #ffffff !important;
   background: var(--compile-active, #007acc) !important;
+}
+
+.project-dialog.is-compile-code-active .scope-signal-context-menu button:disabled {
+  cursor: not-allowed !important;
+  opacity: 0.48 !important;
+}
+
+.project-dialog.is-compile-code-active .scope-context-actions {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  justify-content: flex-end !important;
+  gap: 6px !important;
+}
+
+.project-dialog.is-compile-code-active .scope-context-actions button {
+  justify-self: auto !important;
+  padding-inline: 9px !important;
 }
 
 .project-dialog.is-compile-code-active .scope-row {
