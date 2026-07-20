@@ -14196,6 +14196,25 @@ sectionTabs.addEventListener("click", async (event) => {
     deleteProjectSectionById(project, button.dataset.deleteSection);
     return;
   }
+  if (button.dataset.addNodeSubsection !== undefined) {
+    openPendingEditor({
+      type: "custom",
+      mode: "add",
+      sectionId: button.dataset.addNodeSubsection,
+      parentPath: button.dataset.nodePath || "",
+      title: "",
+      description: ""
+    });
+    return;
+  }
+  if (button.dataset.uploadNode !== undefined) {
+    await uploadToSection("sections", button.dataset.uploadNode, button.dataset.uploadNode, null, button.dataset.nodePath || "");
+    return;
+  }
+  if (button.dataset.deleteNode !== undefined) {
+    deleteProjectNodeByPath(project, button.dataset.deleteNode, nodePathFromString(button.dataset.nodePath || ""));
+    return;
+  }
   const nextSectionId = button.dataset.sectionId;
   if (!nextSectionId) return;
   if (nextSectionId && nextSectionId !== activeSectionId && !suppressProjectWindowHistory) {
