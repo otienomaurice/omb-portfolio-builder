@@ -11172,3 +11172,90 @@ body[data-builder-theme="dark"] .project-dialog .section-bar-subsections,
 body[data-builder-theme="dark"] .project-dialog .project-section-toolbar {
   background: var(--builder-ui-surface) !important;
 }
+
+/* Compile Code bottom-fit layout.
+   The source editor should own the free space, while the locked output dock and
+   blue status bar stay pinned to the true bottom of the Compile Code window. */
+.project-dialog.is-compile-code-active .project-window-content,
+.project-dialog.is-compile-code-active .section-content,
+.project-dialog.is-compile-code-active .compile-code-workspace {
+  min-height: 0 !important;
+  height: 100% !important;
+  overflow: hidden !important;
+}
+
+.project-dialog.is-compile-code-active .compile-code-main {
+  grid-template-rows:
+    auto
+    auto
+    minmax(0, 1fr)
+    auto
+    auto
+    clamp(112px, var(--compile-output-height, 172px), 240px) !important;
+  min-height: 0 !important;
+  height: 100% !important;
+  overflow: hidden !important;
+}
+
+.project-dialog.is-compile-code-active .compile-code-editor-grid,
+.project-dialog.is-compile-code-active .compile-code-preview-panel,
+.project-dialog.is-compile-code-active .compile-code-active-editor {
+  min-height: 0 !important;
+  height: 100% !important;
+  max-height: none !important;
+}
+
+.project-dialog.is-compile-code-active .compile-output-workbench.is-output-dock-locked {
+  display: grid !important;
+  grid-template-rows: auto auto minmax(0, 1fr) 24px !important;
+  align-self: stretch !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  overflow: hidden !important;
+}
+
+.project-dialog.is-compile-code-active .compile-output-dock {
+  display: grid !important;
+  grid-template-rows: minmax(0, 1fr) !important;
+  min-height: 0 !important;
+  height: 100% !important;
+  overflow: hidden !important;
+}
+
+.project-dialog.is-compile-code-active .compile-output-dock > section,
+.project-dialog.is-compile-code-active .compile-terminal-panel,
+.project-dialog.is-compile-code-active .compile-messages-panel,
+.project-dialog.is-compile-code-active .compile-system-terminal-panel,
+.project-dialog.is-compile-code-active .compile-scope-panel {
+  display: grid !important;
+  grid-template-rows: auto minmax(0, 1fr) !important;
+  min-height: 0 !important;
+  height: 100% !important;
+  max-height: none !important;
+  overflow: hidden !important;
+}
+
+.project-dialog.is-compile-code-active .compile-terminal,
+.project-dialog.is-compile-code-active .compile-messages-log,
+.project-dialog.is-compile-code-active .compile-terminal-screen,
+.project-dialog.is-compile-code-active .compile-scope-scroll {
+  min-height: 0 !important;
+  height: 100% !important;
+  max-height: none !important;
+  overflow: auto !important;
+}
+
+.project-dialog.is-compile-code-active .compile-terminal-screen {
+  display: grid !important;
+  grid-template-rows: minmax(0, 1fr) auto !important;
+}
+
+.project-dialog.is-compile-code-active .compile-ide-status-bar {
+  grid-row: 4 !important;
+  align-self: end !important;
+  height: 24px !important;
+  min-height: 24px !important;
+  max-height: 24px !important;
+  margin: 0 !important;
+}
