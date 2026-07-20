@@ -2137,6 +2137,7 @@ body.rich-image-dragging * {
 .code-token-type { color: #93c5fd; font-weight: 750; }
 .code-token-function { color: #fde68a; }
 .code-token-attribute { color: #f9a8d4; }
+.code-token-operator { color: #cbd5e1; font-weight: 700; }
 
 .summary-code-preview {
   min-height: 120px;
@@ -10164,6 +10165,12 @@ body[data-compile-theme] .compile-scope-svg {
   color: var(--compile-text) !important;
 }
 
+[data-compile-workspace] .compile-code-active-editor .compile-code-preview code {
+  display: block !important;
+  min-width: max-content !important;
+  min-height: 100% !important;
+}
+
 [data-compile-workspace] .compile-code-active-editor textarea {
   z-index: 1 !important;
   background: transparent !important;
@@ -10186,6 +10193,8 @@ body[data-compile-theme] .compile-scope-svg {
 [data-compile-workspace] .code-token-preprocessor { color: #f472b6 !important; font-weight: 800; }
 [data-compile-workspace] .code-token-tag { color: #38bdf8 !important; font-weight: 800; }
 [data-compile-workspace] .code-token-function { color: #93c5fd !important; }
+[data-compile-workspace] .code-token-attribute { color: #f9a8d4 !important; }
+[data-compile-workspace] .code-token-operator { color: #cbd5e1 !important; font-weight: 700; }
 
 [data-compile-workspace][data-compile-theme^="light"] .code-token-keyword { color: #1d4ed8 !important; }
 [data-compile-workspace][data-compile-theme^="light"] .code-token-type { color: #0f766e !important; }
@@ -10194,6 +10203,8 @@ body[data-compile-theme] .compile-scope-svg {
 [data-compile-workspace][data-compile-theme^="light"] .code-token-comment { color: #64748b !important; }
 [data-compile-workspace][data-compile-theme^="light"] .code-token-preprocessor { color: #be185d !important; }
 [data-compile-workspace][data-compile-theme^="light"] .code-token-function { color: #0369a1 !important; }
+[data-compile-workspace][data-compile-theme^="light"] .code-token-attribute { color: #be185d !important; }
+[data-compile-workspace][data-compile-theme^="light"] .code-token-operator { color: #334155 !important; }
 
 .compile-editor-tab-tools {
   position: sticky;
