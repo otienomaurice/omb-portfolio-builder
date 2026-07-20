@@ -9689,7 +9689,13 @@ function compilePanelTabs(project, file = activeCompileFile(project)) {
     ...(isHdlLanguage(file?.language) ? [{ id: "scope", label: "Scope" }] : [])
   ];
   return `
-    <div class="compile-panel-tabs" role="tablist" aria-label="Compile output views">
+    <div
+      class="compile-panel-tabs"
+      role="tablist"
+      aria-label="Compile output views"
+      data-compile-output-drag
+      title="${dockUnlocked ? "Drag this strip to move the output panel" : "Unlock the output panel to move it"}"
+    >
       <button
         class="compile-output-dock-toggle compile-output-dock-toggle-inline"
         type="button"
@@ -10029,8 +10035,7 @@ function renderCompileCodeSection(project) {
           <div class="compile-code-editor-grid compile-code-editor-grid-single">
             <section class="compile-code-preview-panel compile-code-active-panel" aria-label="Active syntax highlighted code editor">
               <div class="compile-code-active-editor">
-                <pre class="compile-code-preview" aria-hidden="true"><code data-compile-preview>${tokenizedCodeHtml(activeFile.code || "", activeFile.language)}</code></pre>
-                <textarea data-compile-field="code" data-compile-active-editor spellcheck="false" wrap="off" rows="18" placeholder="Type or paste code here">${escapeHtml(activeFile.code || "")}</textarea>
+                <pre class="compile-code-preview" aria-label="Code editor"><code data-compile-preview data-compile-active-editor data-compile-field="code" contenteditable="true" spellcheck="false" role="textbox" aria-multiline="true">${tokenizedCodeHtml(activeFile.code || "", activeFile.language)}</code></pre>
               </div>
             </section>
           </div>
@@ -10627,10 +10632,12 @@ function handleBuilderZoomWheel(event) {
 }
 
 function compileScrollableOwner(element) {
+  const activeEditor = element?.closest?.("[data-compile-active-editor]");
+  if (activeEditor) return activeEditor.closest(".compile-code-preview") || activeEditor;
   return element?.closest?.([
     ".compile-editor-tabs",
     ".compile-code-workspace-tree",
-    ".compile-code-active-editor textarea",
+    ".compile-code-preview",
     ".compile-terminal",
     ".compile-system-terminal",
     ".compile-terminal-screen",
@@ -10965,23 +10972,91 @@ function addCompileUvmStyleTestbenchFile(project, options = {}) {
 function updateCompilePreview(file, sourceElement = null) {
   const editor = sourceElement?.closest?.(".compile-code-active-editor");
   const preview = editor?.querySelector("[data-compile-preview]") || sectionContent.querySelector("[data-compile-preview]");
-  if (preview && file) preview.innerHTML = tokenizedCodeHtml(file.code || "", file.language);
+  if (!preview || !file) return;
+  const preserveCaret = preview === sourceElement || preview.contains?.(sourceElement);
+  const caretOffset = preserveCaret ? compileEditorSelectionOffset(preview) : null;
+  preview.innerHTML = tokenizedCodeHtml(file.code || "", file.language);
+  if (preserveCaret && caretOffset !== null) restoreCompileEditorSelection(preview, caretOffset);
 }
 
 function syncCompileEditorScroll(textarea) {
-  const editor = textarea?.closest(".compile-code-active-editor");
-  const preview = editor?.querySelector(".compile-code-preview");
+  const editor = textarea?.closest?.(".compile-code-active-editor");
+  const preview = editor?.querySelector?.(".compile-code-preview");
   if (!preview || !textarea) return;
-  preview.scrollTop = textarea.scrollTop;
-  preview.scrollLeft = textarea.scrollLeft;
+  preview.scrollTop = textarea.scrollTop || 0;
+  preview.scrollLeft = textarea.scrollLeft || 0;
+}
+
+function compileEditorText(editorElement) {
+  if (!editorElement) return "";
+  const raw = "value" in editorElement
+    ? editorElement.value
+    : editorElement.innerText ?? editorElement.textContent ?? "";
+  return String(raw || "")
+    .replace(/\u00a0/g, " ")
+    .replace(/\r\n?/g, "\n");
+}
+
+function compileEditorSelectionOffset(root) {
+  const selection = window.getSelection?.();
+  if (!root || !selection?.rangeCount) return null;
+  const range = selection.getRangeAt(0);
+  if (!root.contains(range.startContainer)) return null;
+  const prefix = range.cloneRange();
+  prefix.selectNodeContents(root);
+  prefix.setEnd(range.startContainer, range.startOffset);
+  return prefix.toString().length;
+}
+
+function restoreCompileEditorSelection(root, offset = 0) {
+  if (!root || !Number.isFinite(Number(offset))) return;
+  const targetOffset = Math.max(0, Number(offset));
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  let remaining = targetOffset;
+  let node = walker.nextNode();
+  while (node) {
+    const length = node.nodeValue.length;
+    if (remaining <= length) {
+      const range = document.createRange();
+      range.setStart(node, remaining);
+      range.collapse(true);
+      const selection = window.getSelection?.();
+      selection?.removeAllRanges();
+      selection?.addRange(range);
+      return;
+    }
+    remaining -= length;
+    node = walker.nextNode();
+  }
+  const range = document.createRange();
+  range.selectNodeContents(root);
+  range.collapse(false);
+  const selection = window.getSelection?.();
+  selection?.removeAllRanges();
+  selection?.addRange(range);
+}
+
+function insertCompileEditorText(text = "") {
+  const selection = window.getSelection?.();
+  if (!selection?.rangeCount) return false;
+  const range = selection.getRangeAt(0);
+  range.deleteContents();
+  const node = document.createTextNode(String(text || ""));
+  range.insertNode(node);
+  range.setStartAfter(node);
+  range.collapse(true);
+  selection.removeAllRanges();
+  selection.addRange(range);
+  return true;
 }
 
 function syncActiveCompileEditorToFile(project = selectedProject()) {
   const { file } = activeCompileWorkspaceAndFile(project);
   if (!file) return null;
   const codeInput = sectionContent.querySelector("[data-compile-active-editor]");
-  if (codeInput && typeof codeInput.value === "string" && file.code !== codeInput.value) {
-    file.code = codeInput.value;
+  const nextCode = compileEditorText(codeInput);
+  if (codeInput && file.code !== nextCode) {
+    file.code = nextCode;
     file.dirty = true;
     file.lastResult = null;
     if (isHdlLanguage(file.language) && (!file.role || file.role === "source")) {
@@ -14739,6 +14814,7 @@ sectionContent.addEventListener("pointerdown", (event) => {
   }
 
   if (!dock || event.button !== 0) return;
+  if (event.target.closest("button, a, input, select, textarea, [contenteditable='true']")) return;
   const rect = dock.getBoundingClientRect();
   activeOutputDockDrag = {
     offsetX: event.clientX - rect.left,
@@ -14938,13 +15014,14 @@ sectionContent.addEventListener("input", (event) => {
   const project = selectedProject();
   if (!project) return;
 
-  if (event.target.dataset.compileField) {
+  const compileFieldTarget = event.target.closest?.("[data-compile-field]") || (event.target.dataset?.compileField ? event.target : null);
+  if (compileFieldTarget?.dataset?.compileField) {
     const { file } = activeCompileWorkspaceAndFile(project);
     if (!file) return;
-    const field = event.target.dataset.compileField;
+    const field = compileFieldTarget.dataset.compileField;
     if (field === "language") {
       const wasHdl = isHdlLanguage(file.language);
-      file.language = normalizeCodeLanguage(event.target.value);
+      file.language = normalizeCodeLanguage(compileFieldTarget.value);
       const isNowHdl = isHdlLanguage(file.language);
       file.relativePath = safeClientCodeRelativePath(file.relativePath || file.fileName || defaultCodeFileName(file.language), file.language);
       file.fileName = compileFileNameFromPath(file.relativePath, file.language);
@@ -14967,7 +15044,7 @@ sectionContent.addEventListener("input", (event) => {
         return;
       }
     } else if (field === "fileName") {
-      file.relativePath = compileRelativePathFromInput(event.target.value, file, project);
+      file.relativePath = compileRelativePathFromInput(compileFieldTarget.value, file, project);
       file.fileName = compileFileNameFromPath(file.relativePath, file.language);
       file.title = file.fileName;
       file.role = normalizeCompileFileRole(file.role || inferCompileFileRole(file.fileName, file.code, file.language), file.language);
@@ -14976,34 +15053,34 @@ sectionContent.addEventListener("input", (event) => {
       if (simpleNameInput) simpleNameInput.value = file.fileName;
     } else if (field === "fileNameOnly") {
       const currentDirectory = compileFileDirectory(file.relativePath || "");
-      const nextFileName = safeClientCodeFileName(event.target.value || file.fileName || defaultCodeFileName(file.language), file.language);
+      const nextFileName = safeClientCodeFileName(compileFieldTarget.value || file.fileName || defaultCodeFileName(file.language), file.language);
       file.relativePath = safeClientCodeRelativePath([currentDirectory, nextFileName].filter(Boolean).join("/"), file.language);
       file.fileName = compileFileNameFromPath(file.relativePath, file.language);
       file.title = file.fileName;
       file.role = normalizeCompileFileRole(file.role || inferCompileFileRole(file.fileName, file.code, file.language), file.language);
       file.fileType = normalizeCompileFileType(file.fileType || file.role, file);
-      event.target.value = file.fileName;
+      compileFieldTarget.value = file.fileName;
       const fileNameInput = sectionContent.querySelector("[data-compile-field='fileName']");
       if (fileNameInput) fileNameInput.value = compileFileAbsolutePath(project, file);
     } else if (field === "fileType") {
-      file.fileType = normalizeCompileFileType(event.target.value, file);
+      file.fileType = normalizeCompileFileType(compileFieldTarget.value, file);
       if (["design", "testbench"].includes(file.fileType)) {
         file.role = normalizeCompileFileRole(file.fileType, file.language);
       } else {
         file.role = normalizeCompileFileRole(file.role || inferCompileFileRole(file.fileName, file.code, file.language), file.language);
       }
     } else if (field === "role") {
-      file.role = normalizeCompileFileRole(event.target.value, file.language);
+      file.role = normalizeCompileFileRole(compileFieldTarget.value, file.language);
       file.fileType = normalizeCompileFileType(file.role, file);
     } else {
-      file[field] = event.target.value;
+      file[field] = field === "code" ? compileEditorText(compileFieldTarget) : compileFieldTarget.value;
       if (field === "code" && isHdlLanguage(file.language) && (!file.role || file.role === "source")) {
         file.role = inferCompileFileRole(file.fileName, file.code, file.language);
       }
     }
     if (field === "code") {
-      updateCompilePreview(file, event.target);
-      syncCompileEditorScroll(event.target);
+      updateCompilePreview(file, compileFieldTarget);
+      syncCompileEditorScroll(compileFieldTarget);
     }
     file.dirty = true;
     file.lastResult = ["code", "role", "language", "fileName", "fileNameOnly", "fileType"].includes(field) ? null : file.lastResult;
@@ -15103,6 +15180,26 @@ deleteConfirmDialog.addEventListener("click", (event) => {
   if (!event.target.closest("[data-delete-cancel]")) return;
   pendingDeleteAction = null;
   closeDialogElement(deleteConfirmDialog, "no");
+});
+
+sectionContent.addEventListener("paste", (event) => {
+  const compileEditor = event.target.closest?.("[data-compile-active-editor]");
+  if (!compileEditor) return;
+  const text = event.clipboardData?.getData("text/plain") || "";
+  if (!text) return;
+  event.preventDefault();
+  insertCompileEditorText(text);
+  compileEditor.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertFromPaste", data: text }));
+});
+
+sectionContent.addEventListener("keydown", (event) => {
+  const compileEditor = event.target.closest?.("[data-compile-active-editor]");
+  if (!compileEditor) return;
+  if (event.key === "Tab") {
+    event.preventDefault();
+    insertCompileEditorText("  ");
+    compileEditor.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: "  " }));
+  }
 });
 
 sectionContent.addEventListener("scroll", (event) => {
