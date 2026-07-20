@@ -300,6 +300,7 @@ Use the workflow in [BRANCHING.md](BRANCHING.md):
 | `compact_compile_guides_061` | Bumps the builder to `0.2.61`, removes compact Compile Code guide/title rows from the active editor, scope, and output dock, moves the M/L output-dock control beside Console, reconciles Save Source indicators from star to tick after successful saves, and makes file import close stale tree menus reliably. | `development` | `development` | Active |
 | `compile_editor_rendering_062` | Bumps the builder to `0.2.62`, replaces the transparent textarea overlay with an editable highlighted code surface, restores live syntax coloring and beautify sync, clamps the Compile Code output dock height, and anchors the blue status bar to the true bottom of the output panel. | `development` | `development` | Active |
 | `hdl_cache_refresh_063` | Bumps the builder to `0.2.63`, forces Verilog/SystemVerilog simulator runs to rebuild from the current source snapshot, and opens the Scope panel automatically when local simulation produces waveform data. | `development` | `development` | Active |
+| `scope_layout_controls_064` | Bumps the builder to `0.2.64`, adds decimal and FSM state-name radix display for HDL scope signals, moves per-signal controls into right-click menus, hides source commands while viewing Scope, and keeps the output/status dock draggable and bottom-aligned. | `development` | `development` | Active |
 
 </details>
 
