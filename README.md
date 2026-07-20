@@ -296,6 +296,7 @@ Use the workflow in [BRANCHING.md](BRANCHING.md):
 | `compile_code_fixed_bars_057` | Bumps the builder to `0.2.57`, fixes Compile Code file importing, keeps the IDE menu and status bar visible while the editor scrolls, restores Save Source/live syntax-highlight synchronization, makes File Details closeable/resizable, and lets users edit source file names and file types from File Details. | `development` | `development` | Active |
 | `syntax_coloring_058` | Bumps the builder to `0.2.58`, replaces the Compile Code regex replacement highlighter with a line-based tokenizer, improves syntax coloring for C, C++, Verilog/SystemVerilog, LTspice, Java, JavaScript, Python, HTML, and text files, and adds visible operator/attribute colors across compile themes. | `development` | `development` | Active |
 | `compile_layout_bottom_status_059` | Bumps the builder to `0.2.59`, maximizes the Compile Code active editor area, keeps the locked output panel compact at the bottom, and forces the blue Compile Code status bar to render as the true bottom row instead of floating above unused dark space. | `development` | `development` | Active |
+| `active_editor_readable_060` | Bumps the builder to `0.2.60` and restores readable active-editor text in Compile Code so the source area never goes blank when the syntax-highlight overlay is delayed or painted differently by the browser. | `development` | `development` | Active |
 
 </details>
 
