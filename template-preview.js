@@ -2081,6 +2081,8 @@ function ensureCompileCode(project) {
   project.compileCode.hdlSimulationTimeoutMs = Number.isFinite(simulationTimeout)
     ? Math.max(5000, Math.min(120000, Math.round(simulationTimeout)))
     : 30000;
+  project.compileCode.scopeFilter = String(project.compileCode.scopeFilter || "");
+  project.compileCode.scopeZoom = normalizeScopeZoom(project.compileCode.scopeZoom);
   project.compileCode.systemTerminal = {
     cwd: compileDirectoryPath(project.compileCode.systemTerminal?.cwd || project.compileCode.terminalCwd || ""),
     command: String(project.compileCode.systemTerminal?.command || ""),
@@ -8560,6 +8562,7 @@ const scopeRadixOptions = [
   { id: "oct", label: "Octal" },
   { id: "ascii", label: "ASCII" }
 ];
+const scopeZoomOptions = [1, 2, 4, 8];
 
 function scopeDefaultColorForIndex(index = 0) {
   return scopeSignalDefaultColors[Math.abs(Number(index) || 0) % scopeSignalDefaultColors.length];
@@ -8573,6 +8576,11 @@ function normalizeScopeColor(value = "", fallback = "#38bdf8") {
 function normalizeScopeRadix(value = "bin") {
   const clean = String(value || "").trim().toLowerCase();
   return scopeRadixOptions.some((option) => option.id === clean) ? clean : "bin";
+}
+
+function normalizeScopeZoom(value = 1) {
+  const clean = Number(value);
+  return scopeZoomOptions.includes(clean) ? clean : 1;
 }
 
 function scopeSignalKey(signal = {}, index = 0) {
@@ -8662,13 +8670,24 @@ function renderBusWaveLabels(changes = [], maxTime = 1, rowY = 0, left = 150, wi
 }
 
 function renderScopeSignalControls(project, signals = []) {
+  const workspace = ensureCompileCode(project);
   return `
     <div class="compile-scope-controls" aria-label="Scope signal display controls">
-      <label>
+      <label class="scope-general-control">
         <span>Simulation timeout</span>
         <select data-scope-timeout>
-          ${[10000, 20000, 30000, 60000, 120000].map((value) => `<option value="${value}"${ensureCompileCode(project).hdlSimulationTimeoutMs === value ? " selected" : ""}>${Math.round(value / 1000)} s</option>`).join("")}
+          ${[10000, 20000, 30000, 60000, 120000].map((value) => `<option value="${value}"${workspace.hdlSimulationTimeoutMs === value ? " selected" : ""}>${Math.round(value / 1000)} s</option>`).join("")}
         </select>
+      </label>
+      <label class="scope-general-control">
+        <span>Time zoom</span>
+        <select data-scope-zoom>
+          ${scopeZoomOptions.map((value) => `<option value="${value}"${workspace.scopeZoom === value ? " selected" : ""}>${value}x</option>`).join("")}
+        </select>
+      </label>
+      <label class="scope-general-control scope-filter-control">
+        <span>Signal filter</span>
+        <input type="search" data-scope-filter value="${escapeHtml(workspace.scopeFilter || "")}" placeholder="clk, reset, data..." />
       </label>
       ${signals.map((signal, index) => {
         const settings = scopeSignalSettings(project, signal, index);
@@ -8688,8 +8707,14 @@ function renderScopeSignalControls(project, signals = []) {
 }
 
 function renderHdlScope(waveform, project = selectedProject()) {
-  const signals = Array.isArray(waveform?.signals) ? waveform.signals.slice(0, 16) : [];
-  if (!signals.length) {
+  const workspace = ensureCompileCode(project);
+  const allSignals = Array.isArray(waveform?.signals) ? waveform.signals : [];
+  const filter = String(workspace.scopeFilter || "").trim().toLowerCase();
+  const matchedSignals = filter
+    ? allSignals.filter((signal) => String(signal.name || signal.reference || "").toLowerCase().includes(filter))
+    : allSignals;
+  const signals = matchedSignals.slice(0, 48);
+  if (!allSignals.length) {
     return `
       <div class="compile-scope-empty">
         <strong>No waveform scope yet.</strong>
@@ -8697,13 +8722,34 @@ function renderHdlScope(waveform, project = selectedProject()) {
       </div>
     `;
   }
+  if (!signals.length) {
+    return `
+      <div class="compile-scope-meta">
+        <span>${escapeHtml(waveform.source || "waveform.vcd")}</span>
+        <span>${allSignals.length} total signal${allSignals.length === 1 ? "" : "s"}</span>
+      </div>
+      ${renderScopeSignalControls(project, [])}
+      <div class="compile-scope-empty">
+        <strong>No matching signals.</strong>
+        <span>Clear or change the signal filter to show waveform traces.</span>
+      </div>
+    `;
+  }
   const left = 165;
-  const width = 760;
+  const zoom = normalizeScopeZoom(workspace.scopeZoom);
+  const width = 760 * zoom;
   const rowHeight = 34;
   const top = 28;
   const height = top + signals.length * rowHeight + 28;
   const maxTime = Math.max(1, Number(waveform.maxTime) || Math.max(...signals.flatMap((signal) => (signal.changes || []).map((change) => Number(change.time) || 0)), 1));
-  const grid = [0, 0.25, 0.5, 0.75, 1].map((ratio) => {
+  const unknownSignalCount = allSignals.filter((signal) =>
+    (signal.changes || []).some((change) => /[xz]/i.test(String(change.value ?? "")))
+  ).length;
+  const transitionCount = allSignals.reduce((count, signal) => count + Math.max(0, (signal.changes || []).length - 1), 0);
+  const gridRatios = zoom >= 4
+    ? [0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875, 1]
+    : [0, 0.25, 0.5, 0.75, 1];
+  const grid = gridRatios.map((ratio) => {
     const x = left + ratio * width;
     const label = Math.round(maxTime * ratio);
     return `<line x1="${x.toFixed(1)}" x2="${x.toFixed(1)}" y1="18" y2="${height - 18}" class="scope-grid" /><text x="${x.toFixed(1)}" y="14" class="scope-time-label">${label}</text>`;
@@ -8727,12 +8773,18 @@ function renderHdlScope(waveform, project = selectedProject()) {
   return `
     <div class="compile-scope-meta">
       <span>${escapeHtml(waveform.source || "waveform.vcd")}</span>
-      <span>${signals.length} signal${signals.length === 1 ? "" : "s"}</span>
+      <span>${signals.length}${signals.length !== allSignals.length ? ` of ${allSignals.length}` : ""} signal${allSignals.length === 1 ? "" : "s"}</span>
       <span>0 to ${escapeHtml(maxTime)} ${escapeHtml(waveform.timeScale || "ticks")}</span>
+      <span>${transitionCount} transition${transitionCount === 1 ? "" : "s"}</span>
+      ${unknownSignalCount ? `<span class="scope-unknown-badge">${unknownSignalCount} signal${unknownSignalCount === 1 ? "" : "s"} with X/Z</span>` : ""}
+    </div>
+    <div class="compile-scope-debug-summary">
+      <strong>HDL debug view</strong>
+      <span>Use zoom for dense timing, filter noisy signal lists, and set each signal's color/radix before comparing bus values.</span>
     </div>
     ${renderScopeSignalControls(project, signals)}
     <div class="compile-scope-scroll">
-      <svg class="compile-scope-svg" viewBox="0 0 ${left + width + 20} ${height}" role="img" aria-label="HDL waveform scope">
+      <svg class="compile-scope-svg" style="width:${left + width + 20}px; max-width:none;" viewBox="0 0 ${left + width + 20} ${height}" role="img" aria-label="HDL waveform scope">
         ${grid}
         ${rows}
       </svg>
@@ -9057,11 +9109,14 @@ function renderCompileCodeSection(project) {
   const dockUnlocked = Boolean(workspace.outputDockUnlocked);
   const dockPosition = workspace.outputDockPosition || { x: 72, y: 120 };
   const outputHeight = normalizeCompileOutputHeight(workspace.outputDockHeight);
+  const compileTheme = compileThemeIds.includes(builderPreferences.compileTheme)
+    ? builderPreferences.compileTheme
+    : defaultBuilderPreferences.compileTheme;
   const dockStyle = dockUnlocked
     ? ` style="left:${Math.max(8, Number(dockPosition.x) || 72)}px; top:${Math.max(8, Number(dockPosition.y) || 120)}px;"`
     : ` style="--compile-output-height:${outputHeight}px;"`;
   return `
-    <div class="compile-code-workspace">
+    <div class="compile-code-workspace" data-compile-workspace data-compile-theme="${escapeHtml(compileTheme)}">
       ${renderCompileIdeMenuBar(project, activeFile)}
       <aside class="compile-code-sidebar" aria-label="Compile code files">
         <div class="compile-code-sidebar-heading">
@@ -9080,14 +9135,6 @@ function renderCompileCodeSection(project) {
           ${renderCompileWorkspaceTree(workspace, project.title || "Project workspace")}
         </div>
         ${renderCompileTreeContextMenu()}
-        <div class="compile-code-actions">
-          <button type="button" data-compile-add title="Add code file" aria-label="Add code file">+</button>
-          <button type="button" data-compile-add-directory title="Add folder" aria-label="Add folder">F</button>
-          <button type="button" data-compile-add-testbench title="Add testbench" aria-label="Add testbench">T</button>
-          <button type="button" data-compile-import title="Import files" aria-label="Import files">I</button>
-          <button type="button" data-compile-import-directory title="Import directory" aria-label="Import directory">D</button>
-          <button type="button" data-compile-tools title="Check compilers" aria-label="Check compilers">?</button>
-        </div>
       </aside>
 
       <section class="compile-code-main" aria-label="Compile code editor">
@@ -9168,8 +9215,8 @@ function renderCompileCodeSection(project) {
           <div class="compile-output-dock">
             ${renderCompileActiveOutputPanel(project, activeFile)}
           </div>
+          ${compileIdeStatusBar(project, activeFile)}
         </section>
-        ${compileIdeStatusBar(project, activeFile)}
       </section>
     </div>
   `;
@@ -10247,6 +10294,12 @@ async function compileActiveFile(project, file, options = {}) {
     file.dirty = false;
     ensureCompileCode(project).terminal = file.lastResult.terminal;
     addCompileMessage(project, result.ok ? `${actionLabel} succeeded for ${file.fileName}.` : `${actionLabel} completed with errors for ${file.fileName}.`, result.ok ? "success" : "error");
+    if (compileResult.waveform?.signals?.length) {
+      addCompileMessage(project, `Scope updated with ${compileResult.waveform.signals.length} signal${compileResult.waveform.signals.length === 1 ? "" : "s"} from ${compileResult.waveform.source || "waveform.vcd"}.`, "success");
+    }
+    if (/HDL debug tools:/i.test(file.lastResult.terminal || "")) {
+      addCompileMessage(project, "HDL debug tool availability was checked. Details are in Console output.", "info");
+    }
     setStatus(result.ok ? `${actionLabel} succeeded.` : `${actionLabel} completed with errors.`);
     scheduleAutosave();
     renderSectionContent(project);
@@ -10336,7 +10389,8 @@ async function checkCompileTools(project) {
     if (!response.ok || !result.ok) throw new Error(result.error || "Compiler status failed.");
     const lines = Object.entries(result.tools?.languages || {}).map(([id, status]) => {
       const toolText = Object.entries(status.tools || {}).map(([tool, value]) => `${tool}: ${value}`).join(", ") || "no compiler required";
-      return `${status.ready ? "READY" : "MISSING"} ${status.label} (${id}) - ${toolText}`;
+      const optionalText = Object.entries(status.optionalTools || {}).map(([tool, value]) => `${tool}: ${value}`).join(", ");
+      return `${status.ready ? "READY" : "MISSING"} ${status.label} (${id}) - ${toolText}${optionalText ? ` | optional: ${optionalText}` : ""}`;
     });
     compileTerminalStatus = [`Compile workspace: ${result.tools?.compileRoot || ""}`, ...lines].join("\n");
     const workspace = ensureCompileCode(project);
@@ -11296,7 +11350,8 @@ function prepareBuilderGuideTopicLinks() {
     if (!summary) return;
     summary.setAttribute("role", "link");
     summary.setAttribute("tabindex", "0");
-    summary.setAttribute("aria-label", `Open ${summary.textContent.trim()}`);
+    const title = summary.querySelector(".guide-card-title")?.textContent?.trim() || summary.textContent.trim();
+    summary.setAttribute("aria-label", `Open ${title}`);
     summary.title = "Open this guide topic";
     section.open = false;
   });
@@ -11346,9 +11401,9 @@ function filterBuilderGuide() {
     }
   });
   if (builderGuideResults) {
-    const topicText = activeBuilderGuideTopic === "all" ? "all topics" : activeBuilderGuideTopic;
+    const topicText = activeBuilderGuideTopic === "all" ? "all guide topics" : `${activeBuilderGuideTopic} guides`;
     builderGuideResults.textContent = visibleCount
-      ? `Showing ${visibleCount} guide topic${visibleCount === 1 ? "" : "s"} for ${topicText}${query ? ` matching "${query}"` : ""}.`
+      ? `${visibleCount} ${visibleCount === 1 ? "topic" : "topics"} available in ${topicText}${query ? ` matching "${query}"` : ""}. Click a card to open the guide.`
       : `No guide topics match "${query}".`;
   }
 }
@@ -11365,7 +11420,7 @@ function openBuilderGuideTopic(section) {
   if (!section || !builderGuideTopicDialog || !builderGuideTopicTitle || !builderGuideTopicBody) return;
   const summary = section.querySelector("summary");
   const source = section.querySelector(":scope > div");
-  const title = summary?.textContent?.trim() || "Builder guide topic";
+  const title = summary?.querySelector(".guide-card-title")?.textContent?.trim() || summary?.textContent?.trim() || "Builder guide topic";
   builderGuideTopicTitle.textContent = title;
   builderGuideTopicBody.replaceChildren();
   if (source) {
@@ -13379,6 +13434,21 @@ sectionContent.addEventListener("change", (event) => {
     const workspace = ensureCompileCode(project);
     workspace.hdlSimulationTimeoutMs = Math.max(5000, Math.min(120000, Number(event.target.value) || 30000));
     addCompileMessage(project, `HDL simulation timeout set to ${Math.round(workspace.hdlSimulationTimeoutMs / 1000)} seconds.`, "info");
+    scheduleAutosave(900);
+    renderSectionContent(project);
+    return;
+  }
+  if (event.target.dataset.scopeZoom !== undefined) {
+    const workspace = ensureCompileCode(project);
+    workspace.scopeZoom = normalizeScopeZoom(event.target.value);
+    addCompileMessage(project, `HDL scope zoom set to ${workspace.scopeZoom}x.`, "info");
+    scheduleAutosave(900);
+    renderSectionContent(project);
+    return;
+  }
+  if (event.target.dataset.scopeFilter !== undefined) {
+    const workspace = ensureCompileCode(project);
+    workspace.scopeFilter = String(event.target.value || "").slice(0, 80);
     scheduleAutosave(900);
     renderSectionContent(project);
     return;

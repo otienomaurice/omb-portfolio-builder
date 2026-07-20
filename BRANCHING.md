@@ -6,9 +6,9 @@ This repository uses a protected release-style workflow.
 
 - `main` is the consumer branch. It should contain only finished, tested, release-ready code.
 - `development` is the integration branch. It collects completed work from feature branches before release.
-- `feature/<short-name>` branches are used for individual app changes, experiments, fixes, or UI improvements.
+- Focused work branches use a descriptive name followed by an underscore and assigned branch number, for example `output_status_scope_hdl_049`.
 
-`main` must only receive changes from `development`. Feature branches, Codex branches, hotfix branches, and experiment branches must merge into `development` first. After `development` has collected and verified the changes, `development` is the only branch that may be merged into `main`.
+`main` must only receive changes from `development`. Feature, hotfix, experiment, and repair branches must merge into `development` first. After `development` has collected and verified the changes, `development` is the only branch that may be merged into `main`.
 
 ## Normal Change Flow
 
@@ -18,7 +18,7 @@ This repository uses a protected release-style workflow.
 ```powershell
 git checkout development
 git pull origin development
-git checkout -b feature/my-change
+git checkout -b my_change_050
 ```
 
 3. Update the branch register in `README.md` with the new branch name, purpose, source branch, merge target, and status.
@@ -28,7 +28,7 @@ git checkout -b feature/my-change
 ```powershell
 git add .
 git commit -m "Describe the change"
-git push -u origin feature/my-change
+git push -u origin my_change_050
 ```
 
 6. Merge or pull-request the feature branch into `development`.
@@ -52,4 +52,4 @@ Installed apps detect updates by comparing their current app version with the la
 
 ## Current Practice
 
-For Codex-assisted work, new app changes should be made on a focused `codex/...` or `feature/...` branch, merged into `development`, and only then released through `development` into `main`.
+New app changes should be made on a focused `name_number` branch, merged into `development`, and only then released through `development` into `main`.
