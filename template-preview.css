@@ -11191,7 +11191,7 @@ body[data-builder-theme="dark"] .project-dialog .project-section-toolbar {
     minmax(0, 1fr)
     auto
     auto
-    clamp(112px, var(--compile-output-height, 172px), 240px) !important;
+    clamp(96px, var(--compile-output-height, 150px), 190px) !important;
   min-height: 0 !important;
   height: 100% !important;
   overflow: hidden !important;
@@ -11211,11 +11211,20 @@ body[data-builder-theme="dark"] .project-dialog .project-section-toolbar {
 
 .project-dialog.is-compile-code-active .compile-output-workbench.is-output-dock-locked {
   display: grid !important;
-  grid-template-rows: auto minmax(0, 1fr) 24px !important;
+  grid-template-rows: auto minmax(0, 1fr) !important;
+  position: relative !important;
   align-self: stretch !important;
   height: 100% !important;
   min-height: 0 !important;
   max-height: none !important;
+  overflow: hidden !important;
+}
+
+.project-dialog.is-compile-code-active .compile-output-workbench.is-output-dock-unlocked {
+  display: grid !important;
+  grid-template-rows: auto minmax(0, 1fr) !important;
+  min-height: 132px !important;
+  max-height: min(70vh, 620px) !important;
   overflow: hidden !important;
 }
 
@@ -11224,6 +11233,7 @@ body[data-builder-theme="dark"] .project-dialog .project-section-toolbar {
   grid-template-rows: minmax(0, 1fr) !important;
   min-height: 0 !important;
   height: 100% !important;
+  padding-bottom: 24px !important;
   overflow: hidden !important;
 }
 
@@ -11260,8 +11270,11 @@ body[data-builder-theme="dark"] .project-dialog .project-section-toolbar {
 }
 
 .project-dialog.is-compile-code-active .compile-ide-status-bar {
-  grid-row: 3 !important;
-  align-self: end !important;
+  position: absolute !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  left: 0 !important;
+  z-index: 5 !important;
   height: 24px !important;
   min-height: 24px !important;
   max-height: 24px !important;
@@ -11277,6 +11290,12 @@ body[data-builder-theme="dark"] .project-dialog .project-section-toolbar {
 .project-dialog.is-compile-code-active .compile-panel-tabs {
   min-height: 30px !important;
   max-height: 30px !important;
+  flex: 0 0 auto !important;
+}
+
+.project-dialog.is-compile-code-active .compile-output-workbench.is-output-dock-unlocked .compile-panel-tabs {
+  cursor: move !important;
+  user-select: none !important;
 }
 
 .project-dialog.is-compile-code-active .compile-panel-tabs button {
@@ -11284,6 +11303,7 @@ body[data-builder-theme="dark"] .project-dialog .project-section-toolbar {
   height: 30px !important;
   padding-top: 0 !important;
   padding-bottom: 0 !important;
+  cursor: pointer !important;
 }
 
 .project-dialog.is-compile-code-active .compile-output-dock-toggle-inline {
@@ -11295,17 +11315,37 @@ body[data-builder-theme="dark"] .project-dialog .project-section-toolbar {
   background: color-mix(in srgb, var(--compile-panel, #252526) 86%, var(--compile-accent, #007acc)) !important;
 }
 
-/* Active editor readability fallback.
-   The syntax preview still renders behind the textarea, but the text input must
-   never become invisible if the overlay misses a frame or the browser paints
-   transparent textarea glyphs differently. */
-.project-dialog.is-compile-code-active [data-compile-workspace] .compile-code-active-editor textarea {
-  color: color-mix(in srgb, var(--compile-text, #e6edf3) 88%, transparent) !important;
-  -webkit-text-fill-color: color-mix(in srgb, var(--compile-text, #e6edf3) 88%, transparent) !important;
-  caret-color: var(--compile-text, #ffffff) !important;
+.project-dialog.is-compile-code-active [data-compile-workspace] .compile-code-active-editor .compile-code-preview {
+  position: relative !important;
+  inset: auto !important;
+  z-index: 1 !important;
+  display: block !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  margin: 0 !important;
+  overflow: auto !important;
+  pointer-events: auto !important;
+  color: var(--compile-text, #e6edf3) !important;
 }
 
-.project-dialog.is-compile-code-active [data-compile-workspace] .compile-code-active-editor textarea::selection {
+.project-dialog.is-compile-code-active [data-compile-workspace] [data-compile-active-editor] {
+  display: block !important;
+  min-width: max-content !important;
+  min-height: 100% !important;
+  padding: 12px 14px !important;
+  outline: none !important;
+  white-space: pre !important;
+  tab-size: 2 !important;
+  color: var(--compile-text, #e6edf3) !important;
+  -webkit-text-fill-color: currentColor !important;
+  caret-color: var(--compile-text, #ffffff) !important;
+  font: 400 0.86rem/1.55 Consolas, "Courier New", monospace !important;
+}
+
+.project-dialog.is-compile-code-active [data-compile-workspace] [data-compile-active-editor]::selection,
+.project-dialog.is-compile-code-active [data-compile-workspace] [data-compile-active-editor] *::selection {
   color: var(--compile-text, #ffffff) !important;
   -webkit-text-fill-color: var(--compile-text, #ffffff) !important;
+  background: color-mix(in srgb, var(--compile-active, #007acc) 48%, transparent) !important;
 }
