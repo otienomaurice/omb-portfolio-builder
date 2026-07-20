@@ -10566,14 +10566,14 @@ body[data-compile-theme] .compile-scope-svg {
 }
 
 .detached-project-view-window {
-  position: fixed;
-  z-index: 118;
+  position: absolute;
+  z-index: 140;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
-  min-width: min(420px, calc(100vw - 24px));
+  min-width: min(420px, calc(100% - 24px));
   min-height: 260px;
-  max-width: calc(100vw - 18px);
-  max-height: calc(100dvh - 18px);
+  max-width: calc(100% - 18px);
+  max-height: calc(100% - 18px);
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #ffffff;
@@ -10596,6 +10596,7 @@ body[data-compile-theme] .compile-scope-svg {
 }
 
 .detached-project-view-window.is-detached-project-view-dragging {
+  z-index: 160;
   box-shadow: 0 28px 76px rgba(23, 32, 42, 0.32);
 }
 
