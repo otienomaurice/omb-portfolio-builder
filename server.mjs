@@ -1189,7 +1189,7 @@ function normalizeCompileFileRole(value = "", language = "") {
   return ["tb", "testbench", "bench", "uvm", "uvmtest"].includes(clean) ? "testbench" : "design";
 }
 
-async function saveCompileSource({ projectId, fileId, title, fileName, relativePath, language, role = "", code, stdin = "" }) {
+async function saveCompileSource({ projectId, fileId, title, fileName, relativePath, language, role = "", fileType = "", code, stdin = "" }) {
   const incomingPath = relativePath || fileName;
   const lang = normalizeCodeLanguage(language || detectCodeLanguageFromSource(code, incomingPath));
   const projectFolder = safeSegment(projectId, "project");
@@ -1209,6 +1209,7 @@ async function saveCompileSource({ projectId, fileId, title, fileName, relativeP
     relativePath: safeRelativePath,
     language: lang,
     role: normalizeCompileFileRole(role || inferCompileFileRole(codeFileName, code, lang), lang),
+    fileType: clampText(fileType || role || "source", 60),
     sourcePath,
     savedAt: new Date().toISOString()
   };
