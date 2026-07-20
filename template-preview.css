@@ -4245,6 +4245,32 @@ body[data-builder-theme="dark"] .summary-context-menu button:hover {
   white-space: nowrap;
 }
 
+.project-section-list > [data-add-section] {
+  flex: 0 0 auto;
+  justify-self: start;
+  margin-left: 0;
+  white-space: nowrap;
+}
+
+.project-section-toolbar {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  min-width: 0;
+  max-width: min(58vw, 640px);
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 2px;
+  white-space: nowrap;
+  scrollbar-width: thin;
+}
+
+.project-section-toolbar button {
+  flex: 0 0 auto;
+}
+
 .project-section-row:hover,
 .project-section-row.active {
   border-color: #90d7ef;
@@ -5874,59 +5900,6 @@ body.full-window-open {
   align-items: baseline;
   justify-content: space-between;
   gap: 12px;
-}
-
-.project-status-controls {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: end;
-  gap: 12px;
-  margin: 0 0 12px;
-  padding: 10px;
-  border: 1px solid #d8edf7;
-  border-radius: 8px;
-  background: #f8fdff;
-}
-
-.project-status-controls label {
-  display: grid;
-  gap: 5px;
-  min-width: min(260px, 100%);
-  color: var(--muted);
-  font-size: 0.76rem;
-  font-weight: 900;
-}
-
-.project-status-controls select {
-  min-height: 34px;
-  padding: 0 10px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  color: var(--ink);
-  background: #ffffff;
-  font: inherit;
-  font-size: 0.86rem;
-  font-weight: 800;
-}
-
-.project-status-controls .status-visibility-toggle {
-  display: inline-flex;
-  align-items: center;
-  min-width: auto;
-  min-height: 34px;
-  gap: 8px;
-  padding: 0 10px;
-  border: 1px solid #c5e5f1;
-  border-radius: 6px;
-  color: var(--ink);
-  background: #ffffff;
-  cursor: pointer;
-}
-
-.status-visibility-toggle input {
-  width: 16px;
-  height: 16px;
-  accent-color: #1f6ed4;
 }
 
 .project-title-row {
@@ -9693,6 +9666,18 @@ body[data-compile-theme] :is(.compile-code-tree-file.is-active, .compile-panel-t
   background: var(--compile-active) !important;
 }
 
+body[data-compile-theme] .compile-code-tree-file.is-selected {
+  color: #ffffff !important;
+  background: color-mix(in srgb, var(--compile-active) 72%, var(--compile-panel) 28%) !important;
+  outline: 1px solid color-mix(in srgb, var(--compile-active) 70%, #ffffff 30%) !important;
+  outline-offset: -1px !important;
+}
+
+body[data-compile-theme] .compile-code-tree-file.is-selected small,
+body[data-compile-theme] .compile-code-tree-file.is-selected .compile-file-extension {
+  color: #ffffff !important;
+}
+
 /* Solution Explorer: compact folder view with theme-aware Visual Studio style. */
 body[data-compile-theme] .compile-code-sidebar {
   background: var(--compile-panel) !important;
@@ -9975,6 +9960,7 @@ body[data-compile-theme] .compile-scope-svg {
   align-items: start;
   justify-items: start;
   gap: 10px;
+  width: 100%;
   min-width: 0;
 }
 
@@ -10114,6 +10100,11 @@ body[data-compile-theme] .compile-scope-svg {
   background: #f8fcff;
 }
 
+.project-view-tabs[hidden],
+.project-view-tabs:empty {
+  display: none !important;
+}
+
 .project-view-tab-list {
   display: flex;
   flex-wrap: wrap;
@@ -10122,27 +10113,38 @@ body[data-compile-theme] .compile-scope-svg {
   min-width: 0;
 }
 
-.project-view-tab {
+.project-view-tab-item {
   display: inline-grid;
-  grid-template-rows: auto auto;
-  align-items: center;
-  justify-items: start;
-  min-width: 112px;
-  max-width: 220px;
+  grid-template-columns: minmax(0, 1fr) 22px;
+  align-items: stretch;
+  min-width: 120px;
+  max-width: 230px;
   min-height: 30px;
-  padding: 3px 9px;
   border: 1px solid rgba(14, 116, 144, 0.16);
   border-radius: 6px 6px 0 0;
-  color: #17384a;
+  overflow: hidden;
   background: #ffffff;
+}
+
+.project-view-tab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  min-width: 0;
+  max-width: none;
+  min-height: 30px;
+  padding: 3px 8px;
+  border: 0;
+  border-radius: 0;
+  color: #17384a;
+  background: transparent;
   font: inherit;
   font-size: 0.76rem;
   font-weight: 850;
   text-align: left;
 }
 
-.project-view-tab span,
-.project-view-tab small {
+.project-view-tab span {
   min-width: 0;
   max-width: 100%;
   overflow: hidden;
@@ -10151,15 +10153,15 @@ body[data-compile-theme] .compile-scope-svg {
 }
 
 .project-view-tab small {
-  color: #557086;
-  font-size: 0.62rem;
-  font-weight: 750;
+  display: none !important;
 }
 
+.project-view-tab-item:hover,
 .project-view-tab:hover {
   background: #d8f3fb;
 }
 
+.project-view-tab-item.is-active,
 .project-view-tab.is-active {
   border-color: #38bdf8;
   color: #06283a;
@@ -10172,13 +10174,14 @@ body[data-compile-theme] .compile-scope-svg {
   justify-content: center;
   width: 24px;
   min-width: 24px;
-  height: 24px;
-  min-height: 24px;
-  margin-right: 4px;
-  border: 1px solid rgba(220, 38, 38, 0.22);
-  border-radius: 5px;
+  height: 30px;
+  min-height: 30px;
+  margin: 0;
+  border: 0;
+  border-left: 1px solid rgba(220, 38, 38, 0.18);
+  border-radius: 0;
   color: #b42318;
-  background: #fff5f5;
+  background: transparent;
   font-size: 0.86rem;
   font-weight: 900;
   line-height: 1;
@@ -10211,13 +10214,20 @@ body[data-builder-theme="dark"] .project-view-tab {
   background: var(--builder-dark-surface-2);
 }
 
+body[data-builder-theme="dark"] .project-view-tab-item {
+  border-color: var(--builder-dark-line);
+  background: var(--builder-dark-surface-2);
+}
+
 body[data-builder-theme="dark"] .project-view-tab small,
 body[data-builder-theme="dark"] .project-view-tab-count {
   color: var(--builder-dark-muted);
 }
 
 body[data-builder-theme="dark"] .project-view-tab:hover,
-body[data-builder-theme="dark"] .project-view-tab.is-active {
+body[data-builder-theme="dark"] .project-view-tab.is-active,
+body[data-builder-theme="dark"] .project-view-tab-item:hover,
+body[data-builder-theme="dark"] .project-view-tab-item.is-active {
   color: #ffffff;
   background: #075985;
 }
@@ -10433,4 +10443,201 @@ body[data-builder-theme="dark"] .project-view-tab.is-active {
   caret-color: var(--compile-text, #ffffff);
   font: 400 0.82rem/1.5 Consolas, "Courier New", monospace;
   tab-size: 2;
+}
+
+/* Final project-section navigation containment.
+   Section and subsection chips may scroll sideways, but they should never
+   paint into the editing/content canvas below the navigation band. */
+.project-dialog .project-dialog-shell {
+  gap: 6px !important;
+}
+
+.project-dialog .section-bar {
+  position: relative;
+  z-index: 2;
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) !important;
+  align-content: start;
+  align-items: stretch;
+  gap: 2px !important;
+  min-height: 0;
+  padding: 0 0 2px !important;
+  overflow: hidden !important;
+  background: var(--paper, #ffffff);
+  contain: layout paint;
+  isolation: isolate;
+}
+
+.project-dialog .project-section-row-strip {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  width: 100%;
+  min-height: var(--builder-control-height, 30px);
+  overflow: hidden;
+  background: inherit;
+}
+
+.project-dialog .project-section-list,
+.project-dialog .section-bar-subsections {
+  display: flex !important;
+  flex-wrap: nowrap !important;
+  align-items: center;
+  gap: 8px !important;
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+  min-height: var(--builder-control-height, 30px);
+  margin: 0 !important;
+  padding: 0 0 2px !important;
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+  background: inherit !important;
+  box-shadow: none !important;
+  scrollbar-width: thin;
+  overscroll-behavior-x: contain;
+  contain: paint;
+}
+
+.project-dialog .project-section-toolbar {
+  grid-column: 2;
+  display: flex !important;
+  flex-wrap: nowrap !important;
+  align-items: center !important;
+  justify-content: flex-end !important;
+  gap: 6px !important;
+  min-width: 0 !important;
+  max-width: min(58vw, 660px) !important;
+  height: var(--builder-control-height, 30px) !important;
+  min-height: var(--builder-control-height, 30px) !important;
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+  padding: 0 0 2px !important;
+  background: inherit !important;
+  scrollbar-width: thin;
+}
+
+.project-dialog .project-section-row {
+  flex: 0 0 auto !important;
+  align-items: stretch;
+  height: var(--builder-control-height, 30px) !important;
+  min-height: var(--builder-control-height, 30px) !important;
+  max-height: var(--builder-control-height, 30px) !important;
+  overflow: hidden !important;
+  box-shadow: none !important;
+}
+
+.project-dialog .project-section-select,
+.project-dialog .nested-section-link,
+.project-dialog .section-bar > [data-add-section],
+.project-dialog .project-section-row-strip > [data-add-section],
+.project-dialog .project-section-toolbar > button {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  height: var(--builder-control-height, 30px) !important;
+  min-height: var(--builder-control-height, 30px) !important;
+  max-height: var(--builder-control-height, 30px) !important;
+  overflow: hidden !important;
+  white-space: nowrap !important;
+  text-overflow: ellipsis;
+  box-shadow: none !important;
+}
+
+.project-dialog .project-section-select {
+  max-width: min(320px, 42vw);
+}
+
+.project-dialog .nested-section-link {
+  flex: 0 0 auto !important;
+  max-width: min(300px, 40vw);
+}
+
+.project-dialog .section-bar > [data-add-section],
+.project-dialog .project-section-row-strip > [data-add-section] {
+  flex: 0 0 auto !important;
+  justify-self: end;
+  max-width: min(170px, 28vw);
+}
+
+.project-dialog .project-section-list > [data-add-section] {
+  display: inline-flex !important;
+  flex: 0 0 auto !important;
+  align-items: center !important;
+  justify-content: center !important;
+  height: var(--builder-control-height, 30px) !important;
+  min-height: var(--builder-control-height, 30px) !important;
+  max-height: var(--builder-control-height, 30px) !important;
+  max-width: min(170px, 28vw);
+  margin-left: 0 !important;
+  overflow: hidden !important;
+  white-space: nowrap !important;
+  text-overflow: ellipsis;
+  box-shadow: none !important;
+}
+
+.project-dialog .project-section-toolbar > button {
+  flex: 0 0 auto !important;
+}
+
+.project-dialog .project-window-content {
+  position: relative;
+  z-index: 1;
+  margin-top: 0 !important;
+  display: grid !important;
+  align-content: start !important;
+  align-items: start !important;
+  gap: 0 !important;
+  padding-right: 0 !important;
+  background: var(--paper, #ffffff);
+  contain: layout paint;
+}
+
+.project-dialog .section-content {
+  align-content: start !important;
+  align-items: start !important;
+  gap: 0 !important;
+  width: 100% !important;
+  min-height: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.project-dialog .section-window-view-canvas {
+  align-self: start !important;
+  justify-self: stretch !important;
+  width: 100% !important;
+  margin: 0 !important;
+  padding: 8px 10px !important;
+}
+
+.project-dialog .section-window-content-stack,
+.project-dialog .custom-file-list,
+.project-dialog .custom-file-list .builder-explorer-entry,
+.project-dialog .custom-file-list .builder-explorer-row.is-file {
+  width: 100% !important;
+  max-width: 100% !important;
+  justify-self: stretch !important;
+}
+
+.project-dialog .custom-file-list .builder-explorer-row.is-file {
+  grid-template-columns: minmax(0, 1fr) auto !important;
+}
+
+.project-dialog .custom-file-list .builder-explorer-actions {
+  justify-self: end !important;
+  margin-left: auto !important;
+}
+
+body[data-builder-theme="dark"] .project-dialog .section-bar,
+body[data-builder-theme="dark"] .project-dialog .project-section-row-strip,
+body[data-builder-theme="dark"] .project-dialog .project-section-list,
+body[data-builder-theme="dark"] .project-dialog .section-bar-subsections,
+body[data-builder-theme="dark"] .project-dialog .project-section-toolbar {
+  background: var(--builder-ui-surface) !important;
 }
