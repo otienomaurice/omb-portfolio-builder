@@ -308,7 +308,7 @@ Use the workflow in [BRANCHING.md](BRANCHING.md):
 | `scope_resize_scroll_069` | Bumps the builder to `0.2.69`, lets Scope fit or use natural waveform width with horizontal and vertical scrolling, makes the moveable output panel resizable by drag, improves Verilog/SystemVerilog coloring for instances and named port connections, and defaults X waveform spans to red and Z spans to blue. | `development` | `development` | Merged into `development` |
 | `scope_bus_expand_070` | Bumps the builder to `0.2.70`, keeps bus value labels above waveform strokes, and adds collapsed-by-default bus expansion so Verilog/SystemVerilog buses can open into individual bit waveforms. | `development` | `development` | Merged into `development` |
 | `status_strip_save_gap_071` | Bumps the builder to `0.2.71`, makes bus expansion infer bit width from waveform values when needed, and pins the Compile Code blue status strip as the workspace footer directly above Save / Save and close in both L and M output modes. | `development` | `development` | Merged into `development` |
-| `scope_cursor_072` | Bumps the builder to `0.2.72`, adds a right-click HDL scope cursor that appears at mid-scope, drags as a yellow vertical line, and shows a compact x/y readout for the hovered signal value. | `development` | `development` | Active |
+| `scope_cursor_072` | Bumps the builder to `0.2.72`, adds a right-click HDL scope cursor that appears at mid-scope, drags as a yellow vertical line, and shows a compact x/y readout for the hovered signal value. | `development` | `development` | Merged into `development` |
 
 </details>
 
