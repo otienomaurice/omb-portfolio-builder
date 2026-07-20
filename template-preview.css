@@ -2121,8 +2121,9 @@ body.rich-image-dragging * {
 .compile-code-workspace {
   display: grid;
   grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
   gap: 16px;
-  align-items: start;
+  align-items: stretch;
 }
 
 .compile-code-sidebar,
@@ -3268,6 +3269,7 @@ body.rich-image-dragging * {
 
 .compile-ide-menu-bar {
   grid-column: 1 / -1;
+  grid-row: 1;
   display: flex;
   align-items: center;
   gap: 0;
@@ -5562,6 +5564,25 @@ body.full-window-open {
 
 .project-title-menu[hidden] {
   display: none;
+}
+
+.compile-code-sidebar {
+  grid-column: 1;
+  grid-row: 2;
+}
+
+.compile-code-main {
+  grid-column: 2;
+  grid-row: 2;
+}
+
+.category-title-menu {
+  z-index: 80;
+}
+
+.dialog-window-hide-control,
+[data-dialog-hide="true"] {
+  display: none !important;
 }
 
 .project-title-menu button {
@@ -8904,9 +8925,9 @@ body[data-builder-theme="dark"] .compile-file-extension {
 }
 
 .compile-output-workbench.is-output-dock-locked {
-  height: var(--compile-output-height, 260px) !important;
-  min-height: 132px !important;
-  max-height: min(620px, 72vh) !important;
+  height: var(--compile-output-height, 190px) !important;
+  min-height: 104px !important;
+  max-height: min(320px, 42vh) !important;
   overflow: hidden !important;
 }
 
@@ -8925,8 +8946,28 @@ body[data-builder-theme="dark"] .compile-file-extension {
 
 .compile-output-dock {
   min-height: 0 !important;
+  height: 100% !important;
   overflow: hidden !important;
   background: #1e1e1e !important;
+}
+
+.compile-output-dock > section,
+.compile-terminal-panel,
+.compile-messages-panel,
+.compile-system-terminal-panel,
+.compile-scope-panel {
+  min-height: 0 !important;
+  height: 100% !important;
+  overflow: hidden !important;
+}
+
+.compile-terminal,
+.compile-messages-log,
+.compile-scope-scroll {
+  min-height: 0 !important;
+  max-height: none !important;
+  height: 100% !important;
+  overflow: auto !important;
 }
 
 .compile-terminal-screen {
@@ -9026,4 +9067,503 @@ body[data-builder-theme="dark"] .compile-terminal-prompt-line {
   min-height: 24px !important;
   max-height: 24px !important;
   line-height: 24px !important;
+}
+
+/* Compile Code appearances selected from View -> Preferences -> Appearance. */
+body[data-compile-theme="dark-vs"] {
+  --compile-bg: #1e1e1e;
+  --compile-panel: #252526;
+  --compile-surface: #2d2d30;
+  --compile-editor: #1e1e1e;
+  --compile-text: #f3f4f6;
+  --compile-muted: #cbd5e1;
+  --compile-line: #333842;
+  --compile-hover: #37373d;
+  --compile-active: #094771;
+  --compile-accent: #007acc;
+  --compile-value: #fef08a;
+}
+
+body[data-compile-theme="dark-navy"] {
+  --compile-bg: #071525;
+  --compile-panel: #0b2136;
+  --compile-surface: #102d49;
+  --compile-editor: #06111f;
+  --compile-text: #e8f4ff;
+  --compile-muted: #b9d7ef;
+  --compile-line: #234760;
+  --compile-hover: #16466a;
+  --compile-active: #0ea5e9;
+  --compile-accent: #38bdf8;
+  --compile-value: #fde68a;
+}
+
+body[data-compile-theme="dark-graphite"] {
+  --compile-bg: #171717;
+  --compile-panel: #232323;
+  --compile-surface: #2f3033;
+  --compile-editor: #111827;
+  --compile-text: #f8fafc;
+  --compile-muted: #d1d5db;
+  --compile-line: #44464c;
+  --compile-hover: #3b3d42;
+  --compile-active: #52525b;
+  --compile-accent: #a3e635;
+  --compile-value: #fde047;
+}
+
+body[data-compile-theme="dark-emerald"] {
+  --compile-bg: #061b16;
+  --compile-panel: #0c2a22;
+  --compile-surface: #12382e;
+  --compile-editor: #04130f;
+  --compile-text: #ecfdf5;
+  --compile-muted: #b7f7d8;
+  --compile-line: #1f5b4a;
+  --compile-hover: #17624e;
+  --compile-active: #047857;
+  --compile-accent: #34d399;
+  --compile-value: #fef3c7;
+}
+
+body[data-compile-theme="dark-violet"] {
+  --compile-bg: #17122b;
+  --compile-panel: #251b3f;
+  --compile-surface: #302354;
+  --compile-editor: #120d24;
+  --compile-text: #f5f3ff;
+  --compile-muted: #ddd6fe;
+  --compile-line: #4c3a78;
+  --compile-hover: #453074;
+  --compile-active: #6d28d9;
+  --compile-accent: #a78bfa;
+  --compile-value: #fde68a;
+}
+
+body[data-compile-theme="light-sky"] {
+  --compile-bg: #eef9ff;
+  --compile-panel: #dff3fb;
+  --compile-surface: #c7e9f7;
+  --compile-editor: #ffffff;
+  --compile-text: #0f2433;
+  --compile-muted: #35566b;
+  --compile-line: #9ccfe4;
+  --compile-hover: #cbeafe;
+  --compile-active: #60a5fa;
+  --compile-accent: #0284c7;
+  --compile-value: #7c2d12;
+}
+
+body[data-compile-theme="light-paper"] {
+  --compile-bg: #fbfaf7;
+  --compile-panel: #f0ede6;
+  --compile-surface: #e5dfd2;
+  --compile-editor: #fffdf8;
+  --compile-text: #1f2933;
+  --compile-muted: #56616c;
+  --compile-line: #cfc6b7;
+  --compile-hover: #eee7db;
+  --compile-active: #d6a85a;
+  --compile-accent: #8b5e20;
+  --compile-value: #0f766e;
+}
+
+body[data-compile-theme] :is(
+  .compile-code-workspace,
+  .compile-code-sidebar,
+  .compile-code-main,
+  .compile-output-workbench,
+  .compile-output-dock,
+  .compile-code-preview-panel,
+  .compile-terminal-panel,
+  .compile-messages-panel,
+  .compile-system-terminal-panel,
+  .compile-scope-panel,
+  .compile-terminal-screen
+) {
+  border-color: var(--compile-line) !important;
+  background: var(--compile-bg) !important;
+  color: var(--compile-text) !important;
+}
+
+body[data-compile-theme] :is(
+  .compile-code-sidebar-heading,
+  .compile-code-actions,
+  .compile-code-preview-heading,
+  .compile-terminal-heading,
+  .compile-ide-menu-bar,
+  .compile-panel-tabs,
+  .compile-output-dock-toolbar,
+  .compile-append-window-title,
+  .compile-append-actions
+) {
+  border-color: var(--compile-line) !important;
+  background: var(--compile-panel) !important;
+  color: var(--compile-text) !important;
+}
+
+body[data-compile-theme] :is(
+  .compile-code-workspace-tree,
+  .compile-code-tree-files,
+  .compile-code-tree-children,
+  .compile-append-panel,
+  .compile-terminal-history,
+  .compile-messages-log
+) {
+  border-color: var(--compile-line) !important;
+  background: var(--compile-bg) !important;
+  color: var(--compile-text) !important;
+}
+
+body[data-compile-theme] :is(
+  .compile-code-root-folder > summary,
+  .compile-code-tree-folder > summary,
+  .compile-code-tree-file,
+  .compile-ide-menu-bar strong,
+  .compile-ide-menu-button,
+  .compile-terminal-title
+) {
+  color: var(--compile-text) !important;
+  background: transparent !important;
+}
+
+body[data-compile-theme] :is(
+  .compile-code-tree-folder > summary:hover,
+  .compile-code-tree-file:hover,
+  .compile-ide-menu:hover .compile-ide-menu-button,
+  .compile-ide-menu-button:focus-visible,
+  .compile-panel-tabs button:hover
+) {
+  color: var(--compile-text) !important;
+  background: var(--compile-hover) !important;
+}
+
+body[data-compile-theme] :is(.compile-code-tree-file.is-active, .compile-panel-tabs button.is-active) {
+  color: #ffffff !important;
+  background: var(--compile-active) !important;
+}
+
+/* Solution Explorer: compact folder view with theme-aware Visual Studio style. */
+body[data-compile-theme] .compile-code-sidebar {
+  background: var(--compile-panel) !important;
+}
+
+body[data-compile-theme] .compile-code-workspace-tree {
+  padding: 4px 0 !important;
+  background: var(--compile-panel) !important;
+  color: var(--compile-text) !important;
+}
+
+body[data-compile-theme] :is(.compile-code-root-folder, .compile-code-tree-folder) {
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+body[data-compile-theme] :is(.compile-code-root-folder > summary, .compile-code-tree-folder > summary) {
+  display: grid !important;
+  grid-template-columns: 14px 18px minmax(0, 1fr) !important;
+  align-items: center !important;
+  gap: 4px !important;
+  min-height: 23px !important;
+  height: 23px !important;
+  padding: 0 6px !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  color: var(--compile-text) !important;
+  background: transparent !important;
+  font: 400 0.76rem/1.2 "Segoe UI", Arial, sans-serif !important;
+  cursor: default !important;
+}
+
+body[data-compile-theme] .compile-code-root-folder > summary::before,
+body[data-compile-theme] .compile-code-tree-folder > summary::before {
+  content: ">" !important;
+  display: inline-grid !important;
+  place-items: center !important;
+  width: 12px !important;
+  color: var(--compile-muted) !important;
+  font-size: 0.66rem !important;
+  transform: rotate(0deg);
+}
+
+body[data-compile-theme] .compile-code-root-folder[open] > summary::before,
+body[data-compile-theme] .compile-code-tree-folder[open] > summary::before {
+  transform: rotate(90deg);
+}
+
+body[data-compile-theme] .compile-tree-folder-icon {
+  width: 14px !important;
+  height: 10px !important;
+  border: 1px solid #f3d36b !important;
+  border-radius: 2px !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+body[data-compile-theme] .compile-tree-folder-icon::before {
+  border-color: #f3d36b !important;
+  background: transparent !important;
+}
+
+body[data-compile-theme] :is(.compile-code-tree-files, .compile-code-tree-children) {
+  display: grid !important;
+  gap: 0 !important;
+  margin: 0 !important;
+  padding: 0 0 0 18px !important;
+  background: transparent !important;
+}
+
+body[data-compile-theme] .compile-code-tree-file {
+  display: grid !important;
+  grid-template-columns: 34px minmax(0, 1fr) auto !important;
+  align-items: center !important;
+  min-height: 23px !important;
+  height: 23px !important;
+  width: 100% !important;
+  margin: 0 !important;
+  padding: 0 6px 0 18px !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  color: var(--compile-text) !important;
+  background: transparent !important;
+  text-align: left !important;
+  font: 400 0.76rem/1.2 "Segoe UI", Arial, sans-serif !important;
+}
+
+body[data-compile-theme] :is(.compile-code-root-folder > summary:hover, .compile-code-tree-folder > summary:hover, .compile-code-tree-file:hover) {
+  background: var(--compile-hover) !important;
+  color: var(--compile-text) !important;
+  box-shadow: none !important;
+}
+
+body[data-compile-theme] .compile-code-tree-file.is-active {
+  background: var(--compile-active) !important;
+  color: #ffffff !important;
+}
+
+body[data-compile-theme] .compile-code-root-folder > summary {
+  font-weight: 500 !important;
+}
+
+body[data-compile-theme] .compile-code-tree-file small {
+  color: var(--compile-muted) !important;
+  font-size: 0.65rem !important;
+}
+
+body[data-compile-theme] :is(.compile-code-preview, .compile-code-active-editor textarea, .compile-system-terminal, .compile-terminal-prompt-line, .compile-terminal-command-input) {
+  border-color: var(--compile-line) !important;
+  background: var(--compile-editor) !important;
+  color: var(--compile-text) !important;
+}
+
+body[data-compile-theme] :is(.compile-terminal-prompt, .compile-terminal-command-input) {
+  color: var(--compile-text) !important;
+  caret-color: var(--compile-text) !important;
+}
+
+body[data-compile-theme] .compile-terminal-prompt-line {
+  background: var(--compile-editor) !important;
+}
+
+body[data-compile-theme] :is(.compile-file-extension, .scope-dot, .terminal-dot) {
+  color: var(--compile-accent) !important;
+}
+
+body[data-compile-theme] .compile-ide-status-bar {
+  background: var(--compile-accent) !important;
+  color: #ffffff !important;
+}
+
+body[data-compile-theme] :is(.scope-time-label, .scope-signal-label) {
+  fill: var(--compile-text) !important;
+}
+
+body[data-compile-theme] .scope-value-label {
+  fill: var(--compile-value) !important;
+}
+
+body[data-compile-theme] .compile-scope-svg {
+  border-color: var(--compile-line) !important;
+  background: var(--compile-editor) !important;
+}
+
+.compile-scope-controls {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 8px;
+  padding: 10px 12px 0;
+}
+
+.compile-scope-controls label,
+.scope-signal-control {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 34px minmax(86px, auto);
+  align-items: center;
+  gap: 7px;
+  min-height: 34px;
+  padding: 5px 7px;
+  border: 1px solid var(--compile-line, rgba(14, 116, 144, 0.16));
+  border-radius: 6px;
+  color: var(--compile-text, #17202a);
+  background: color-mix(in srgb, var(--compile-panel, #f8fbfd) 82%, transparent);
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.compile-scope-controls label:first-child {
+  grid-template-columns: minmax(0, 1fr) minmax(90px, auto);
+}
+
+.compile-scope-controls input[type="color"] {
+  width: 30px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--compile-line, #cbd5e1);
+  border-radius: 4px;
+  background: transparent;
+}
+
+.compile-scope-controls select {
+  min-height: 26px;
+  border: 1px solid var(--compile-line, #cbd5e1);
+  border-radius: 4px;
+  color: var(--compile-text, #17202a);
+  background: var(--compile-editor, #ffffff);
+  font-size: 0.72rem;
+  font-weight: 750;
+}
+
+/* Project/action button height normalization. Window chrome buttons keep their browser-like size. */
+.project-dialog :is(
+  .section-tabs button,
+  .section-window-heading button,
+  .local-section-controls button,
+  .summary-builder-actions button,
+  .summary-save-actions button,
+  .project-fields button,
+  .builder-explorer-actions button,
+  .section-bar button
+):not(.project-window-close):not(.dialog-minimize-button):not(.dialog-maximize-button):not(.dialog-hide-button):not(.window-nav-button) {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  height: 34px !important;
+  min-height: 34px !important;
+  max-height: 34px !important;
+  padding: 0 12px !important;
+  font-size: 0.8rem !important;
+  line-height: 1 !important;
+}
+
+.section-window-heading-actions-only {
+  justify-content: flex-end !important;
+  align-items: center !important;
+  margin: 0 0 8px !important;
+  padding: 0 !important;
+}
+
+.section-window-action-row {
+  width: 100%;
+  display: flex !important;
+  flex-wrap: wrap;
+  justify-content: flex-end !important;
+  gap: 6px;
+}
+
+.section-window-view-canvas {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  align-content: stretch;
+  align-items: stretch;
+  justify-items: stretch;
+  gap: 10px;
+  min-height: 220px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #ffffff;
+}
+
+.section-window-view-canvas.is-empty {
+  min-height: 220px;
+}
+
+.section-window-content-stack {
+  display: grid;
+  align-content: start;
+  align-items: start;
+  justify-items: start;
+  gap: 10px;
+  min-width: 0;
+}
+
+.section-window-view-canvas .builder-item-preview {
+  margin: 0;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.section-window-view-canvas .rich-content {
+  align-content: start;
+  align-items: start;
+  justify-items: start;
+}
+
+.section-window-bottom-metadata {
+  grid-row: 3;
+  align-self: end;
+  margin: 0 !important;
+  padding: 0 !important;
+  color: #44657b;
+  background: transparent !important;
+}
+
+.project-dialog .builder-panel,
+.project-dialog .section-content,
+.project-dialog .project-fields,
+.asset-dialog .builder-panel,
+.builder-file-view-body {
+  align-content: start;
+  align-items: start;
+  justify-items: stretch;
+}
+
+.nested-section-link-strip {
+  display: flex !important;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 10px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+}
+
+.nested-section-link {
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  height: 34px !important;
+  min-height: 34px !important;
+  max-height: 34px !important;
+  padding: 0 12px !important;
+  border: 1px solid rgba(14, 116, 144, 0.16) !important;
+  border-radius: 7px !important;
+  color: #0f2f3d !important;
+  background: #cfeffc !important;
+  font-size: 0.8rem !important;
+  font-weight: 850 !important;
+  line-height: 1 !important;
+}
+
+.nested-section-link:hover {
+  border-color: #38bdf8 !important;
+  background: #b9e9f8 !important;
+}
+
+.nested-section-link:active {
+  color: #0f2f3d !important;
+  background: #ffffff !important;
 }

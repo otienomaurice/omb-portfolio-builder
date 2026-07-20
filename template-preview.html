@@ -11,7 +11,7 @@
     <link rel="shortcut icon" href="assets/favicon.ico" />
     <link rel="apple-touch-icon" sizes="180x180" href="assets/apple-touch-icon.png" />
     <link rel="stylesheet" href="styles.css" />
-    <link rel="stylesheet" href="template-preview.css?v=0.2.47" />
+    <link rel="stylesheet" href="template-preview.css?v=0.2.48" />
   </head>
   <body class="template-preview-page">
       <header class="template-header">
@@ -737,7 +737,7 @@
           <form method="dialog" id="category-form">
               <div>
                   <p class="eyebrow">Project category</p>
-                  <h2>Add category</h2>
+                  <h2 id="category-dialog-title">Add category</h2>
               </div>
               <label>
                   <span>Category name</span>
@@ -757,6 +757,15 @@
               </div>
           </form>
       </dialog>
+
+      <div class="project-title-menu category-title-menu" id="category-title-menu" hidden>
+          <button type="button" data-category-action="close">Close menu</button>
+          <button type="button" data-category-action="copy">Copy category name</button>
+          <button type="button" data-category-action="paste">Paste as category name</button>
+          <button type="button" data-category-action="rename">Rename category</button>
+          <button type="button" data-category-action="details">Edit details</button>
+          <button class="danger-icon" type="button" data-category-action="delete">Delete category</button>
+      </div>
 
       <dialog class="project-dialog" id="project-dialog">
           <div class="project-dialog-shell">
@@ -1259,6 +1268,18 @@
                       <option value="dark">Dark mode</option>
                   </select>
               </label>
+              <label>
+                  <span>Compile Code appearance</span>
+                  <select id="preference-compile-theme">
+                      <option value="dark-vs">Dark - Visual Studio blue</option>
+                      <option value="dark-navy">Dark - Navy scope lab</option>
+                      <option value="dark-graphite">Dark - Graphite ASIC</option>
+                      <option value="dark-emerald">Dark - Emerald instrument</option>
+                      <option value="dark-violet">Dark - Violet mixed signal</option>
+                      <option value="light-sky">Light - Sky engineering</option>
+                      <option value="light-paper">Light - Paper schematic</option>
+                  </select>
+              </label>
               <p class="preference-note">Preferences affect the builder workspace only. Portfolio appearance still comes from the selected site and project appearances.</p>
               <div class="dialog-actions">
                   <button class="button primary" type="submit">Save preferences</button>
@@ -1395,6 +1416,6 @@
           </div>
       </div>
       <script src="electronics-search.js?v=0.2.46"></script>
-      <script src="template-preview.js?v=0.2.47"></script>
+      <script src="template-preview.js?v=0.2.48"></script>
   </body>
 </html>
