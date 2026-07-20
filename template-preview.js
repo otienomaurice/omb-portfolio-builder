@@ -257,7 +257,8 @@ const supportedCodeLanguages = [
   { id: "java", label: "Java", aliases: ["java"], extensions: [".java"], defaultFile: "Main.java" },
   { id: "javascript", label: "JavaScript", aliases: ["javascript", "js", "mjs", "node"], extensions: [".js", ".mjs", ".cjs"], defaultFile: "main.js" },
   { id: "python", label: "Python", aliases: ["python", "py"], extensions: [".py"], defaultFile: "main.py" },
-  { id: "html", label: "HTML", aliases: ["html", "htm"], extensions: [".html", ".htm"], defaultFile: "index.html" }
+  { id: "html", label: "HTML", aliases: ["html", "htm"], extensions: [".html", ".htm"], defaultFile: "index.html" },
+  { id: "text", label: "Text / support file", aliases: ["text", "txt", "plain", "support"], extensions: [".txt", ".md", ".json", ".xml", ".csv", ".log", ".xdc", ".sdc", ".tcl", ".do", ".ini", ".cfg", ".yaml", ".yml"], defaultFile: "notes.txt", allowAnyExtension: true }
 ];
 
 function isHdlLanguage(language = "") {
@@ -2126,10 +2127,11 @@ function escapeCodeHtml(value) {
 
 function normalizeCodeLanguage(value = "") {
   const clean = String(value || "").trim().toLowerCase().replace(/[_-]+/g, " ");
+  if (!clean) return "javascript";
   const match = supportedCodeLanguages.find((language) =>
     language.id === clean || language.aliases.includes(clean)
   );
-  return match?.id || "javascript";
+  return match?.id || "text";
 }
 
 function codeLanguageProfile(value = "") {
@@ -2174,6 +2176,10 @@ function safeClientCodeFileName(fileName = "", language = "javascript") {
   const namePart = clean.replace(/\.[^.]+$/, "").replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || fallback.replace(/\.[^.]+$/, "");
   const extMatch = clean.match(/(\.[a-zA-Z0-9_+-]+)$/);
   const ext = (extMatch?.[1] || fallback.match(/(\.[^.]+)$/)?.[1] || ".js").toLowerCase();
+  if (profile.allowAnyExtension) {
+    const originalExt = extMatch?.[1]?.toLowerCase() || (clean === fallback ? fallback.match(/(\.[^.]+)$/)?.[1] || ".txt" : "");
+    return `${namePart}${originalExt}`;
+  }
   return `${namePart}${profile.extensions?.includes(ext) ? ext : fallback.match(/(\.[^.]+)$/)?.[1] || ".js"}`;
 }
 
@@ -2344,7 +2350,7 @@ function detectCodeLanguage(value = "", fileName = "") {
     return sourceLooksCpp(code) ? "cpp" : "c";
   }
   if (/\b(const|let|var|function|=>|console\.log|document\.|window\.)\b/.test(code)) return "javascript";
-  return "javascript";
+  return "text";
 }
 
 function tokenizedCodeHtml(code = "", language = "javascript") {
@@ -8334,13 +8340,28 @@ function updateCompileSystemTerminalPanel(project) {
   const promptElement = sectionContent.querySelector("[data-compile-terminal-prompt]");
   const commandInput = sectionContent.querySelector("[data-compile-terminal-command]");
   if (promptElement) promptElement.textContent = compileTerminalPromptText(terminal, project);
-  if (commandInput) commandInput.value = terminal.command || "";
+  if (commandInput && commandInput.textContent !== String(terminal.command || "")) {
+    commandInput.textContent = terminal.command || "";
+  }
   if (outputElement) {
     outputElement.textContent = compileTerminalDisplayText(terminal);
     requestAnimationFrame(() => {
       outputElement.scrollTop = outputElement.scrollHeight;
     });
   }
+}
+
+function focusTerminalCommandLine() {
+  const commandLine = sectionContent.querySelector("[data-compile-terminal-command]");
+  if (!commandLine) return;
+  commandLine.focus?.({ preventScroll: true });
+  const selection = window.getSelection?.();
+  if (!selection || !document.createRange) return;
+  const range = document.createRange();
+  range.selectNodeContents(commandLine);
+  range.collapse(false);
+  selection.removeAllRanges();
+  selection.addRange(range);
 }
 
 function compileTerminalPromptPath(terminal = {}, project = selectedProject()) {
@@ -8378,10 +8399,10 @@ function renderCompileSystemTerminal(workspace = {}, project = selectedProject()
       </div>
       <div class="compile-terminal-screen" data-compile-terminal-screen>
         <pre class="compile-terminal compile-system-terminal" data-compile-system-terminal tabindex="0" role="log" aria-live="polite">${escapeHtml(compileTerminalDisplayText(terminal))}</pre>
-        <label class="compile-terminal-prompt-line">
+        <div class="compile-terminal-prompt-line">
           <span class="compile-terminal-prompt" data-compile-terminal-prompt>${escapeHtml(compileTerminalPromptText(terminal, project))}</span>
-          <input class="compile-terminal-command-input" type="text" data-compile-terminal-command value="${escapeHtml(terminal.command || "")}" autocomplete="off" spellcheck="false" aria-label="Terminal command" />
-        </label>
+          <span class="compile-terminal-command-input" data-compile-terminal-command contenteditable="true" role="textbox" spellcheck="false" aria-label="Terminal command">${escapeHtml(terminal.command || "")}</span>
+        </div>
       </div>
     </section>
   `;
@@ -9503,21 +9524,65 @@ function chooseFiles(options = {}) {
     filePicker.value = "";
     filePicker.multiple = options.multiple !== false;
     if (options.directory) {
+      filePicker.webkitdirectory = true;
+      filePicker.directory = true;
       filePicker.setAttribute("webkitdirectory", "");
       filePicker.setAttribute("directory", "");
     } else {
+      filePicker.webkitdirectory = false;
+      filePicker.directory = false;
       filePicker.removeAttribute("webkitdirectory");
       filePicker.removeAttribute("directory");
     }
     filePicker.onchange = () => {
       const files = [...(filePicker.files || [])];
       filePicker.multiple = false;
+      filePicker.webkitdirectory = false;
+      filePicker.directory = false;
       filePicker.removeAttribute("webkitdirectory");
       filePicker.removeAttribute("directory");
       resolve(files);
     };
     filePicker.click();
   });
+}
+
+async function readCompileDirectoryHandle(directoryHandle, basePath = "", result = { files: [], directories: [] }) {
+  if (!directoryHandle?.entries) return result;
+  for await (const [entryName, handle] of directoryHandle.entries()) {
+    const cleanName = String(entryName || "").trim();
+    if (!cleanName) continue;
+    const relativePath = [basePath, cleanName].filter(Boolean).join("/");
+    if (handle.kind === "directory") {
+      const directoryPath = compileDirectoryPath(relativePath);
+      if (directoryPath && !result.directories.includes(directoryPath)) result.directories.push(directoryPath);
+      await readCompileDirectoryHandle(handle, relativePath, result);
+    } else if (handle.kind === "file") {
+      const file = await handle.getFile();
+      result.files.push({ file, relativePath });
+    }
+  }
+  return result;
+}
+
+async function chooseCompileDirectoryEntries() {
+  if (typeof window.showDirectoryPicker !== "function") return null;
+  try {
+    const directoryHandle = await window.showDirectoryPicker({ mode: "read" });
+    const rootName = safeClientCodeDirectorySegment(directoryHandle.name || "imported-directory");
+    const result = await readCompileDirectoryHandle(directoryHandle, rootName);
+    return { ...result, rootName };
+  } catch (error) {
+    if (error?.name === "AbortError") return { files: [], directories: [], cancelled: true };
+    return null;
+  }
+}
+
+function fileInputDirectoryEntries(files = []) {
+  return [...files].map((file) => ({
+    file,
+    relativePath: file.webkitRelativePath || file.relativePath || file.name || "source"
+  }));
 }
 
 function newCompileFile(language = "javascript", seed = {}) {
@@ -9718,22 +9783,49 @@ async function saveCompileFile(project, file) {
 
 async function importCompileFiles(project, options = {}) {
   const workspace = ensureCompileCode(project);
-  const files = await chooseFiles({ multiple: true, directory: options.directory === true });
-  if (!files.length) return;
+  const directoryImport = options.directory === true;
+  let entries = [];
+  let importedDirectories = [];
+  if (directoryImport) {
+    const directoryResult = await chooseCompileDirectoryEntries();
+    if (directoryResult?.cancelled) return;
+    if (directoryResult) {
+      entries = directoryResult.files || [];
+      importedDirectories = directoryResult.directories || [];
+    }
+  }
+  if (!entries.length && !importedDirectories.length) {
+    const files = await chooseFiles({ multiple: true, directory: directoryImport });
+    entries = fileInputDirectoryEntries(files);
+  }
+  if (!entries.length && !importedDirectories.length) return;
   const allowedExtensions = supportedCodeLanguages.flatMap((item) => item.extensions || []);
   const targetDirectory = compileDirectoryPath(options.targetDirectory || "");
+  importedDirectories.forEach((directory) => {
+    const targetPath = [targetDirectory, directory].filter(Boolean).join("/");
+    addCompileDirectoryPath(workspace, targetPath);
+  });
   let imported = 0;
   let skipped = 0;
-  for (const file of files) {
+  for (const entry of entries) {
+    const file = entry.file || entry;
     const extension = `.${String(file.name || "").split(".").pop().toLowerCase()}`;
-    if (!allowedExtensions.includes(extension)) {
+    if (!file?.text || (file.size && file.size > 5 * 1024 * 1024)) {
       skipped += 1;
       continue;
     }
-    const code = await file.text();
-    const pickedPath = options.directory && file.webkitRelativePath ? file.webkitRelativePath : file.name;
+    let code = "";
+    try {
+      code = await file.text();
+    } catch {
+      skipped += 1;
+      continue;
+    }
+    const pickedPath = directoryImport
+      ? entry.relativePath || file.webkitRelativePath || file.name
+      : file.name;
     const incomingPath = [targetDirectory, pickedPath].filter(Boolean).join("/");
-    const language = detectCodeLanguage(code, incomingPath);
+    const language = allowedExtensions.includes(extension) ? detectCodeLanguage(code, incomingPath) : "text";
     const profile = codeLanguageProfile(language);
     const relativePath = uniqueCompileFilePath(workspace, incomingPath, profile.id);
     const sourceFile = newCompileFile(profile.id, {
@@ -9746,11 +9838,12 @@ async function importCompileFiles(project, options = {}) {
     openCompileFileView(workspace, sourceFile.id);
     imported += 1;
   }
-  if (!imported) {
-    setStatus("No supported source files were found. Supported code files include C, C++, Verilog, SystemVerilog, LTspice, Java, JavaScript, Python, and HTML.");
+  if (!imported && !importedDirectories.length) {
+    setStatus("No readable source or support files were found in that selection.");
     return;
   }
-  setStatus(`Imported ${imported} source file${imported === 1 ? "" : "s"}${targetDirectory ? ` into ${targetDirectory}` : ""}${skipped ? ` and skipped ${skipped} unsupported file${skipped === 1 ? "" : "s"}` : ""}. Click Save source before compiling.`);
+  const folderText = importedDirectories.length ? ` and ${importedDirectories.length} folder${importedDirectories.length === 1 ? "" : "s"}` : "";
+  setStatus(`Imported ${imported} source/support file${imported === 1 ? "" : "s"}${folderText}${targetDirectory ? ` into ${targetDirectory}` : ""}${skipped ? ` and skipped ${skipped} unreadable or oversized file${skipped === 1 ? "" : "s"}` : ""}. Click Save source before compiling.`);
   scheduleAutosave();
   renderSectionContent(project);
 }
@@ -9924,7 +10017,7 @@ async function runCompileTerminalCommand(project) {
   const workspace = ensureCompileCode(project);
   const terminal = workspace.systemTerminal;
   const commandInput = sectionContent.querySelector("[data-compile-terminal-command]");
-  const command = String(commandInput?.value || terminal.command || "").trim();
+  const command = String(commandInput?.textContent || commandInput?.value || terminal.command || "").trim();
   if (!command) {
     addCompileMessage(project, "Type a terminal command before running it.", "warning");
     return;
@@ -9936,7 +10029,7 @@ async function runCompileTerminalCommand(project) {
     workspace.activePanel = "terminal";
     scheduleAutosave();
     renderSectionContent(project);
-    requestAnimationFrame(() => sectionContent.querySelector("[data-compile-terminal-command]")?.focus?.());
+    requestAnimationFrame(focusTerminalCommandLine);
     return;
   }
   const cwd = compileDirectoryPath(terminal.cwd || "");
@@ -9981,7 +10074,7 @@ async function runCompileTerminalCommand(project) {
   }
   scheduleAutosave();
   renderSectionContent(project);
-  requestAnimationFrame(() => sectionContent.querySelector("[data-compile-terminal-command]")?.focus?.());
+  requestAnimationFrame(focusTerminalCommandLine);
 }
 
 async function checkCompileTools(project) {
@@ -12619,8 +12712,10 @@ sectionContent.addEventListener("click", async (event) => {
   if (button.dataset.compileTerminalHistory !== undefined) {
     const input = sectionContent.querySelector("[data-compile-terminal-command]");
     if (input) {
-      input.value = button.dataset.compileTerminalHistory || "";
-      compileWorkspace.systemTerminal.command = input.value;
+      const command = button.dataset.compileTerminalHistory || "";
+      if ("value" in input) input.value = command;
+      input.textContent = command;
+      compileWorkspace.systemTerminal.command = command;
     }
     return;
   }
@@ -12637,7 +12732,7 @@ sectionContent.addEventListener("click", async (event) => {
     return;
   }
   if (event.target.closest("[data-compile-terminal-screen]")) {
-    sectionContent.querySelector("[data-compile-terminal-command]")?.focus?.({ preventScroll: true });
+    focusTerminalCommandLine();
     return;
   }
   if (hasDataset("compileInstall")) {
@@ -13066,6 +13161,21 @@ sectionContent.addEventListener("keydown", async (event) => {
   event.preventDefault();
   const project = selectedProject();
   if (project) await runCompileTerminalCommand(project);
+});
+
+sectionContent.addEventListener("input", (event) => {
+  if (!event.target.matches("[data-compile-terminal-command]")) return;
+  const project = selectedProject();
+  if (!project) return;
+  const workspace = ensureCompileCode(project);
+  workspace.systemTerminal.command = String(event.target.textContent || event.target.value || "");
+});
+
+sectionContent.addEventListener("paste", (event) => {
+  if (!event.target.matches("[data-compile-terminal-command]")) return;
+  event.preventDefault();
+  const text = event.clipboardData?.getData("text/plain") || "";
+  document.execCommand("insertText", false, text.replace(/\r?\n/g, " "));
 });
 
 projectWindowClose.addEventListener("click", () => {
