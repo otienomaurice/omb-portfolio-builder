@@ -9578,9 +9578,6 @@ function renderCompileScopePanel(project, file = activeCompileFile(project)) {
   const waveform = activeCompileWaveform(project, file);
   return `
     <section class="compile-scope-panel" data-compile-scope-panel data-compile-output-panel="scope" aria-label="HDL signal scope">
-      <div class="compile-terminal-heading">
-        <span class="compile-terminal-title"><span aria-hidden="true" class="scope-dot"></span> Signal scope</span>
-      </div>
       ${renderHdlScope(waveform, project)}
     </section>
   `;
@@ -9648,7 +9645,7 @@ function codeBlockForCompileFile(file) {
 
 function compileFileDirtyLabel(file) {
   if (!file) return "";
-  return file.dirty ? "*" : "✓";
+  return file.dirty ? "*" : "\u2713";
 }
 
 function renderCompileConsolePanel(project, file = activeCompileFile(project)) {
@@ -9683,6 +9680,7 @@ function renderCompileMessagesPanel(workspace = {}) {
 function compilePanelTabs(project, file = activeCompileFile(project)) {
   const workspace = ensureCompileCode(project);
   const activePanel = activeCompilePanel(project, file);
+  const dockUnlocked = Boolean(workspace.outputDockUnlocked);
   const messageCount = Array.isArray(workspace.messages) ? workspace.messages.length : 0;
   const tabs = [
     { id: "console", label: "Console" },
@@ -9692,6 +9690,13 @@ function compilePanelTabs(project, file = activeCompileFile(project)) {
   ];
   return `
     <div class="compile-panel-tabs" role="tablist" aria-label="Compile output views">
+      <button
+        class="compile-output-dock-toggle compile-output-dock-toggle-inline"
+        type="button"
+        data-compile-toggle-output-dock
+        aria-pressed="${dockUnlocked ? "true" : "false"}"
+        title="${dockUnlocked ? "Lock output panel" : "Unlock output panel"}"
+      ><span aria-hidden="true">${dockUnlocked ? "L" : "M"}</span></button>
       ${tabs.map((tab) => `
         <button
           class="${tab.id === activePanel ? "active" : ""}"
@@ -10023,9 +10028,6 @@ function renderCompileCodeSection(project) {
           ${compileFileBreadcrumbs(activeFile)}
           <div class="compile-code-editor-grid compile-code-editor-grid-single">
             <section class="compile-code-preview-panel compile-code-active-panel" aria-label="Active syntax highlighted code editor">
-              <div class="compile-code-preview-heading">
-                <span>${escapeHtml(codeLanguageLabel(activeFile.language))} active editor</span>
-              </div>
               <div class="compile-code-active-editor">
                 <pre class="compile-code-preview" aria-hidden="true"><code data-compile-preview>${tokenizedCodeHtml(activeFile.code || "", activeFile.language)}</code></pre>
                 <textarea data-compile-field="code" data-compile-active-editor spellcheck="false" wrap="off" rows="18" placeholder="Type or paste code here">${escapeHtml(activeFile.code || "")}</textarea>
@@ -10055,18 +10057,6 @@ function renderCompileCodeSection(project) {
         `}
         <section class="compile-output-workbench ${dockUnlocked ? "is-output-dock-unlocked" : "is-output-dock-locked"}" aria-label="Compile output workbench"${dockStyle}>
           <div class="compile-output-resize-handle" data-compile-output-resize title="Drag to resize output panel"></div>
-          <div class="compile-output-dock-toolbar">
-            <button
-              class="compile-output-dock-toggle"
-              type="button"
-              data-compile-toggle-output-dock
-              aria-pressed="${dockUnlocked ? "true" : "false"}"
-              title="${dockUnlocked ? "Lock output panel to the compile workspace" : "Unlock output panel so it can be moved"}"
-            >
-              <span aria-hidden="true">${dockUnlocked ? "L" : "M"}</span>
-            </button>
-            <span class="compile-output-dock-title" data-compile-output-drag>${dockUnlocked ? "Move output panel" : "Output panel locked"}</span>
-          </div>
           ${compilePanelTabs(project, activeFile)}
           <div class="compile-output-dock">
             ${renderCompileActiveOutputPanel(project, activeFile)}
@@ -10730,7 +10720,7 @@ function chooseFile() {
 }
 
 async function chooseFiles(options = {}) {
-  if (!options.directory && typeof window.showOpenFilePicker === "function") {
+  if (!options.directory && options.preferNativePicker && typeof window.showOpenFilePicker === "function") {
     try {
       const handles = await window.showOpenFilePicker({
         multiple: options.multiple !== false,
@@ -10845,6 +10835,24 @@ function newCompileFile(language = "javascript", seed = {}) {
 function activeCompileWorkspaceAndFile(project = selectedProject()) {
   const workspace = ensureCompileCode(project);
   return { workspace, file: activeCompileFile(project) };
+}
+
+function reconcileSavedCompileFile(project, file) {
+  const workspace = ensureCompileCode(project);
+  if (!workspace || !file?.id) return file || null;
+  const index = (workspace.files || []).findIndex((item) => item.id === file.id);
+  if (index >= 0 && workspace.files[index] !== file) {
+    Object.assign(workspace.files[index], file);
+  } else if (index === -1) {
+    workspace.files.push(file);
+  }
+  const savedFile = workspace.files.find((item) => item.id === file.id) || file;
+  savedFile.dirty = false;
+  workspace.openFileIds = Array.isArray(workspace.openFileIds) ? workspace.openFileIds : [];
+  if (!workspace.openFileIds.includes(savedFile.id)) workspace.openFileIds.push(savedFile.id);
+  workspace.activeFileId = savedFile.id;
+  setCompileSelectedFileIds(workspace, [savedFile.id]);
+  return savedFile;
 }
 
 function openCompileFileView(workspace, fileId = "") {
@@ -11084,6 +11092,7 @@ async function saveCompileFile(project, file) {
   file.fileType = result.saved?.fileType || normalizeCompileFileType(file.fileType || file.role, file);
   file.dirty = false;
   addCompileDirectoryPath(ensureCompileCode(project), compileFileDirectory(file.relativePath));
+  reconcileSavedCompileFile(project, file);
   addCompileMessage(project, `Saved ${file.fileName || "source file"}.`, "info");
   updateCompilePreview(file);
   return result.saved;
@@ -11132,6 +11141,7 @@ async function saveCompileFileAs(project, file) {
 
 async function importCompileFiles(project, options = {}) {
   const workspace = ensureCompileCode(project);
+  hideCompileTreeContextMenus();
   const directoryImport = options.directory === true;
   let entries = [];
   let importedDirectories = [];
@@ -11144,10 +11154,13 @@ async function importCompileFiles(project, options = {}) {
     }
   }
   if (!entries.length && !importedDirectories.length) {
-    const files = await chooseFiles({ multiple: true, directory: directoryImport });
+    const files = await chooseFiles({ multiple: true, directory: directoryImport, preferNativePicker: false });
     entries = fileInputDirectoryEntries(files);
   }
-  if (!entries.length && !importedDirectories.length) return;
+  if (!entries.length && !importedDirectories.length) {
+    hideCompileTreeContextMenus();
+    return;
+  }
   const allowedExtensions = supportedCodeLanguages.flatMap((item) => item.extensions || []);
   let targetDirectory = compileDirectoryPath(options.targetDirectory || "");
   if (!targetDirectory && !directoryImport && options.promptForDirectory !== false) {
@@ -11192,11 +11205,13 @@ async function importCompileFiles(project, options = {}) {
   }
   if (!imported && !importedDirectories.length) {
     setStatus("No readable source or support files were found in that selection.");
+    hideCompileTreeContextMenus();
     return;
   }
   const folderText = importedDirectories.length ? ` and ${importedDirectories.length} folder${importedDirectories.length === 1 ? "" : "s"}` : "";
   addCompileMessage(project, `Imported ${imported} file${imported === 1 ? "" : "s"}${folderText}. Open imported sources from Solution Explorer when you want to edit them.`, "success");
   setStatus(`Imported ${imported} source/support file${imported === 1 ? "" : "s"}${folderText}${targetDirectory ? ` into ${targetDirectory}` : ""}${skipped ? ` and skipped ${skipped} unreadable or oversized file${skipped === 1 ? "" : "s"}` : ""}. Imported files are in Solution Explorer, not editor tabs.`);
+  hideCompileTreeContextMenus();
   scheduleAutosave();
   renderSectionContent(project);
 }
@@ -14234,6 +14249,7 @@ sectionContent.addEventListener("click", async (event) => {
 
   const hasDataset = (key) => Object.prototype.hasOwnProperty.call(button.dataset, key);
   if (button.dataset.compileMenuAction) {
+    hideCompileTreeContextMenus();
     await runCompileIdeAction(project, button.dataset.compileMenuAction);
     hideCompileTreeContextMenus();
     return;
@@ -14285,10 +14301,12 @@ sectionContent.addEventListener("click", async (event) => {
     return;
   }
   if (hasDataset("compileImport")) {
+    hideCompileTreeContextMenus();
     await importCompileFiles(project);
     return;
   }
   if (hasDataset("compileImportDirectory")) {
+    hideCompileTreeContextMenus();
     await importCompileFiles(project, { directory: true });
     return;
   }
@@ -14419,7 +14437,7 @@ sectionContent.addEventListener("click", async (event) => {
     compileWorkspace.outputDockUnlocked = !compileWorkspace.outputDockUnlocked;
     if (compileWorkspace.outputDockUnlocked) {
       compileWorkspace.outputDockPosition = compileWorkspace.outputDockPosition || { x: 72, y: 120 };
-      setStatus("Compile output panel unlocked. Drag its title area to move it.");
+      setStatus("Compile output panel unlocked.");
     } else {
       setStatus("Compile output panel locked back into the workspace.");
     }
