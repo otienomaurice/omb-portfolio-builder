@@ -11,7 +11,7 @@
     <link rel="shortcut icon" href="assets/favicon.ico" />
     <link rel="apple-touch-icon" sizes="180x180" href="assets/apple-touch-icon.png" />
     <link rel="stylesheet" href="styles.css" />
-    <link rel="stylesheet" href="template-preview.css?v=0.2.72" />
+    <link rel="stylesheet" href="template-preview.css?v=0.2.73" />
   </head>
   <body class="template-preview-page">
       <header class="template-header">
@@ -511,9 +511,10 @@
                           <p>Compile Code is for local engineering work inside a project. It is separate from Add Code, which is only for polished source snippets that should appear in the public portfolio. Compile Code can stay empty, but when you use it, treat it like a small project workspace.</p>
                           <p>The left explorer holds folders and source files. Drag the vertical divider beside Solution Explorer when names need more room. Imported files and imported directories appear in the tree without opening editor tabs; click a file in the tree when you want to view or edit it. The editor opens closeable file views, and the bottom output area contains Console, Messages, Terminal, Input, and Scope so build feedback and run settings stay organized instead of mixing everything into one box.</p>
                           <ol>
-                              <li>Right-click the workspace tree to add a source file, create a folder, import several files, import a directory, move a file, or delete a selected file or folder. Compiler checks and tool installation live under the Tools menu, not in the right-click tree menu.</li>
-                              <li>Ctrl-click files in the Solution Explorer to select several files, then right-click one of the selected files and choose Delete selected.</li>
+                              <li>Right-click the workspace tree to add a source file, create a folder, import several files, import a directory, move selected files, or delete a selected file or folder. Compiler checks and tool installation live under the Tools menu, not in the right-click tree menu.</li>
+                              <li>Ctrl-click files in the Solution Explorer to select several files, then right-click one of the selected files and choose Delete selected or Move selected.</li>
                               <li>Right-click a folder to delete the folder and the files contained inside it after confirmation.</li>
+                              <li>Use normal keyboard editing inside editable fields, including Ctrl+Z and Ctrl+Y for undo and redo.</li>
                               <li>Use File details only when you need to view or edit the absolute path, source language, HDL role, file name, file type, or save status. It opens as a separate moveable, resizable window so it does not steal editor space.</li>
                               <li>Use Save Source or Ctrl+S to write the active file into the project workspace. Use Save Source As from the File menu when you need an external copy in another location.</li>
                               <li>Use Beautify to clean the whole active file for C, C++, Verilog, SystemVerilog, LTspice, Java, JavaScript, Python, HTML, or support text files. Syntax coloring updates while typing, after import, and after beautify.</li>
@@ -532,8 +533,10 @@
                               <li>Input opens stdin for the active source in a separate window so the code editor stays focused on source text.</li>
                               <li>Scope appears for Verilog/SystemVerilog and shows VCD waveforms after simulation.</li>
                               <li>Click a scrollable area before using the mouse wheel there. Solution Explorer, file tabs, editor, Console, Messages, Terminal, and Scope each keep their own scroll behavior.</li>
-                              <li>The blue status strip stays fixed at the bottom of the output area while the output panel is resized.</li>
+                              <li>In locked mode, Console, Messages, and Terminal use only the height their content needs so empty black space does not cover the workspace. Scope keeps a larger resizable viewport because waveforms need room.</li>
+                              <li>The blue status strip stays fixed at the bottom of the Compile Code workspace while the output panel is resized.</li>
                               <li>Icarus Verilog and vvp are the required HDL simulator tools. If Verilator or GTKWave are installed later, the builder detects them and uses Verilator lint as an extra advisory check.</li>
+                              <li>Successful compile results are cached by source snapshot, toolchain, flags, and workspace files, so repeated compile/run cycles are faster when nothing important has changed.</li>
                           </ul>
                           <p>For HDL, add or mark a Testbench file before simulation. The testbench must call $dumpfile and $dumpvars so the scope has signal-over-time data. In the scope, use signal filter, time zoom, per-signal color, and per-signal radix controls to make debugging readable.</p>
                       </div>
@@ -1416,7 +1419,7 @@
           <button type="button" data-rich-action="edit-block">Edit selected block</button>
           <button class="danger-menu-item" type="button" data-rich-action="delete-block">Delete selected block</button>
       </div>
-      <script src="electronics-search.js?v=0.2.72"></script>
-      <script src="template-preview.js?v=0.2.72"></script>
+      <script src="electronics-search.js?v=0.2.73"></script>
+      <script src="template-preview.js?v=0.2.73"></script>
   </body>
 </html>
