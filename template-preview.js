@@ -7560,7 +7560,10 @@ function clearSiteSectionBackground(sectionId) {
 function renderSectionTabs(project) {
   if (!project) {
     sectionTabs.innerHTML = "";
-    if (projectViewTabsBar) projectViewTabsBar.innerHTML = "";
+    if (projectViewTabsBar) {
+      projectViewTabsBar.innerHTML = "";
+      projectViewTabsBar.hidden = true;
+    }
     return;
   }
 
@@ -7578,8 +7581,9 @@ function renderSectionTabs(project) {
     <div class="project-section-row-strip">
       <div class="project-section-list" role="list">
         ${rows}
+        <button type="button" data-add-section="true">Add section</button>
       </div>
-      <button type="button" data-add-section="true">Add section</button>
+      ${renderActiveSectionToolbar(project)}
     </div>
     ${renderActiveSubsectionStrip(project)}
   `;
@@ -7598,33 +7602,68 @@ function renderActiveSubsectionStrip(project) {
   return renderNestedSectionNav(section, currentChildren, currentPath, "section-bar-subsections");
 }
 
+function renderActiveSectionToolbar(project) {
+  if (!project || !String(activeSectionId || "").startsWith("custom:")) return "";
+  const sectionId = activeSectionId.slice("custom:".length);
+  const section = (project.sections || []).find((item) => item.id === sectionId);
+  if (!section || isCompileCodeBuilderSection(section)) return "";
+  normalizeBuilderSectionStorage(section);
+  const currentPath = activeCustomSectionPath(sectionId);
+  const currentNode = currentPath.length ? findBuilderNode(section, currentPath) : section;
+  if (currentPath.length && !currentNode) return "";
+  const pathValue = customViewPathValue(currentPath);
+  const editButton = currentPath.length
+    ? `<button type="button" data-open-editor="custom" data-mode="edit" data-section-id="${escapeHtml(section.id)}" data-node-path="${escapeHtml(pathValue)}">Edit current</button>`
+    : `<button type="button" data-open-editor="custom-section" data-section-id="${escapeHtml(section.id)}">Edit section</button>`;
+  const deleteButton = currentPath.length
+    ? `<button class="danger-icon" type="button" data-delete-node="${escapeHtml(section.id)}" data-node-path="${escapeHtml(pathValue)}">Delete current</button>`
+    : `<button class="danger-icon" type="button" data-delete-section="${escapeHtml(section.id)}">Delete section</button>`;
+
+  return `
+    <div class="project-section-toolbar" aria-label="Current section actions">
+      <button class="button primary" type="button" data-add-node-subsection="${escapeHtml(section.id)}" data-node-path="${escapeHtml(pathValue)}">Add subsection</button>
+      <button class="button secondary" type="button" data-upload-node="${escapeHtml(section.id)}" data-node-path="${escapeHtml(pathValue)}">Add file or image</button>
+      ${editButton}
+      ${deleteButton}
+    </div>
+  `;
+}
+
 function renderProjectViewTabs(project) {
   if (!projectViewTabsBar) return;
   if (!project) {
     projectViewTabsBar.innerHTML = "";
+    projectViewTabsBar.hidden = true;
     return;
   }
   syncActiveProjectViewTabFromState();
+  if (projectViewTabs.length <= 1) {
+    projectViewTabsBar.innerHTML = "";
+    projectViewTabsBar.hidden = true;
+    return;
+  }
+  projectViewTabsBar.hidden = false;
   projectViewTabsBar.innerHTML = `
     <div class="project-view-tab-list" role="tablist" aria-label="Open project views">
       ${projectViewTabs.map((tab) => `
-        <button
-          class="project-view-tab${tab.id === activeProjectViewTabId ? " is-active" : ""}"
-          type="button"
-          role="tab"
-          aria-selected="${tab.id === activeProjectViewTabId ? "true" : "false"}"
-          data-project-view-tab="${escapeHtml(tab.id)}"
-          title="${escapeHtml(tab.title || "Project view")}"
-        >
-          <span>${escapeHtml(tab.title || "Project view")}</span>
-          <small>${escapeHtml(tab.stateKey.split("|")[0].replace("custom:", "section:"))}</small>
-        </button>
-        <button
-          class="project-view-tab-close"
-          type="button"
-          data-close-project-view-tab="${escapeHtml(tab.id)}"
-          aria-label="Close ${escapeHtml(tab.title || "project view")} tab"
-        >&times;</button>
+        <span class="project-view-tab-item${tab.id === activeProjectViewTabId ? " is-active" : ""}">
+          <button
+            class="project-view-tab${tab.id === activeProjectViewTabId ? " is-active" : ""}"
+            type="button"
+            role="tab"
+            aria-selected="${tab.id === activeProjectViewTabId ? "true" : "false"}"
+            data-project-view-tab="${escapeHtml(tab.id)}"
+            title="${escapeHtml(tab.title || "Project view")}"
+          >
+            <span>${escapeHtml(tab.title || "Project view")}</span>
+          </button>
+          <button
+            class="project-view-tab-close"
+            type="button"
+            data-close-project-view-tab="${escapeHtml(tab.id)}"
+            aria-label="Close ${escapeHtml(tab.title || "project view")} tab"
+          >&times;</button>
+        </span>
       `).join("")}
     </div>
     <span class="project-view-tab-count">${projectViewTabs.length}/4</span>
@@ -8393,21 +8432,6 @@ function renderCustomSection(project, sectionId) {
     : "";
 
   return `
-    <div class="section-window-heading section-window-heading-actions-only">
-      <div class="section-window-action-row">
-        <div class="section-window-action-group section-window-action-group-left">
-          <button class="button primary" type="button" data-add-node-subsection="${escapeHtml(section.id)}" data-node-path="${escapeHtml(pathValue)}">Add subsection</button>
-          <button class="button secondary" type="button" data-upload-node="${escapeHtml(section.id)}" data-node-path="${escapeHtml(pathValue)}">Add file or image</button>
-        </div>
-        <div class="section-window-action-group section-window-action-group-right">
-          ${currentPath.length
-            ? `<button type="button" data-open-editor="custom" data-mode="edit" data-section-id="${escapeHtml(section.id)}" data-node-path="${escapeHtml(pathValue)}">Edit current</button>
-               <button class="danger-icon" type="button" data-delete-node="${escapeHtml(section.id)}" data-node-path="${escapeHtml(pathValue)}">Delete current</button>`
-            : `<button type="button" data-open-editor="custom-section" data-section-id="${escapeHtml(section.id)}">Edit section</button>
-               <button class="danger-icon" type="button" data-delete-section="${escapeHtml(section.id)}">Delete section</button>`}
-        </div>
-      </div>
-    </div>
     ${editingCurrentView ? renderPendingEditor() : `
       <div class="section-window-view-canvas${hasViewContent || fileListHtml ? "" : " is-empty"}">
         <div class="section-window-content-stack">
