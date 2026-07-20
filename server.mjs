@@ -1966,8 +1966,8 @@ async function runCompileTerminalCommand(payload = {}) {
       output: ""
     };
   }
-  const persistent = await runPersistentCompileTerminalCommand(payload);
-  const finalCwdAbsolute = persistent.cwdAbsolute || await terminalStartDirectory(payload);
+  const terminalResult = await runOneShotCompileTerminalCommand(payload);
+  const finalCwdAbsolute = terminalResult.cwdAbsolute || await terminalStartDirectory(payload);
   const relativeToProject = path.relative(resolveInsideCompileRoot(projectFolder), finalCwdAbsolute);
   const finalCwdRelative = relativeToProject && !relativeToProject.startsWith("..") && !path.isAbsolute(relativeToProject)
     ? safeCodeDirectoryPath(relativeToProject)
@@ -1977,9 +1977,9 @@ async function runCompileTerminalCommand(payload = {}) {
     rootPath: compileRoot,
     cwdAbsolute: finalCwdAbsolute,
     promptPath: finalCwdAbsolute,
-    exitCode: persistent.exitCode,
-    ok: persistent.ok,
-    output: persistent.output || "Command completed with no output."
+    exitCode: terminalResult.exitCode,
+    ok: terminalResult.ok,
+    output: terminalResult.output || "Command completed with no output."
   };
 }
 
@@ -2018,7 +2018,11 @@ async function runOneShotCompileTerminalCommand(payload = {}) {
   const finalCwdRelative = relativeToProject && !relativeToProject.startsWith("..") && !path.isAbsolute(relativeToProject)
     ? safeCodeDirectoryPath(relativeToProject)
     : "";
-  const output = processTerminalText(stripped.result);
+  const rawOutput = [
+    String(stripped.result.stdout || "").trimEnd(),
+    String(stripped.result.stderr || "").trimEnd()
+  ].filter(Boolean).join("\n").trimEnd();
+  const output = rawOutput || (result.ok ? "" : `Exit code ${result.code}`);
   return {
     cwd: finalCwdRelative,
     rootPath: compileRoot,
