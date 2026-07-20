@@ -2129,6 +2129,9 @@ function ensureCompileCode(project) {
   project.compileCode.scopeFilter = String(project.compileCode.scopeFilter || "");
   project.compileCode.scopeZoom = normalizeScopeZoom(project.compileCode.scopeZoom);
   project.compileCode.scopeView = normalizeScopeView(project.compileCode.scopeView);
+  project.compileCode.scopeExpandedSignals = Array.isArray(project.compileCode.scopeExpandedSignals)
+    ? project.compileCode.scopeExpandedSignals.map((key) => String(key || "")).filter(Boolean)
+    : [];
   project.compileCode.sidebarWidth = normalizeCompileSidebarWidth(project.compileCode.sidebarWidth);
   project.compileCode.selectedFileIds = Array.isArray(project.compileCode.selectedFileIds)
     ? project.compileCode.selectedFileIds.filter((id) => fileIds.has(id))
@@ -9484,6 +9487,58 @@ function normalizeScopeChanges(changes = []) {
     .sort((a, b) => a.time - b.time);
 }
 
+function scopeExpandedSignalSet(workspace = {}) {
+  return new Set(Array.isArray(workspace.scopeExpandedSignals) ? workspace.scopeExpandedSignals : []);
+}
+
+function scopeBusBitsForValue(value = "", width = 1) {
+  const size = Math.max(1, Number(width) || 1);
+  const clean = String(value || "x").toLowerCase().replace(/[^01xz]/g, "");
+  if (!clean) return "x".repeat(size);
+  if (clean.length === 1 && /[xz]/.test(clean)) return clean.repeat(size);
+  return clean.padStart(size, "0").slice(-size);
+}
+
+function scopeBitChanges(changes = [], width = 1, bitIndex = 0) {
+  const size = Math.max(1, Number(width) || 1);
+  const offset = Math.max(0, Math.min(size - 1, size - 1 - bitIndex));
+  const reduced = [];
+  normalizeScopeChanges(changes).forEach((change) => {
+    const bits = scopeBusBitsForValue(change.value, size);
+    const value = bits[offset] || "x";
+    const previous = reduced[reduced.length - 1];
+    if (previous && previous.value === value) return;
+    reduced.push({ time: change.time, value });
+  });
+  return reduced.length ? reduced : [{ time: 0, value: "x" }];
+}
+
+function scopeDisplayRows(project, signals = []) {
+  const workspace = ensureCompileCode(project);
+  const expanded = scopeExpandedSignalSet(workspace);
+  const rows = [];
+  signals.forEach((signal, index) => {
+    const settings = scopeSignalSettings(project, signal, index);
+    const width = Math.max(1, Number(signal.width || 1));
+    const key = settings.key;
+    rows.push({ type: "signal", signal, signalIndex: index, settings, key, width, expanded: width > 1 && expanded.has(key) });
+    if (width <= 1 || !expanded.has(key)) return;
+    for (let bit = width - 1; bit >= 0; bit -= 1) {
+      rows.push({
+        type: "bit",
+        parent: signal,
+        signalIndex: index,
+        bit,
+        key: `${key}__bit_${bit}`,
+        width: 1,
+        settings,
+        changes: scopeBitChanges(signal.changes, width, bit)
+      });
+    }
+  });
+  return rows;
+}
+
 function normalizeScopeRadix(value = "bin") {
   const clean = String(value || "").trim().toLowerCase();
   return scopeRadixOptions.some((option) => option.id === clean) ? clean : "bin";
@@ -9636,7 +9691,8 @@ function renderBusWaveLabels(changes = [], maxTime = 1, rowY = 0, left = 150, wi
     const formatted = formatScopeValue(change.value, signalWidth, radix, stateMap);
     const value = formatted.length > 14 ? `${formatted.slice(0, 14)}...` : formatted;
     const kind = scopeValueKind(change.value);
-    return `<text x="${Math.min(left + width - 70, x + 4).toFixed(1)}" y="${rowY + 19}" class="scope-value-label scope-value-${kind}">${escapeHtml(value)}</text>${index ? `<line x1="${x.toFixed(1)}" x2="${x.toFixed(1)}" y1="${rowY + 5}" y2="${rowY + 25}" class="scope-transition" />` : ""}`;
+    const labelX = Math.min(left + width - 70, x + 4);
+    return `<text x="${labelX.toFixed(1)}" y="${rowY + 9}" class="scope-value-label scope-value-${kind}">${escapeHtml(value)}</text>${index ? `<line x1="${x.toFixed(1)}" x2="${x.toFixed(1)}" y1="${rowY + 5}" y2="${rowY + 25}" class="scope-transition" />` : ""}`;
   }).join("");
 }
 
@@ -9727,7 +9783,8 @@ function renderHdlScope(waveform, project = selectedProject()) {
   const width = 760 * zoom;
   const rowHeight = 34;
   const top = 28;
-  const height = top + signals.length * rowHeight + 28;
+  const displayRows = scopeDisplayRows(project, signals);
+  const height = top + displayRows.length * rowHeight + 28;
   const maxTime = Math.max(1, Number(waveform.maxTime) || Math.max(...signals.flatMap((signal) => (signal.changes || []).map((change) => Number(change.time) || 0)), 1));
   const unknownSignalCount = allSignals.filter((signal) =>
     (signal.changes || []).some((change) => /[xz]/i.test(String(change.value ?? "")))
@@ -9741,19 +9798,30 @@ function renderHdlScope(waveform, project = selectedProject()) {
     const label = Math.round(maxTime * ratio);
     return `<line x1="${x.toFixed(1)}" x2="${x.toFixed(1)}" y1="18" y2="${height - 18}" class="scope-grid" /><text x="${x.toFixed(1)}" y="14" class="scope-time-label">${label}</text>`;
   }).join("");
-  const rows = signals.map((signal, index) => {
-    const y = top + index * rowHeight;
-    const name = String(signal.name || signal.reference || `signal_${index + 1}`);
-    const changes = Array.isArray(signal.changes) ? signal.changes : [];
-    const scalar = Number(signal.width || 1) <= 1;
-    const settings = scopeSignalSettings(project, signal, index);
+  const rows = displayRows.map((row, rowIndex) => {
+    const signal = row.signal || row.parent;
+    const index = row.signalIndex;
+    const rowY = top + rowIndex * rowHeight;
+    const signalName = String(signal.name || signal.reference || `signal_${index + 1}`);
+    const widthBits = Math.max(1, Number(signal.width || 1));
+    const isBus = row.type === "signal" && widthBits > 1;
+    const name = row.type === "bit" ? `${signalName}[${row.bit}]` : signalName;
+    const changes = row.type === "bit" ? row.changes : (Array.isArray(signal.changes) ? signal.changes : []);
+    const scalar = row.type === "bit" || widthBits <= 1;
+    const settings = row.settings || scopeSignalSettings(project, signal, index);
+    const labelClass = row.type === "bit" ? "scope-signal-label scope-bit-label" : "scope-signal-label";
+    const wedge = isBus
+      ? `<text x="10" y="${rowY + 20}" class="scope-bus-toggle" data-scope-bus-toggle data-scope-bus-key="${escapeHtml(row.key)}" role="button" aria-label="${row.expanded ? "Collapse" : "Expand"} ${escapeHtml(signalName)}">${row.expanded ? "&#9662;" : "&#9656;"}</text>`
+      : "";
+    const labelX = isBus || row.type === "bit" ? 30 : 12;
     return `
-      <g class="scope-row" data-scope-signal-key="${escapeHtml(settings.key)}">
-        <text x="12" y="${y + 20}" class="scope-signal-label">${escapeHtml(name.length > 24 ? `${name.slice(0, 24)}...` : name)}</text>
-        <line x1="${left}" x2="${left + width}" y1="${y + 27}" y2="${y + 27}" class="scope-row-line" />
+      <g class="scope-row${row.type === "bit" ? " is-scope-bit-row" : ""}" data-scope-signal-key="${escapeHtml(settings.key)}">
+        ${wedge}
+        <text x="${labelX}" y="${rowY + 20}" class="${labelClass}">${escapeHtml(name.length > 24 ? `${name.slice(0, 24)}...` : name)}</text>
+        <line x1="${left}" x2="${left + width}" y1="${rowY + 27}" y2="${rowY + 27}" class="scope-row-line" />
         ${scalar
-          ? renderScalarWaveSegments(changes, maxTime, y, left, width, settings.color)
-          : `${renderBusWaveSegments(changes, maxTime, y, left, width, settings.color)}${renderBusWaveLabels(changes, maxTime, y, left, width, settings.radix, signal.width, settings.stateMap)}`}
+          ? renderScalarWaveSegments(changes, maxTime, rowY, left, width, settings.color)
+          : `${renderBusWaveSegments(changes, maxTime, rowY, left, width, settings.color)}${renderBusWaveLabels(changes, maxTime, rowY, left, width, settings.radix, signal.width, settings.stateMap)}`}
       </g>
     `;
   }).join("");
@@ -14551,8 +14619,26 @@ sectionContent.addEventListener("contextmenu", (event) => {
 });
 
 sectionContent.addEventListener("click", async (event) => {
-  const button = event.target.closest("button");
   const project = selectedProject();
+  const scopeToggle = event.target.closest("[data-scope-bus-toggle]");
+  if (scopeToggle && project) {
+    const workspace = ensureCompileCode(project);
+    const key = scopeToggle.dataset.scopeBusKey || "";
+    const expanded = scopeExpandedSignalSet(workspace);
+    if (expanded.has(key)) {
+      expanded.delete(key);
+      addCompileMessage(project, "Collapsed bus signal into a single waveform row.", "info");
+    } else if (key) {
+      expanded.add(key);
+      addCompileMessage(project, "Expanded bus signal into individual bit waveforms.", "info");
+    }
+    workspace.scopeExpandedSignals = [...expanded];
+    scheduleAutosave(900);
+    renderSectionContent(project);
+    return;
+  }
+
+  const button = event.target.closest("button");
   if (!button || !project) return;
 
   const hasDataset = (key) => Object.prototype.hasOwnProperty.call(button.dataset, key);

@@ -2809,8 +2809,30 @@ body.rich-image-dragging * {
   font-weight: 800;
 }
 
+.scope-bit-label {
+  fill: #93a4b8;
+  font-weight: 700;
+}
+
+.scope-bus-toggle {
+  cursor: pointer;
+  fill: #dbeafe;
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 12px;
+  font-weight: 900;
+  user-select: none;
+}
+
+.scope-bus-toggle:hover {
+  fill: #60a5fa;
+}
+
 .scope-value-label {
   fill: #fef9c3;
+  paint-order: stroke;
+  stroke: #08111f;
+  stroke-width: 3px;
+  stroke-linejoin: round;
 }
 
 .scope-value-label.scope-value-x {
@@ -2826,6 +2848,10 @@ body.rich-image-dragging * {
 .scope-row-line {
   stroke: rgba(148, 163, 184, 0.15);
   stroke-width: 1;
+}
+
+.scope-row.is-scope-bit-row .scope-row-line {
+  stroke: rgba(148, 163, 184, 0.1);
 }
 
 .scope-wave {
