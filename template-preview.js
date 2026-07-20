@@ -4403,10 +4403,16 @@ function renderDetachedProjectViewWindow(win = {}) {
   `;
 }
 
+function detachedProjectViewHost() {
+  return projectWindowContent || projectDialog?.querySelector(".project-window-content") || projectDialog || document.body;
+}
+
 function renderDetachedProjectViewWindows() {
   document.querySelectorAll("[data-detached-project-view]").forEach((node) => node.remove());
+  projectDialog?.classList.toggle("has-detached-project-view-window", detachedProjectViewWindows.length > 0);
+  const host = detachedProjectViewHost();
   detachedProjectViewWindows.forEach((win) => {
-    document.body.insertAdjacentHTML("beforeend", renderDetachedProjectViewWindow(win));
+    host.insertAdjacentHTML("beforeend", renderDetachedProjectViewWindow(win));
   });
 }
 
@@ -4431,15 +4437,18 @@ function openDetachedProjectViewWindow(stateKey = "brief", options = {}) {
     return true;
   }
   const offset = detachedProjectViewWindows.length * 28;
+  const hostRect = detachedProjectViewHost().getBoundingClientRect();
+  const width = Math.min(820, Math.max(360, Math.round(hostRect.width - 48)));
+  const height = Math.min(560, Math.max(260, Math.round(hostRect.height - 48)));
   detachedProjectViewWindows.push({
     id: detachedProjectWindowId(),
     projectId: project.id,
     stateKey,
     title: options.title || projectViewStateTitle(project, stateKey),
-    x: 72 + offset,
-    y: 72 + offset,
-    width: 820,
-    height: 560
+    x: 24 + offset,
+    y: 24 + offset,
+    width,
+    height
   });
   renderDetachedProjectViewWindows();
   setStatus("Opened project section in a separate window.");
@@ -14299,8 +14308,9 @@ function syncDetachedProjectViewGeometry(windowId = "") {
   const win = detachedProjectViewWindows.find((item) => item.id === windowId);
   if (!element || !win) return;
   const rect = element.getBoundingClientRect();
-  win.x = Math.max(8, Math.round(rect.left));
-  win.y = Math.max(8, Math.round(rect.top));
+  const hostRect = detachedProjectViewHost().getBoundingClientRect();
+  win.x = Math.max(8, Math.round(rect.left - hostRect.left));
+  win.y = Math.max(8, Math.round(rect.top - hostRect.top));
   win.width = Math.max(360, Math.round(rect.width));
   win.height = Math.max(240, Math.round(rect.height));
 }
@@ -14330,9 +14340,12 @@ document.addEventListener("pointermove", (event) => {
   if (!activeDetachedProjectViewDrag) return;
   const { element, offsetX, offsetY, windowId } = activeDetachedProjectViewDrag;
   const rect = element.getBoundingClientRect();
+  const hostRect = detachedProjectViewHost().getBoundingClientRect();
   const margin = 8;
-  const x = Math.max(margin, Math.min(event.clientX - offsetX, window.innerWidth - rect.width - margin));
-  const y = Math.max(margin, Math.min(event.clientY - offsetY, window.innerHeight - rect.height - margin));
+  const maxX = Math.max(margin, hostRect.width - rect.width - margin);
+  const maxY = Math.max(margin, hostRect.height - rect.height - margin);
+  const x = Math.max(margin, Math.min(event.clientX - hostRect.left - offsetX, maxX));
+  const y = Math.max(margin, Math.min(event.clientY - hostRect.top - offsetY, maxY));
   element.style.left = `${x}px`;
   element.style.top = `${y}px`;
   const win = detachedProjectViewWindows.find((item) => item.id === windowId);
@@ -15291,6 +15304,8 @@ projectWindowClose.addEventListener("click", () => {
 
 projectDialog.addEventListener("close", () => {
   document.body.classList.remove("project-window-open");
+  detachedProjectViewWindows = [];
+  renderDetachedProjectViewWindows();
 });
 
 projectWindowDelete.addEventListener("click", () => {
