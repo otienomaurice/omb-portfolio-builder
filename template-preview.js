@@ -5342,21 +5342,7 @@ function renderSummaryBuilder(project) {
   const isEditing = summaryEditorProjectId === project.id;
   const summaryWords = summaryWordCount(project);
   const hasSummary = summaryWords > 0 || Boolean(project.summaryRich?.blocks?.length);
-  const status = normalizeProjectStatus(project.status);
-  const showStatus = project.showStatusOnPortfolio !== false;
   return `
-    <div class="project-status-controls wide-field" aria-label="Project status controls">
-      <label>
-        <span>Project status</span>
-        <select data-field="status">
-          ${projectStatusOptions.map((option) => `<option value="${escapeHtml(option)}"${option === status ? " selected" : ""}>${escapeHtml(option)}</option>`).join("")}
-        </select>
-      </label>
-      <label class="status-visibility-toggle">
-        <input type="checkbox" data-field="showStatusOnPortfolio"${showStatus ? " checked" : ""}>
-        <span>Show status on portfolio</span>
-      </label>
-    </div>
     <div class="summary-builder wide-field">
       <div class="summary-builder-heading">
         <div>
@@ -8872,6 +8858,7 @@ function renderCompileTreeFolder(node, activeId = "", selectedIds = new Set()) {
     <button
       class="compile-code-tree-file${file.id === activeId ? " is-active" : ""}${selectedIds.has(file.id) ? " is-selected" : ""}"
       type="button"
+      aria-pressed="${selectedIds.has(file.id) ? "true" : "false"}"
       data-compile-select="${escapeHtml(file.id)}"
       data-compile-tree-file-id="${escapeHtml(file.id)}"
       data-compile-tree-file-path="${escapeHtml(compileFilePath(file))}"
@@ -13671,10 +13658,13 @@ sectionContent.addEventListener("click", async (event) => {
   if (button.dataset.compileSelect) {
     const workspace = ensureCompileCode(project);
     if (event.ctrlKey || event.metaKey) {
+      event.preventDefault();
+      event.stopPropagation();
       toggleCompileFileSelection(project, button.dataset.compileSelect);
       renderSectionContent(project);
       return;
     }
+    event.preventDefault();
     setCompileSelectedFileIds(workspace, [button.dataset.compileSelect]);
     openCompileFileView(workspace, button.dataset.compileSelect);
     renderSectionContent(project);

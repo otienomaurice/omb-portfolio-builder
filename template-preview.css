@@ -4239,10 +4239,16 @@ body[data-builder-theme="dark"] .summary-context-menu button:hover {
 }
 
 .section-bar > [data-add-section],
-.project-section-row-strip > [data-add-section],
-.project-section-list > [data-add-section] {
+.project-section-row-strip > [data-add-section] {
   flex: 0 0 auto;
   justify-self: end;
+  white-space: nowrap;
+}
+
+.project-section-list > [data-add-section] {
+  flex: 0 0 auto;
+  justify-self: start;
+  margin-left: 0;
   white-space: nowrap;
 }
 
@@ -5894,59 +5900,6 @@ body.full-window-open {
   align-items: baseline;
   justify-content: space-between;
   gap: 12px;
-}
-
-.project-status-controls {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: end;
-  gap: 12px;
-  margin: 0 0 12px;
-  padding: 10px;
-  border: 1px solid #d8edf7;
-  border-radius: 8px;
-  background: #f8fdff;
-}
-
-.project-status-controls label {
-  display: grid;
-  gap: 5px;
-  min-width: min(260px, 100%);
-  color: var(--muted);
-  font-size: 0.76rem;
-  font-weight: 900;
-}
-
-.project-status-controls select {
-  min-height: 34px;
-  padding: 0 10px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  color: var(--ink);
-  background: #ffffff;
-  font: inherit;
-  font-size: 0.86rem;
-  font-weight: 800;
-}
-
-.project-status-controls .status-visibility-toggle {
-  display: inline-flex;
-  align-items: center;
-  min-width: auto;
-  min-height: 34px;
-  gap: 8px;
-  padding: 0 10px;
-  border: 1px solid #c5e5f1;
-  border-radius: 6px;
-  color: var(--ink);
-  background: #ffffff;
-  cursor: pointer;
-}
-
-.status-visibility-toggle input {
-  width: 16px;
-  height: 16px;
-  accent-color: #1f6ed4;
 }
 
 .project-title-row {
@@ -9713,6 +9666,18 @@ body[data-compile-theme] :is(.compile-code-tree-file.is-active, .compile-panel-t
   background: var(--compile-active) !important;
 }
 
+body[data-compile-theme] .compile-code-tree-file.is-selected {
+  color: #ffffff !important;
+  background: color-mix(in srgb, var(--compile-active) 72%, var(--compile-panel) 28%) !important;
+  outline: 1px solid color-mix(in srgb, var(--compile-active) 70%, #ffffff 30%) !important;
+  outline-offset: -1px !important;
+}
+
+body[data-compile-theme] .compile-code-tree-file.is-selected small,
+body[data-compile-theme] .compile-code-tree-file.is-selected .compile-file-extension {
+  color: #ffffff !important;
+}
+
 /* Solution Explorer: compact folder view with theme-aware Visual Studio style. */
 body[data-compile-theme] .compile-code-sidebar {
   background: var(--compile-panel) !important;
@@ -10568,7 +10533,6 @@ body[data-builder-theme="dark"] .project-view-tab-item.is-active {
 .project-dialog .nested-section-link,
 .project-dialog .section-bar > [data-add-section],
 .project-dialog .project-section-row-strip > [data-add-section],
-.project-dialog .project-section-list > [data-add-section],
 .project-dialog .project-section-toolbar > button {
   display: inline-flex !important;
   align-items: center !important;
@@ -10592,11 +10556,26 @@ body[data-builder-theme="dark"] .project-view-tab-item.is-active {
 }
 
 .project-dialog .section-bar > [data-add-section],
-.project-dialog .project-section-row-strip > [data-add-section],
-.project-dialog .project-section-list > [data-add-section] {
+.project-dialog .project-section-row-strip > [data-add-section] {
   flex: 0 0 auto !important;
   justify-self: end;
   max-width: min(170px, 28vw);
+}
+
+.project-dialog .project-section-list > [data-add-section] {
+  display: inline-flex !important;
+  flex: 0 0 auto !important;
+  align-items: center !important;
+  justify-content: center !important;
+  height: var(--builder-control-height, 30px) !important;
+  min-height: var(--builder-control-height, 30px) !important;
+  max-height: var(--builder-control-height, 30px) !important;
+  max-width: min(170px, 28vw);
+  margin-left: 0 !important;
+  overflow: hidden !important;
+  white-space: nowrap !important;
+  text-overflow: ellipsis;
+  box-shadow: none !important;
 }
 
 .project-dialog .project-section-toolbar > button {
