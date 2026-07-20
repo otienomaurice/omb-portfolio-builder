@@ -507,6 +507,7 @@ let activeSectionId = "brief";
 let projectViewTabs = [];
 let activeProjectViewTabId = "";
 let pendingProjectViewContext = null;
+let detachedProjectViewWindows = [];
 let expandedCategories = new Set();
 let pendingCreateCategoryId = "";
 let editingCategoryId = "";
@@ -552,6 +553,7 @@ let draftSavedSinceChanges = false;
 let projectSearchQuery = "";
 let activeDialogDrag = null;
 let activeDialogResize = null;
+let activeDetachedProjectViewDrag = null;
 let projectWindowBackStack = [];
 let projectWindowForwardStack = [];
 let suppressProjectWindowHistory = false;
@@ -4119,7 +4121,7 @@ function openProjectViewTab(stateKey = "brief", options = {}) {
     return true;
   }
   if (projectViewTabs.length >= 4) {
-    setStatus("You can keep up to four project section tabs open at the same time.");
+    setStatus("You can keep up to four project section views open at the same time.");
     return false;
   }
   const id = projectViewTabId();
@@ -4137,7 +4139,139 @@ function openProjectViewTab(stateKey = "brief", options = {}) {
   pendingEditor = null;
   renderAll();
   resetProjectWindowScroll();
-  setStatus("Opened project section in a separate tab.");
+  setStatus("Opened project section view.");
+  return true;
+}
+
+function detachedProjectWindowId() {
+  return `detached-project-view-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function renderDetachedNestedSectionNav(section, currentChildren = [], currentPath = [], windowId = "") {
+  const childRows = (currentChildren || [])
+    .map((item, index) => ({ item, index }))
+    .filter(({ item }) => item && !item.url && !item.artifact);
+  if (!childRows.length) return "";
+  return `
+    <nav class="detached-project-view-nav" aria-label="Subsections in this detached view">
+      ${childRows.map(({ item, index }) => {
+        const pathValue = customViewPathValue([...currentPath, index]);
+        return `
+          <button
+            class="nested-section-link"
+            type="button"
+            data-detached-window-node="${escapeHtml(windowId)}"
+            data-section-id="${escapeHtml(section.id)}"
+            data-node-path="${escapeHtml(pathValue)}"
+          >
+            ${escapeHtml(builderNodeTitle(item))}
+          </button>
+        `;
+      }).join("")}
+    </nav>
+  `;
+}
+
+function renderDetachedCustomSectionContent(project, sectionId, path = [], windowId = "") {
+  const section = (project.sections || []).find((item) => item.id === sectionId);
+  if (!section) return `<p class="evidence-empty">Section not found.</p>`;
+  normalizeBuilderSectionStorage(section);
+  const currentNode = path.length ? findBuilderNode(section, path) : section;
+  if (path.length && !currentNode) return `<p class="evidence-empty">Subsection not found.</p>`;
+  const currentChildren = path.length ? builderNodeChildren(currentNode) : sectionRootChildren(section);
+  const description = path.length ? currentNode?.description || "" : section.description || "";
+  const richDescription = path.length ? currentNode?.richDescription : section.richDescription;
+  const hasViewContent = richHasContent(richDescription) || Boolean(String(description || "").trim());
+  const fileListHtml = renderCustomFilesList(section, currentChildren, path);
+  const hasChildSections = (currentChildren || []).some((item) => item && !item.url && !item.artifact);
+  const emptyMetadata = !hasChildSections && !fileListHtml
+    ? `<p class="evidence-empty explorer-empty section-window-bottom-metadata">No subsections or files added yet.</p>`
+    : "";
+
+  return `
+    ${renderDetachedNestedSectionNav(section, currentChildren, path, windowId)}
+    <div class="section-window-view-canvas${hasViewContent || fileListHtml ? "" : " is-empty"}">
+      <div class="section-window-content-stack">
+        ${hasViewContent ? builderPreviewContent(richDescription, description, "") : ""}
+        ${fileListHtml}
+      </div>
+      ${emptyMetadata}
+    </div>
+  `;
+}
+
+function renderDetachedProjectViewWindow(win = {}) {
+  const project = (catalog.projects || []).find((item) => item.id === win.projectId);
+  if (!project) return "";
+  const [sectionId, pathValue = ""] = String(win.stateKey || "brief").split("|");
+  const path = nodePathFromString(pathValue);
+  const title = projectViewStateTitle(project, win.stateKey);
+  const content = sectionId === "brief"
+    ? `<div class="section-window-view-canvas"><div class="section-window-content-stack">${builderPreviewContent(project.summaryRich, project.summary || "", "") || `<p class="evidence-empty">No overview has been added yet.</p>`}</div></div>`
+    : sectionId === "compile-code"
+      ? `<div class="section-window-view-canvas"><p class="evidence-empty">Compile Code stays in the main project window so the editor, terminal, and compiler state are not duplicated.</p></div>`
+      : sectionId.startsWith("custom:")
+        ? renderDetachedCustomSectionContent(project, sectionId.replace("custom:", ""), path, win.id)
+        : `<div class="section-window-view-canvas"><p class="evidence-empty">Open this section from the main project window.</p></div>`;
+  return `
+    <section
+      class="detached-project-view-window"
+      data-detached-project-view="${escapeHtml(win.id)}"
+      style="left:${Number(win.x) || 72}px; top:${Number(win.y) || 72}px; width:${Number(win.width) || 760}px; height:${Number(win.height) || 520}px;"
+      role="dialog"
+      aria-label="${escapeHtml(title)}"
+    >
+      <div class="detached-project-view-heading" data-detached-project-view-drag="${escapeHtml(win.id)}">
+        <strong>${escapeHtml(title)}</strong>
+        <button class="project-window-close" type="button" data-close-detached-project-view="${escapeHtml(win.id)}" aria-label="Close detached project view">&times;</button>
+      </div>
+      <div class="detached-project-view-body">
+        ${content}
+      </div>
+    </section>
+  `;
+}
+
+function renderDetachedProjectViewWindows() {
+  document.querySelectorAll("[data-detached-project-view]").forEach((node) => node.remove());
+  detachedProjectViewWindows.forEach((win) => {
+    document.body.insertAdjacentHTML("beforeend", renderDetachedProjectViewWindow(win));
+  });
+}
+
+function detachedProjectViewElement(windowId = "") {
+  return [...document.querySelectorAll("[data-detached-project-view]")]
+    .find((element) => element.dataset.detachedProjectView === windowId) || null;
+}
+
+function openDetachedProjectViewWindow(stateKey = "brief", options = {}) {
+  const project = selectedProject();
+  if (!project) return false;
+  if (detachedProjectViewWindows.length >= 4) {
+    setStatus("You can keep up to four detached project windows open at the same time.");
+    return false;
+  }
+  const existing = detachedProjectViewWindows.find((win) => win.projectId === project.id && win.stateKey === stateKey);
+  if (existing) {
+    existing.x = Math.max(24, existing.x || 72);
+    existing.y = Math.max(24, existing.y || 72);
+    renderDetachedProjectViewWindows();
+    setStatus("That project view is already open in a separate window.");
+    return true;
+  }
+  const offset = detachedProjectViewWindows.length * 28;
+  detachedProjectViewWindows.push({
+    id: detachedProjectWindowId(),
+    projectId: project.id,
+    stateKey,
+    title: options.title || projectViewStateTitle(project, stateKey),
+    x: 72 + offset,
+    y: 72 + offset,
+    width: 820,
+    height: 560
+  });
+  renderDetachedProjectViewWindows();
+  setStatus("Opened project section in a separate window.");
   return true;
 }
 
@@ -4648,6 +4782,10 @@ function fullProjectPreviewHtmlExact(project) {
         background: transparent;
       }
 
+      body.project-isolated-preview .project-isolated-section {
+        padding: 0;
+      }
+
       body.project-isolated-preview .category-heading,
       body.project-isolated-preview .category-description {
         display: none;
@@ -4661,6 +4799,18 @@ function fullProjectPreviewHtmlExact(project) {
         margin: 0;
         width: 100%;
         max-width: none;
+      }
+
+      body.project-isolated-preview .project-card .project-body,
+      body.project-isolated-preview .responsive-project.project-card .project-body {
+        width: 100%;
+        max-width: none;
+        justify-self: stretch;
+        padding: 12px;
+      }
+
+      body.project-isolated-preview .project-title-row {
+        margin: 0;
       }
 
       @media (max-width: 720px) {
@@ -10053,6 +10203,7 @@ function renderAll() {
   renderSectionTabs(project);
   renderProjectViewTabs(project);
   renderSectionContent(project);
+  renderDetachedProjectViewWindows();
   if (portfolioPreviewDialog?.open) renderPreview();
   updateBuilderWorkflow();
 }
@@ -13718,8 +13869,8 @@ projectViewTabsBar?.addEventListener("click", (event) => {
 projectViewContextMenu?.addEventListener("click", (event) => {
   const action = event.target.closest("[data-project-view-action]")?.dataset.projectViewAction;
   if (!action) return;
-  if (action === "open-tab" && pendingProjectViewContext) {
-    openProjectViewTab(pendingProjectViewContext.stateKey, { title: pendingProjectViewContext.title });
+  if (action === "open-window" && pendingProjectViewContext) {
+    openDetachedProjectViewWindow(pendingProjectViewContext.stateKey, { title: pendingProjectViewContext.title });
   }
   if (action === "edit-node" && pendingProjectViewContext) {
     openPendingEditor({
@@ -13736,6 +13887,88 @@ projectViewContextMenu?.addEventListener("click", (event) => {
     }
   }
   hideProjectViewContextMenu();
+});
+
+document.addEventListener("click", (event) => {
+  const closeButton = event.target.closest("[data-close-detached-project-view]");
+  if (closeButton) {
+    detachedProjectViewWindows = detachedProjectViewWindows.filter((win) => win.id !== closeButton.dataset.closeDetachedProjectView);
+    renderDetachedProjectViewWindows();
+    return;
+  }
+
+  const nodeButton = event.target.closest("[data-detached-window-node]");
+  if (nodeButton) {
+    const windowId = nodeButton.dataset.detachedWindowNode || "";
+    const sectionId = nodeButton.dataset.sectionId || "";
+    const pathValue = nodeButton.dataset.nodePath || "";
+    const win = detachedProjectViewWindows.find((item) => item.id === windowId);
+    if (!win || !sectionId) return;
+    win.stateKey = `custom:${sectionId}|${pathValue}`;
+    renderDetachedProjectViewWindows();
+  }
+});
+
+function syncDetachedProjectViewGeometry(windowId = "") {
+  const element = detachedProjectViewElement(windowId);
+  const win = detachedProjectViewWindows.find((item) => item.id === windowId);
+  if (!element || !win) return;
+  const rect = element.getBoundingClientRect();
+  win.x = Math.max(8, Math.round(rect.left));
+  win.y = Math.max(8, Math.round(rect.top));
+  win.width = Math.max(360, Math.round(rect.width));
+  win.height = Math.max(240, Math.round(rect.height));
+}
+
+document.addEventListener("pointerdown", (event) => {
+  const handle = event.target.closest("[data-detached-project-view-drag]");
+  if (!handle || event.button !== 0) return;
+  if (event.target.closest("button, a, input, select, textarea")) return;
+  const windowId = handle.dataset.detachedProjectViewDrag || "";
+  const element = detachedProjectViewElement(windowId);
+  const win = detachedProjectViewWindows.find((item) => item.id === windowId);
+  if (!element || !win) return;
+  const rect = element.getBoundingClientRect();
+  activeDetachedProjectViewDrag = {
+    element,
+    pointerId: event.pointerId,
+    windowId,
+    offsetX: event.clientX - rect.left,
+    offsetY: event.clientY - rect.top
+  };
+  handle.setPointerCapture?.(event.pointerId);
+  element.classList.add("is-detached-project-view-dragging");
+  event.preventDefault();
+});
+
+document.addEventListener("pointermove", (event) => {
+  if (!activeDetachedProjectViewDrag) return;
+  const { element, offsetX, offsetY, windowId } = activeDetachedProjectViewDrag;
+  const rect = element.getBoundingClientRect();
+  const margin = 8;
+  const x = Math.max(margin, Math.min(event.clientX - offsetX, window.innerWidth - rect.width - margin));
+  const y = Math.max(margin, Math.min(event.clientY - offsetY, window.innerHeight - rect.height - margin));
+  element.style.left = `${x}px`;
+  element.style.top = `${y}px`;
+  const win = detachedProjectViewWindows.find((item) => item.id === windowId);
+  if (win) {
+    win.x = Math.round(x);
+    win.y = Math.round(y);
+  }
+});
+
+document.addEventListener("pointerup", (event) => {
+  const resizedWindow = event.target.closest?.("[data-detached-project-view]");
+  if (resizedWindow?.dataset.detachedProjectView) {
+    syncDetachedProjectViewGeometry(resizedWindow.dataset.detachedProjectView);
+  }
+  if (!activeDetachedProjectViewDrag) return;
+  activeDetachedProjectViewDrag.element.classList.remove("is-detached-project-view-dragging");
+  detachedProjectViewElement(activeDetachedProjectViewDrag.windowId)
+    ?.querySelector("[data-detached-project-view-drag]")
+    ?.releasePointerCapture?.(activeDetachedProjectViewDrag.pointerId);
+  syncDetachedProjectViewGeometry(activeDetachedProjectViewDrag.windowId);
+  activeDetachedProjectViewDrag = null;
 });
 
 function deleteProjectNodeByPath(project, sectionId, path = []) {
