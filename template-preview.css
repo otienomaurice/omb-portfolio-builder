@@ -2999,6 +2999,79 @@ body.rich-image-dragging * {
   background: #fef2f2;
 }
 
+.compile-live-diagnostics {
+  display: grid;
+  gap: 7px;
+  border: 1px solid rgba(14, 116, 144, 0.22);
+  border-radius: 7px;
+  padding: 9px 10px;
+  background: #eef9fd;
+  color: #0f2433;
+  font-size: 0.84rem;
+  line-height: 1.35;
+}
+
+.compile-live-diagnostics strong {
+  font-size: 0.78rem;
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
+}
+
+.compile-live-diagnostics.is-clean {
+  border-color: rgba(22, 163, 74, 0.28);
+  background: #ecfdf3;
+}
+
+.compile-live-diagnostics.is-dirty {
+  border-color: rgba(220, 38, 38, 0.32);
+  background: #fff7f7;
+}
+
+.compile-live-diagnostics.is-checking {
+  border-color: rgba(14, 165, 233, 0.3);
+  background: #effaff;
+}
+
+.compile-diagnostic-list {
+  display: grid;
+  gap: 6px;
+}
+
+.compile-diagnostic-row {
+  display: grid;
+  grid-template-columns: minmax(160px, 260px) minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 6px;
+  padding: 7px 8px;
+  background: rgba(255, 255, 255, 0.82);
+}
+
+.compile-diagnostic-location {
+  color: #0e7490;
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.compile-diagnostic-message {
+  color: #172033;
+}
+
+.compile-diagnostic-error .compile-diagnostic-location {
+  color: #b91c1c;
+}
+
+.compile-diagnostic-warning .compile-diagnostic-location {
+  color: #b45309;
+}
+
+.compile-diagnostic-note .compile-diagnostic-location,
+.compile-diagnostic-info .compile-diagnostic-location {
+  color: #2563eb;
+}
+
 .compile-code-empty {
   padding: 18px;
 }
@@ -7481,6 +7554,36 @@ body[data-builder-theme="dark"] .compile-message-empty {
   background: #0f172a;
 }
 
+body[data-builder-theme="dark"] .compile-live-diagnostics {
+  border-color: var(--builder-dark-line);
+  color: #e5edf6;
+  background: #101923;
+}
+
+body[data-builder-theme="dark"] .compile-live-diagnostics.is-clean {
+  border-color: rgba(34, 197, 94, 0.36);
+  background: #12351f;
+}
+
+body[data-builder-theme="dark"] .compile-live-diagnostics.is-dirty {
+  border-color: rgba(248, 113, 113, 0.36);
+  background: #3a1717;
+}
+
+body[data-builder-theme="dark"] .compile-live-diagnostics.is-checking {
+  border-color: rgba(56, 189, 248, 0.36);
+  background: #0c3144;
+}
+
+body[data-builder-theme="dark"] .compile-diagnostic-row {
+  border-color: var(--builder-dark-line);
+  background: #0f172a;
+}
+
+body[data-builder-theme="dark"] .compile-diagnostic-message {
+  color: #e5edf6;
+}
+
 body[data-builder-theme="dark"] .compile-code-workspace,
 body[data-builder-theme="dark"] .compile-code-sidebar,
 body[data-builder-theme="dark"] .compile-code-main,
@@ -11680,12 +11783,15 @@ body[data-builder-theme="dark"] .project-dialog .project-section-toolbar {
 
 .project-dialog.is-compile-code-active [data-compile-workspace] [data-compile-active-editor] {
   display: block !important;
+  width: 100% !important;
   min-width: max-content !important;
   min-height: 100% !important;
+  box-sizing: border-box !important;
   padding: 12px 14px !important;
   outline: none !important;
   white-space: pre !important;
   tab-size: 2 !important;
+  cursor: text !important;
   color: var(--compile-text, #e6edf3) !important;
   -webkit-text-fill-color: currentColor !important;
   caret-color: var(--compile-text, #ffffff) !important;

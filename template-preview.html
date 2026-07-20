@@ -11,7 +11,7 @@
     <link rel="shortcut icon" href="assets/favicon.ico" />
     <link rel="apple-touch-icon" sizes="180x180" href="assets/apple-touch-icon.png" />
     <link rel="stylesheet" href="styles.css" />
-    <link rel="stylesheet" href="template-preview.css?v=0.2.73" />
+    <link rel="stylesheet" href="template-preview.css?v=0.2.75" />
   </head>
   <body class="template-preview-page">
       <header class="template-header">
@@ -509,15 +509,16 @@
                       <summary><span class="guide-card-title">Compile Code Workspace</span><span class="guide-card-summary">Use the built-in IDE-style workspace for source files, folders, compiler output, terminal commands, and HDL scope viewing.</span></summary>
                       <div>
                           <p>Compile Code is for local engineering work inside a project. It is separate from Add Code, which is only for polished source snippets that should appear in the public portfolio. Compile Code can stay empty, but when you use it, treat it like a small project workspace.</p>
-                          <p>The left explorer holds folders and source files. Drag the vertical divider beside Solution Explorer when names need more room. Imported files and imported directories appear in the tree without opening editor tabs; click a file in the tree when you want to view or edit it. The editor opens closeable file views, and the bottom output area contains Console, Messages, Terminal, Input, and Scope so build feedback and run settings stay organized instead of mixing everything into one box.</p>
+                          <p>The left explorer holds folders and source files. Drag the vertical divider beside Solution Explorer when names need more room. Imported files and imported directories appear in the tree without opening editor tabs; click a file in the tree when you want to view or edit it. The editor opens closeable file views, and the bottom output area contains Console, Messages, Terminal, Input, and Scope so build feedback, live syntax diagnostics, and run settings stay organized instead of mixing everything into one box.</p>
                           <ol>
                               <li>Right-click the workspace tree to add a source file, create a folder, import several files, import a directory, move selected files, or delete a selected file or folder. Compiler checks and tool installation live under the Tools menu, not in the right-click tree menu.</li>
                               <li>Ctrl-click files in the Solution Explorer to select several files, then right-click one of the selected files and choose Delete selected or Move selected.</li>
                               <li>Right-click a folder to delete the folder and the files contained inside it after confirmation.</li>
-                              <li>Use normal keyboard editing inside editable fields, including Ctrl+Z and Ctrl+Y for undo and redo.</li>
+                              <li>Use normal keyboard editing inside editable fields, including Ctrl+V paste, right-click Paste, Ctrl+Z undo, and Ctrl+Y redo. In the code editor, blank editor space is still treated as the active insertion area.</li>
                               <li>Use File details only when you need to view or edit the absolute path, source language, HDL role, file name, file type, or save status. It opens as a separate moveable, resizable window so it does not steal editor space.</li>
                               <li>Use Save Source or Ctrl+S to write the active file into the project workspace. Use Save Source As from the File menu when you need an external copy in another location.</li>
                               <li>Use Beautify to clean the whole active file for C, C++, Verilog, SystemVerilog, LTspice, Java, JavaScript, Python, HTML, or support text files. Syntax coloring updates while typing, after import, and after beautify.</li>
+                              <li>As you type, the builder waits briefly, runs a background syntax check, and shows line and character diagnostics in Messages without saving the file.</li>
                               <li>Use Compile to check or build the active source file.</li>
                               <li>Use Build project when the language needs several files from the project workspace.</li>
                               <li>Use Run to execute supported languages after a successful build.</li>
@@ -1419,7 +1420,7 @@
           <button type="button" data-rich-action="edit-block">Edit selected block</button>
           <button class="danger-menu-item" type="button" data-rich-action="delete-block">Delete selected block</button>
       </div>
-      <script src="electronics-search.js?v=0.2.73"></script>
-      <script src="template-preview.js?v=0.2.73"></script>
+      <script src="electronics-search.js?v=0.2.75"></script>
+      <script src="template-preview.js?v=0.2.75"></script>
   </body>
 </html>
