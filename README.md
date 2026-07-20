@@ -304,6 +304,7 @@ Use the workflow in [BRANCHING.md](BRANCHING.md):
 | `status_bar_bottom_065` | Bumps the builder to `0.2.65` and pins the Compile Code blue status strip to the true bottom edge of the output dock while preserving top-edge drag resizing. | `development` | `development` | Active |
 | `fix_section_toolbar_066` | Bumps the builder to `0.2.66` and restores project section toolbar actions so Add subsection, Add file or image, and nested delete work from the section-tabs toolbar. | `development` | `development` | Active |
 | `project_overlay_window_067` | Bumps the builder to `0.2.67` and keeps right-click project section windows layered inside the active project workspace instead of being hidden behind or rendered outside the current view. | `development` | `development` | Active |
+| `locked_status_bottom_068` | Bumps the builder to `0.2.68` and makes the locked Compile Code output status strip the true bottom grid row so no dark gap appears below the blue status area. | `development` | `development` | Active |
 
 </details>
 
