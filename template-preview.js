@@ -261,6 +261,7 @@ const compileThemeIds = [
 const defaultBuilderPreferences = { theme: "light", compileTheme: "dark-vs", zoom: 1 };
 let builderPreferences = { ...defaultBuilderPreferences };
 let activeCompileTreeContext = null;
+let activeScopeSignalContext = null;
 let activeOutputDockDrag = null;
 let activeOutputDockResize = null;
 let activeCompileSidebarResize = null;
@@ -2117,7 +2118,8 @@ function ensureCompileCode(project) {
   Object.entries(project.compileCode.scopeSettings).forEach(([key, settings]) => {
     project.compileCode.scopeSettings[key] = {
       color: normalizeScopeColor(settings?.color, scopeDefaultColorForIndex(Object.keys(project.compileCode.scopeSettings).indexOf(key))),
-      radix: normalizeScopeRadix(settings?.radix)
+      radix: normalizeScopeRadix(settings?.radix),
+      stateMap: normalizeScopeStateMap(settings?.stateMap)
     };
   });
   const simulationTimeout = Number(project.compileCode.hdlSimulationTimeoutMs);
@@ -2784,8 +2786,8 @@ function normalizeBuilderZoom(value = 1) {
 
 function normalizeCompileOutputHeight(value) {
   const numeric = Number(value);
-  if (!Number.isFinite(numeric)) return 190;
-  return Math.max(104, Math.min(320, Math.round(numeric)));
+  if (!Number.isFinite(numeric)) return 170;
+  return Math.max(120, Math.min(340, Math.round(numeric)));
 }
 
 function normalizeCompileSidebarWidth(value) {
@@ -5522,7 +5524,7 @@ function buildTemplateProject() {
     links: [],
     sections: [],
     sectionModelVersion: 3,
-    compileCode: { files: [], directories: [], openFileIds: [], activeFileId: "", terminal: "", outputDockHeight: 190 }
+    compileCode: { files: [], directories: [], openFileIds: [], activeFileId: "", terminal: "", outputDockHeight: 170 }
   };
 }
 
@@ -9337,10 +9339,12 @@ function activeCompileWaveform(project, file = activeCompileFile(project)) {
 const scopeSignalDefaultColors = ["#38bdf8", "#facc15", "#34d399", "#f472b6", "#a78bfa", "#fb923c", "#60a5fa", "#f87171"];
 const scopeRadixOptions = [
   { id: "bin", label: "Binary" },
+  { id: "dec", label: "Decimal" },
   { id: "hex", label: "Hex" },
   { id: "unsigned", label: "Unsigned" },
   { id: "signed", label: "Signed" },
   { id: "oct", label: "Octal" },
+  { id: "state", label: "State names" },
   { id: "ascii", label: "ASCII" }
 ];
 const scopeZoomOptions = [1, 2, 4, 8];
@@ -9359,6 +9363,35 @@ function normalizeScopeRadix(value = "bin") {
   return scopeRadixOptions.some((option) => option.id === clean) ? clean : "bin";
 }
 
+function normalizeScopeStateMap(value = {}) {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return Object.fromEntries(Object.entries(value)
+      .map(([key, label]) => [String(key).trim(), String(label || "").trim()])
+      .filter(([key, label]) => key && label));
+  }
+  return {};
+}
+
+function parseScopeStateMapText(text = "") {
+  const map = {};
+  String(text || "")
+    .split(/[\n,;]+/)
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+    .forEach((entry) => {
+      const match = entry.match(/^([^:=]+)\s*(?::|=)\s*(.+)$/);
+      if (!match) return;
+      map[match[1].trim()] = match[2].trim();
+    });
+  return normalizeScopeStateMap(map);
+}
+
+function scopeStateMapText(map = {}) {
+  return Object.entries(normalizeScopeStateMap(map))
+    .map(([key, label]) => `${key}=${label}`)
+    .join(", ");
+}
+
 function normalizeScopeZoom(value = 1) {
   const clean = Number(value);
   return scopeZoomOptions.includes(clean) ? clean : 1;
@@ -9373,7 +9406,8 @@ function scopeSignalSettings(project, signal, index = 0) {
   const key = scopeSignalKey(signal, index);
   workspace.scopeSettings[key] = {
     color: normalizeScopeColor(workspace.scopeSettings[key]?.color, scopeDefaultColorForIndex(index)),
-    radix: normalizeScopeRadix(workspace.scopeSettings[key]?.radix)
+    radix: normalizeScopeRadix(workspace.scopeSettings[key]?.radix),
+    stateMap: normalizeScopeStateMap(workspace.scopeSettings[key]?.stateMap)
   };
   return { key, ...workspace.scopeSettings[key] };
 }
@@ -9384,13 +9418,26 @@ function vcdBitsForValue(value = "", width = 1) {
   return clean.padStart(Math.max(1, Number(width) || clean.length), "0");
 }
 
-function formatScopeValue(value = "", width = 1, radix = "bin") {
+function formatScopeValue(value = "", width = 1, radix = "bin", stateMap = {}) {
   const clean = String(value || "x").toLowerCase();
   const bits = vcdBitsForValue(clean, width);
   if (!bits) return clean;
   const unsigned = BigInt(`0b${bits}`);
+  if (radix === "state") {
+    const candidates = [
+      bits,
+      `0b${bits}`,
+      unsigned.toString(10),
+      `0x${unsigned.toString(16).toUpperCase()}`,
+      `0x${unsigned.toString(16).toLowerCase()}`
+    ];
+    const normalizedMap = normalizeScopeStateMap(stateMap);
+    const named = candidates.map((candidate) => normalizedMap[candidate]).find(Boolean);
+    return named || unsigned.toString(10);
+  }
   if (radix === "hex") return `0x${unsigned.toString(16).toUpperCase()}`;
   if (radix === "oct") return `0o${unsigned.toString(8)}`;
+  if (radix === "dec") return unsigned.toString(10);
   if (radix === "unsigned") return unsigned.toString(10);
   if (radix === "signed") {
     const signBit = bits[0] === "1";
@@ -9437,14 +9484,14 @@ function renderScalarWavePath(changes = [], maxTime = 1, rowY = 0, left = 150, w
   return path;
 }
 
-function renderBusWaveLabels(changes = [], maxTime = 1, rowY = 0, left = 150, width = 680, radix = "bin", signalWidth = 1) {
+function renderBusWaveLabels(changes = [], maxTime = 1, rowY = 0, left = 150, width = 680, radix = "bin", signalWidth = 1, stateMap = {}) {
   const normalized = (Array.isArray(changes) && changes.length ? changes : [{ time: 0, value: "x" }])
     .map((change) => ({ time: Number(change.time) || 0, value: String(change.value ?? "x") }))
     .sort((a, b) => a.time - b.time)
     .slice(0, 12);
   return normalized.map((change, index) => {
     const x = left + Math.max(0, Math.min(1, change.time / Math.max(1, maxTime))) * width;
-    const formatted = formatScopeValue(change.value, signalWidth, radix);
+    const formatted = formatScopeValue(change.value, signalWidth, radix, stateMap);
     const value = formatted.length > 14 ? `${formatted.slice(0, 14)}...` : formatted;
     return `<text x="${Math.min(left + width - 70, x + 4).toFixed(1)}" y="${rowY + 19}" class="scope-value-label">${escapeHtml(value)}</text>${index ? `<line x1="${x.toFixed(1)}" x2="${x.toFixed(1)}" y1="${rowY + 5}" y2="${rowY + 25}" class="scope-transition" />` : ""}`;
   }).join("");
@@ -9470,19 +9517,28 @@ function renderScopeSignalControls(project, signals = []) {
         <span>Signal filter</span>
         <input type="search" data-scope-filter value="${escapeHtml(workspace.scopeFilter || "")}" placeholder="clk, reset, data..." />
       </label>
-      ${signals.map((signal, index) => {
-        const settings = scopeSignalSettings(project, signal, index);
-        const name = String(signal.name || signal.reference || `signal_${index + 1}`);
-        return `
-          <label class="scope-signal-control">
-            <span title="${escapeHtml(name)}">${escapeHtml(name.length > 22 ? `${name.slice(0, 22)}...` : name)}</span>
-            <input type="color" value="${escapeHtml(settings.color)}" data-scope-signal="${escapeHtml(settings.key)}" data-scope-control="color" />
-            <select data-scope-signal="${escapeHtml(settings.key)}" data-scope-control="radix">
-              ${scopeRadixOptions.map((option) => `<option value="${escapeHtml(option.id)}"${option.id === settings.radix ? " selected" : ""}>${escapeHtml(option.label)}</option>`).join("")}
-            </select>
-          </label>
-        `;
-      }).join("")}
+    </div>
+  `;
+}
+
+function renderScopeSignalContextMenu() {
+  return `
+    <div class="scope-signal-context-menu" data-scope-signal-context-menu hidden>
+      <label>
+        <span>Color</span>
+        <input type="color" data-scope-context-color />
+      </label>
+      <label>
+        <span>Radix</span>
+        <select data-scope-context-radix>
+          ${scopeRadixOptions.map((option) => `<option value="${escapeHtml(option.id)}">${escapeHtml(option.label)}</option>`).join("")}
+        </select>
+      </label>
+      <label class="scope-state-map-field">
+        <span>State names</span>
+        <input type="text" data-scope-context-state-map placeholder="0=IDLE, 1=RUN" />
+      </label>
+      <button type="button" data-scope-apply-context>Apply</button>
     </div>
   `;
 }
@@ -9542,12 +9598,12 @@ function renderHdlScope(waveform, project = selectedProject()) {
     const scalar = Number(signal.width || 1) <= 1;
     const settings = scopeSignalSettings(project, signal, index);
     return `
-      <g class="scope-row">
+      <g class="scope-row" data-scope-signal-key="${escapeHtml(settings.key)}">
         <text x="12" y="${y + 20}" class="scope-signal-label">${escapeHtml(name.length > 24 ? `${name.slice(0, 24)}...` : name)}</text>
         <line x1="${left}" x2="${left + width}" y1="${y + 27}" y2="${y + 27}" class="scope-row-line" />
         ${scalar
           ? `<path d="${renderScalarWavePath(changes, maxTime, y, left, width)}" class="scope-wave" style="stroke:${escapeHtml(settings.color)}" />`
-          : `<line x1="${left}" x2="${left + width}" y1="${y + 15}" y2="${y + 15}" class="scope-bus" style="stroke:${escapeHtml(settings.color)}" />${renderBusWaveLabels(changes, maxTime, y, left, width, settings.radix, signal.width)}`}
+          : `<line x1="${left}" x2="${left + width}" y1="${y + 15}" y2="${y + 15}" class="scope-bus" style="stroke:${escapeHtml(settings.color)}" />${renderBusWaveLabels(changes, maxTime, y, left, width, settings.radix, signal.width, settings.stateMap)}`}
       </g>
     `;
   }).join("");
@@ -9559,10 +9615,6 @@ function renderHdlScope(waveform, project = selectedProject()) {
       <span>${transitionCount} transition${transitionCount === 1 ? "" : "s"}</span>
       ${unknownSignalCount ? `<span class="scope-unknown-badge">${unknownSignalCount} signal${unknownSignalCount === 1 ? "" : "s"} with X/Z</span>` : ""}
     </div>
-    <div class="compile-scope-debug-summary">
-      <strong>HDL debug view</strong>
-      <span>Use zoom for dense timing, filter noisy signal lists, and set each signal's color/radix before comparing bus values.</span>
-    </div>
     ${renderScopeSignalControls(project, signals)}
     <div class="compile-scope-scroll">
       <svg class="compile-scope-svg" style="width:${left + width + 20}px; max-width:none;" viewBox="0 0 ${left + width + 20} ${height}" role="img" aria-label="HDL waveform scope">
@@ -9570,6 +9622,7 @@ function renderHdlScope(waveform, project = selectedProject()) {
         ${rows}
       </svg>
     </div>
+    ${renderScopeSignalContextMenu()}
   `;
 }
 
@@ -9996,6 +10049,8 @@ function renderCompileAppendChooser(project, workspace = {}) {
 function renderCompileCodeSection(project) {
   const workspace = ensureCompileCode(project);
   const activeFile = activeCompileFile(project);
+  const activePanel = activeCompilePanel(project, activeFile);
+  const showSourceCommandBar = activePanel !== "scope";
   const dockUnlocked = Boolean(workspace.outputDockUnlocked);
   const dockPosition = workspace.outputDockPosition || { x: 72, y: 120 };
   const outputHeight = normalizeCompileOutputHeight(workspace.outputDockHeight);
@@ -10039,7 +10094,7 @@ function renderCompileCodeSection(project) {
               </div>
             </section>
           </div>
-          <div class="compile-code-command-bar">
+          <div class="compile-code-command-bar${showSourceCommandBar ? "" : " is-hidden-in-scope"}">
             <button type="button" data-compile-save>Save source</button>
             <button type="button" data-compile-beautify>Beautify</button>
             <button type="button" data-compile-toggle-file-details aria-pressed="${workspace.showFileDetails ? "true" : "false"}">${workspace.showFileDetails ? "Hide details" : "File details"}</button>
@@ -14333,6 +14388,19 @@ sectionContent.addEventListener("click", async (event) => {
     hideCompileTreeContextMenus();
     return;
   }
+  if (hasDataset("scopeApplyContext")) {
+    if (!activeScopeSignalContext?.signalKey) return;
+    const menu = button.closest("[data-scope-signal-context-menu]");
+    const settings = currentScopeSignalContextSettings(project, activeScopeSignalContext.signalKey);
+    settings.color = normalizeScopeColor(menu?.querySelector("[data-scope-context-color]")?.value, settings.color);
+    settings.radix = normalizeScopeRadix(menu?.querySelector("[data-scope-context-radix]")?.value);
+    settings.stateMap = parseScopeStateMapText(menu?.querySelector("[data-scope-context-state-map]")?.value || "");
+    addCompileMessage(project, `Scope signal display updated (${settings.radix}).`, "info");
+    hideScopeSignalContextMenu();
+    scheduleAutosave(900);
+    renderSectionContent(project);
+    return;
+  }
   if (button.dataset.addSection) {
     await addCustomSection();
     return;
@@ -14713,7 +14781,49 @@ function hideCompileTreeContextMenus(options = {}) {
   if (options.clearContext !== false) activeCompileTreeContext = null;
 }
 
+function hideScopeSignalContextMenu(options = {}) {
+  sectionContent.querySelectorAll("[data-scope-signal-context-menu]").forEach((menu) => {
+    menu.hidden = true;
+  });
+  if (options.clearContext !== false) activeScopeSignalContext = null;
+}
+
+function currentScopeSignalContextSettings(project, signalKey = "") {
+  const workspace = ensureCompileCode(project);
+  workspace.scopeSettings[signalKey] = workspace.scopeSettings[signalKey] || {};
+  const settings = workspace.scopeSettings[signalKey];
+  settings.color = normalizeScopeColor(settings.color, "#38bdf8");
+  settings.radix = normalizeScopeRadix(settings.radix);
+  settings.stateMap = normalizeScopeStateMap(settings.stateMap);
+  return settings;
+}
+
 sectionContent.addEventListener("contextmenu", (event) => {
+  const scopeRow = event.target.closest("[data-scope-signal-key]");
+  if (scopeRow) {
+    const project = selectedProject();
+    const menu = sectionContent.querySelector("[data-scope-signal-context-menu]");
+    const signalKey = scopeRow.dataset.scopeSignalKey || "";
+    if (!project || !menu || !signalKey) return;
+    event.preventDefault();
+    hideCompileTreeContextMenus();
+    hideScopeSignalContextMenu({ clearContext: false });
+    const settings = currentScopeSignalContextSettings(project, signalKey);
+    const color = menu.querySelector("[data-scope-context-color]");
+    const radix = menu.querySelector("[data-scope-context-radix]");
+    const stateMap = menu.querySelector("[data-scope-context-state-map]");
+    if (color) color.value = settings.color;
+    if (radix) radix.value = settings.radix;
+    if (stateMap) stateMap.value = scopeStateMapText(settings.stateMap);
+    activeScopeSignalContext = { signalKey };
+    menu.hidden = false;
+    const width = 220;
+    const height = 150;
+    menu.style.left = `${Math.min(event.clientX, window.innerWidth - width - 8)}px`;
+    menu.style.top = `${Math.min(event.clientY, window.innerHeight - height - 8)}px`;
+    return;
+  }
+
   const sidebar = event.target.closest(".compile-code-sidebar");
   if (!sidebar) return;
   const project = selectedProject();
@@ -14948,8 +15058,10 @@ document.addEventListener("pointercancel", endCompileFloatingWindowDrag);
 
 document.addEventListener("click", (event) => {
   if (event.target.closest("[data-compile-tree-context-menu]")) return;
+  if (event.target.closest("[data-scope-signal-context-menu]")) return;
   if (event.target.closest("#project-view-context-menu")) return;
   hideCompileTreeContextMenus();
+  hideScopeSignalContextMenu();
   hideProjectViewContextMenu();
 });
 
