@@ -302,6 +302,7 @@ Use the workflow in [BRANCHING.md](BRANCHING.md):
 | `hdl_cache_refresh_063` | Bumps the builder to `0.2.63`, forces Verilog/SystemVerilog simulator runs to rebuild from the current source snapshot, and opens the Scope panel automatically when local simulation produces waveform data. | `development` | `development` | Active |
 | `scope_layout_controls_064` | Bumps the builder to `0.2.64`, adds decimal and FSM state-name radix display for HDL scope signals, moves per-signal controls into right-click menus, hides source commands while viewing Scope, and keeps the output/status dock draggable and bottom-aligned. | `development` | `development` | Active |
 | `status_bar_bottom_065` | Bumps the builder to `0.2.65` and pins the Compile Code blue status strip to the true bottom edge of the output dock while preserving top-edge drag resizing. | `development` | `development` | Active |
+| `fix_section_toolbar_066` | Bumps the builder to `0.2.66` and restores project section toolbar actions so Add subsection, Add file or image, and nested delete work from the section-tabs toolbar. | `development` | `development` | Active |
 
 </details>
 
