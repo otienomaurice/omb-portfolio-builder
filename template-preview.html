@@ -337,7 +337,7 @@
               <div class="project-preview-heading">
                   <div>
                       <p class="eyebrow">Builder guide</p>
-                      <h2>How to build the portfolio</h2>
+                      <h2>Portfolio Builder Help</h2>
                   </div>
                   <button class="project-window-close" id="builder-guide-close" type="button" aria-label="Close builder guide">&times;</button>
               </div>
@@ -350,24 +350,26 @@
               <div class="builder-guide-tools">
                   <label>
                       <span>Search guide</span>
-                      <input id="builder-guide-search" type="search" placeholder="Try images, save, publish, links, mobile..." autocomplete="off" />
+                      <input id="builder-guide-search" type="search" placeholder="Search profile, projects, files, code, preview, publish..." autocomplete="off" />
                   </label>
                   <div class="builder-guide-topic-bar" aria-label="Guide topics">
                       <button type="button" data-guide-topic="all" aria-pressed="true">All</button>
-                      <button type="button" data-guide-topic="setup">Setup</button>
+                      <button type="button" data-guide-topic="profile">Profile</button>
                       <button type="button" data-guide-topic="projects">Projects</button>
                       <button type="button" data-guide-topic="editor">Editor</button>
+                      <button type="button" data-guide-topic="assets">Files</button>
+                      <button type="button" data-guide-topic="code">Code</button>
                       <button type="button" data-guide-topic="preview">Preview</button>
-                  <button type="button" data-guide-topic="publish">Publish</button>
-                  <button type="button" data-guide-topic="mobile">Mobile</button>
-                  <button type="button" data-guide-topic="security">Security</button>
-                  <button type="button" data-guide-topic="update">Updates</button>
+                      <button type="button" data-guide-topic="publish">Publish</button>
+                      <button type="button" data-guide-topic="mobile">Mobile</button>
+                      <button type="button" data-guide-topic="security">Security</button>
+                      <button type="button" data-guide-topic="update">Updates</button>
                   </div>
-                  <p class="builder-guide-results" id="builder-guide-results">Showing all guide topics.</p>
+                  <p class="builder-guide-results" id="builder-guide-results">Choose a topic to open a focused guide window.</p>
               </div>
               <div class="builder-guide-sections" id="builder-guide-sections">
-                  <details class="builder-guide-section" data-guide-section="setup profile" open>
-                      <summary>First setup: identity, branding, and contact details</summary>
+                  <details class="builder-guide-section" data-guide-section="profile setup identity branding contact assets" open>
+                      <summary><span class="guide-card-title">Profile, Branding, And Contact</span><span class="guide-card-summary">Set the name, contact links, resume, profile photo, brand icon, and public identity layer.</span></summary>
                       <div>
                           <p>Start here when the builder is blank, when you are setting up a new machine, or when the public website still has placeholder identity details. This information becomes the stable identity layer of the portfolio: the name recruiters see, the contact links they use, and the visual brand that makes the site recognizable.</p>
                           <p>Think of this step as setting the portfolio header, business card, and public identity before adding project evidence. Projects can change often, but the profile section should stay clean, accurate, and easy to verify.</p>
@@ -388,8 +390,8 @@
                           <p>Good profile text is short and recruiter-facing. Put personality in Fun facts and personal sections, not in the contact labels. The contact panel should answer one question quickly: who is this person and how do I reach them?</p>
                       </div>
                   </details>
-                  <details class="builder-guide-section" data-guide-section="setup">
-                      <summary>Front page text and Fun facts</summary>
+                  <details class="builder-guide-section" data-guide-section="profile setup frontpage funfacts">
+                      <summary><span class="guide-card-title">Front Page Text And Fun Facts</span><span class="guide-card-summary">Write the first message visitors see and add a short human note near the top.</span></summary>
                       <div>
                           <p>Front page text controls the first message recruiters see before they click into projects. It should explain the portfolio in plain language: what kind of engineering work is shown, what strengths the site is meant to prove, and why the visitor should keep exploring.</p>
                           <p>Fun facts sit near the top of the site and make the portfolio feel human without interrupting the engineering content. They should be short, memorable, and safe for a professional audience.</p>
@@ -409,8 +411,8 @@
                           <p>Example Fun facts: I built a builder to build this portfolio. I enjoy a good argument about soccer tactics, culture, and refereeing. The best fun facts make a recruiter remember you while still keeping the portfolio focused on engineering evidence.</p>
                       </div>
                   </details>
-                  <details class="builder-guide-section" data-guide-section="projects" open>
-                      <summary>Project categories and project creation</summary>
+                  <details class="builder-guide-section" data-guide-section="projects categories creation" open>
+                      <summary><span class="guide-card-title">Project Categories And Creation</span><span class="guide-card-summary">Create categories, add projects, choose appearance, and keep project lists clean.</span></summary>
                       <div>
                           <p>All project creation starts from the main Add project control. This keeps project creation consistent and prevents hidden category-specific add buttons from creating projects with incomplete metadata.</p>
                           <p>Categories are the top-level filing system for engineering work. Use them like a recruiter would scan them: Analog and Mixed Signal, Digital, Embedded, PCB, Verification, Power Electronics, or any other category that describes the work clearly.</p>
@@ -430,8 +432,8 @@
                           <p>After creating a project, open it and fill the Overview, then manually add the evidence sections the project actually needs. A project with only a title should not be published because it gives the visitor no evidence to inspect.</p>
                       </div>
                   </details>
-                  <details class="builder-guide-section" data-guide-section="projects editor">
-                      <summary>Project structure and parser rules</summary>
+                  <details class="builder-guide-section" data-guide-section="projects editor parser sections subsections">
+                      <summary><span class="guide-card-title">Project Structure And Parser Rules</span><span class="guide-card-summary">Understand sections, subsections, overviews, project preview, and what appears on the website.</span></summary>
                       <div>
                           <p>Projects are built by the parser from the sections you save. The parser reads typed content, rich text, files, images, links, and section order, then builds the project page in the same style used by the public website.</p>
                           <p>The goal is to avoid hand-editing website code. You organize the project in the builder, save it, preview it, and let the parser produce the clean recruiter-facing version.</p>
@@ -451,8 +453,8 @@
                           <p>Use Save to parse the project and update its project preview. Use Save and close when you are done editing that project window. If the project preview does not look right, fix it in the builder before using Save draft or Apply to site.</p>
                       </div>
                   </details>
-                  <details class="builder-guide-section" data-guide-section="editor">
-                      <summary>Rich text editing and right-click menu</summary>
+                  <details class="builder-guide-section" data-guide-section="editor richtext formatting keyboard mouse">
+                      <summary><span class="guide-card-title">Rich Text Editing</span><span class="guide-card-summary">Format selected text, paste cleanly, use keyboard shortcuts, and keep line breaks predictable.</span></summary>
                       <div>
                           <p>Rich text fields behave like document editors. Click where you want to type, highlight the exact words you want to edit, then apply formatting to that selection. Formatting should not change an entire paragraph unless the whole paragraph is selected.</p>
                           <p>The builder stores the text as structured content so the portfolio can render it cleanly later. That means the editor may standardize pasted formatting, but it should preserve intentional choices such as bold text, font size, color, links, hard line breaks, images, formulas, and code blocks.</p>
@@ -475,8 +477,8 @@
                           <p>If the selection menu disappears, click back inside the rich editor and highlight the text again. Before saving, read the section in the project preview to make sure line breaks, lists, and emphasized words still look natural.</p>
                       </div>
                   </details>
-                  <details class="builder-guide-section" data-guide-section="editor">
-                      <summary>Links, formulas, code, and pasted content</summary>
+                  <details class="builder-guide-section" data-guide-section="editor links formulas code compile">
+                      <summary><span class="guide-card-title">Links, Formulas, And Code</span><span class="guide-card-summary">Paste URLs, equations, source snippets, and runnable code without confusing one type for another.</span></summary>
                       <div>
                           <p>The builder distinguishes normal links from mathematical formulas because they behave differently on the public website. A link should take the visitor to a webpage or resource. A formula should render as math and stay readable inside the project explanation.</p>
                           <p>Use this section when pasting content from ChatGPT, documentation, GitHub, LinkedIn, LTspice notes, equations, source code, or lab references. The builder tries to recognize the content, but you should still check the preview before publishing.</p>
@@ -485,10 +487,6 @@
                               <li>Use Add mathematical formula only when you intentionally want a formula block.</li>
                               <li>Use Code block or Paste as code for C, C++, SystemVerilog, LTspice, Java, JavaScript, Python, and HTML snippets.</li>
                               <li>Choose Basic paste when you want the builder to clean extra trailing whitespace, or Keep source spacing when indentation is important.</li>
-                              <li>Use the built-in Compile Code workspace when you want a small IDE-style workspace with expandable folders, source files, closeable file views, syntax highlighting, beautification, compiler checks, console output, messages, real terminal commands, and project append controls.</li>
-                              <li>Use Compile to check or build the active source, Build project to build the project workspace, and Run to execute the built active program when the language supports execution.</li>
-                              <li>For Verilog and SystemVerilog, use Simulate to run the simulator. Simulation requires a Testbench file; plain Compile can still check or build HDL design files.</li>
-                              <li>Use Add testbench to create a starter testbench with $dumpfile and $dumpvars. Those waveform calls feed the signal scope, where HDL signals can be viewed over time.</li>
                               <li>Add Code is for presentation snippets in the portfolio. Compile Code is a separate local workspace for buildable source files, nested folders, terminal output, and command execution.</li>
                               <li>Links in rich text open as websites on the portfolio unless you attach them as downloadable files.</li>
                               <li>PDFs, spreadsheets, code files, archives, and documents are saved as downloadable resources.</li>
@@ -499,17 +497,37 @@
                               <li>Use link text that explains the destination, such as GitHub repository, LinkedIn profile, test report, or schematic PDF.</li>
                               <li>Use formulas for equations, transfer functions, gain expressions, timing relationships, or component calculations.</li>
                               <li>Use code blocks for short code examples that should be readable on the website; use files or GitHub links for long source trees.</li>
-                              <li>Right-click the project tree to create a file inside a selected folder, create a nested folder, import files, import a whole directory, move a source file, or delete the selected file or folder.</li>
-                              <li>Use Compile Code to create folders, import several files, import whole directories, test C, C++, Java, JavaScript, Python, HTML checks, and any installed Verilog, SystemVerilog, or LTspice command-line tools before deciding what to publish later.</li>
-                              <li>Use Show output for console logs, Messages for builder/compiler status, Terminal for real local commands, and Show scope for HDL timing waveforms after a successful testbench simulation. The output area stays locked by default and can be resized by dragging its top edge.</li>
-                              <li>Use Append code to project after selecting the correct section or nested subsection destination; the code is appended as a formatted code block.</li>
                               <li>If a link is accidentally treated as a formula, remove the formula block and paste it again as normal text or link content.</li>
                           </ul>
                           <p>When pasting from ChatGPT, review formulas and code before saving. If the content is a link, it should render as a clickable link, not as a formula. If the content is source code, it should render inside a dark code block with language coloring instead of becoming ordinary paragraph text.</p>
                       </div>
                   </details>
-                  <details class="builder-guide-section" data-guide-section="editor projects">
-                      <summary>Images and file evidence</summary>
+                  <details class="builder-guide-section" data-guide-section="code compile projects terminal hdl scope">
+                      <summary><span class="guide-card-title">Compile Code Workspace</span><span class="guide-card-summary">Use the built-in IDE-style workspace for source files, folders, compiler output, terminal commands, and HDL scope viewing.</span></summary>
+                      <div>
+                          <p>Compile Code is for local engineering work inside a project. It is separate from Add Code, which is only for polished source snippets that should appear in the public portfolio. Compile Code can stay empty, but when you use it, treat it like a small project workspace.</p>
+                          <p>The left explorer holds folders and source files. The editor opens one file at a time. The bottom output area contains Console, Messages, Terminal, and Scope so build feedback stays organized instead of mixing everything into one box.</p>
+                          <ol>
+                              <li>Right-click the workspace tree to add a source file, create a folder, import several files, import a directory, move a file, or delete a selected file or folder.</li>
+                              <li>Use Compile to check or build the active source file.</li>
+                              <li>Use Build project when the language needs several files from the project workspace.</li>
+                              <li>Use Run to execute supported languages after a successful build.</li>
+                              <li>Use Simulate for Verilog or SystemVerilog when a testbench is present.</li>
+                              <li>Use Append code to project to place the active source into a selected project section or nested subsection as a formatted code block.</li>
+                          </ol>
+                          <ul>
+                              <li>Console shows compiler and runtime output for the active source.</li>
+                              <li>Messages shows save, compile, build, append, tool-check, and simulation progress.</li>
+                              <li>Terminal runs local commands from the selected project compile folder.</li>
+                              <li>Scope appears for Verilog/SystemVerilog and shows VCD waveforms after simulation.</li>
+                              <li>The blue status strip stays fixed at the bottom of the output area while the output panel is resized.</li>
+                              <li>Icarus Verilog and vvp are the required HDL simulator tools. If Verilator or GTKWave are installed later, the builder detects them and uses Verilator lint as an extra advisory check.</li>
+                          </ul>
+                          <p>For HDL, add or mark a Testbench file before simulation. The testbench must call $dumpfile and $dumpvars so the scope has signal-over-time data. In the scope, use signal filter, time zoom, per-signal color, and per-signal radix controls to make debugging readable.</p>
+                      </div>
+                  </details>
+                  <details class="builder-guide-section" data-guide-section="assets editor projects files images evidence">
+                      <summary><span class="guide-card-title">Images And File Evidence</span><span class="guide-card-summary">Add images, PDFs, source files, reports, captions, and download-only evidence in the right place.</span></summary>
                       <div>
                           <p>Add evidence where it belongs so the final portfolio reads like a technical record, not a file dump. Recruiters should be able to click into a project and understand what was designed, what was tested, which tools were used, and what files support the claims.</p>
                           <p>Images are best for visual evidence: schematics, PCB layouts, test benches, oscilloscope captures, simulation plots, block diagrams, timing diagrams, microscope photos, assembled boards, or setup photos. Files are best for downloadable proof: PDFs, reports, source files, code archives, simulation decks, datasheets, or design notes.</p>
@@ -531,8 +549,8 @@
                           <p>Project evidence is saved under docs/project-folder/section-or-subsection/filename. For example, a SystemVerilog design file could be saved as docs/laser-link/design/filter.sv. The upload status shows the generated path after the file is saved. Use titles that explain the evidence: Oscilloscope capture, KiCad PCB layout, LTspice transient result, VCO test handout, measured ripple at load, and so on. Before publishing, click every visible image and file link in the preview so broken or private files do not reach the public site.</p>
                       </div>
                   </details>
-                  <details class="builder-guide-section" data-guide-section="preview">
-                      <summary>Project preview and full portfolio preview</summary>
+                  <details class="builder-guide-section" data-guide-section="preview project portfolio parser">
+                      <summary><span class="guide-card-title">Project Preview And Portfolio Preview</span><span class="guide-card-summary">Check a single project or the whole public website before saving or publishing.</span></summary>
                       <div>
                           <p>Preview is the checkpoint before anything is published. It lets you inspect the generated portfolio exactly the way a visitor will experience it, without pushing changes to GitHub Pages yet.</p>
                           <p>There are two preview levels. Project preview isolates one project and shows how that project will appear inside the final portfolio. Full portfolio preview shows the whole website, including profile, front page text, fun facts, project categories, personal sections, AI area, and contact section.</p>
@@ -552,8 +570,8 @@
                           <p>The preview should match the public website output. If it does not, fix the builder/parser before using Apply to site. Treat preview as the approval screen for your own work.</p>
                       </div>
                   </details>
-                  <details class="builder-guide-section" data-guide-section="mobile preview">
-                      <summary>Mobile and desktop output</summary>
+                  <details class="builder-guide-section" data-guide-section="mobile preview responsive desktop">
+                      <summary><span class="guide-card-title">Mobile And Desktop Output</span><span class="guide-card-summary">Make sure the same portfolio works on phones, laptops, and large desktop screens.</span></summary>
                       <div>
                           <p>The parser saves responsive layout instructions when projects are saved. The same content must work on a laptop screen, a desktop monitor, and a phone. This is especially important because recruiters may open the resume link from a phone before they ever view it on a computer.</p>
                           <p>Good mobile output is not just smaller desktop output. It should keep titles readable, controls reachable, images contained, and contact information easy to use.</p>
@@ -573,8 +591,8 @@
                           <p>Before publishing, check at least one narrow/mobile-sized preview and one desktop-sized preview. If something only works on desktop, treat it as unfinished because the public site is meant to be viewed from any normal browser.</p>
                       </div>
                   </details>
-                  <details class="builder-guide-section" data-guide-section="publish security">
-                      <summary>Publishing target and authentication</summary>
+                  <details class="builder-guide-section" data-guide-section="publish security target authentication github">
+                      <summary><span class="guide-card-title">Publishing Target And Authentication</span><span class="guide-card-summary">Connect the website repository, verify access, and load from a target only after authorization.</span></summary>
                       <div>
                           <p>Publishing target controls where Apply to site can push. A target is saved only after write access is verified, because the builder should never publish to a website unless the current user has permission to update that repository.</p>
                           <p>This protects your portfolio from accidental pushes and also lets another user install the builder for their own site without getting access to your website. The target describes where the public portfolio will live; authentication proves the current user can write there.</p>
@@ -594,8 +612,8 @@
                           <p>GitHub authorization is cached per repository and branch. Daily reuse avoids repeated prompts, and repeated successful authorization can extend trust for that exact target. If the target changes, authenticate again because a new target is a different publishing permission boundary.</p>
                       </div>
                   </details>
-                  <details class="builder-guide-section" data-guide-section="publish">
-                      <summary>Save draft, Apply to site, and offline work</summary>
+                  <details class="builder-guide-section" data-guide-section="publish save draft offline">
+                      <summary><span class="guide-card-title">Save Draft, Apply To Site, And Offline Work</span><span class="guide-card-summary">Know which save button protects local work and which action publishes the website.</span></summary>
                       <div>
                           <p>These buttons do different jobs, and using them in the right order prevents lost work. Save draft protects the builder state on the local machine. Apply to site publishes the already-saved public version to the selected website target.</p>
                           <p>The builder can be used offline for most editing work. Publishing is the only part that needs the network and a Git target with write access.</p>
@@ -615,8 +633,8 @@
                           <p>If Apply to site says Save draft is required, click Save draft first, then try again. This rule exists so the public website is built from a known saved state rather than from half-finished changes still sitting in an open editor window.</p>
                       </div>
                   </details>
-                  <details class="builder-guide-section" data-guide-section="update">
-                      <summary>App updates and troubleshooting</summary>
+                  <details class="builder-guide-section" data-guide-section="update troubleshooting preferences">
+                      <summary><span class="guide-card-title">App Updates And Troubleshooting</span><span class="guide-card-summary">Update the installed app, avoid duplicate installs, switch viewing themes, and recover from stale windows.</span></summary>
                       <div>
                           <p>Use Check updates to manually look for a newer builder. Updates come from GitHub Releases after a new installer is built. Use Preferences to select dark builder mode. When dark mode is active, use the Day view control in the main header to return to the normal light editing view. Dark mode only changes how the builder application is viewed; the portfolio is still built from the saved content colors and selected appearances.</p>
                           <p>An update should behave like a repair of the existing app, not like a second installation. It should close the current builder, update the existing install location, and reopen the app with the new files.</p>
@@ -636,8 +654,8 @@
                           <p>If the app cannot update, close any old OMB Builder process in Task Manager and reopen the app from the desktop shortcut. Avoid installing another copy in a different folder; duplicate copies can make Windows shortcuts and update checks point to the wrong version.</p>
                       </div>
                   </details>
-                  <details class="builder-guide-section" data-guide-section="security publish">
-                      <summary>Safety rules for public websites</summary>
+                  <details class="builder-guide-section" data-guide-section="security publish privacy files">
+                      <summary><span class="guide-card-title">Safety Rules For Public Websites</span><span class="guide-card-summary">Keep passwords, private files, private data, and unsafe evidence out of the public portfolio.</span></summary>
                       <div>
                           <p>Anything pushed to the portfolio repository can become public. Treat the portfolio as a public engineering document. If a file would be unsafe in a public GitHub repository, it should not be uploaded or published through the builder.</p>
                           <p>Good portfolio evidence is public-safe, clearly labeled, and useful to a visitor. Private credentials, private lab data, personal identity documents, and unpublished confidential work should stay out of the portfolio.</p>
@@ -658,8 +676,8 @@
                           <p>If another user installs the builder, they should connect their own target unless you explicitly authorize access to your target. The builder should help people create portfolios, but it should not give anyone silent access to your website.</p>
                       </div>
                   </details>
-                  <details class="builder-guide-section" data-guide-section="setup projects editor preview publish update mobile security">
-                      <summary>Recommended build routine</summary>
+                  <details class="builder-guide-section" data-guide-section="profile projects editor preview publish update mobile security routine">
+                      <summary><span class="guide-card-title">Recommended Build Routine</span><span class="guide-card-summary">A simple order for editing, saving, previewing, drafting, and publishing safely.</span></summary>
                       <div>
                           <p>Use this routine when you sit down to add or edit portfolio content. It keeps the builder state, project previews, full portfolio preview, saved draft, and public website aligned.</p>
                           <p>The routine is intentionally repetitive because publishing is safer when every project has been parsed and every section has been previewed before Git pushes anything.</p>

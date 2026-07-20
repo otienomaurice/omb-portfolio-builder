@@ -101,6 +101,7 @@ const compileLanguageProfiles = {
     defaultFile: "design.v",
     extensions: [".v"],
     label: "Verilog",
+    optionalTools: ["verilator", "gtkwave"],
     primaryTools: ["iverilog", "vvp"],
     winget: ["Icarus.Verilog"]
   },
@@ -108,6 +109,7 @@ const compileLanguageProfiles = {
     defaultFile: "design.sv",
     extensions: [".sv", ".svh"],
     label: "SystemVerilog",
+    optionalTools: ["verilator", "gtkwave"],
     primaryTools: ["iverilog", "vvp"],
     winget: ["Icarus.Verilog"]
   },
@@ -195,6 +197,19 @@ const compileToolCandidates = {
     "C:\\iverilog\\bin\\vvp.exe",
     "C:\\Program Files\\Icarus Verilog\\bin\\vvp.exe",
     "C:\\Program Files (x86)\\Icarus Verilog\\bin\\vvp.exe"
+  ],
+  verilator: [
+    "verilator",
+    "C:\\msys64\\mingw64\\bin\\verilator.exe",
+    "C:\\msys64\\usr\\bin\\verilator.exe",
+    process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, "Programs", "Verilator", "bin", "verilator.exe") : ""
+  ],
+  gtkwave: [
+    "gtkwave",
+    "C:\\msys64\\mingw64\\bin\\gtkwave.exe",
+    "C:\\msys64\\usr\\bin\\gtkwave.exe",
+    "C:\\Program Files\\GTKWave\\bin\\gtkwave.exe",
+    process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, "Programs", "GTKWave", "bin", "gtkwave.exe") : ""
   ],
   ltspice: [
     process.env.LTSPICE_EXE,
@@ -1076,19 +1091,24 @@ async function runProcess(command, args = [], options = {}) {
 
 async function compileToolStatus() {
   const tools = {};
-  const uniqueTools = [...new Set(Object.values(compileLanguageProfiles).flatMap((profile) => profile.primaryTools))];
+  const uniqueTools = [...new Set(Object.values(compileLanguageProfiles).flatMap((profile) => [
+    ...(profile.primaryTools || []),
+    ...(profile.optionalTools || [])
+  ]))];
   for (const tool of uniqueTools) {
     tools[tool] = await findTool(tool);
   }
   const languages = {};
   for (const [id, profile] of Object.entries(compileLanguageProfiles)) {
     const required = profile.primaryTools;
+    const optional = profile.optionalTools || [];
     languages[id] = {
       label: profile.label,
       defaultFile: profile.defaultFile,
       extensions: profile.extensions,
       ready: required.every((tool) => tools[tool]),
       tools: Object.fromEntries(required.map((tool) => [tool, tools[tool] || "missing"])),
+      optionalTools: Object.fromEntries(optional.map((tool) => [tool, tools[tool] || "missing"])),
       installHints: profile.winget || []
     };
   }
@@ -1775,10 +1795,29 @@ async function compileAndRunCode(payload = {}) {
     await mkdir(cacheDir, { recursive: true });
     const output = path.join(cacheDir, "simulation.vvp");
     const sourceFiles = await writeHdlSimulationSources(hdlFiles, cacheDir);
+    const replacements = sourceFiles.map((file) => ({ from: file.sourcePath, to: file.uniqueName }));
     const designCount = sourceFiles.filter((file) => file.role !== "testbench").length;
     terminal.push(`${profile.label} simulation set: ${designCount} design file${designCount === 1 ? "" : "s"}, ${testbenchFiles.length} testbench file${testbenchFiles.length === 1 ? "" : "s"}`);
     if (topModule) terminal.push(`Testbench top: ${topModule}`);
     if (hdlDiagnostics.length) terminal.push(["HDL timing and verification notes:", ...hdlDiagnostics.map((item) => `- ${item}`)].join("\n"));
+    const verilator = await findTool("verilator");
+    const gtkwave = await findTool("gtkwave");
+    terminal.push(`HDL debug tools: Verilator lint ${verilator ? `available at ${verilator}` : "not installed"}; GTKWave viewer ${gtkwave ? `available at ${gtkwave}` : "not installed"}.`);
+    if (verilator) {
+      const lintArgs = [
+        "--lint-only",
+        ...(usesSystemVerilog ? ["--sv"] : []),
+        ...sourceFiles.map((file) => file.sourcePath)
+      ];
+      const lint = await runProcess(verilator, lintArgs, { cwd: cacheDir, timeoutMs: 30000 });
+      terminal.push(terminalLine(
+        `${path.basename(verilator)} --lint-only${usesSystemVerilog ? " --sv" : ""}`,
+        processTerminalTextWithPaths(lint, replacements)
+      ));
+      if (!lint.ok) {
+        terminal.push("Verilator lint reported issues. This advisory lint does not replace the integrated Icarus/VVP simulation used to generate the built-in scope.");
+      }
+    }
     const cached = !forceRebuild && await pathExists(output);
     if (cached) {
       terminal.push(cachedBuildLine(`${profile.label} simulation`, output));
@@ -1791,7 +1830,6 @@ async function compileAndRunCode(payload = {}) {
         ...sourceFiles.map((file) => file.sourcePath)
       ];
       const compile = await runProcess(found.iverilog, compileArgs, { cwd: cacheDir, timeoutMs: 30000 });
-      const replacements = sourceFiles.map((file) => ({ from: file.sourcePath, to: file.uniqueName }));
       terminal.push(terminalLine(
         `${path.basename(found.iverilog)} ${flags.join(" ")}${topModule ? ` -s ${topModule}` : ""} -o simulation.vvp`,
         processTerminalTextWithPaths(compile, replacements)
@@ -1873,7 +1911,7 @@ async function runCompileTerminalCommand(payload = {}) {
       output: ""
     };
   }
-  const persistent = await runOneShotCompileTerminalCommand(payload);
+  const persistent = await runPersistentCompileTerminalCommand(payload);
   const finalCwdAbsolute = persistent.cwdAbsolute || await terminalStartDirectory(payload);
   const relativeToProject = path.relative(resolveInsideCompileRoot(projectFolder), finalCwdAbsolute);
   const finalCwdRelative = relativeToProject && !relativeToProject.startsWith("..") && !path.isAbsolute(relativeToProject)

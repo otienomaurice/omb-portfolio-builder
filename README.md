@@ -91,6 +91,12 @@ The builder works offline for editing, project creation, file attachment, local 
 7. Save draft to keep the local working state.
 8. Configure a publishing target before applying changes to a repository.
 
+## Builder Guide And Previews
+
+The in-app **Builder Guide** is customer-facing help. Its home screen uses focused guide cards for profile, projects, editor, files, code, preview, publishing, mobile output, safety, and updates. Click a card to open a clean guide window for that section instead of reading every instruction in one long page.
+
+**Project preview** opens full-screen inside the builder so the selected project can be inspected with the same space it will receive in the generated portfolio. It shows only that project, using the style and parsed structure that will be inserted into the website. **Portfolio preview** remains separate and shows the full website: profile, front page text, fun facts, projects, AI area, and contact section.
+
 ## Text Editing
 
 Project and portfolio-area overview editors support rich text editing with selection-level formatting, links, images, formulas, syntax-highlighted code blocks, hard line breaks, copy, paste, cut, and select all.
@@ -103,9 +109,9 @@ Projects include a separate **Compile Code** workspace by default. This is local
 
 The Compile Code workspace has separate **Compile**, **Build project**, and **Run** controls. Verilog/SystemVerilog also show **Simulate** and **Show scope**. Compile checks or builds the active source. Build project uses the files in the project workspace. Run executes the built active program when the language supports it. Simulate runs HDL through vvp and can produce waveform data for the scope.
 
-The Compile Code workspace includes an explicit **Show output** control. Use it to jump directly to the **Console** output for the active source file. The workspace also has a **Messages** log for compile/save/append status entries and a real **Terminal** panel for running local commands from the selected project compile folder. The output panel is locked into the workspace by default so it stays reachable while the editor scrolls; drag its top edge to resize it, or unlock it only when you want to float and move the output panel. **Append code to project** scans the project sections and nested subsections so the active source can be appended as a formatted code block to the correct overview.
+The Compile Code workspace includes an explicit **Show output** control. Use it to jump directly to the **Console** output for the active source file. The workspace also has a **Messages** log for compile/save/append status entries and compiler progress, plus a real **Terminal** panel for running local commands from the selected project compile folder. The output panel is locked into the workspace by default so it stays reachable while the editor scrolls; drag its top edge to resize it, or unlock it only when you want to float and move the output panel. The blue IDE status strip remains fixed at the bottom of the output panel while Console, Messages, Terminal, or Scope are resized. **Append code to project** scans the project sections and nested subsections so the active source can be appended as a formatted code block to the correct overview.
 
-Verilog and SystemVerilog simulation requires a testbench. Mark HDL files as **Design** or **Testbench**, or use **Add testbench** to create a starter bench with `$dumpfile` and `$dumpvars`. HDL Compile can syntax-check/build design files, while Simulate requires the testbench and parses the generated VCD file into a **Signal scope** so signals can be viewed over time.
+Verilog and SystemVerilog simulation requires a testbench. Mark HDL files as **Design** or **Testbench**, or use **Add testbench** to create a starter bench with `$dumpfile` and `$dumpvars`. HDL Compile can syntax-check/build design files, while Simulate requires the testbench and parses the generated VCD file into a **Signal scope** so signals can be viewed over time. The scope supports per-signal colors, per-signal radixes, signal filtering, time zoom, transition counts, and X/Z warnings. Icarus Verilog and vvp remain the required simulator tools; if Verilator or GTKWave are installed later, the builder detects them and reports their availability, with Verilator lint used as an advisory HDL check.
 
 Uploaded project evidence is saved locally under:
 
@@ -188,10 +194,11 @@ Most users do not need the branch workflow. Installers and portable builds are p
 
 Use the workflow in [BRANCHING.md](BRANCHING.md):
 
-- Feature and Codex branches start from `development`.
-- Feature and Codex branches merge into `development`.
+- Feature branches start from `development`.
+- Feature branches merge into `development`.
 - `main` receives release-ready changes only from `development`.
 - Pull requests into `main` should fail unless the source branch is `development`.
+- New branch names use a descriptive name followed by an underscore and assigned branch number, for example `output_status_scope_hdl_049`.
 - New branches must be recorded in the branch register below.
 
 ### Branch Register
@@ -272,6 +279,7 @@ Use the workflow in [BRANCHING.md](BRANCHING.md):
 | `codex/fix-compile-terminal-icons-0.2.46` | Makes Compile Code folders real expandable workspace folders, lets right-click actions create/import inside the selected folder, keeps open tabs separate from files, replaces dirty asterisks with close-view buttons, and locks the Console/Messages/Terminal/Scope panel as a top-edge-resizable IDE output area. | `development` | `development` | Active |
 | `codex/fix-terminal-tree-output-0.2.47` | Removes the form-style terminal command box, keeps PowerShell commands inline with the prompt, lets unlocked output panels resize, preserves imported directory trees, and imports readable support files without treating them as compiler targets. | `development` | `development` | Active |
 | `codex/scope-themes-uvm-0.2.48` | Adds selectable Compile Code appearances, per-signal scope color/radix controls, HDL timing/assertion/UVM-style diagnostics, UVM-style testbench creation, cleaner section/subsection icon rows, category right-click editing, compact Solution Explorer styling, and terminal/output panel fixes. | `development` | `development` | Active |
+| `output_status_scope_hdl_049` | Bumps the builder to `0.2.49`, keeps the Compile Code status strip fixed at the bottom of the output panel during resize, separates compiler progress into Messages from compiler text in Console, adds HDL scope filter/zoom/debug metadata, detects optional Verilator/GTKWave tools, and removes the redundant lower Solution Explorer icon row. | `development` | `development` | Active |
 
 </details>
 
