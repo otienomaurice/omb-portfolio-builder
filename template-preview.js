@@ -2128,6 +2128,7 @@ function ensureCompileCode(project) {
     : 30000;
   project.compileCode.scopeFilter = String(project.compileCode.scopeFilter || "");
   project.compileCode.scopeZoom = normalizeScopeZoom(project.compileCode.scopeZoom);
+  project.compileCode.scopeView = normalizeScopeView(project.compileCode.scopeView);
   project.compileCode.sidebarWidth = normalizeCompileSidebarWidth(project.compileCode.sidebarWidth);
   project.compileCode.selectedFileIds = Array.isArray(project.compileCode.selectedFileIds)
     ? project.compileCode.selectedFileIds.filter((id) => fileIds.has(id))
@@ -2164,6 +2165,11 @@ function ensureCompileCode(project) {
   project.compileCode.outputDockPosition = {
     x: Number.isFinite(Number(dockPosition.x)) ? Number(dockPosition.x) : 72,
     y: Number.isFinite(Number(dockPosition.y)) ? Number(dockPosition.y) : 120
+  };
+  const dockSize = project.compileCode.outputDockSize || {};
+  project.compileCode.outputDockSize = {
+    width: normalizeCompileFloatingWidth(dockSize.width),
+    height: normalizeCompileFloatingHeight(dockSize.height)
   };
   project.compileCode.outputDockHeight = normalizeCompileOutputHeight(project.compileCode.outputDockHeight);
   project.compileCode.activePanel = ["console", "messages", "terminal", "scope"].includes(project.compileCode.activePanel)
@@ -2528,6 +2534,62 @@ function nextNonSpaceCharacter(line = "", index = 0) {
   return match ? match[0] : "";
 }
 
+function skipHdlWhitespace(source = "", index = 0) {
+  let cursor = index;
+  while (/\s/.test(source[cursor] || "")) cursor += 1;
+  return cursor;
+}
+
+function skipBalancedHdlParentheses(source = "", index = 0) {
+  if (source[index] !== "(") return index;
+  let depth = 0;
+  let cursor = index;
+  while (cursor < source.length) {
+    const character = source[cursor];
+    if (character === "(") depth += 1;
+    if (character === ")") {
+      depth -= 1;
+      if (depth <= 0) return cursor + 1;
+    }
+    cursor += 1;
+  }
+  return cursor;
+}
+
+function hdlInstanceIdentifierStarts(line = "", language = "verilog") {
+  const syntax = codeSyntaxSets[language] || codeSyntaxSets.verilog;
+  const source = String(line || "").split("//")[0];
+  const starts = new Set();
+  let cursor = source.search(/\S/);
+  if (cursor < 0 || source[cursor] === ".") return starts;
+
+  const first = source.slice(cursor).match(/^[A-Za-z_$][\w$]*/);
+  if (!first) return starts;
+  const firstWord = first[0];
+  if (syntax.keywords.has(firstWord) || syntax.types.has(firstWord)) return starts;
+
+  const firstStart = cursor;
+  cursor = skipHdlWhitespace(source, firstStart + firstWord.length);
+  if (source[cursor] === "#") {
+    cursor = skipHdlWhitespace(source, cursor + 1);
+    if (source[cursor] !== "(") return starts;
+    cursor = skipHdlWhitespace(source, skipBalancedHdlParentheses(source, cursor));
+  }
+
+  const secondStart = cursor;
+  const second = source.slice(secondStart).match(/^[A-Za-z_$][\w$]*/);
+  if (!second) return starts;
+  const secondWord = second[0];
+  if (syntax.keywords.has(secondWord) || syntax.types.has(secondWord)) return starts;
+
+  cursor = skipHdlWhitespace(source, secondStart + secondWord.length);
+  if (source[cursor] !== "(") return starts;
+
+  starts.add(firstStart);
+  starts.add(secondStart);
+  return starts;
+}
+
 function highlightIdentifierToken(word = "", line = "", nextIndex = 0, language = "javascript") {
   const syntax = codeSyntaxSets[language] || codeSyntaxSets.javascript;
   if (syntax.types.has(word)) return codeTokenSpan("code-token-type", word);
@@ -2580,6 +2642,8 @@ function highlightCodeLine(line = "", language = "javascript", state = {}) {
   const normalizedLanguage = normalizeCodeLanguage(language);
   if (normalizedLanguage === "html") return highlightHtmlLine(line, state);
   if (normalizedLanguage === "text") return escapeCodeHtml(line);
+  const hdlLanguage = ["verilog", "systemverilog"].includes(normalizedLanguage);
+  const hdlInstanceStarts = hdlLanguage ? hdlInstanceIdentifierStarts(line, normalizedLanguage) : new Set();
   if (normalizedLanguage === "ltspice" && /^\s*[\*;]/.test(line)) return codeTokenSpan("code-token-comment", line);
   if (["c", "cpp"].includes(normalizedLanguage) && /^\s*#/.test(line)) return codeTokenSpan("code-token-preprocessor", line);
   if (normalizedLanguage === "ltspice" && /^\s*\.[A-Za-z]+/.test(line)) {
@@ -2649,7 +2713,15 @@ function highlightCodeLine(line = "", language = "javascript", state = {}) {
       continue;
     }
 
-    if (["verilog", "systemverilog"].includes(normalizedLanguage)) {
+    if (hdlLanguage) {
+      if (current === ".") {
+        const portConnection = line.slice(index).match(/^\.[$A-Za-z_][\w$]*\s*\((?:[^()]|\([^()]*\))*\)/);
+        if (portConnection) {
+          output += codeTokenSpan("code-token-hdl-port", portConnection[0]);
+          index += portConnection[0].length;
+          continue;
+        }
+      }
       const hdlNumber = line.slice(index).match(/^\d*'[sS]?[bBoOdDhH][0-9a-fA-F_xXzZ?]+/);
       if (hdlNumber) {
         output += codeTokenSpan("code-token-number", hdlNumber[0]);
@@ -2667,7 +2739,11 @@ function highlightCodeLine(line = "", language = "javascript", state = {}) {
 
     const identifier = line.slice(index).match(/^[A-Za-z_$][\w$]*/);
     if (identifier) {
-      output += highlightIdentifierToken(identifier[0], line, index + identifier[0].length, normalizedLanguage);
+      if (hdlLanguage && (/^(dut|uut)$/i.test(identifier[0]) || hdlInstanceStarts.has(index))) {
+        output += codeTokenSpan("code-token-hdl-instance", identifier[0]);
+      } else {
+        output += highlightIdentifierToken(identifier[0], line, index + identifier[0].length, normalizedLanguage);
+      }
       index += identifier[0].length;
       continue;
     }
@@ -2788,6 +2864,18 @@ function normalizeCompileOutputHeight(value) {
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) return 170;
   return Math.max(120, Math.min(340, Math.round(numeric)));
+}
+
+function normalizeCompileFloatingWidth(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return 900;
+  return Math.max(420, Math.min(1280, Math.round(numeric)));
+}
+
+function normalizeCompileFloatingHeight(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return 430;
+  return Math.max(180, Math.min(780, Math.round(numeric)));
 }
 
 function normalizeCompileSidebarWidth(value) {
@@ -9357,6 +9445,14 @@ const scopeRadixOptions = [
   { id: "ascii", label: "ASCII" }
 ];
 const scopeZoomOptions = [1, 2, 4, 8];
+const scopeViewOptions = [
+  { id: "fit", label: "Fit width" },
+  { id: "natural", label: "Natural width" }
+];
+const scopeForcedValueColors = {
+  x: "#ef4444",
+  z: "#3b82f6"
+};
 
 function scopeDefaultColorForIndex(index = 0) {
   return scopeSignalDefaultColors[Math.abs(Number(index) || 0) % scopeSignalDefaultColors.length];
@@ -9365,6 +9461,27 @@ function scopeDefaultColorForIndex(index = 0) {
 function normalizeScopeColor(value = "", fallback = "#38bdf8") {
   const clean = String(value || "").trim();
   return /^#[0-9a-f]{6}$/i.test(clean) ? clean.toLowerCase() : fallback;
+}
+
+function scopeValueKind(value = "") {
+  const clean = String(value ?? "").toLowerCase();
+  if (clean.includes("x")) return "x";
+  if (clean.includes("z")) return "z";
+  return "known";
+}
+
+function scopeStrokeForValue(value = "", fallback = "#38bdf8") {
+  const kind = scopeValueKind(value);
+  return scopeForcedValueColors[kind] || fallback;
+}
+
+function normalizeScopeChanges(changes = []) {
+  return (Array.isArray(changes) && changes.length ? changes : [{ time: 0, value: "x" }])
+    .map((change) => ({
+      time: Number(change.time) || 0,
+      value: String(change.value ?? "x").toLowerCase()
+    }))
+    .sort((a, b) => a.time - b.time);
 }
 
 function normalizeScopeRadix(value = "bin") {
@@ -9404,6 +9521,11 @@ function scopeStateMapText(map = {}) {
 function normalizeScopeZoom(value = 1) {
   const clean = Number(value);
   return scopeZoomOptions.includes(clean) ? clean : 1;
+}
+
+function normalizeScopeView(value = "fit") {
+  const clean = String(value || "").trim().toLowerCase();
+  return scopeViewOptions.some((option) => option.id === clean) ? clean : "fit";
 }
 
 function scopeSignalKey(signal = {}, index = 0) {
@@ -9470,39 +9592,51 @@ function scopeSignalValueAt(changes = [], index = 0) {
   return "x";
 }
 
-function renderScalarWavePath(changes = [], maxTime = 1, rowY = 0, left = 150, width = 680) {
-  const normalized = (Array.isArray(changes) && changes.length ? changes : [{ time: 0, value: "x" }])
-    .map((change) => ({ time: Number(change.time) || 0, value: String(change.value ?? "x") }))
-    .sort((a, b) => a.time - b.time);
+function renderScalarWaveSegments(changes = [], maxTime = 1, rowY = 0, left = 150, width = 680, signalColor = "#38bdf8") {
+  const normalized = normalizeScopeChanges(changes);
   const top = rowY + 5;
   const bottom = rowY + 23;
   const middle = rowY + 14;
   const yFor = (value) => value === "1" ? top : value === "0" ? bottom : middle;
   const xFor = (time) => left + Math.max(0, Math.min(1, (Number(time) || 0) / Math.max(1, maxTime))) * width;
-  let path = "";
-  normalized.forEach((change, index) => {
-    const x = xFor(change.time);
-    const y = yFor(scopeSignalValueAt(normalized, index));
-    if (index === 0) {
-      path += `M ${x.toFixed(1)} ${y.toFixed(1)}`;
-    } else {
-      path += ` H ${x.toFixed(1)} V ${y.toFixed(1)}`;
-    }
-  });
-  path += ` H ${(left + width).toFixed(1)}`;
-  return path;
+  return normalized.map((change, index) => {
+    const next = normalized[index + 1];
+    const x1 = xFor(change.time);
+    const x2 = next ? xFor(next.time) : left + width;
+    const y1 = yFor(scopeSignalValueAt(normalized, index));
+    const color = scopeStrokeForValue(change.value, signalColor);
+    const kind = scopeValueKind(change.value);
+    const segment = `<line x1="${x1.toFixed(1)}" x2="${x2.toFixed(1)}" y1="${y1.toFixed(1)}" y2="${y1.toFixed(1)}" class="scope-wave scope-wave-segment scope-wave-${kind}" style="stroke:${escapeHtml(color)}" />`;
+    if (!next) return segment;
+    const y2 = yFor(scopeSignalValueAt(normalized, index + 1));
+    const transitionColor = scopeStrokeForValue(next.value, signalColor);
+    return `${segment}<line x1="${x2.toFixed(1)}" x2="${x2.toFixed(1)}" y1="${y1.toFixed(1)}" y2="${y2.toFixed(1)}" class="scope-wave scope-wave-edge scope-wave-${scopeValueKind(next.value)}" style="stroke:${escapeHtml(transitionColor)}" />`;
+  }).join("");
+}
+
+function renderBusWaveSegments(changes = [], maxTime = 1, rowY = 0, left = 150, width = 680, signalColor = "#38bdf8") {
+  const normalized = normalizeScopeChanges(changes);
+  const y = rowY + 15;
+  const xFor = (time) => left + Math.max(0, Math.min(1, (Number(time) || 0) / Math.max(1, maxTime))) * width;
+  return normalized.map((change, index) => {
+    const next = normalized[index + 1];
+    const x1 = xFor(change.time);
+    const x2 = next ? xFor(next.time) : left + width;
+    const color = scopeStrokeForValue(change.value, signalColor);
+    const kind = scopeValueKind(change.value);
+    return `<line x1="${x1.toFixed(1)}" x2="${x2.toFixed(1)}" y1="${y.toFixed(1)}" y2="${y.toFixed(1)}" class="scope-bus scope-bus-segment scope-wave-${kind}" style="stroke:${escapeHtml(color)}" />`;
+  }).join("");
 }
 
 function renderBusWaveLabels(changes = [], maxTime = 1, rowY = 0, left = 150, width = 680, radix = "bin", signalWidth = 1, stateMap = {}) {
-  const normalized = (Array.isArray(changes) && changes.length ? changes : [{ time: 0, value: "x" }])
-    .map((change) => ({ time: Number(change.time) || 0, value: String(change.value ?? "x") }))
-    .sort((a, b) => a.time - b.time)
+  const normalized = normalizeScopeChanges(changes)
     .slice(0, 12);
   return normalized.map((change, index) => {
     const x = left + Math.max(0, Math.min(1, change.time / Math.max(1, maxTime))) * width;
     const formatted = formatScopeValue(change.value, signalWidth, radix, stateMap);
     const value = formatted.length > 14 ? `${formatted.slice(0, 14)}...` : formatted;
-    return `<text x="${Math.min(left + width - 70, x + 4).toFixed(1)}" y="${rowY + 19}" class="scope-value-label">${escapeHtml(value)}</text>${index ? `<line x1="${x.toFixed(1)}" x2="${x.toFixed(1)}" y1="${rowY + 5}" y2="${rowY + 25}" class="scope-transition" />` : ""}`;
+    const kind = scopeValueKind(change.value);
+    return `<text x="${Math.min(left + width - 70, x + 4).toFixed(1)}" y="${rowY + 19}" class="scope-value-label scope-value-${kind}">${escapeHtml(value)}</text>${index ? `<line x1="${x.toFixed(1)}" x2="${x.toFixed(1)}" y1="${rowY + 5}" y2="${rowY + 25}" class="scope-transition" />` : ""}`;
   }).join("");
 }
 
@@ -9520,6 +9654,12 @@ function renderScopeSignalControls(project, signals = []) {
         <span>Time zoom</span>
         <select data-scope-zoom>
           ${scopeZoomOptions.map((value) => `<option value="${value}"${workspace.scopeZoom === value ? " selected" : ""}>${value}x</option>`).join("")}
+        </select>
+      </label>
+      <label class="scope-general-control">
+        <span>Scope width</span>
+        <select data-scope-view>
+          ${scopeViewOptions.map((option) => `<option value="${escapeHtml(option.id)}"${workspace.scopeView === option.id ? " selected" : ""}>${escapeHtml(option.label)}</option>`).join("")}
         </select>
       </label>
       <label class="scope-general-control scope-filter-control">
@@ -9583,6 +9723,7 @@ function renderHdlScope(waveform, project = selectedProject()) {
   }
   const left = 165;
   const zoom = normalizeScopeZoom(workspace.scopeZoom);
+  const scopeView = normalizeScopeView(workspace.scopeView);
   const width = 760 * zoom;
   const rowHeight = 34;
   const top = 28;
@@ -9611,8 +9752,8 @@ function renderHdlScope(waveform, project = selectedProject()) {
         <text x="12" y="${y + 20}" class="scope-signal-label">${escapeHtml(name.length > 24 ? `${name.slice(0, 24)}...` : name)}</text>
         <line x1="${left}" x2="${left + width}" y1="${y + 27}" y2="${y + 27}" class="scope-row-line" />
         ${scalar
-          ? `<path d="${renderScalarWavePath(changes, maxTime, y, left, width)}" class="scope-wave" style="stroke:${escapeHtml(settings.color)}" />`
-          : `<line x1="${left}" x2="${left + width}" y1="${y + 15}" y2="${y + 15}" class="scope-bus" style="stroke:${escapeHtml(settings.color)}" />${renderBusWaveLabels(changes, maxTime, y, left, width, settings.radix, signal.width, settings.stateMap)}`}
+          ? renderScalarWaveSegments(changes, maxTime, y, left, width, settings.color)
+          : `${renderBusWaveSegments(changes, maxTime, y, left, width, settings.color)}${renderBusWaveLabels(changes, maxTime, y, left, width, settings.radix, signal.width, settings.stateMap)}`}
       </g>
     `;
   }).join("");
@@ -9625,8 +9766,8 @@ function renderHdlScope(waveform, project = selectedProject()) {
       ${unknownSignalCount ? `<span class="scope-unknown-badge">${unknownSignalCount} signal${unknownSignalCount === 1 ? "" : "s"} with X/Z</span>` : ""}
     </div>
     ${renderScopeSignalControls(project, signals)}
-    <div class="compile-scope-scroll">
-      <svg class="compile-scope-svg" style="width:${left + width + 20}px; max-width:none;" viewBox="0 0 ${left + width + 20} ${height}" role="img" aria-label="HDL waveform scope">
+    <div class="compile-scope-scroll" data-scope-scroll>
+      <svg class="compile-scope-svg ${scopeView === "fit" ? "is-scope-fit-width" : "is-scope-natural-width"}" style="${scopeView === "fit" ? "width:100%; min-width:0; max-width:none;" : `width:${left + width + 20}px; max-width:none;`}" viewBox="0 0 ${left + width + 20} ${height}" role="img" aria-label="HDL waveform scope">
         ${grid}
         ${rows}
       </svg>
@@ -10062,13 +10203,14 @@ function renderCompileCodeSection(project) {
   const showSourceCommandBar = activePanel !== "scope";
   const dockUnlocked = Boolean(workspace.outputDockUnlocked);
   const dockPosition = workspace.outputDockPosition || { x: 72, y: 120 };
+  const dockSize = workspace.outputDockSize || { width: 900, height: 430 };
   const outputHeight = normalizeCompileOutputHeight(workspace.outputDockHeight);
   const sidebarWidth = normalizeCompileSidebarWidth(workspace.sidebarWidth);
   const compileTheme = compileThemeIds.includes(builderPreferences.compileTheme)
     ? builderPreferences.compileTheme
     : defaultBuilderPreferences.compileTheme;
   const dockStyle = dockUnlocked
-    ? ` style="left:${Math.max(8, Number(dockPosition.x) || 72)}px; top:${Math.max(8, Number(dockPosition.y) || 120)}px;"`
+    ? ` style="left:${Math.max(8, Number(dockPosition.x) || 72)}px; top:${Math.max(8, Number(dockPosition.y) || 120)}px; width:${normalizeCompileFloatingWidth(dockSize.width)}px; height:${normalizeCompileFloatingHeight(dockSize.height)}px;"`
     : ` style="--compile-output-height:${outputHeight}px;"`;
   return `
     <div class="compile-code-workspace" data-compile-workspace data-compile-theme="${escapeHtml(compileTheme)}" style="--compile-sidebar-width:${sidebarWidth}px;">
@@ -14913,8 +15055,27 @@ sectionContent.addEventListener("pointerdown", (event) => {
 
   const resizeHandle = event.target.closest("[data-compile-output-resize]");
   const lockedDock = resizeHandle?.closest(".compile-output-workbench.is-output-dock-locked");
+  const unlockedDock = resizeHandle?.closest(".compile-output-workbench.is-output-dock-unlocked");
+  if (unlockedDock && event.button === 0) {
+    const rect = unlockedDock.getBoundingClientRect();
+    activeOutputDockResize = {
+      mode: "floating",
+      startX: event.clientX,
+      startY: event.clientY,
+      startWidth: rect.width,
+      startHeight: rect.height,
+      startLeft: rect.left,
+      startTop: rect.top,
+      pointerId: event.pointerId
+    };
+    resizeHandle.setPointerCapture?.(event.pointerId);
+    unlockedDock.classList.add("is-resizing");
+    event.preventDefault();
+    return;
+  }
   if (lockedDock && event.button === 0) {
     activeOutputDockResize = {
+      mode: "locked",
       startY: event.clientY,
       startHeight: lockedDock.getBoundingClientRect().height,
       pointerId: event.pointerId
@@ -14988,11 +15149,26 @@ document.addEventListener("pointermove", (event) => {
     const project = selectedProject();
     if (!project) return;
     const workspace = ensureCompileCode(project);
-    const dock = sectionContent.querySelector(".compile-output-workbench.is-output-dock-locked");
-    if (!dock) return;
-    const nextHeight = normalizeCompileOutputHeight(activeOutputDockResize.startHeight + activeOutputDockResize.startY - event.clientY);
-    workspace.outputDockHeight = nextHeight;
-    dock.style.setProperty("--compile-output-height", `${nextHeight}px`);
+    if (activeOutputDockResize.mode === "floating") {
+      const dock = sectionContent.querySelector(".compile-output-workbench.is-output-dock-unlocked");
+      if (!dock) return;
+      const maxWidth = Math.max(420, window.innerWidth - activeOutputDockResize.startLeft - 8);
+      const maxHeight = Math.max(180, window.innerHeight - activeOutputDockResize.startTop - 8);
+      const nextWidth = Math.max(420, Math.min(maxWidth, activeOutputDockResize.startWidth + event.clientX - activeOutputDockResize.startX));
+      const nextHeight = Math.max(180, Math.min(maxHeight, activeOutputDockResize.startHeight + event.clientY - activeOutputDockResize.startY));
+      workspace.outputDockSize = {
+        width: normalizeCompileFloatingWidth(nextWidth),
+        height: normalizeCompileFloatingHeight(nextHeight)
+      };
+      dock.style.width = `${workspace.outputDockSize.width}px`;
+      dock.style.height = `${workspace.outputDockSize.height}px`;
+    } else {
+      const dock = sectionContent.querySelector(".compile-output-workbench.is-output-dock-locked");
+      if (!dock) return;
+      const nextHeight = normalizeCompileOutputHeight(activeOutputDockResize.startHeight + activeOutputDockResize.startY - event.clientY);
+      workspace.outputDockHeight = nextHeight;
+      dock.style.setProperty("--compile-output-height", `${nextHeight}px`);
+    }
     event.preventDefault();
     return;
   }
@@ -15057,7 +15233,7 @@ function endOutputDockDrag(event) {
   }
   if (activeOutputDockResize) {
     sectionContent.querySelector("[data-compile-output-resize]")?.releasePointerCapture?.(activeOutputDockResize.pointerId);
-    sectionContent.querySelector(".compile-output-workbench.is-output-dock-locked")?.classList.remove("is-resizing");
+    sectionContent.querySelector(".compile-output-workbench.is-output-dock-locked, .compile-output-workbench.is-output-dock-unlocked")?.classList.remove("is-resizing");
     activeOutputDockResize = null;
     scheduleAutosave(900);
   }
@@ -15138,6 +15314,14 @@ sectionContent.addEventListener("change", (event) => {
     const workspace = ensureCompileCode(project);
     workspace.scopeZoom = normalizeScopeZoom(event.target.value);
     addCompileMessage(project, `HDL scope zoom set to ${workspace.scopeZoom}x.`, "info");
+    scheduleAutosave(900);
+    renderSectionContent(project);
+    return;
+  }
+  if (event.target.dataset.scopeView !== undefined) {
+    const workspace = ensureCompileCode(project);
+    workspace.scopeView = normalizeScopeView(event.target.value);
+    addCompileMessage(project, `HDL scope width set to ${workspace.scopeView === "fit" ? "fit width" : "natural width"}.`, "info");
     scheduleAutosave(900);
     renderSectionContent(project);
     return;
