@@ -97,7 +97,9 @@ The in-app **Builder Guide** is customer-facing help. Its home screen uses focus
 
 **Project preview** opens full-screen inside the builder so the selected project can be inspected with the same space it will receive in the generated portfolio. It shows only that project, using the style and parsed structure that will be inserted into the website. **Portfolio preview** remains separate and shows the full website: profile, front page text, fun facts, projects, AI area, and contact section.
 
-Inside a project window, right-click a section or subsection and choose **Open in different tab** to keep several project views available at once. Up to four project section tabs can be open together, and each tab keeps its own section/subsection location.
+Inside a project window, right-click a section or subsection and choose **Open in different tab** to keep several project views available at once. Up to four project section tabs can be open together, and each tab keeps its own section/subsection location. The tab strip appears only when more than one project view is open, and the visible tabs show clean section titles instead of internal state labels.
+
+Project section chips stay in the top navigation band. The selected section's actions, such as Add subsection, Add file or image, Edit, and Delete, sit on the far right of that same top row. File evidence uses a plain full-width list where the filename is on the left and Delete stays at the far right.
 
 ## Text Editing
 
@@ -287,6 +289,7 @@ Use the workflow in [BRANCHING.md](BRANCHING.md):
 | `compile_tree_resize_delete_050` | Bumps the builder to `0.2.50`, makes Solution Explorer horizontally resizable, fixes folder/name alignment, adds Ctrl-click multi-file selection/deletion, allows right-click folder deletion, moves Program input into an icon-opened Compile Code window, and adds up to four concurrent project section tabs. | `development` | `development` | Active |
 | `compile_beautify_import_tabs_051` | Bumps the builder to `0.2.51`, extends Compile Code beautify and highlighting across supported languages, keeps imported files out of editor tabs until clicked, makes file details optional, gates wheel scrolling to the clicked pane, expands Solution Explorer to full height, removes project-preview minimize/maximize controls, makes project previews start at the top-left full width, aligns project-window chrome, and keeps added files as plain list rows with only a right-aligned delete action. | `development` | `development` | Active |
 | `section_action_layout_052` | Bumps the builder to `0.2.52`, keeps section action controls split left/right, moves child subsection links directly below their parent section row, hides empty categories from public output, adds editable project status/visibility controls, folds category delete controls into the list panel, hides color swatches until the color picker is clicked, and uses one highlighted-text right-click menu across the builder. | `development` | `development` | Active |
+| `section_nav_containment_053` | Bumps the builder to `0.2.53`, keeps section/subsection chips contained in the top navigation band, moves selected-section actions to the far right of the section row, hides single project-view tabs/internal state labels, and stretches file rows so Delete sits at the far right of every file row. | `development` | `development` | Active |
 
 </details>
 
