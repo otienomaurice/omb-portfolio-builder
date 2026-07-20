@@ -242,10 +242,11 @@ const standardSections = [
 ];
 
 const preferenceStorageKey = "omb-builder-preferences";
-const defaultBuilderPreferences = { theme: "light" };
+const defaultBuilderPreferences = { theme: "light", zoom: 1 };
 let builderPreferences = { ...defaultBuilderPreferences };
 let activeCompileTreeContext = null;
 let activeOutputDockDrag = null;
+let activeOutputDockResize = null;
 
 const supportedCodeLanguages = [
   { id: "c", label: "C", aliases: ["c"], extensions: [".c", ".h"], defaultFile: "main.c" },
@@ -2023,6 +2024,13 @@ function ensureCompileCode(project) {
   project.compileCode.directories = Array.isArray(project.compileCode.directories)
     ? project.compileCode.directories.map(compileDirectoryPath).filter(Boolean)
     : [];
+  const normalizedDirectories = [];
+  project.compileCode.directories.forEach((directory) => {
+    compileAncestorDirectories(directory).forEach((ancestor) => {
+      if (!normalizedDirectories.includes(ancestor)) normalizedDirectories.push(ancestor);
+    });
+  });
+  project.compileCode.directories = normalizedDirectories;
   project.compileCode.files = project.compileCode.files.map((file, index) => {
     const incomingPath = file.relativePath || file.fileName || defaultCodeFileName(file.language);
     const language = normalizeCodeLanguage(file.language || detectCodeLanguage(file.code || "", incomingPath));
@@ -2045,8 +2053,17 @@ function ensureCompileCode(project) {
       dirty: Boolean(file.dirty)
     };
   });
-  if (!project.compileCode.activeFileId || !project.compileCode.files.some((file) => file.id === project.compileCode.activeFileId)) {
-    project.compileCode.activeFileId = project.compileCode.files[0]?.id || "";
+  project.compileCode.files.forEach((file) => addCompileDirectoryPath(project.compileCode, compileFileDirectory(file.relativePath)));
+  const fileIds = new Set(project.compileCode.files.map((file) => file.id));
+  const hadOpenFileIds = Array.isArray(project.compileCode.openFileIds);
+  project.compileCode.openFileIds = hadOpenFileIds
+    ? project.compileCode.openFileIds.filter((id) => fileIds.has(id))
+    : project.compileCode.files.map((file) => file.id);
+  if (project.compileCode.activeFileId && !fileIds.has(project.compileCode.activeFileId)) {
+    project.compileCode.activeFileId = project.compileCode.openFileIds[0] || "";
+  }
+  if (!project.compileCode.activeFileId && project.compileCode.openFileIds.length) {
+    project.compileCode.activeFileId = project.compileCode.openFileIds[0];
   }
   project.compileCode.terminal = String(project.compileCode.terminal || "");
   project.compileCode.systemTerminal = {
@@ -2070,6 +2087,7 @@ function ensureCompileCode(project) {
     x: Number.isFinite(Number(dockPosition.x)) ? Number(dockPosition.x) : 72,
     y: Number.isFinite(Number(dockPosition.y)) ? Number(dockPosition.y) : 120
   };
+  project.compileCode.outputDockHeight = normalizeCompileOutputHeight(project.compileCode.outputDockHeight);
   project.compileCode.activePanel = ["console", "messages", "terminal", "scope"].includes(project.compileCode.activePanel)
     ? project.compileCode.activePanel
     : "console";
@@ -2243,6 +2261,60 @@ function compileDirectoryName(value = "") {
   return segments.pop() || "folder";
 }
 
+function compileFileDirectory(relativePath = "") {
+  const segments = compilePathSegments(relativePath);
+  segments.pop();
+  return compileDirectoryPath(segments.join("/"));
+}
+
+function compileAncestorDirectories(folderPath = "") {
+  const segments = compilePathSegments(folderPath);
+  const directories = [];
+  let current = "";
+  segments.forEach((segment) => {
+    const clean = safeClientCodeDirectorySegment(segment);
+    current = current ? `${current}/${clean}` : clean;
+    if (current) directories.push(current);
+  });
+  return directories;
+}
+
+function addCompileDirectoryPath(workspace = {}, folderPath = "") {
+  if (!workspace) return "";
+  workspace.directories = Array.isArray(workspace.directories) ? workspace.directories : [];
+  const cleanFolder = compileDirectoryPath(folderPath);
+  compileAncestorDirectories(cleanFolder).forEach((directory) => {
+    if (!workspace.directories.includes(directory)) workspace.directories.push(directory);
+  });
+  return cleanFolder;
+}
+
+function compileContextBaseDirectory(context = activeCompileTreeContext) {
+  if (context?.type === "folder") return compileDirectoryPath(context.path || "");
+  if (context?.type === "file") return compileFileDirectory(context.path || "");
+  return "";
+}
+
+function uniqueCompileFilePath(workspace = {}, requestedPath = "", language = "javascript") {
+  const normalized = normalizeCodeLanguage(language);
+  const safePath = safeClientCodeRelativePath(requestedPath || defaultCodeFileName(normalized), normalized);
+  const usedPaths = new Set((workspace.files || []).map((file) => compileFilePath(file).toLowerCase()));
+  if (!usedPaths.has(safePath.toLowerCase())) return safePath;
+
+  const segments = compilePathSegments(safePath);
+  const fileName = segments.pop() || defaultCodeFileName(normalized);
+  const extensionMatch = fileName.match(/(\.[^.]+)$/);
+  const extension = extensionMatch?.[1] || defaultCodeFileName(normalized).match(/(\.[^.]+)$/)?.[1] || ".js";
+  const baseName = fileName.slice(0, fileName.length - extension.length) || "source";
+  const directory = compileDirectoryPath(segments.join("/"));
+  for (let index = 2; index < 1000; index += 1) {
+    const candidateName = `${baseName}-${index}${extension}`;
+    const candidate = directory ? `${directory}/${candidateName}` : candidateName;
+    if (!usedPaths.has(candidate.toLowerCase())) return candidate;
+  }
+  return `${directory ? `${directory}/` : ""}${baseName}-${Date.now()}${extension}`;
+}
+
 function normalizeCodePasteMode(value = "") {
   return value === "source" ? "source" : "basic";
 }
@@ -2404,7 +2476,8 @@ function loadBuilderPreferences() {
     builderPreferences = {
       ...defaultBuilderPreferences,
       ...stored,
-      theme: ["light", "dark"].includes(stored.theme) ? stored.theme : defaultBuilderPreferences.theme
+      theme: ["light", "dark"].includes(stored.theme) ? stored.theme : defaultBuilderPreferences.theme,
+      zoom: normalizeBuilderZoom(stored.zoom)
     };
   } catch {
     builderPreferences = { ...defaultBuilderPreferences };
@@ -2412,10 +2485,26 @@ function loadBuilderPreferences() {
   applyBuilderPreferences();
 }
 
+function normalizeBuilderZoom(value = 1) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return 1;
+  return Math.max(0.75, Math.min(1.4, Math.round(numeric * 100) / 100));
+}
+
+function normalizeCompileOutputHeight(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return 260;
+  return Math.max(132, Math.min(620, Math.round(numeric)));
+}
+
 function applyBuilderPreferences() {
   const theme = ["light", "dark"].includes(builderPreferences.theme) ? builderPreferences.theme : "light";
+  const zoom = normalizeBuilderZoom(builderPreferences.zoom);
+  builderPreferences.zoom = zoom;
   document.documentElement.dataset.builderTheme = theme;
   document.body.dataset.builderTheme = theme;
+  document.documentElement.style.setProperty("--builder-app-zoom", String(zoom));
+  document.body.style.zoom = String(zoom);
   if (preferenceTheme) preferenceTheme.value = theme;
   if (lightModeReturnButton) lightModeReturnButton.hidden = theme !== "dark";
 }
@@ -2425,6 +2514,15 @@ function setBuilderTheme(theme = "light") {
   localStorage.setItem(preferenceStorageKey, JSON.stringify(builderPreferences));
   applyBuilderPreferences();
   setStatus(`Builder ${builderPreferences.theme} mode enabled.`);
+}
+
+function setBuilderZoom(value = 1, options = {}) {
+  builderPreferences.zoom = normalizeBuilderZoom(value);
+  localStorage.setItem(preferenceStorageKey, JSON.stringify(builderPreferences));
+  applyBuilderPreferences();
+  if (options.announce !== false) {
+    setStatus(`Builder zoom set to ${Math.round(builderPreferences.zoom * 100)}%.`);
+  }
 }
 
 function openPreferencesDialog() {
@@ -4785,7 +4883,7 @@ function buildTemplateProject() {
     links: [],
     sections: [],
     sectionModelVersion: 3,
-    compileCode: { files: [], activeFileId: "", terminal: "" }
+    compileCode: { files: [], directories: [], openFileIds: [], activeFileId: "", terminal: "", outputDockHeight: 260 }
   };
 }
 
@@ -7863,6 +7961,7 @@ function compileAppendDestinations(project) {
       kind: "Section",
       depth: 0,
       sectionId: section.id || "",
+      sectionRef: section,
       richPath: `sections.${index}.richDescription`,
       textPath: `sections.${index}.description`
     });
@@ -7880,6 +7979,7 @@ function compileAppendDestinations(project) {
             depth: itemPath.split(".children.").length,
             sectionId: section.id || "",
             nodePath: itemPath,
+            nodeRef: item,
             richPath: `${itemPath}.richDescription`,
             textPath: `${itemPath}.description`
           });
@@ -8002,21 +8102,37 @@ function renderCompileAppendTree(project, selectedId = "") {
 function compileEditorTabs(project, file = activeCompileFile(project)) {
   const workspace = ensureCompileCode(project);
   const files = workspace.files || [];
-  if (!files.length) return "";
+  const openFileIds = Array.isArray(workspace.openFileIds) ? workspace.openFileIds : files.map((sourceFile) => sourceFile.id);
+  const openFiles = openFileIds.map((id) => files.find((sourceFile) => sourceFile.id === id)).filter(Boolean);
+  if (!openFiles.length) {
+    return `
+      <div class="compile-editor-tabs is-empty" role="tablist" aria-label="Open source files">
+        <span>Select a source file from Solution Explorer to open it.</span>
+      </div>
+    `;
+  }
   return `
     <div class="compile-editor-tabs" role="tablist" aria-label="Open source files">
-      ${files.map((sourceFile) => `
-        <button
-          class="${sourceFile.id === file?.id ? "active" : ""}"
-          type="button"
-          role="tab"
-          aria-selected="${sourceFile.id === file?.id ? "true" : "false"}"
-          data-compile-select="${escapeHtml(sourceFile.id)}"
-          title="${escapeHtml(compileFilePath(sourceFile))}"
-        >
-          <span>${escapeHtml(sourceFile.fileName || "source")}</span>
-          ${sourceFile.dirty ? `<small aria-label="Unsaved changes">*</small>` : ""}
-        </button>
+      ${openFiles.map((sourceFile) => `
+        <div class="compile-editor-tab${sourceFile.id === file?.id ? " active" : ""}${sourceFile.dirty ? " is-dirty" : ""}" role="presentation">
+          <button
+            class="compile-editor-tab-label"
+            type="button"
+            role="tab"
+            aria-selected="${sourceFile.id === file?.id ? "true" : "false"}"
+            data-compile-select="${escapeHtml(sourceFile.id)}"
+            title="${escapeHtml(compileFilePath(sourceFile))}"
+          >
+            <span>${escapeHtml(sourceFile.fileName || "source")}</span>
+          </button>
+          <button
+            class="compile-editor-tab-close"
+            type="button"
+            data-compile-close-tab="${escapeHtml(sourceFile.id)}"
+            aria-label="Close ${escapeHtml(sourceFile.fileName || "source")} view"
+            title="${sourceFile.dirty ? "Close view with unsaved changes" : "Close file view"}"
+          >&times;</button>
+        </div>
       `).join("")}
     </div>
   `;
@@ -8052,7 +8168,10 @@ function compileIdeStatusBar(project, file = activeCompileFile(project)) {
 
 function activeCompileFile(project) {
   const workspace = ensureCompileCode(project);
-  return workspace.files.find((file) => file.id === workspace.activeFileId) || workspace.files[0] || null;
+  const openFileIds = Array.isArray(workspace.openFileIds) ? workspace.openFileIds : workspace.files.map((file) => file.id);
+  return workspace.files.find((file) => file.id === workspace.activeFileId) ||
+    workspace.files.find((file) => openFileIds.includes(file.id)) ||
+    null;
 }
 
 function compileLogTimestamp(value = new Date().toISOString()) {
@@ -8426,8 +8545,13 @@ function clearCompileOutput(project, file = activeCompileFile(project)) {
 }
 
 function richBlocksForCompileAppend(project, destination) {
-  const existingRich = getByPath(project, destination.richPath);
-  const existingText = getByPath(project, destination.textPath) || "";
+  const source = destination.nodeRef || destination.sectionRef || project;
+  const existingRich = destination.nodeRef || destination.sectionRef
+    ? source.richDescription
+    : source.summaryRich;
+  const existingText = destination.nodeRef || destination.sectionRef
+    ? source.description || ""
+    : source.summary || "";
   return richBlocksFromValue(existingRich, existingText).filter((block) => {
     if (block.type !== "paragraph") return true;
     return Boolean(String(block.text || "").trim() || block.html);
@@ -8682,9 +8806,10 @@ function renderCompileCodeSection(project) {
   const activeFile = activeCompileFile(project);
   const dockUnlocked = Boolean(workspace.outputDockUnlocked);
   const dockPosition = workspace.outputDockPosition || { x: 72, y: 120 };
+  const outputHeight = normalizeCompileOutputHeight(workspace.outputDockHeight);
   const dockStyle = dockUnlocked
     ? ` style="left:${Math.max(8, Number(dockPosition.x) || 72)}px; top:${Math.max(8, Number(dockPosition.y) || 120)}px;"`
-    : "";
+    : ` style="--compile-output-height:${outputHeight}px;"`;
   return `
     <div class="compile-code-workspace">
       ${renderCompileIdeMenuBar(project, activeFile)}
@@ -8776,6 +8901,7 @@ function renderCompileCodeSection(project) {
           </div>
         `}
         <section class="compile-output-workbench ${dockUnlocked ? "is-output-dock-unlocked" : "is-output-dock-locked"}" aria-label="Compile output workbench"${dockStyle}>
+          <div class="compile-output-resize-handle" data-compile-output-resize title="Drag to resize output panel"></div>
           <div class="compile-output-dock-toolbar">
             <button
               class="compile-output-dock-toggle"
@@ -9262,6 +9388,17 @@ async function handleGlobalKeyboardShortcuts(event) {
   const modifier = event.ctrlKey || event.metaKey;
   if (!modifier || event.altKey) return;
 
+  if (["+", "=", "-", "_", "0"].includes(key)) {
+    event.preventDefault();
+    if (key === "0") {
+      setBuilderZoom(1);
+    } else {
+      const direction = key === "-" || key === "_" ? -1 : 1;
+      setBuilderZoom(normalizeBuilderZoom(builderPreferences.zoom) + direction * 0.05);
+    }
+    return;
+  }
+
   if (key === "s") {
     event.preventDefault();
     await saveCurrentBuilderContext();
@@ -9292,6 +9429,13 @@ async function handleGlobalKeyboardShortcuts(event) {
     const action = key === "b" ? "toggle-bold" : key === "i" ? "toggle-italic" : "toggle-underline";
     await handlePlainTextAction(action);
   }
+}
+
+function handleBuilderZoomWheel(event) {
+  if (!(event.ctrlKey || event.metaKey)) return;
+  event.preventDefault();
+  const direction = event.deltaY < 0 ? 1 : -1;
+  setBuilderZoom(normalizeBuilderZoom(builderPreferences.zoom) + direction * 0.05);
 }
 
 function makeItemForSection(key, title, description = "", url = "") {
@@ -9403,28 +9547,63 @@ function activeCompileWorkspaceAndFile(project = selectedProject()) {
   return { workspace, file: activeCompileFile(project) };
 }
 
-function addCompileSourceFile(project, file = newCompileFile("javascript")) {
+function openCompileFileView(workspace, fileId = "") {
+  if (!workspace || !fileId) return;
+  workspace.openFileIds = Array.isArray(workspace.openFileIds) ? workspace.openFileIds : [];
+  if (!workspace.openFileIds.includes(fileId)) workspace.openFileIds.push(fileId);
+  workspace.activeFileId = fileId;
+}
+
+function closeCompileFileView(project, fileId = "") {
   const workspace = ensureCompileCode(project);
-  workspace.files.push(file);
-  workspace.activeFileId = file.id;
+  if (!fileId) return;
+  workspace.openFileIds = (workspace.openFileIds || []).filter((id) => id !== fileId);
+  if (workspace.activeFileId === fileId) {
+    workspace.activeFileId = workspace.openFileIds.find((id) => workspace.files.some((file) => file.id === id)) || "";
+  }
+  setStatus("Closed source file view. The file remains in the project tree.");
+  scheduleAutosave();
+  renderSectionContent(project);
+}
+
+function addCompileSourceFile(project, file = null, options = {}) {
+  const workspace = ensureCompileCode(project);
+  const language = normalizeCodeLanguage(options.language || file?.language || "javascript");
+  const targetDirectory = compileDirectoryPath(options.directory || "");
+  const sourceFile = file || newCompileFile(language, {
+    relativePath: uniqueCompileFilePath(
+      workspace,
+      targetDirectory ? `${targetDirectory}/${defaultCodeFileName(language)}` : defaultCodeFileName(language),
+      language
+    )
+  });
+  addCompileDirectoryPath(workspace, compileFileDirectory(sourceFile.relativePath));
+  workspace.files.push(sourceFile);
+  openCompileFileView(workspace, sourceFile.id);
   setStatus("New compile source created. Type or paste code, then save source.");
   scheduleAutosave();
   renderSectionContent(project);
 }
 
-function addCompileTestbenchFile(project) {
+function addCompileTestbenchFile(project, options = {}) {
   const workspace = ensureCompileCode(project);
   const activeFile = activeCompileFile(project);
   const language = isHdlLanguage(activeFile?.language) ? normalizeCodeLanguage(activeFile.language) : "systemverilog";
   const designName = firstHdlModuleName(activeFile?.code || "") || "design";
   const extension = language === "verilog" ? ".v" : ".sv";
+  const targetDirectory = compileDirectoryPath(options.directory || compileFileDirectory(activeFile?.relativePath || ""));
   const file = newCompileFile(language, {
-    fileName: `tb_${slugify(designName).replace(/-/g, "_") || "design"}${extension}`,
+    relativePath: uniqueCompileFilePath(
+      workspace,
+      `${targetDirectory ? `${targetDirectory}/` : ""}tb_${slugify(designName).replace(/-/g, "_") || "design"}${extension}`,
+      language
+    ),
     role: "testbench",
     code: hdlTestbenchTemplate(language, designName)
   });
+  addCompileDirectoryPath(workspace, compileFileDirectory(file.relativePath));
   workspace.files.push(file);
-  workspace.activeFileId = file.id;
+  openCompileFileView(workspace, file.id);
   setStatus("Testbench created. Connect it to the design, keep the waveform dump calls, then run the simulation.");
   addCompileMessage(project, "Created an HDL testbench with $dumpfile and $dumpvars for the signal scope.", "info");
   scheduleAutosave();
@@ -9493,8 +9672,18 @@ function appendCompileCodeToProject(project, file) {
 
   const blocks = richBlocksForCompileAppend(project, destination);
   blocks.push(block);
-  setByPath(project, destination.richPath, { blocks });
-  setByPath(project, destination.textPath, plainTextFromRich({ blocks }));
+  const rich = { blocks };
+  const plain = plainTextFromRich(rich);
+  if (destination.nodeRef) {
+    destination.nodeRef.richDescription = rich;
+    destination.nodeRef.description = plain;
+  } else if (destination.sectionRef) {
+    destination.sectionRef.richDescription = rich;
+    destination.sectionRef.description = plain;
+  } else {
+    project.summaryRich = rich;
+    project.summary = plain;
+  }
 
   file.lastAppendedAt = new Date().toISOString();
   addCompileMessage(project, `${file.fileName || file.title || "Source code"} appended to ${destination.label}.`, "success");
@@ -9522,6 +9711,7 @@ async function saveCompileFile(project, file) {
   file.title = file.fileName;
   file.language = result.saved?.language || file.language;
   file.dirty = false;
+  addCompileDirectoryPath(ensureCompileCode(project), compileFileDirectory(file.relativePath));
   addCompileMessage(project, `Saved ${file.fileName || "source file"}.`, "info");
   return result.saved;
 }
@@ -9531,6 +9721,7 @@ async function importCompileFiles(project, options = {}) {
   const files = await chooseFiles({ multiple: true, directory: options.directory === true });
   if (!files.length) return;
   const allowedExtensions = supportedCodeLanguages.flatMap((item) => item.extensions || []);
+  const targetDirectory = compileDirectoryPath(options.targetDirectory || "");
   let imported = 0;
   let skipped = 0;
   for (const file of files) {
@@ -9540,32 +9731,37 @@ async function importCompileFiles(project, options = {}) {
       continue;
     }
     const code = await file.text();
-    const incomingPath = options.directory && file.webkitRelativePath ? file.webkitRelativePath : file.name;
+    const pickedPath = options.directory && file.webkitRelativePath ? file.webkitRelativePath : file.name;
+    const incomingPath = [targetDirectory, pickedPath].filter(Boolean).join("/");
     const language = detectCodeLanguage(code, incomingPath);
     const profile = codeLanguageProfile(language);
+    const relativePath = uniqueCompileFilePath(workspace, incomingPath, profile.id);
     const sourceFile = newCompileFile(profile.id, {
-      relativePath: incomingPath,
-      fileName: incomingPath,
+      relativePath,
+      fileName: relativePath,
       code
     });
+    addCompileDirectoryPath(workspace, compileFileDirectory(relativePath));
     workspace.files.push(sourceFile);
-    workspace.activeFileId = sourceFile.id;
+    openCompileFileView(workspace, sourceFile.id);
     imported += 1;
   }
   if (!imported) {
     setStatus("No supported source files were found. Supported code files include C, C++, Verilog, SystemVerilog, LTspice, Java, JavaScript, Python, and HTML.");
     return;
   }
-  setStatus(`Imported ${imported} source file${imported === 1 ? "" : "s"}${skipped ? ` and skipped ${skipped} unsupported file${skipped === 1 ? "" : "s"}` : ""}. Click Save source before compiling.`);
+  setStatus(`Imported ${imported} source file${imported === 1 ? "" : "s"}${targetDirectory ? ` into ${targetDirectory}` : ""}${skipped ? ` and skipped ${skipped} unsupported file${skipped === 1 ? "" : "s"}` : ""}. Click Save source before compiling.`);
   scheduleAutosave();
   renderSectionContent(project);
 }
 
-async function addCompileDirectory(project) {
+async function addCompileDirectory(project, options = {}) {
   const workspace = ensureCompileCode(project);
-  const folder = compileDirectoryPath(window.prompt("Folder path inside this project workspace", "src") || "");
+  const baseDirectory = compileDirectoryPath(options.baseDirectory || "");
+  const defaultFolder = baseDirectory ? `${baseDirectory}/new-folder` : "src";
+  const folder = compileDirectoryPath(window.prompt("Folder path inside this project workspace", defaultFolder) || "");
   if (!folder) return;
-  if (!workspace.directories.includes(folder)) workspace.directories.push(folder);
+  addCompileDirectoryPath(workspace, folder);
   addCompileMessage(project, `Folder created: ${folder}`, "success");
   setStatus(`Created compile folder ${folder}.`);
   scheduleAutosave();
@@ -9586,7 +9782,8 @@ function deleteCompileTreeTarget(project, context = activeCompileTreeContext) {
       message: `Are you sure you want to delete "${file.fileName || compileFilePath(file)}"?`,
       onConfirm: () => {
         workspace.files = workspace.files.filter((item) => item.id !== file.id);
-        workspace.activeFileId = workspace.files[0]?.id || "";
+        workspace.openFileIds = (workspace.openFileIds || []).filter((id) => id !== file.id);
+        workspace.activeFileId = workspace.openFileIds.find((id) => workspace.files.some((item) => item.id === id)) || "";
         activeCompileTreeContext = null;
         addCompileMessage(project, `Deleted ${file.fileName || "source file"}.`, "warning");
         scheduleAutosave();
@@ -9607,8 +9804,9 @@ function deleteCompileTreeTarget(project, context = activeCompileTreeContext) {
       const removedIds = new Set(filesInFolder.map((file) => file.id));
       workspace.files = workspace.files.filter((file) => !removedIds.has(file.id));
       workspace.directories = workspace.directories.filter((directory) => !childFolders.includes(directory));
+      workspace.openFileIds = (workspace.openFileIds || []).filter((id) => !removedIds.has(id));
       if (!workspace.files.some((file) => file.id === workspace.activeFileId)) {
-        workspace.activeFileId = workspace.files[0]?.id || "";
+        workspace.activeFileId = workspace.openFileIds.find((id) => workspace.files.some((file) => file.id === id)) || "";
       }
       activeCompileTreeContext = null;
       addCompileMessage(project, `Deleted compile folder ${folder}.`, "warning");
@@ -9635,6 +9833,7 @@ function moveCompileTreeFile(project, context = activeCompileTreeContext) {
   file.title = file.fileName;
   file.role = normalizeCompileFileRole(file.role || inferCompileFileRole(file.fileName, file.code, file.language), file.language);
   file.dirty = true;
+  addCompileDirectoryPath(workspace, compileFileDirectory(file.relativePath));
   addCompileMessage(project, `Moved source to ${nextPath}. Click Save source to write it to disk.`, "info");
   setStatus(`Source path changed to ${nextPath}.`);
   scheduleAutosave();
@@ -9834,11 +10033,12 @@ async function runCompileIdeAction(project, action = "") {
   if (!project || !action) return;
   const workspace = ensureCompileCode(project);
   const file = activeCompileFile(project);
-  if (action === "new-file") return addCompileSourceFile(project);
-  if (action === "new-folder") return addCompileDirectory(project);
-  if (action === "add-testbench") return addCompileTestbenchFile(project);
-  if (action === "import-files") return importCompileFiles(project);
-  if (action === "import-directory") return importCompileFiles(project, { directory: true });
+  const contextDirectory = compileContextBaseDirectory(activeCompileTreeContext);
+  if (action === "new-file") return addCompileSourceFile(project, null, { directory: contextDirectory });
+  if (action === "new-folder") return addCompileDirectory(project, { baseDirectory: contextDirectory });
+  if (action === "add-testbench") return addCompileTestbenchFile(project, { directory: contextDirectory });
+  if (action === "import-files") return importCompileFiles(project, { targetDirectory: contextDirectory });
+  if (action === "import-directory") return importCompileFiles(project, { directory: true, targetDirectory: contextDirectory });
   if (action === "save-project") return saveSelectedProjectToPortfolio();
   if (action === "project-preview") return openProjectPortfolioPreview();
   if (action === "portfolio-preview") return openPortfolioPreview();
@@ -11761,6 +11961,10 @@ document.addEventListener("pointercancel", endSelectionInspectorDrag);
 
 textSelectionInspector?.addEventListener("click", (event) => {
   if (event.target.closest("[data-selection-inspector-close]")) {
+    if (summaryContextMenu && !summaryContextMenu.hidden) {
+      hideTextSelectionInspector();
+      return;
+    }
     clearPersistentTextSelection(true);
     hideTextSelectionInspector();
     return;
@@ -12324,8 +12528,12 @@ sectionContent.addEventListener("click", async (event) => {
     await importCompileFiles(project, { directory: true });
     return;
   }
+  if (button.dataset.compileCloseTab) {
+    closeCompileFileView(project, button.dataset.compileCloseTab);
+    return;
+  }
   if (button.dataset.compileSelect) {
-    ensureCompileCode(project).activeFileId = button.dataset.compileSelect;
+    openCompileFileView(ensureCompileCode(project), button.dataset.compileSelect);
     renderSectionContent(project);
     return;
   }
@@ -12442,7 +12650,8 @@ sectionContent.addEventListener("click", async (event) => {
       message: `Are you sure you want to delete "${compileFile?.title || compileFile?.fileName || "this source file"}"?`,
       onConfirm: () => {
         compileWorkspace.files = compileWorkspace.files.filter((file) => file.id !== compileFile?.id);
-        compileWorkspace.activeFileId = compileWorkspace.files[0]?.id || "";
+        compileWorkspace.openFileIds = (compileWorkspace.openFileIds || []).filter((id) => id !== compileFile?.id);
+        compileWorkspace.activeFileId = compileWorkspace.openFileIds.find((id) => compileWorkspace.files.some((file) => file.id === id)) || "";
         scheduleAutosave();
         renderSectionContent(project);
       }
@@ -12629,11 +12838,11 @@ sectionContent.addEventListener("click", async (event) => {
   }
 });
 
-function hideCompileTreeContextMenus() {
+function hideCompileTreeContextMenus(options = {}) {
   sectionContent.querySelectorAll("[data-compile-tree-context-menu]").forEach((menu) => {
     menu.hidden = true;
   });
-  activeCompileTreeContext = null;
+  if (options.clearContext !== false) activeCompileTreeContext = null;
 }
 
 sectionContent.addEventListener("contextmenu", (event) => {
@@ -12642,6 +12851,7 @@ sectionContent.addEventListener("contextmenu", (event) => {
   const menu = sidebar.querySelector("[data-compile-tree-context-menu]");
   if (!menu) return;
   event.preventDefault();
+  hideCompileTreeContextMenus({ clearContext: false });
   const fileButton = event.target.closest("[data-compile-tree-file-id]");
   const folderNode = event.target.closest("[data-compile-folder-path]");
   activeCompileTreeContext = fileButton
@@ -12657,7 +12867,8 @@ sectionContent.addEventListener("contextmenu", (event) => {
       }
       : { type: "workspace", path: "" };
   menu.dataset.contextType = activeCompileTreeContext.type;
-  hideCompileTreeContextMenus();
+  menu.dataset.contextFileId = activeCompileTreeContext.fileId || "";
+  menu.dataset.contextPath = activeCompileTreeContext.path || "";
   menu.hidden = false;
   const width = 190;
   const height = 210;
@@ -12666,6 +12877,20 @@ sectionContent.addEventListener("contextmenu", (event) => {
 });
 
 sectionContent.addEventListener("pointerdown", (event) => {
+  const resizeHandle = event.target.closest("[data-compile-output-resize]");
+  const lockedDock = resizeHandle?.closest(".compile-output-workbench.is-output-dock-locked");
+  if (lockedDock && event.button === 0) {
+    activeOutputDockResize = {
+      startY: event.clientY,
+      startHeight: lockedDock.getBoundingClientRect().height,
+      pointerId: event.pointerId
+    };
+    resizeHandle.setPointerCapture?.(event.pointerId);
+    lockedDock.classList.add("is-resizing");
+    event.preventDefault();
+    return;
+  }
+
   const dragHandle = event.target.closest("[data-compile-output-drag]");
   const dock = dragHandle?.closest(".compile-output-workbench.is-output-dock-unlocked");
   if (!dock || event.button !== 0) return;
@@ -12681,6 +12906,19 @@ sectionContent.addEventListener("pointerdown", (event) => {
 });
 
 document.addEventListener("pointermove", (event) => {
+  if (activeOutputDockResize) {
+    const project = selectedProject();
+    if (!project) return;
+    const workspace = ensureCompileCode(project);
+    const dock = sectionContent.querySelector(".compile-output-workbench.is-output-dock-locked");
+    if (!dock) return;
+    const nextHeight = normalizeCompileOutputHeight(activeOutputDockResize.startHeight + activeOutputDockResize.startY - event.clientY);
+    workspace.outputDockHeight = nextHeight;
+    dock.style.setProperty("--compile-output-height", `${nextHeight}px`);
+    event.preventDefault();
+    return;
+  }
+
   if (!activeOutputDockDrag) return;
   const project = selectedProject();
   if (!project) return;
@@ -12697,6 +12935,12 @@ document.addEventListener("pointermove", (event) => {
 });
 
 function endOutputDockDrag(event) {
+  if (activeOutputDockResize) {
+    sectionContent.querySelector("[data-compile-output-resize]")?.releasePointerCapture?.(activeOutputDockResize.pointerId);
+    sectionContent.querySelector(".compile-output-workbench.is-output-dock-locked")?.classList.remove("is-resizing");
+    activeOutputDockResize = null;
+    scheduleAutosave(900);
+  }
   if (!activeOutputDockDrag) return;
   sectionContent.querySelector("[data-compile-output-drag]")?.releasePointerCapture?.(activeOutputDockDrag.pointerId);
   sectionContent.querySelector(".compile-output-workbench.is-output-dock-unlocked")?.classList.remove("is-dragging");
@@ -12956,6 +13200,7 @@ window.addEventListener("builder-menu-action", (event) => {
 document.addEventListener("keydown", (event) => {
   void handleGlobalKeyboardShortcuts(event);
 }, true);
+document.addEventListener("wheel", handleBuilderZoomWheel, { passive: false });
 
 loadBuilderPreferences();
 renderSelectionInspectorOptions();
