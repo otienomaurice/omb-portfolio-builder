@@ -9796,3 +9796,279 @@ body[data-compile-theme] .compile-scope-svg {
   color: #0f2f3d !important;
   background: #ffffff !important;
 }
+
+.project-view-tabs {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 36px;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--line);
+  background: #f8fcff;
+}
+
+.project-view-tab-list {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.project-view-tab {
+  display: inline-grid;
+  grid-template-rows: auto auto;
+  align-items: center;
+  justify-items: start;
+  min-width: 112px;
+  max-width: 220px;
+  min-height: 30px;
+  padding: 3px 9px;
+  border: 1px solid rgba(14, 116, 144, 0.16);
+  border-radius: 6px 6px 0 0;
+  color: #17384a;
+  background: #ffffff;
+  font: inherit;
+  font-size: 0.76rem;
+  font-weight: 850;
+  text-align: left;
+}
+
+.project-view-tab span,
+.project-view-tab small {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-view-tab small {
+  color: #557086;
+  font-size: 0.62rem;
+  font-weight: 750;
+}
+
+.project-view-tab:hover {
+  background: #d8f3fb;
+}
+
+.project-view-tab.is-active {
+  border-color: #38bdf8;
+  color: #06283a;
+  background: #cfeffc;
+}
+
+.project-view-tab-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  min-width: 24px;
+  height: 24px;
+  min-height: 24px;
+  margin-right: 4px;
+  border: 1px solid rgba(220, 38, 38, 0.22);
+  border-radius: 5px;
+  color: #b42318;
+  background: #fff5f5;
+  font-size: 0.86rem;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.project-view-tab-close:hover {
+  color: #ffffff;
+  background: #dc2626;
+}
+
+.project-view-tab-count {
+  flex: 0 0 auto;
+  color: #557086;
+  font-size: 0.68rem;
+  font-weight: 850;
+}
+
+.project-view-context-menu {
+  z-index: 120;
+}
+
+body[data-builder-theme="dark"] .project-view-tabs {
+  border-color: var(--builder-dark-line);
+  background: var(--builder-dark-surface);
+}
+
+body[data-builder-theme="dark"] .project-view-tab {
+  border-color: var(--builder-dark-line);
+  color: var(--builder-dark-text);
+  background: var(--builder-dark-surface-2);
+}
+
+body[data-builder-theme="dark"] .project-view-tab small,
+body[data-builder-theme="dark"] .project-view-tab-count {
+  color: var(--builder-dark-muted);
+}
+
+body[data-builder-theme="dark"] .project-view-tab:hover,
+body[data-builder-theme="dark"] .project-view-tab.is-active {
+  color: #ffffff;
+  background: #075985;
+}
+
+/* Final Compile Code explorer behavior. This is intentionally last because the
+   compile workspace has several theme layers above it. */
+.compile-code-workspace {
+  position: relative !important;
+  grid-template-columns: var(--compile-sidebar-width, 340px) 7px minmax(0, 1fr) !important;
+}
+
+.compile-code-workspace > .compile-ide-menu-bar {
+  grid-column: 1 / -1 !important;
+}
+
+.compile-code-sidebar {
+  grid-column: 1 !important;
+  min-width: 0 !important;
+  overflow: hidden !important;
+}
+
+.compile-sidebar-resize-handle {
+  grid-column: 2;
+  grid-row: 2;
+  align-self: stretch;
+  width: 7px;
+  min-width: 7px;
+  cursor: col-resize;
+  border-left: 1px solid var(--compile-line, #333842);
+  border-right: 1px solid transparent;
+  background: color-mix(in srgb, var(--compile-panel, #252526) 78%, var(--compile-accent, #007acc));
+}
+
+.compile-sidebar-resize-handle:hover,
+.compile-code-workspace.is-sidebar-resizing .compile-sidebar-resize-handle {
+  background: var(--compile-accent, #007acc);
+}
+
+.compile-code-main {
+  grid-column: 3 !important;
+  min-width: 0 !important;
+}
+
+.compile-code-workspace-tree {
+  min-width: 0 !important;
+  height: 100% !important;
+  max-height: none !important;
+  overflow: auto !important;
+}
+
+.compile-code-root-folder > summary,
+.compile-code-tree-folder > summary {
+  grid-template-columns: 14px 18px minmax(0, 1fr) !important;
+  column-gap: 4px !important;
+}
+
+.compile-code-root-folder > summary span:last-child,
+.compile-code-tree-folder > summary span:last-child {
+  min-width: 0 !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+.compile-code-tree-file {
+  grid-template-columns: 28px minmax(0, 1fr) auto !important;
+  column-gap: 6px !important;
+}
+
+.compile-code-tree-file span:nth-child(2) {
+  min-width: 0 !important;
+}
+
+.compile-code-tree-file.is-selected:not(.is-active) {
+  color: var(--compile-text, #f3f4f6) !important;
+  background: color-mix(in srgb, var(--compile-active, #094771) 58%, transparent) !important;
+}
+
+.compile-code-tree-file.is-selected small {
+  color: color-mix(in srgb, var(--compile-text, #ffffff) 82%, transparent) !important;
+}
+
+.compile-panel-tabs {
+  align-items: center !important;
+}
+
+.compile-panel-tool-button {
+  margin-left: 4px !important;
+  border-style: dashed !important;
+  font-size: 0.72rem !important;
+}
+
+.compile-panel-tool-button.is-active {
+  color: #ffffff !important;
+  background: var(--compile-active, #094771) !important;
+}
+
+.compile-stdin-window {
+  position: absolute;
+  z-index: 35;
+  top: 52px;
+  right: 18px;
+  display: grid;
+  grid-template-rows: auto minmax(160px, 1fr);
+  width: min(460px, max(320px, calc(100% - var(--compile-sidebar-width, 340px) - 72px)));
+  min-width: min(320px, calc(100% - 24px));
+  max-width: calc(100% - 24px);
+  max-height: min(56vh, 520px);
+  border: 1px solid var(--compile-line, #333842);
+  border-radius: 7px;
+  background: var(--compile-panel, #252526);
+  color: var(--compile-text, #f3f4f6);
+  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.32);
+  overflow: hidden;
+}
+
+.compile-stdin-window-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--compile-line, #333842);
+  background: var(--compile-surface, #2d2d30);
+}
+
+.compile-stdin-window-heading div {
+  display: grid;
+  min-width: 0;
+}
+
+.compile-stdin-window-heading strong,
+.compile-stdin-window-heading span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compile-stdin-window-heading span {
+  color: var(--compile-muted, #cbd5e1);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.compile-stdin-window textarea {
+  width: 100%;
+  min-height: 180px;
+  height: 100%;
+  margin: 0;
+  padding: 12px;
+  resize: both;
+  border: 0;
+  outline: 0;
+  background: var(--compile-editor, #1e1e1e);
+  color: var(--compile-text, #f3f4f6);
+  caret-color: var(--compile-text, #ffffff);
+  font: 400 0.82rem/1.5 Consolas, "Courier New", monospace;
+  tab-size: 2;
+}
