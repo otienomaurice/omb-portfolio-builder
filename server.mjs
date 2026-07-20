@@ -1848,6 +1848,7 @@ async function compileAndRunCode(payload = {}) {
       topModule
     });
     const cacheDir = compileCacheDirectory(payload.projectId, language, cacheKey);
+    await rm(cacheDir, { recursive: true, force: true });
     await mkdir(cacheDir, { recursive: true });
     const output = path.join(cacheDir, "simulation.vvp");
     const sourceFiles = await writeHdlSimulationSources(hdlFiles, cacheDir);
@@ -1874,7 +1875,7 @@ async function compileAndRunCode(payload = {}) {
         terminal.push("Verilator lint reported issues. This advisory lint does not replace the integrated Icarus/VVP simulation used to generate the built-in scope.");
       }
     }
-    const cached = !forceRebuild && await pathExists(output);
+    const cached = false;
     if (cached) {
       terminal.push(cachedBuildLine(`${profile.label} simulation`, output));
     } else {
