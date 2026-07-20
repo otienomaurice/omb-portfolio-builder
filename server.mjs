@@ -392,7 +392,8 @@ function windowsTerminalCommand(command = "", sentinel = "") {
     "$global:LASTEXITCODE = $null",
     "$__ombExitCode = 0",
     "try {",
-    `  & { ${rewritten} }`,
+    `  $__ombOutput = & { ${rewritten} } 2>&1`,
+    "  if ($null -ne $__ombOutput) { $__ombOutput | Out-String -Stream | ForEach-Object { Write-Output $_ } }",
     "  if ($global:LASTEXITCODE -is [int]) { $__ombExitCode = $global:LASTEXITCODE }",
     "} catch {",
     "  Write-Error $_",
@@ -1101,7 +1102,7 @@ function isHdlLanguage(language = "") {
 function inferCompileFileRole(fileName = "", code = "", language = "") {
   if (!isHdlLanguage(language)) return "source";
   const haystack = `${fileName}\n${code}`.toLowerCase();
-  if (/\b(tb|testbench)\b|(^|[_-])tb([_-]|\.)|test[_-]?bench|\$dumpfile|\$dumpvars|module\s+tb[_a-z0-9]*/i.test(haystack)) {
+  if (/\b(tb|testbench|uvm_test|uvm_env|uvm_component|uvm_sequence)\b|(^|[_-])tb([_-]|\.)|test[_-]?bench|\$dumpfile|\$dumpvars|module\s+tb[_a-z0-9]*/i.test(haystack)) {
     return "testbench";
   }
   return "design";
@@ -1110,7 +1111,7 @@ function inferCompileFileRole(fileName = "", code = "", language = "") {
 function normalizeCompileFileRole(value = "", language = "") {
   if (!isHdlLanguage(language)) return "source";
   const clean = String(value || "").trim().toLowerCase().replace(/[_\s-]+/g, "");
-  return ["tb", "testbench", "bench"].includes(clean) ? "testbench" : "design";
+  return ["tb", "testbench", "bench", "uvm", "uvmtest"].includes(clean) ? "testbench" : "design";
 }
 
 async function saveCompileSource({ projectId, fileId, title, fileName, relativePath, language, role = "", code, stdin = "" }) {
@@ -1170,6 +1171,29 @@ function hdlModuleNames(code = "") {
 function hdlHasWaveDump(code = "") {
   const source = String(code || "");
   return /\$dumpfile\s*\(/.test(source) && /\$dumpvars\s*\(/.test(source);
+}
+
+function hdlTimingAndVerificationDiagnostics(files = []) {
+  const diagnostics = [];
+  const missingTimescale = files
+    .filter((file) => !/`timescale\s+\d+\s*(?:fs|ps|ns|us|ms|s)\s*\/\s*\d+\s*(?:fs|ps|ns|us|ms|s)/i.test(file.code || ""))
+    .map((file) => file.fileName);
+  if (missingTimescale.length) {
+    diagnostics.push(`Timing: ${missingTimescale.join(", ")} ${missingTimescale.length === 1 ? "does" : "do"} not declare \`timescale. Add \`timescale 1ns/1ps or the intended resolution so # delays and the scope timeline are predictable.`);
+  }
+  const testbenches = files.filter((file) => file.role === "testbench");
+  if (testbenches.length && !testbenches.some((file) => /#\s*\d+|@\s*\(|repeat\s*\(|wait\s*\(/.test(file.code || ""))) {
+    diagnostics.push("Timing: the selected testbench has no obvious delay, event control, repeat, or wait. A zero-time simulation can finish before useful waveform transitions exist.");
+  }
+  const assertionCount = files.reduce((count, file) => count + (String(file.code || "").match(/\bassert\s+(?:property|final|#?\s*\()/g) || []).length, 0);
+  if (assertionCount) diagnostics.push(`Assertions: detected ${assertionCount} SystemVerilog assertion${assertionCount === 1 ? "" : "s"} in the simulation set.`);
+  if (files.some((file) => /\bproperty\b|\bassert\s+property\b|\bcover\s+property\b/i.test(file.code || ""))) {
+    diagnostics.push("Assertions: concurrent SVA property syntax may exceed Icarus Verilog support. If iverilog reports syntax errors near property/assert property, convert that check to an immediate assertion or run the project in a simulator with fuller SVA support.");
+  }
+  if (files.some((file) => /\buvm_|`uvm_|import\s+uvm_pkg::\*/.test(file.code || ""))) {
+    diagnostics.push("UVM: UVM-style code was detected. Icarus Verilog can run simple SystemVerilog classes, but full UVM libraries/macros may require a simulator with UVM package support.");
+  }
+  return diagnostics;
 }
 
 function hdlFilesFromPayload(payload = {}, activeFileName = "", activeLanguage = "verilog") {
@@ -1702,6 +1726,7 @@ async function compileAndRunCode(payload = {}) {
       return { ok: false, language, saved, terminal: `${profile.label} simulator tools missing: ${missingTools.join(", ")}. Install Icarus Verilog and add iverilog/vvp to PATH.` };
     }
     const hdlFiles = hdlFilesFromPayload(payload, saved.fileName, language);
+    const hdlDiagnostics = hdlTimingAndVerificationDiagnostics(hdlFiles);
     const testbenchFiles = hdlFiles.filter((file) => file.role === "testbench");
     if (action === "simulate" && !testbenchFiles.length) {
       return {
@@ -1753,6 +1778,7 @@ async function compileAndRunCode(payload = {}) {
     const designCount = sourceFiles.filter((file) => file.role !== "testbench").length;
     terminal.push(`${profile.label} simulation set: ${designCount} design file${designCount === 1 ? "" : "s"}, ${testbenchFiles.length} testbench file${testbenchFiles.length === 1 ? "" : "s"}`);
     if (topModule) terminal.push(`Testbench top: ${topModule}`);
+    if (hdlDiagnostics.length) terminal.push(["HDL timing and verification notes:", ...hdlDiagnostics.map((item) => `- ${item}`)].join("\n"));
     const cached = !forceRebuild && await pathExists(output);
     if (cached) {
       terminal.push(cachedBuildLine(`${profile.label} simulation`, output));
@@ -1786,11 +1812,15 @@ async function compileAndRunCode(payload = {}) {
         };
       }
       await clearHdlWaveforms(cacheDir);
-      const run = await runProcess(found.vvp, [output], { cwd: cacheDir, timeoutMs: 20000 });
+      const simulationTimeoutMs = Math.max(5000, Math.min(120000, Number(payload.hdlSimulationTimeoutMs) || 30000));
+      const run = await runProcess(found.vvp, [output], { cwd: cacheDir, timeoutMs: simulationTimeoutMs });
       terminal.push(terminalLine(`${path.basename(found.vvp)} simulation.vvp`, cleanHdlSimulationOutput(run)));
       waveform = run.ok ? await readHdlWaveform(cacheDir) : null;
       if (waveform?.signals?.length) {
         terminal.push(`Scope waveform: ${waveform.source} (${waveform.signals.length} signals, 0 to ${waveform.maxTime} ${waveform.timeScale})`);
+        if (!Number(waveform.maxTime)) {
+          terminal.push("Timing: waveform data exists only at time 0. Add clock edges, # delays, repeat/event controls, or longer stimulus before $finish to resolve a flat scope timeline.");
+        }
       } else {
         terminal.push("Scope waveform was not generated. Confirm the testbench executes $dumpfile and $dumpvars before $finish.");
       }
@@ -1843,7 +1873,7 @@ async function runCompileTerminalCommand(payload = {}) {
       output: ""
     };
   }
-  const persistent = await runPersistentCompileTerminalCommand(payload);
+  const persistent = await runOneShotCompileTerminalCommand(payload);
   const finalCwdAbsolute = persistent.cwdAbsolute || await terminalStartDirectory(payload);
   const relativeToProject = path.relative(resolveInsideCompileRoot(projectFolder), finalCwdAbsolute);
   const finalCwdRelative = relativeToProject && !relativeToProject.startsWith("..") && !path.isAbsolute(relativeToProject)
