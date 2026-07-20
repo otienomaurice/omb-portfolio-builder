@@ -3504,20 +3504,28 @@ body.rich-image-dragging * {
 
 .compile-ide-status-bar {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   gap: 0;
-  min-height: 26px;
+  height: 24px;
+  min-height: 24px;
+  max-height: 24px;
+  overflow: hidden;
   border-top: 1px solid #333842;
   background: #007acc;
   color: #ffffff;
-  font-size: 0.72rem;
+  font-size: 0.68rem;
+  line-height: 24px;
 }
 
 .compile-ide-status-bar span {
+  flex: 0 0 auto;
   padding: 0 10px;
+  overflow: hidden;
   border-right: 1px solid rgba(255, 255, 255, 0.22);
-  line-height: 26px;
+  line-height: 24px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 @media (max-width: 900px) {
@@ -8650,7 +8658,7 @@ body[data-builder-theme="dark"] .compile-file-extension {
 
 /* Compile Code IDE polish: source tabs close views, the tree stays compact, and locked output resizes from its top edge. */
 .compile-code-main {
-  grid-template-rows: auto auto auto minmax(220px, 1fr) auto auto auto auto;
+  grid-template-rows: auto auto auto minmax(180px, 1fr) auto auto auto 24px;
   max-height: calc(100vh - 124px);
   overflow: hidden;
 }
@@ -8784,4 +8792,238 @@ body[data-builder-theme="dark"] .compile-file-extension {
 .compile-terminal-screen {
   min-height: 0;
   height: 100%;
+}
+
+/* Final compile-workspace overrides: keep the tree, terminal, output dock, and status bar behaving like an IDE. */
+.compile-code-main {
+  grid-template-rows: auto auto auto minmax(180px, 1fr) auto auto auto 24px !important;
+  overflow: hidden !important;
+}
+
+.compile-code-workspace-tree {
+  min-height: 0 !important;
+  height: 100% !important;
+  overflow: auto !important;
+  padding: 4px 0 !important;
+  border-color: #333842 !important;
+  background: #1e1e1e !important;
+  color: #e5edf6 !important;
+  font-family: "Segoe UI", Arial, sans-serif !important;
+  font-size: 0.76rem !important;
+}
+
+.compile-code-root-folder > summary,
+.compile-code-tree-folder > summary {
+  display: grid !important;
+  grid-template-columns: 16px minmax(0, 1fr);
+  align-items: center;
+  min-height: 22px !important;
+  padding: 0 8px !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  color: #f3f4f6 !important;
+  background: transparent !important;
+  cursor: default;
+  list-style: none;
+}
+
+.compile-code-root-folder > summary::-webkit-details-marker,
+.compile-code-tree-folder > summary::-webkit-details-marker {
+  display: none;
+}
+
+.compile-code-root-folder > summary::before,
+.compile-code-tree-folder > summary::before {
+  content: ">";
+  width: 12px;
+  color: #cbd5e1;
+  font-size: 0.68rem;
+  transform: rotate(0deg);
+}
+
+.compile-code-root-folder[open] > summary::before,
+.compile-code-tree-folder[open] > summary::before {
+  transform: rotate(90deg);
+}
+
+.compile-code-tree-folder > summary:hover,
+.compile-code-tree-file:hover {
+  background: #2a2d2e !important;
+}
+
+.compile-code-tree-children,
+.compile-code-tree-files {
+  display: grid !important;
+  gap: 0 !important;
+  margin: 0 !important;
+  padding: 0 0 0 12px !important;
+  border: 0 !important;
+  background: transparent !important;
+}
+
+.compile-code-tree-file {
+  display: grid !important;
+  grid-template-columns: 34px minmax(0, 1fr) auto !important;
+  align-items: center !important;
+  min-height: 22px !important;
+  height: 22px !important;
+  width: 100% !important;
+  margin: 0 !important;
+  padding: 0 8px 0 18px !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  color: #d4d4d4 !important;
+  background: transparent !important;
+  text-align: left !important;
+  font: 400 0.76rem/1.2 "Segoe UI", Arial, sans-serif !important;
+}
+
+.compile-code-tree-file.is-active {
+  color: #ffffff !important;
+  background: #094771 !important;
+}
+
+.compile-code-tree-file span:nth-child(2) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compile-code-tree-file small {
+  color: #9ca3af !important;
+  font-size: 0.66rem !important;
+  white-space: nowrap;
+}
+
+.compile-file-extension {
+  color: #dcdcaa !important;
+  background: transparent !important;
+  font-size: 0.64rem !important;
+  font-weight: 800 !important;
+  text-transform: uppercase;
+}
+
+.compile-output-workbench.is-output-dock-locked {
+  height: var(--compile-output-height, 260px) !important;
+  min-height: 132px !important;
+  max-height: min(620px, 72vh) !important;
+  overflow: hidden !important;
+}
+
+.compile-output-workbench.is-output-dock-unlocked {
+  position: fixed !important;
+  z-index: 140 !important;
+  width: min(900px, calc(100vw - 24px)) !important;
+  height: min(420px, calc(100vh - 48px)) !important;
+  min-width: min(360px, calc(100vw - 24px)) !important;
+  min-height: 180px !important;
+  max-width: calc(100vw - 16px) !important;
+  max-height: calc(100vh - 16px) !important;
+  resize: both !important;
+  overflow: auto !important;
+}
+
+.compile-output-dock {
+  min-height: 0 !important;
+  overflow: hidden !important;
+  background: #1e1e1e !important;
+}
+
+.compile-terminal-screen {
+  display: grid !important;
+  grid-template-rows: minmax(0, 1fr) 28px !important;
+  min-height: 0 !important;
+  height: 100% !important;
+  overflow: hidden !important;
+  background: #1e1e1e !important;
+}
+
+.compile-system-terminal {
+  min-height: 0 !important;
+  height: 100% !important;
+  max-height: none !important;
+  padding: 10px 12px !important;
+  border: 0 !important;
+  background: #1e1e1e !important;
+  color: #f8fafc !important;
+  font: 400 0.78rem/1.45 Consolas, "Courier New", monospace !important;
+}
+
+.compile-terminal-prompt-line {
+  display: flex !important;
+  flex-wrap: nowrap !important;
+  align-items: center !important;
+  gap: 0 !important;
+  min-height: 28px !important;
+  height: 28px !important;
+  padding: 0 12px !important;
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+  border-top: 1px solid #333842 !important;
+  background: #1e1e1e !important;
+  color: #f8fafc !important;
+  cursor: text;
+  font: 700 0.78rem/28px Consolas, "Courier New", monospace !important;
+  white-space: nowrap !important;
+}
+
+.compile-terminal-prompt {
+  flex: 0 0 auto !important;
+  color: #f8fafc !important;
+  white-space: nowrap !important;
+}
+
+.compile-terminal-command-input {
+  display: inline-block !important;
+  flex: 1 0 14ch !important;
+  min-width: 14ch !important;
+  width: auto !important;
+  min-height: 0 !important;
+  height: 28px !important;
+  margin: 0 !important;
+  padding: 0 0 0 6px !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  outline: 0 !important;
+  box-shadow: none !important;
+  background: transparent !important;
+  color: #f8fafc !important;
+  caret-color: #ffffff !important;
+  font: inherit !important;
+  line-height: 28px !important;
+  white-space: pre !important;
+}
+
+.compile-terminal-command-input:focus {
+  border: 0 !important;
+  outline: 0 !important;
+  box-shadow: none !important;
+  background: transparent !important;
+}
+
+body[data-builder-theme="dark"] .compile-terminal-command-input,
+body[data-builder-theme="dark"] .compile-terminal-command-input:focus,
+body[data-builder-theme="dark"] .compile-terminal-prompt-line {
+  border-color: #333842 !important;
+  background: #1e1e1e !important;
+  color: #f8fafc !important;
+}
+
+.compile-ide-status-bar {
+  flex-wrap: nowrap !important;
+  align-self: end !important;
+  height: 24px !important;
+  min-height: 24px !important;
+  max-height: 24px !important;
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+}
+
+.compile-ide-status-bar span {
+  display: inline-flex !important;
+  align-items: center !important;
+  height: 24px !important;
+  min-height: 24px !important;
+  max-height: 24px !important;
+  line-height: 24px !important;
 }

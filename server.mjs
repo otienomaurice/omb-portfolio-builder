@@ -145,6 +145,14 @@ const compileLanguageProfiles = {
     label: "HTML",
     primaryTools: [],
     winget: []
+  },
+  text: {
+    defaultFile: "notes.txt",
+    extensions: [".txt", ".md", ".json", ".xml", ".csv", ".log", ".xdc", ".sdc", ".tcl", ".do", ".ini", ".cfg", ".yaml", ".yml"],
+    label: "Text / support file",
+    primaryTools: [],
+    winget: [],
+    allowAnyExtension: true
   }
 };
 
@@ -288,9 +296,13 @@ function normalizeCodeLanguage(value = "") {
     python: "python",
     py: "python",
     html: "html",
-    htm: "html"
+    htm: "html",
+    text: "text",
+    txt: "text",
+    plain: "text",
+    support: "text"
   };
-  return aliases[clean] || (compileLanguageProfiles[clean] ? clean : "javascript");
+  return aliases[clean] || (compileLanguageProfiles[clean] ? clean : "text");
 }
 
 function sourceLooksCpp(source = "") {
@@ -329,7 +341,7 @@ function detectCodeLanguageFromSource(code = "", fileName = "") {
     return sourceLooksCpp(source) ? "cpp" : "c";
   }
   if (/\b(const|let|var|function|=>|console\.log|document\.|window\.)\b/.test(source)) return "javascript";
-  return "javascript";
+  return "text";
 }
 
 function safeCodeFileName(value = "", language = "javascript") {
@@ -338,6 +350,7 @@ function safeCodeFileName(value = "", language = "javascript") {
   const parsed = path.parse(String(value || fallback));
   const safeName = safeSegment(parsed.name, path.parse(fallback).name);
   let ext = String(parsed.ext || path.extname(fallback)).toLowerCase();
+  if (profile.allowAnyExtension) return `${safeName}${ext || path.extname(fallback)}`;
   if (!profile.extensions.includes(ext)) ext = path.extname(fallback);
   return `${safeName}${ext}`;
 }
@@ -1479,6 +1492,19 @@ async function compileAndRunCode(payload = {}) {
     const missingTools = tools.filter((tool) => !found[tool]);
     return { found, missingTools };
   };
+
+  if (language === "text") {
+    return {
+      ok: true,
+      language,
+      saved,
+      terminal: [
+        "Support file saved",
+        "This file is part of the compile workspace tree but is not a compilable source file.",
+        `Saved source: ${saved.sourcePath}`
+      ].join("\n")
+    };
+  }
 
   if (language === "html") {
     const openTags = (String(payload.code || "").match(/<([a-z][\w:-]*)\b[^>]*>/gi) || []).length;
