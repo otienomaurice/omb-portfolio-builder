@@ -86,6 +86,8 @@ const projectMetaGrid = document.querySelector("#project-meta-grid");
 const projectMetaClose = document.querySelector("#project-meta-close");
 const projectFields = document.querySelector("#project-fields");
 const sectionTabs = document.querySelector("#section-tabs");
+const projectViewTabsBar = document.querySelector("#project-view-tabs");
+const projectViewContextMenu = document.querySelector("#project-view-context-menu");
 const sectionContent = document.querySelector("#section-content");
 const projectWindowContent = document.querySelector(".project-window-content");
 const projectPreviewDialog = document.querySelector("#project-preview-dialog");
@@ -259,6 +261,7 @@ let builderPreferences = { ...defaultBuilderPreferences };
 let activeCompileTreeContext = null;
 let activeOutputDockDrag = null;
 let activeOutputDockResize = null;
+let activeCompileSidebarResize = null;
 
 const supportedCodeLanguages = [
   { id: "c", label: "C", aliases: ["c"], extensions: [".c", ".h"], defaultFile: "main.c" },
@@ -496,6 +499,9 @@ let savedPortfolioCatalog = { categories: [], projects: [] };
 let templates = [];
 let selectedProjectId = "";
 let activeSectionId = "brief";
+let projectViewTabs = [];
+let activeProjectViewTabId = "";
+let pendingProjectViewContext = null;
 let expandedCategories = new Set();
 let pendingCreateCategoryId = "";
 let editingCategoryId = "";
@@ -2083,6 +2089,11 @@ function ensureCompileCode(project) {
     : 30000;
   project.compileCode.scopeFilter = String(project.compileCode.scopeFilter || "");
   project.compileCode.scopeZoom = normalizeScopeZoom(project.compileCode.scopeZoom);
+  project.compileCode.sidebarWidth = normalizeCompileSidebarWidth(project.compileCode.sidebarWidth);
+  project.compileCode.selectedFileIds = Array.isArray(project.compileCode.selectedFileIds)
+    ? project.compileCode.selectedFileIds.filter((id) => fileIds.has(id))
+    : [];
+  project.compileCode.stdinWindowOpen = Boolean(project.compileCode.stdinWindowOpen);
   project.compileCode.systemTerminal = {
     cwd: compileDirectoryPath(project.compileCode.systemTerminal?.cwd || project.compileCode.terminalCwd || ""),
     command: String(project.compileCode.systemTerminal?.command || ""),
@@ -2518,6 +2529,12 @@ function normalizeCompileOutputHeight(value) {
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) return 190;
   return Math.max(104, Math.min(320, Math.round(numeric)));
+}
+
+function normalizeCompileSidebarWidth(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return 340;
+  return Math.max(240, Math.min(640, Math.round(numeric)));
 }
 
 function applyBuilderPreferences() {
@@ -3960,6 +3977,111 @@ function projectWindowStateKey(sectionId = activeSectionId) {
   return sectionId || "brief";
 }
 
+function projectViewTabId() {
+  return `project-view-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function projectViewStateTitle(project, stateKey = "brief") {
+  const [sectionId, pathValue = ""] = String(stateKey || "brief").split("|");
+  const section = sectionOptions(project).find((item) => item.id === sectionId);
+  if (!section) return "Project view";
+  if (!sectionId.startsWith("custom:")) return section.label || "Project view";
+  const sectionDataId = sectionId.replace("custom:", "");
+  const sectionData = (project.sections || []).find((item) => item.id === sectionDataId);
+  const path = nodePathFromString(pathValue);
+  if (!path.length) return section.label || sectionData?.title || "Section";
+  const node = sectionData ? findBuilderNode(sectionData, path) : null;
+  return node ? builderNodeTitle(node) : section.label || "Subsection";
+}
+
+function syncActiveProjectViewTabFromState() {
+  const project = selectedProject();
+  if (!project || !projectViewTabsBar) return;
+  const currentState = projectWindowStateKey();
+  if (!projectViewTabs.length) {
+    const id = projectViewTabId();
+    projectViewTabs = [{ id, stateKey: currentState, title: projectViewStateTitle(project, currentState), backStack: [], forwardStack: [] }];
+    activeProjectViewTabId = id;
+    return;
+  }
+  const activeTab = projectViewTabs.find((tab) => tab.id === activeProjectViewTabId) || projectViewTabs[0];
+  activeProjectViewTabId = activeTab.id;
+  activeTab.stateKey = currentState;
+  activeTab.title = projectViewStateTitle(project, currentState);
+  activeTab.backStack = [...projectWindowBackStack];
+  activeTab.forwardStack = [...projectWindowForwardStack];
+}
+
+function openProjectViewTab(stateKey = "brief", options = {}) {
+  const project = selectedProject();
+  if (!project) return false;
+  const existing = projectViewTabs.find((tab) => tab.stateKey === stateKey);
+  if (existing) {
+    activeProjectViewTabId = existing.id;
+    projectWindowBackStack = [...(existing.backStack || [])];
+    projectWindowForwardStack = [...(existing.forwardStack || [])];
+    applyProjectWindowStateKey(existing.stateKey);
+    pendingEditor = null;
+    renderAll();
+    resetProjectWindowScroll();
+    return true;
+  }
+  if (projectViewTabs.length >= 4) {
+    setStatus("You can keep up to four project section tabs open at the same time.");
+    return false;
+  }
+  const id = projectViewTabId();
+  projectViewTabs.push({
+    id,
+    stateKey,
+    title: options.title || projectViewStateTitle(project, stateKey),
+    backStack: [],
+    forwardStack: []
+  });
+  activeProjectViewTabId = id;
+  projectWindowBackStack = [];
+  projectWindowForwardStack = [];
+  applyProjectWindowStateKey(stateKey);
+  pendingEditor = null;
+  renderAll();
+  resetProjectWindowScroll();
+  setStatus("Opened project section in a separate tab.");
+  return true;
+}
+
+function activateProjectViewTab(tabId = "") {
+  const tab = projectViewTabs.find((item) => item.id === tabId);
+  if (!tab) return;
+  activeProjectViewTabId = tab.id;
+  projectWindowBackStack = [...(tab.backStack || [])];
+  projectWindowForwardStack = [...(tab.forwardStack || [])];
+  applyProjectWindowStateKey(tab.stateKey);
+  pendingEditor = null;
+  renderAll();
+  resetProjectWindowScroll();
+}
+
+function closeProjectViewTab(tabId = "") {
+  if (projectViewTabs.length <= 1) {
+    setStatus("Keep at least one project section tab open.");
+    return;
+  }
+  const index = projectViewTabs.findIndex((tab) => tab.id === tabId);
+  if (index < 0) return;
+  const wasActive = projectViewTabs[index].id === activeProjectViewTabId;
+  projectViewTabs.splice(index, 1);
+  if (wasActive) {
+    const next = projectViewTabs[Math.min(index, projectViewTabs.length - 1)] || projectViewTabs[0];
+    activeProjectViewTabId = next.id;
+    projectWindowBackStack = [...(next.backStack || [])];
+    projectWindowForwardStack = [...(next.forwardStack || [])];
+    applyProjectWindowStateKey(next.stateKey);
+  }
+  pendingEditor = null;
+  renderAll();
+  resetProjectWindowScroll();
+}
+
 function applyProjectWindowStateKey(stateKey = "brief") {
   const [sectionId, pathValue = ""] = String(stateKey || "brief").split("|");
   activeSectionId = sectionId || "brief";
@@ -3985,6 +4107,9 @@ function openProjectWindow(projectId, sectionId = "brief") {
   setActiveCustomSectionPath("", []);
   projectWindowBackStack = [];
   projectWindowForwardStack = [];
+  const initialStateKey = projectWindowStateKey(activeSectionId);
+  projectViewTabs = [{ id: projectViewTabId(), stateKey: initialStateKey, title: "Overview", backStack: [], forwardStack: [] }];
+  activeProjectViewTabId = projectViewTabs[0].id;
   projectTitleMenu.hidden = true;
   projectDialog.removeAttribute("style");
   projectDialog.classList.remove(
@@ -7201,6 +7326,7 @@ function clearSiteSectionBackground(sectionId) {
 function renderSectionTabs(project) {
   if (!project) {
     sectionTabs.innerHTML = "";
+    if (projectViewTabsBar) projectViewTabsBar.innerHTML = "";
     return;
   }
 
@@ -7220,6 +7346,55 @@ function renderSectionTabs(project) {
     </div>
     <button type="button" data-add-section="true">Add section</button>
   `;
+}
+
+function renderProjectViewTabs(project) {
+  if (!projectViewTabsBar) return;
+  if (!project) {
+    projectViewTabsBar.innerHTML = "";
+    return;
+  }
+  syncActiveProjectViewTabFromState();
+  projectViewTabsBar.innerHTML = `
+    <div class="project-view-tab-list" role="tablist" aria-label="Open project views">
+      ${projectViewTabs.map((tab) => `
+        <button
+          class="project-view-tab${tab.id === activeProjectViewTabId ? " is-active" : ""}"
+          type="button"
+          role="tab"
+          aria-selected="${tab.id === activeProjectViewTabId ? "true" : "false"}"
+          data-project-view-tab="${escapeHtml(tab.id)}"
+          title="${escapeHtml(tab.title || "Project view")}"
+        >
+          <span>${escapeHtml(tab.title || "Project view")}</span>
+          <small>${escapeHtml(tab.stateKey.split("|")[0].replace("custom:", "section:"))}</small>
+        </button>
+        <button
+          class="project-view-tab-close"
+          type="button"
+          data-close-project-view-tab="${escapeHtml(tab.id)}"
+          aria-label="Close ${escapeHtml(tab.title || "project view")} tab"
+        >&times;</button>
+      `).join("")}
+    </div>
+    <span class="project-view-tab-count">${projectViewTabs.length}/4</span>
+  `;
+}
+
+function hideProjectViewContextMenu() {
+  if (projectViewContextMenu) projectViewContextMenu.hidden = true;
+  pendingProjectViewContext = null;
+}
+
+function showProjectViewContextMenu(event, context = {}) {
+  if (!projectViewContextMenu || !context.stateKey) return;
+  event.preventDefault();
+  pendingProjectViewContext = context;
+  projectViewContextMenu.hidden = false;
+  const width = 190;
+  const height = 92;
+  projectViewContextMenu.style.left = `${Math.min(event.clientX, window.innerWidth - width - 8)}px`;
+  projectViewContextMenu.style.top = `${Math.min(event.clientY, window.innerHeight - height - 8)}px`;
 }
 
 function renderTextArray(project, key, label) {
@@ -8403,7 +8578,7 @@ function compileWorkspaceTree(workspace = {}) {
   return rootNode;
 }
 
-function renderCompileTreeFolder(node, activeId = "") {
+function renderCompileTreeFolder(node, activeId = "", selectedIds = new Set()) {
   const folders = [...node.children.values()].sort((left, right) => left.name.localeCompare(right.name));
   const files = [...node.files].sort((left, right) => compileFilePath(left).localeCompare(compileFilePath(right)));
   const folderHtml = folders.map((folder) => `
@@ -8413,13 +8588,13 @@ function renderCompileTreeFolder(node, activeId = "") {
         <span>${escapeHtml(folder.name)}</span>
       </summary>
       <div class="compile-code-tree-children">
-        ${renderCompileTreeFolder(folder, activeId)}
+        ${renderCompileTreeFolder(folder, activeId, selectedIds)}
       </div>
     </details>
   `).join("");
   const fileHtml = files.map((file) => `
     <button
-      class="compile-code-tree-file${file.id === activeId ? " is-active" : ""}"
+      class="compile-code-tree-file${file.id === activeId ? " is-active" : ""}${selectedIds.has(file.id) ? " is-selected" : ""}"
       type="button"
       data-compile-select="${escapeHtml(file.id)}"
       data-compile-tree-file-id="${escapeHtml(file.id)}"
@@ -8435,7 +8610,8 @@ function renderCompileTreeFolder(node, activeId = "") {
 
 function renderCompileWorkspaceTree(workspace = {}, projectTitle = "Project workspace") {
   const tree = compileWorkspaceTree(workspace);
-  const contents = renderCompileTreeFolder(tree, workspace.activeFileId || "");
+  const selectedIds = new Set(Array.isArray(workspace.selectedFileIds) ? workspace.selectedFileIds : []);
+  const contents = renderCompileTreeFolder(tree, workspace.activeFileId || "", selectedIds);
   return `
     <details class="compile-code-root-folder" open>
       <summary>
@@ -8924,7 +9100,37 @@ function compilePanelTabs(project, file = activeCompileFile(project)) {
           data-compile-open-panel="${tab.id}"
         >${escapeHtml(tab.label)}</button>
       `).join("")}
+      <button
+        class="compile-panel-tool-button${workspace.stdinWindowOpen ? " is-active" : ""}"
+        type="button"
+        data-compile-toggle-stdin
+        title="Open Program input for the active source"
+        aria-pressed="${workspace.stdinWindowOpen ? "true" : "false"}"
+        ${file ? "" : "disabled"}
+      >Input</button>
     </div>
+  `;
+}
+
+function renderCompileStdinWindow(project, file = activeCompileFile(project)) {
+  const workspace = ensureCompileCode(project);
+  if (!workspace.stdinWindowOpen || !file) return "";
+  return `
+    <section class="compile-stdin-window" aria-label="Program input window">
+      <div class="compile-stdin-window-heading">
+        <div>
+          <strong>Program input</strong>
+          <span>${escapeHtml(file.fileName || "Active source")}</span>
+        </div>
+        <button class="compile-mini-window-close" type="button" data-compile-toggle-stdin aria-label="Close Program input">&times;</button>
+      </div>
+      <textarea
+        data-compile-field="stdin"
+        spellcheck="false"
+        rows="10"
+        placeholder="Input passed to stdin when this source runs"
+      >${escapeHtml(file.stdin || "")}</textarea>
+    </section>
   `;
 }
 
@@ -9109,6 +9315,7 @@ function renderCompileCodeSection(project) {
   const dockUnlocked = Boolean(workspace.outputDockUnlocked);
   const dockPosition = workspace.outputDockPosition || { x: 72, y: 120 };
   const outputHeight = normalizeCompileOutputHeight(workspace.outputDockHeight);
+  const sidebarWidth = normalizeCompileSidebarWidth(workspace.sidebarWidth);
   const compileTheme = compileThemeIds.includes(builderPreferences.compileTheme)
     ? builderPreferences.compileTheme
     : defaultBuilderPreferences.compileTheme;
@@ -9116,7 +9323,7 @@ function renderCompileCodeSection(project) {
     ? ` style="left:${Math.max(8, Number(dockPosition.x) || 72)}px; top:${Math.max(8, Number(dockPosition.y) || 120)}px;"`
     : ` style="--compile-output-height:${outputHeight}px;"`;
   return `
-    <div class="compile-code-workspace" data-compile-workspace data-compile-theme="${escapeHtml(compileTheme)}">
+    <div class="compile-code-workspace" data-compile-workspace data-compile-theme="${escapeHtml(compileTheme)}" style="--compile-sidebar-width:${sidebarWidth}px;">
       ${renderCompileIdeMenuBar(project, activeFile)}
       <aside class="compile-code-sidebar" aria-label="Compile code files">
         <div class="compile-code-sidebar-heading">
@@ -9136,6 +9343,7 @@ function renderCompileCodeSection(project) {
         </div>
         ${renderCompileTreeContextMenu()}
       </aside>
+      <div class="compile-sidebar-resize-handle" data-compile-sidebar-resize title="Drag to resize Solution Explorer"></div>
 
       <section class="compile-code-main" aria-label="Compile code editor">
         ${compileEditorTabs(project, activeFile)}
@@ -9172,10 +9380,6 @@ function renderCompileCodeSection(project) {
               </div>
             </section>
           </div>
-          <label class="compile-stdin-field">
-            <span>Program input, optional</span>
-            <textarea data-compile-field="stdin" rows="4" placeholder="Input passed to stdin when the code runs">${escapeHtml(activeFile.stdin || "")}</textarea>
-          </label>
           <div class="compile-code-command-bar">
             <button type="button" data-compile-save>Save source</button>
             <button type="button" data-compile-beautify>Beautify</button>
@@ -9218,6 +9422,7 @@ function renderCompileCodeSection(project) {
           ${compileIdeStatusBar(project, activeFile)}
         </section>
       </section>
+      ${renderCompileStdinWindow(project, activeFile)}
     </div>
   `;
 }
@@ -9516,6 +9721,7 @@ function renderAll() {
   renderTree();
   renderFields(project);
   renderSectionTabs(project);
+  renderProjectViewTabs(project);
   renderSectionContent(project);
   if (portfolioPreviewDialog?.open) renderPreview();
   updateBuilderWorkflow();
@@ -9892,6 +10098,27 @@ function openCompileFileView(workspace, fileId = "") {
   workspace.activeFileId = fileId;
 }
 
+function compileSelectedFileIds(workspace = {}) {
+  const validIds = new Set((workspace.files || []).map((file) => file.id));
+  return new Set((workspace.selectedFileIds || []).filter((id) => validIds.has(id)));
+}
+
+function setCompileSelectedFileIds(workspace = {}, ids = []) {
+  const validIds = new Set((workspace.files || []).map((file) => file.id));
+  workspace.selectedFileIds = [...new Set(ids)].filter((id) => validIds.has(id));
+}
+
+function toggleCompileFileSelection(project, fileId = "") {
+  const workspace = ensureCompileCode(project);
+  if (!fileId || !workspace.files.some((file) => file.id === fileId)) return;
+  const selected = compileSelectedFileIds(workspace);
+  if (selected.has(fileId)) selected.delete(fileId);
+  else selected.add(fileId);
+  setCompileSelectedFileIds(workspace, [...selected]);
+  setStatus(`${workspace.selectedFileIds.length} compile file${workspace.selectedFileIds.length === 1 ? "" : "s"} selected.`);
+  scheduleAutosave(900);
+}
+
 function closeCompileFileView(project, fileId = "") {
   const workspace = ensureCompileCode(project);
   if (!fileId) return;
@@ -10164,18 +10391,34 @@ function deleteCompileTreeTarget(project, context = activeCompileTreeContext) {
     setStatus("Right-click a compile file or folder before deleting.");
     return;
   }
-  if (context.type === "file") {
-    const file = workspace.files.find((item) => item.id === context.fileId);
-    if (!file) return;
+  if (context.type === "file" || context.type === "workspace") {
+    const selectedIds = compileSelectedFileIds(workspace);
+    const deleteIds = context.type === "file" && selectedIds.has(context.fileId)
+      ? selectedIds
+      : context.type === "workspace" && selectedIds.size
+        ? selectedIds
+        : new Set(context.fileId ? [context.fileId] : []);
+    const filesToDelete = workspace.files.filter((item) => deleteIds.has(item.id));
+    if (!filesToDelete.length) {
+      setStatus("Select or right-click a compile file before deleting.");
+      return;
+    }
+    const singleFile = filesToDelete.length === 1 ? filesToDelete[0] : null;
     openDeleteConfirm({
-      title: "Delete source file",
-      message: `Are you sure you want to delete "${file.fileName || compileFilePath(file)}"?`,
+      title: filesToDelete.length === 1 ? "Delete source file" : "Delete selected source files",
+      message: filesToDelete.length === 1
+        ? `Are you sure you want to delete "${singleFile.fileName || compileFilePath(singleFile)}"?`
+        : `Delete ${filesToDelete.length} selected source file${filesToDelete.length === 1 ? "" : "s"} from this compile workspace?`,
       onConfirm: () => {
-        workspace.files = workspace.files.filter((item) => item.id !== file.id);
-        workspace.openFileIds = (workspace.openFileIds || []).filter((id) => id !== file.id);
+        const removedIds = new Set(filesToDelete.map((file) => file.id));
+        workspace.files = workspace.files.filter((item) => !removedIds.has(item.id));
+        workspace.openFileIds = (workspace.openFileIds || []).filter((id) => !removedIds.has(id));
+        setCompileSelectedFileIds(workspace, []);
         workspace.activeFileId = workspace.openFileIds.find((id) => workspace.files.some((item) => item.id === id)) || "";
         activeCompileTreeContext = null;
-        addCompileMessage(project, `Deleted ${file.fileName || "source file"}.`, "warning");
+        addCompileMessage(project, filesToDelete.length === 1
+          ? `Deleted ${singleFile.fileName || "source file"}.`
+          : `Deleted ${filesToDelete.length} selected source files.`, "warning");
         scheduleAutosave();
         renderSectionContent(project);
       }
@@ -10195,6 +10438,7 @@ function deleteCompileTreeTarget(project, context = activeCompileTreeContext) {
       workspace.files = workspace.files.filter((file) => !removedIds.has(file.id));
       workspace.directories = workspace.directories.filter((directory) => !childFolders.includes(directory));
       workspace.openFileIds = (workspace.openFileIds || []).filter((id) => !removedIds.has(id));
+      setCompileSelectedFileIds(workspace, (workspace.selectedFileIds || []).filter((id) => !removedIds.has(id)));
       if (!workspace.files.some((file) => file.id === workspace.activeFileId)) {
         workspace.activeFileId = workspace.openFileIds.find((id) => workspace.files.some((file) => file.id === id)) || "";
       }
@@ -12918,6 +13162,51 @@ sectionTabs.addEventListener("click", async (event) => {
   updateDialogWindowButtons(projectDialog);
 });
 
+sectionTabs.addEventListener("contextmenu", (event) => {
+  const button = event.target.closest("[data-section-id]");
+  const project = selectedProject();
+  if (!button || !project) return;
+  const sectionId = button.dataset.sectionId || "brief";
+  const title = sectionOptions(project).find((section) => section.id === sectionId)?.label || "Project view";
+  showProjectViewContextMenu(event, { stateKey: sectionId, title });
+});
+
+projectViewTabsBar?.addEventListener("click", (event) => {
+  const closeButton = event.target.closest("[data-close-project-view-tab]");
+  if (closeButton) {
+    closeProjectViewTab(closeButton.dataset.closeProjectViewTab || "");
+    return;
+  }
+  const tab = event.target.closest("[data-project-view-tab]");
+  if (!tab) return;
+  activateProjectViewTab(tab.dataset.projectViewTab || "");
+});
+
+projectViewContextMenu?.addEventListener("click", (event) => {
+  const action = event.target.closest("[data-project-view-action]")?.dataset.projectViewAction;
+  if (!action) return;
+  if (action === "open-tab" && pendingProjectViewContext) {
+    openProjectViewTab(pendingProjectViewContext.stateKey, { title: pendingProjectViewContext.title });
+  }
+  hideProjectViewContextMenu();
+});
+
+sectionContent.addEventListener("contextmenu", (event) => {
+  if (event.target.closest(".compile-code-sidebar")) return;
+  const nodeButton = event.target.closest("[data-open-node-view]");
+  const project = selectedProject();
+  if (!nodeButton || !project) return;
+  const sectionId = nodeButton.dataset.sectionId || "";
+  if (!sectionId) return;
+  const path = nodePathFromString(nodeButton.dataset.nodePath || "");
+  const section = (project.sections || []).find((item) => item.id === sectionId);
+  const node = section && path.length ? findBuilderNode(section, path) : null;
+  const title = node ? builderNodeTitle(node) : section?.title || "Project view";
+  const pathValue = nodePathToString(path);
+  const stateKey = pathValue ? `custom:${sectionId}|${pathValue}` : `custom:${sectionId}`;
+  showProjectViewContextMenu(event, { stateKey, title });
+});
+
 sectionContent.addEventListener("click", async (event) => {
   const button = event.target.closest("button");
   const project = selectedProject();
@@ -12935,6 +13224,14 @@ sectionContent.addEventListener("click", async (event) => {
   }
   if (button.dataset.compileOpenPanel) {
     setCompilePanel(project, button.dataset.compileOpenPanel);
+    renderSectionContent(project);
+    return;
+  }
+  if (hasDataset("compileToggleStdin")) {
+    const workspace = ensureCompileCode(project);
+    workspace.stdinWindowOpen = !workspace.stdinWindowOpen;
+    setStatus(workspace.stdinWindowOpen ? "Program input window opened." : "Program input window closed.");
+    scheduleAutosave();
     renderSectionContent(project);
     return;
   }
@@ -12980,7 +13277,14 @@ sectionContent.addEventListener("click", async (event) => {
     return;
   }
   if (button.dataset.compileSelect) {
-    openCompileFileView(ensureCompileCode(project), button.dataset.compileSelect);
+    const workspace = ensureCompileCode(project);
+    if (event.ctrlKey || event.metaKey) {
+      toggleCompileFileSelection(project, button.dataset.compileSelect);
+      renderSectionContent(project);
+      return;
+    }
+    setCompileSelectedFileIds(workspace, [button.dataset.compileSelect]);
+    openCompileFileView(workspace, button.dataset.compileSelect);
     renderSectionContent(project);
     return;
   }
@@ -13297,12 +13601,19 @@ function hideCompileTreeContextMenus(options = {}) {
 sectionContent.addEventListener("contextmenu", (event) => {
   const sidebar = event.target.closest(".compile-code-sidebar");
   if (!sidebar) return;
+  const project = selectedProject();
+  const workspace = project ? ensureCompileCode(project) : null;
   const menu = sidebar.querySelector("[data-compile-tree-context-menu]");
   if (!menu) return;
   event.preventDefault();
   hideCompileTreeContextMenus({ clearContext: false });
   const fileButton = event.target.closest("[data-compile-tree-file-id]");
   const folderNode = event.target.closest("[data-compile-folder-path]");
+  if (workspace && fileButton) {
+    const fileId = fileButton.dataset.compileTreeFileId || "";
+    const selected = compileSelectedFileIds(workspace);
+    if (!selected.has(fileId)) setCompileSelectedFileIds(workspace, [fileId]);
+  }
   activeCompileTreeContext = fileButton
     ? {
       type: "file",
@@ -13326,6 +13637,23 @@ sectionContent.addEventListener("contextmenu", (event) => {
 });
 
 sectionContent.addEventListener("pointerdown", (event) => {
+  const sidebarResizeHandle = event.target.closest("[data-compile-sidebar-resize]");
+  const compileWorkspaceElement = sidebarResizeHandle?.closest("[data-compile-workspace]");
+  if (sidebarResizeHandle && compileWorkspaceElement && event.button === 0) {
+    const project = selectedProject();
+    if (!project) return;
+    const workspace = ensureCompileCode(project);
+    activeCompileSidebarResize = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startWidth: normalizeCompileSidebarWidth(workspace.sidebarWidth)
+    };
+    sidebarResizeHandle.setPointerCapture?.(event.pointerId);
+    compileWorkspaceElement.classList.add("is-sidebar-resizing");
+    event.preventDefault();
+    return;
+  }
+
   const resizeHandle = event.target.closest("[data-compile-output-resize]");
   const lockedDock = resizeHandle?.closest(".compile-output-workbench.is-output-dock-locked");
   if (lockedDock && event.button === 0) {
@@ -13355,6 +13683,17 @@ sectionContent.addEventListener("pointerdown", (event) => {
 });
 
 document.addEventListener("pointermove", (event) => {
+  if (activeCompileSidebarResize) {
+    const project = selectedProject();
+    if (!project) return;
+    const workspace = ensureCompileCode(project);
+    const nextWidth = normalizeCompileSidebarWidth(activeCompileSidebarResize.startWidth + event.clientX - activeCompileSidebarResize.startX);
+    workspace.sidebarWidth = nextWidth;
+    sectionContent.querySelector("[data-compile-workspace]")?.style.setProperty("--compile-sidebar-width", `${nextWidth}px`);
+    event.preventDefault();
+    return;
+  }
+
   if (activeOutputDockResize) {
     const project = selectedProject();
     if (!project) return;
@@ -13384,6 +13723,12 @@ document.addEventListener("pointermove", (event) => {
 });
 
 function endOutputDockDrag(event) {
+  if (activeCompileSidebarResize) {
+    sectionContent.querySelector("[data-compile-sidebar-resize]")?.releasePointerCapture?.(activeCompileSidebarResize.pointerId);
+    sectionContent.querySelector("[data-compile-workspace]")?.classList.remove("is-sidebar-resizing");
+    activeCompileSidebarResize = null;
+    scheduleAutosave(900);
+  }
   if (activeOutputDockResize) {
     sectionContent.querySelector("[data-compile-output-resize]")?.releasePointerCapture?.(activeOutputDockResize.pointerId);
     sectionContent.querySelector(".compile-output-workbench.is-output-dock-locked")?.classList.remove("is-resizing");
@@ -13402,7 +13747,9 @@ document.addEventListener("pointercancel", endOutputDockDrag);
 
 document.addEventListener("click", (event) => {
   if (event.target.closest("[data-compile-tree-context-menu]")) return;
+  if (event.target.closest("#project-view-context-menu")) return;
   hideCompileTreeContextMenus();
+  hideProjectViewContextMenu();
 });
 
 sectionContent.addEventListener("submit", (event) => {

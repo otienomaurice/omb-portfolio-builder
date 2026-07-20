@@ -506,19 +506,24 @@
                       <summary><span class="guide-card-title">Compile Code Workspace</span><span class="guide-card-summary">Use the built-in IDE-style workspace for source files, folders, compiler output, terminal commands, and HDL scope viewing.</span></summary>
                       <div>
                           <p>Compile Code is for local engineering work inside a project. It is separate from Add Code, which is only for polished source snippets that should appear in the public portfolio. Compile Code can stay empty, but when you use it, treat it like a small project workspace.</p>
-                          <p>The left explorer holds folders and source files. The editor opens one file at a time. The bottom output area contains Console, Messages, Terminal, and Scope so build feedback stays organized instead of mixing everything into one box.</p>
+                          <p>The left explorer holds folders and source files. Drag the vertical divider beside Solution Explorer when names need more room. The editor opens one file at a time. The bottom output area contains Console, Messages, Terminal, Input, and Scope so build feedback and run settings stay organized instead of mixing everything into one box.</p>
                           <ol>
                               <li>Right-click the workspace tree to add a source file, create a folder, import several files, import a directory, move a file, or delete a selected file or folder.</li>
+                              <li>Ctrl-click files in the Solution Explorer to select several files, then right-click one of the selected files and choose Delete selected.</li>
+                              <li>Right-click a folder to delete the folder and the files contained inside it after confirmation.</li>
                               <li>Use Compile to check or build the active source file.</li>
                               <li>Use Build project when the language needs several files from the project workspace.</li>
                               <li>Use Run to execute supported languages after a successful build.</li>
+                              <li>Use Input beside the output tabs to open a separate Program input window for stdin before running code.</li>
                               <li>Use Simulate for Verilog or SystemVerilog when a testbench is present.</li>
                               <li>Use Append code to project to place the active source into a selected project section or nested subsection as a formatted code block.</li>
                           </ol>
                           <ul>
+                              <li>Right-click a project section or subsection and choose Open in different tab when you want to compare up to four parts of the same project without losing your current place.</li>
                               <li>Console shows compiler and runtime output for the active source.</li>
                               <li>Messages shows save, compile, build, append, tool-check, and simulation progress.</li>
                               <li>Terminal runs local commands from the selected project compile folder.</li>
+                              <li>Input opens stdin for the active source in a separate window so the code editor stays focused on source text.</li>
                               <li>Scope appears for Verilog/SystemVerilog and shows VCD waveforms after simulation.</li>
                               <li>The blue status strip stays fixed at the bottom of the output area while the output panel is resized.</li>
                               <li>Icarus Verilog and vvp are the required HDL simulator tools. If Verilator or GTKWave are installed later, the builder detects them and uses Verilator lint as an extra advisory check.</li>
@@ -811,6 +816,11 @@
               </div>
 
               <div class="section-bar" id="section-tabs"></div>
+              <div class="project-view-tabs" id="project-view-tabs" aria-label="Open project section tabs"></div>
+              <div class="project-title-menu project-view-context-menu" id="project-view-context-menu" hidden>
+                  <button type="button" data-project-view-action="open-tab">Open in different tab</button>
+                  <button type="button" data-project-view-action="close">Close menu</button>
+              </div>
               <div class="project-window-content">
                   <div class="builder-panel project-fields" id="project-fields"></div>
                   <div class="builder-panel section-content" id="section-content"></div>
