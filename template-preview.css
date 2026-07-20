@@ -8681,6 +8681,7 @@ body[data-builder-theme="dark"] .light-mode-return:hover {
 .project-dialog .project-window-actions {
   align-items: stretch;
   min-height: 24px;
+  gap: 0 !important;
 }
 
 .project-dialog .project-window-actions :is(#view-project-preview, #project-window-delete, #project-window-close) {
@@ -8695,6 +8696,25 @@ body[data-builder-theme="dark"] .light-mode-return:hover {
   width: 24px;
   min-width: 24px;
   padding: 0;
+}
+
+.project-dialog .project-window-actions .dialog-window-control-cluster {
+  width: 24px !important;
+  min-width: 24px !important;
+  max-width: 24px !important;
+  height: 24px !important;
+  min-height: 24px !important;
+  max-height: 24px !important;
+  gap: 0 !important;
+}
+
+.project-dialog .project-window-actions [data-dialog-minimize="true"],
+.project-dialog .project-window-actions [data-dialog-maximize="true"] {
+  display: none !important;
+}
+
+.project-dialog .project-window-actions #project-window-delete {
+  margin-right: 0 !important;
 }
 
 .project-save-bar {
@@ -10148,6 +10168,7 @@ body[data-compile-theme] .compile-scope-svg {
   z-index: 1 !important;
   background: transparent !important;
   color: transparent !important;
+  -webkit-text-fill-color: transparent !important;
   caret-color: var(--compile-text) !important;
   text-shadow: none !important;
 }
@@ -10865,6 +10886,83 @@ body[data-builder-theme="dark"] .project-view-tab-item.is-active {
   caret-color: var(--compile-text, #ffffff);
   font: 400 0.82rem/1.5 Consolas, "Courier New", monospace;
   tab-size: 2;
+}
+
+.project-dialog.is-compile-code-active .project-dialog-shell {
+  grid-template-rows: auto auto minmax(0, 1fr) auto !important;
+  gap: 6px !important;
+  min-height: 0 !important;
+}
+
+.project-dialog.is-compile-code-active .project-window-content {
+  height: 100% !important;
+  min-height: 0 !important;
+  margin-right: 0 !important;
+  margin-left: 0 !important;
+  overflow: hidden !important;
+  align-content: stretch !important;
+  align-items: stretch !important;
+}
+
+.project-dialog.is-compile-code-active .section-content {
+  display: grid !important;
+  grid-template-rows: minmax(0, 1fr) !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+  align-content: stretch !important;
+  align-items: stretch !important;
+}
+
+.project-dialog.is-compile-code-active .compile-code-workspace {
+  height: 100% !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  overflow: hidden !important;
+}
+
+.project-dialog.is-compile-code-active .compile-ide-menu-bar {
+  grid-row: 1 !important;
+  position: relative !important;
+  z-index: 42 !important;
+}
+
+.project-dialog.is-compile-code-active .compile-code-main {
+  grid-template-rows: auto auto minmax(0, 1fr) auto auto minmax(104px, var(--compile-output-height, 190px)) !important;
+  overflow: hidden !important;
+}
+
+.project-dialog.is-compile-code-active .compile-code-editor-grid,
+.project-dialog.is-compile-code-active .compile-code-preview-panel,
+.project-dialog.is-compile-code-active .compile-code-active-editor {
+  min-height: 0 !important;
+  height: 100% !important;
+  max-height: none !important;
+}
+
+.project-dialog.is-compile-code-active .compile-code-preview-panel {
+  display: grid !important;
+  grid-template-rows: auto minmax(0, 1fr) !important;
+}
+
+.project-dialog.is-compile-code-active .compile-code-active-editor .compile-code-preview,
+.project-dialog.is-compile-code-active .compile-code-active-editor textarea {
+  height: 100% !important;
+  min-height: 0 !important;
+  max-height: none !important;
+}
+
+.project-dialog.is-compile-code-active .compile-code-active-editor textarea {
+  resize: none !important;
+}
+
+.project-dialog.is-compile-code-active .compile-output-workbench.is-output-dock-locked {
+  position: relative !important;
+  bottom: auto !important;
+  align-self: stretch !important;
+  height: var(--compile-output-height, 190px) !important;
+  min-height: 104px !important;
+  max-height: min(320px, 42vh) !important;
 }
 
 /* Final project-section navigation containment.
