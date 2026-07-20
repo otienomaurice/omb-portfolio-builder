@@ -11205,9 +11205,13 @@ body[data-builder-theme="dark"] .project-dialog .project-section-toolbar {
   max-height: none !important;
 }
 
+.project-dialog.is-compile-code-active .compile-code-preview-panel {
+  grid-template-rows: minmax(0, 1fr) !important;
+}
+
 .project-dialog.is-compile-code-active .compile-output-workbench.is-output-dock-locked {
   display: grid !important;
-  grid-template-rows: auto auto minmax(0, 1fr) 24px !important;
+  grid-template-rows: auto minmax(0, 1fr) 24px !important;
   align-self: stretch !important;
   height: 100% !important;
   min-height: 0 !important;
@@ -11236,6 +11240,10 @@ body[data-builder-theme="dark"] .project-dialog .project-section-toolbar {
   overflow: hidden !important;
 }
 
+.project-dialog.is-compile-code-active .compile-scope-panel {
+  grid-template-rows: minmax(0, 1fr) !important;
+}
+
 .project-dialog.is-compile-code-active .compile-terminal,
 .project-dialog.is-compile-code-active .compile-messages-log,
 .project-dialog.is-compile-code-active .compile-terminal-screen,
@@ -11252,12 +11260,39 @@ body[data-builder-theme="dark"] .project-dialog .project-section-toolbar {
 }
 
 .project-dialog.is-compile-code-active .compile-ide-status-bar {
-  grid-row: 4 !important;
+  grid-row: 3 !important;
   align-self: end !important;
   height: 24px !important;
   min-height: 24px !important;
   max-height: 24px !important;
   margin: 0 !important;
+}
+
+.project-dialog.is-compile-code-active .compile-code-preview-heading,
+.project-dialog.is-compile-code-active .compile-output-dock-toolbar,
+.project-dialog.is-compile-code-active .compile-scope-panel .compile-terminal-heading {
+  display: none !important;
+}
+
+.project-dialog.is-compile-code-active .compile-panel-tabs {
+  min-height: 30px !important;
+  max-height: 30px !important;
+}
+
+.project-dialog.is-compile-code-active .compile-panel-tabs button {
+  min-height: 30px !important;
+  height: 30px !important;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+}
+
+.project-dialog.is-compile-code-active .compile-output-dock-toggle-inline {
+  width: 30px !important;
+  min-width: 30px !important;
+  padding: 0 !important;
+  border-right-color: var(--compile-line, #333842) !important;
+  border-radius: 0 !important;
+  background: color-mix(in srgb, var(--compile-panel, #252526) 86%, var(--compile-accent, #007acc)) !important;
 }
 
 /* Active editor readability fallback.

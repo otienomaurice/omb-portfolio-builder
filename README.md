@@ -297,6 +297,7 @@ Use the workflow in [BRANCHING.md](BRANCHING.md):
 | `syntax_coloring_058` | Bumps the builder to `0.2.58`, replaces the Compile Code regex replacement highlighter with a line-based tokenizer, improves syntax coloring for C, C++, Verilog/SystemVerilog, LTspice, Java, JavaScript, Python, HTML, and text files, and adds visible operator/attribute colors across compile themes. | `development` | `development` | Active |
 | `compile_layout_bottom_status_059` | Bumps the builder to `0.2.59`, maximizes the Compile Code active editor area, keeps the locked output panel compact at the bottom, and forces the blue Compile Code status bar to render as the true bottom row instead of floating above unused dark space. | `development` | `development` | Active |
 | `active_editor_readable_060` | Bumps the builder to `0.2.60` and restores readable active-editor text in Compile Code so the source area never goes blank when the syntax-highlight overlay is delayed or painted differently by the browser. | `development` | `development` | Active |
+| `compact_compile_guides_061` | Bumps the builder to `0.2.61`, removes compact Compile Code guide/title rows from the active editor, scope, and output dock, moves the M/L output-dock control beside Console, reconciles Save Source indicators from star to tick after successful saves, and makes file import close stale tree menus reliably. | `development` | `development` | Active |
 
 </details>
 
