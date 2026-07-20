@@ -441,6 +441,7 @@
                               <li>New projects include only Overview by default.</li>
                               <li>Every other section, such as Design, Simulation, Tests, Tools, PCB Builds, Documentation, References, Results, or Compile Code, must be added manually.</li>
                               <li>Sections and subsections are nested manually. A section can contain subsections, and each subsection can contain its own child sections when the project needs that depth.</li>
+                              <li>Open a subsection to use its action row, or right-click the subsection link, when you need to edit or delete that subsection.</li>
                               <li>Section chips stay in the top navigation band. Actions for the selected section stay on the far right of that same row, so the content area is reserved for text, files, images, and previews.</li>
                               <li>An overview appears automatically when it exists; it is not shown as a separate clickable Overview icon.</li>
                               <li>Project status is metadata. Right-click the project title and open Details to set Draft, In progress, Completed, or Archived, and to choose whether that status appears on the public portfolio.</li>
@@ -510,15 +511,16 @@
                           <p>Compile Code is for local engineering work inside a project. It is separate from Add Code, which is only for polished source snippets that should appear in the public portfolio. Compile Code can stay empty, but when you use it, treat it like a small project workspace.</p>
                           <p>The left explorer holds folders and source files. Drag the vertical divider beside Solution Explorer when names need more room. Imported files and imported directories appear in the tree without opening editor tabs; click a file in the tree when you want to view or edit it. The editor opens closeable file views, and the bottom output area contains Console, Messages, Terminal, Input, and Scope so build feedback and run settings stay organized instead of mixing everything into one box.</p>
                           <ol>
-                              <li>Right-click the workspace tree to add a source file, create a folder, import several files, import a directory, move a file, or delete a selected file or folder.</li>
+                              <li>Right-click the workspace tree to add a source file, create a folder, import several files, import a directory, move a file, or delete a selected file or folder. Compiler checks and tool installation live under the Tools menu, not in the right-click tree menu.</li>
                               <li>Ctrl-click files in the Solution Explorer to select several files, then right-click one of the selected files and choose Delete selected.</li>
                               <li>Right-click a folder to delete the folder and the files contained inside it after confirmation.</li>
-                              <li>Use File details only when you need to view or edit the absolute path, source language, HDL role, or file title. Keep it hidden when you want more editor space.</li>
-                              <li>Use Beautify to clean indentation for C, C++, Verilog, SystemVerilog, LTspice, Java, JavaScript, Python, HTML, or support text files.</li>
+                              <li>Use File details only when you need to view or edit the absolute path, source language, HDL role, file name, file type, or save status. It opens as a separate moveable, resizable window so it does not steal editor space.</li>
+                              <li>Use Save Source or Ctrl+S to write the active file into the project workspace. Use Save Source As from the File menu when you need an external copy in another location.</li>
+                              <li>Use Beautify to clean the whole active file for C, C++, Verilog, SystemVerilog, LTspice, Java, JavaScript, Python, HTML, or support text files. Syntax coloring updates while typing, after import, and after beautify.</li>
                               <li>Use Compile to check or build the active source file.</li>
                               <li>Use Build project when the language needs several files from the project workspace.</li>
                               <li>Use Run to execute supported languages after a successful build.</li>
-                              <li>Use Input beside the output tabs to open a separate Program input window for stdin before running code.</li>
+                              <li>Use Input beside the output tabs to open a separate moveable Program input window for stdin before running code.</li>
                               <li>Use Simulate for Verilog or SystemVerilog when a testbench is present.</li>
                               <li>Use Append code to project to place the active source into a selected project section or nested subsection as a formatted code block.</li>
                           </ol>
@@ -526,7 +528,7 @@
                               <li>Right-click a project section or subsection and choose Open in different tab when you want to compare up to four parts of the same project without losing your current place.</li>
                               <li>Console shows compiler and runtime output for the active source.</li>
                               <li>Messages shows save, compile, build, append, tool-check, and simulation progress.</li>
-                              <li>Terminal runs local commands from the selected project compile folder.</li>
+                              <li>Terminal runs local PowerShell-style commands from the selected project compile folder. Type beside the prompt, press Enter, read the output directly below the command, then continue from the next prompt.</li>
                               <li>Input opens stdin for the active source in a separate window so the code editor stays focused on source text.</li>
                               <li>Scope appears for Verilog/SystemVerilog and shows VCD waveforms after simulation.</li>
                               <li>Click a scrollable area before using the mouse wheel there. Solution Explorer, file tabs, editor, Console, Messages, Terminal, and Scope each keep their own scroll behavior.</li>
@@ -824,6 +826,8 @@
               <div class="project-view-tabs" id="project-view-tabs" aria-label="Open project section tabs"></div>
               <div class="project-title-menu project-view-context-menu" id="project-view-context-menu" hidden>
                   <button type="button" data-project-view-action="open-tab">Open in different tab</button>
+                  <button type="button" data-project-view-action="edit-node" data-project-view-node-action hidden>Edit subsection</button>
+                  <button class="danger-icon" type="button" data-project-view-action="delete-node" data-project-view-node-action hidden>Delete subsection</button>
                   <button type="button" data-project-view-action="close">Close menu</button>
               </div>
               <div class="project-window-content">
@@ -1412,7 +1416,7 @@
           <button type="button" data-rich-action="edit-block">Edit selected block</button>
           <button class="danger-menu-item" type="button" data-rich-action="delete-block">Delete selected block</button>
       </div>
-      <script src="electronics-search.js?v=0.2.54"></script>
-      <script src="template-preview.js?v=0.2.54"></script>
+      <script src="electronics-search.js?v=0.2.55"></script>
+      <script src="template-preview.js?v=0.2.55"></script>
   </body>
 </html>

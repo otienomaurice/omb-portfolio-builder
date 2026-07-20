@@ -9591,6 +9591,104 @@ body[data-compile-theme="light-paper"] {
   --compile-value: #0f766e;
 }
 
+[data-compile-workspace][data-compile-theme="dark-vs"] {
+  --compile-bg: #16191f;
+  --compile-panel: #20242d;
+  --compile-surface: #2b3140;
+  --compile-editor: #111827;
+  --compile-text: #f4f7fb;
+  --compile-muted: #b7c6d8;
+  --compile-line: #384152;
+  --compile-hover: #293548;
+  --compile-active: #0f5b99;
+  --compile-accent: #27a3ff;
+  --compile-value: #fde68a;
+}
+
+[data-compile-workspace][data-compile-theme="dark-navy"] {
+  --compile-bg: #061627;
+  --compile-panel: #0c2439;
+  --compile-surface: #12324f;
+  --compile-editor: #04111f;
+  --compile-text: #eff8ff;
+  --compile-muted: #bad7ef;
+  --compile-line: #24506d;
+  --compile-hover: #164d78;
+  --compile-active: #0ea5e9;
+  --compile-accent: #38bdf8;
+  --compile-value: #fef08a;
+}
+
+[data-compile-workspace][data-compile-theme="dark-graphite"] {
+  --compile-bg: #151617;
+  --compile-panel: #242629;
+  --compile-surface: #30343a;
+  --compile-editor: #101214;
+  --compile-text: #f8fafc;
+  --compile-muted: #d2dae5;
+  --compile-line: #484d56;
+  --compile-hover: #3b414b;
+  --compile-active: #5f6b7a;
+  --compile-accent: #a3e635;
+  --compile-value: #fde047;
+}
+
+[data-compile-workspace][data-compile-theme="dark-emerald"] {
+  --compile-bg: #051a17;
+  --compile-panel: #0b2b25;
+  --compile-surface: #124239;
+  --compile-editor: #03130f;
+  --compile-text: #ecfdf5;
+  --compile-muted: #b8f7df;
+  --compile-line: #1f6656;
+  --compile-hover: #176b58;
+  --compile-active: #078968;
+  --compile-accent: #34d399;
+  --compile-value: #fde68a;
+}
+
+[data-compile-workspace][data-compile-theme="dark-violet"] {
+  --compile-bg: #171229;
+  --compile-panel: #261d43;
+  --compile-surface: #342761;
+  --compile-editor: #120d24;
+  --compile-text: #f6f2ff;
+  --compile-muted: #ded3ff;
+  --compile-line: #504082;
+  --compile-hover: #4b347f;
+  --compile-active: #7c3aed;
+  --compile-accent: #c084fc;
+  --compile-value: #fde68a;
+}
+
+[data-compile-workspace][data-compile-theme="light-sky"] {
+  --compile-bg: #eef9ff;
+  --compile-panel: #d8f0fb;
+  --compile-surface: #c2e7f7;
+  --compile-editor: #ffffff;
+  --compile-text: #0f2433;
+  --compile-muted: #35566b;
+  --compile-line: #92cce3;
+  --compile-hover: #c7eaff;
+  --compile-active: #2f80ed;
+  --compile-accent: #0284c7;
+  --compile-value: #7c2d12;
+}
+
+[data-compile-workspace][data-compile-theme="light-paper"] {
+  --compile-bg: #fbfaf7;
+  --compile-panel: #eee9dd;
+  --compile-surface: #e3d9c6;
+  --compile-editor: #fffdf8;
+  --compile-text: #1f2933;
+  --compile-muted: #56616c;
+  --compile-line: #cbbda7;
+  --compile-hover: #eee4d3;
+  --compile-active: #b98222;
+  --compile-accent: #8b5e20;
+  --compile-value: #0f766e;
+}
+
 body[data-compile-theme] :is(
   .compile-code-workspace,
   .compile-code-sidebar,
@@ -9985,6 +10083,233 @@ body[data-compile-theme] .compile-scope-svg {
   padding: 0 !important;
   color: #44657b;
   background: transparent !important;
+}
+
+/* Compile Code final paint layer: the workspace owns its theme, live syntax
+   highlighting remains visible while typing, and floating utility panels do not
+   consume editor rows. */
+[data-compile-workspace] {
+  overflow: hidden !important;
+  background: var(--compile-bg) !important;
+  color: var(--compile-text) !important;
+}
+
+[data-compile-workspace] .compile-code-main {
+  grid-template-rows: auto auto minmax(0, 1fr) auto auto auto !important;
+}
+
+[data-compile-workspace] :is(
+  .compile-code-sidebar,
+  .compile-code-main,
+  .compile-output-workbench,
+  .compile-output-dock,
+  .compile-terminal-panel,
+  .compile-messages-panel,
+  .compile-system-terminal-panel,
+  .compile-scope-panel,
+  .compile-terminal-screen,
+  .compile-append-panel,
+  .compile-stdin-window,
+  .compile-file-details-window
+) {
+  border-color: var(--compile-line) !important;
+  background: var(--compile-bg) !important;
+  color: var(--compile-text) !important;
+}
+
+[data-compile-workspace] :is(
+  .compile-ide-menu-bar,
+  .compile-code-sidebar-heading,
+  .compile-code-preview-heading,
+  .compile-output-dock-toolbar,
+  .compile-panel-tabs,
+  .compile-terminal-heading,
+  .compile-append-window-title,
+  .compile-append-actions,
+  .compile-stdin-window-heading,
+  .compile-file-details-heading
+) {
+  border-color: var(--compile-line) !important;
+  background: var(--compile-panel) !important;
+  color: var(--compile-text) !important;
+}
+
+[data-compile-workspace] .compile-code-active-editor {
+  background: var(--compile-editor) !important;
+}
+
+[data-compile-workspace] .compile-code-active-editor .compile-code-preview {
+  z-index: 0 !important;
+  background: var(--compile-editor) !important;
+  color: var(--compile-text) !important;
+}
+
+[data-compile-workspace] .compile-code-active-editor textarea {
+  z-index: 1 !important;
+  background: transparent !important;
+  color: transparent !important;
+  caret-color: var(--compile-text) !important;
+  text-shadow: none !important;
+}
+
+[data-compile-workspace] .compile-code-active-editor textarea::selection {
+  color: transparent !important;
+  background: color-mix(in srgb, var(--compile-active) 48%, transparent) !important;
+}
+
+[data-compile-workspace] .code-token-keyword { color: #60a5fa !important; font-weight: 800; }
+[data-compile-workspace] .code-token-type { color: #2dd4bf !important; font-weight: 750; }
+[data-compile-workspace] .code-token-string { color: #fbbf24 !important; }
+[data-compile-workspace] .code-token-number { color: #c084fc !important; }
+[data-compile-workspace] .code-token-comment { color: #94a3b8 !important; font-style: italic; }
+[data-compile-workspace] .code-token-preprocessor { color: #f472b6 !important; font-weight: 800; }
+[data-compile-workspace] .code-token-tag { color: #38bdf8 !important; font-weight: 800; }
+[data-compile-workspace] .code-token-function { color: #93c5fd !important; }
+
+[data-compile-workspace][data-compile-theme^="light"] .code-token-keyword { color: #1d4ed8 !important; }
+[data-compile-workspace][data-compile-theme^="light"] .code-token-type { color: #0f766e !important; }
+[data-compile-workspace][data-compile-theme^="light"] .code-token-string { color: #b45309 !important; }
+[data-compile-workspace][data-compile-theme^="light"] .code-token-number { color: #7c3aed !important; }
+[data-compile-workspace][data-compile-theme^="light"] .code-token-comment { color: #64748b !important; }
+[data-compile-workspace][data-compile-theme^="light"] .code-token-preprocessor { color: #be185d !important; }
+[data-compile-workspace][data-compile-theme^="light"] .code-token-function { color: #0369a1 !important; }
+
+.compile-editor-tab-tools {
+  position: sticky;
+  right: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  min-height: 34px;
+  margin-left: auto;
+  padding: 0 5px;
+  background: var(--compile-panel, #252526);
+  border-left: 1px solid var(--compile-line, #333842);
+}
+
+.compile-editor-tab-tools button {
+  display: inline-grid;
+  place-items: center;
+  width: 26px;
+  min-width: 26px;
+  height: 24px;
+  min-height: 24px;
+  padding: 0;
+  border: 1px solid var(--compile-line, #333842);
+  border-radius: 3px;
+  color: var(--compile-text, #f3f4f6);
+  background: var(--compile-surface, #2d2d30);
+  font: 800 0.68rem/1 "Segoe UI", Arial, sans-serif;
+}
+
+.compile-editor-tab-tools button:hover {
+  color: #ffffff;
+  background: var(--compile-active, #094771);
+}
+
+.compile-file-details-window {
+  position: absolute;
+  z-index: 36;
+  top: 56px;
+  right: 18px;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  width: min(520px, calc(100% - 24px));
+  min-width: min(340px, calc(100% - 24px));
+  min-height: 230px;
+  max-width: calc(100% - 24px);
+  max-height: min(70vh, 620px);
+  resize: both;
+  overflow: auto;
+  border: 1px solid var(--compile-line, #333842);
+  border-radius: 7px;
+  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.32);
+}
+
+.compile-file-details-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 36px;
+  padding: 7px 9px;
+  cursor: move;
+  user-select: none;
+}
+
+.compile-file-details-heading div {
+  display: grid;
+  min-width: 0;
+}
+
+.compile-file-details-heading span {
+  overflow: hidden;
+  color: var(--compile-muted, #cbd5e1);
+  font-size: 0.68rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compile-file-details-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+  align-content: start;
+  padding: 10px;
+}
+
+.compile-file-details-grid label {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  color: var(--compile-muted, #cbd5e1);
+  font-size: 0.7rem;
+  font-weight: 850;
+}
+
+.compile-file-details-grid .wide-field {
+  grid-column: 1 / -1;
+}
+
+.compile-file-details-grid :is(input, select) {
+  min-width: 0;
+  min-height: 30px;
+  border: 1px solid var(--compile-line, #333842);
+  border-radius: 4px;
+  color: var(--compile-text, #f3f4f6);
+  background: var(--compile-editor, #111827);
+  font-size: 0.75rem;
+}
+
+.compile-file-details-window.is-dragging,
+.compile-stdin-window.is-dragging {
+  opacity: 0.92;
+}
+
+.compile-stdin-window {
+  resize: both;
+  overflow: auto !important;
+}
+
+.compile-stdin-window-heading {
+  cursor: move;
+  user-select: none;
+}
+
+[data-compile-workspace] .compile-output-workbench {
+  grid-template-rows: auto auto minmax(0, 1fr) 24px !important;
+}
+
+[data-compile-workspace] .compile-output-dock {
+  min-height: 0 !important;
+  overflow: hidden !important;
+}
+
+[data-compile-workspace] .compile-ide-status-bar {
+  align-self: end !important;
+  height: 24px !important;
+  min-height: 24px !important;
+  max-height: 24px !important;
 }
 
 /* Builder file rows are plain list items, not project-template cards or subsections. */

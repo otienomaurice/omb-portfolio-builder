@@ -265,6 +265,8 @@ let activeOutputDockDrag = null;
 let activeOutputDockResize = null;
 let activeCompileSidebarResize = null;
 let activeCompileScrollElement = null;
+let activeCompileStdinDrag = null;
+let activeCompileFileDetailsDrag = null;
 
 const supportedCodeLanguages = [
   { id: "c", label: "C", aliases: ["c"], extensions: [".c", ".h"], defaultFile: "main.c" },
@@ -2107,7 +2109,17 @@ function ensureCompileCode(project) {
     ? project.compileCode.selectedFileIds.filter((id) => fileIds.has(id))
     : [];
   project.compileCode.stdinWindowOpen = Boolean(project.compileCode.stdinWindowOpen);
+  const stdinPosition = project.compileCode.stdinWindowPosition || {};
+  project.compileCode.stdinWindowPosition = {
+    x: Number.isFinite(Number(stdinPosition.x)) ? Number(stdinPosition.x) : null,
+    y: Number.isFinite(Number(stdinPosition.y)) ? Number(stdinPosition.y) : null
+  };
   project.compileCode.showFileDetails = Boolean(project.compileCode.showFileDetails);
+  const fileDetailsPosition = project.compileCode.fileDetailsPosition || {};
+  project.compileCode.fileDetailsPosition = {
+    x: Number.isFinite(Number(fileDetailsPosition.x)) ? Number(fileDetailsPosition.x) : null,
+    y: Number.isFinite(Number(fileDetailsPosition.y)) ? Number(fileDetailsPosition.y) : null
+  };
   project.compileCode.systemTerminal = {
     cwd: compileDirectoryPath(project.compileCode.systemTerminal?.cwd || project.compileCode.terminalCwd || ""),
     command: String(project.compileCode.systemTerminal?.command || ""),
@@ -2623,6 +2635,9 @@ function applyBuilderPreferences() {
   document.body.dataset.compileTheme = compileTheme;
   document.documentElement.style.setProperty("--builder-app-zoom", String(zoom));
   document.body.style.zoom = String(zoom);
+  document.querySelectorAll("[data-compile-workspace]").forEach((workspace) => {
+    workspace.dataset.compileTheme = compileTheme;
+  });
   if (preferenceTheme) preferenceTheme.value = theme;
   if (preferenceCompileTheme) preferenceCompileTheme.value = compileTheme;
   if (lightModeReturnButton) lightModeReturnButton.hidden = theme !== "dark";
@@ -7602,7 +7617,7 @@ function renderActiveSectionToolbar(project) {
     ? `<button type="button" data-open-editor="custom" data-mode="edit" data-section-id="${escapeHtml(section.id)}" data-node-path="${escapeHtml(pathValue)}">Edit current</button>`
     : `<button type="button" data-open-editor="custom-section" data-section-id="${escapeHtml(section.id)}">Edit section</button>`;
   const deleteButton = currentPath.length
-    ? `<button class="danger-icon" type="button" data-delete-node="${escapeHtml(section.id)}" data-node-path="${escapeHtml(pathValue)}">Delete current</button>`
+    ? `<button class="danger-icon" type="button" data-delete-node="${escapeHtml(section.id)}" data-node-path="${escapeHtml(pathValue)}">Delete subsection</button>`
     : `<button class="danger-icon" type="button" data-delete-section="${escapeHtml(section.id)}">Delete section</button>`;
 
   return `
@@ -7665,9 +7680,13 @@ function showProjectViewContextMenu(event, context = {}) {
   if (!projectViewContextMenu || !context.stateKey) return;
   event.preventDefault();
   pendingProjectViewContext = context;
+  const isNestedNode = context.kind === "node" && context.sectionId && context.nodePath;
+  projectViewContextMenu.querySelectorAll("[data-project-view-node-action]").forEach((button) => {
+    button.hidden = !isNestedNode;
+  });
   projectViewContextMenu.hidden = false;
   const width = 190;
-  const height = 92;
+  const height = isNestedNode ? 152 : 92;
   projectViewContextMenu.style.left = `${Math.min(event.clientX, window.innerWidth - width - 8)}px`;
   projectViewContextMenu.style.top = `${Math.min(event.clientY, window.innerHeight - height - 8)}px`;
 }
@@ -8711,6 +8730,10 @@ function compileEditorTabs(project, file = activeCompileFile(project)) {
           >&times;</button>
         </div>
       `).join("")}
+      <span class="compile-editor-tab-tools" aria-label="Active source save actions">
+        <button type="button" data-compile-save title="Save active source" aria-label="Save active source">S</button>
+        <button type="button" data-compile-save-as title="Save active source as" aria-label="Save active source as">As</button>
+      </span>
     </div>
   `;
 }
@@ -9306,11 +9329,7 @@ function codeBlockForCompileFile(file) {
 
 function compileFileDirtyLabel(file) {
   if (!file) return "";
-  if (file.dirty) return "Unsaved";
-  if (file.lastResult?.ok === true) return "Compiled";
-  if (file.lastResult?.ok === false) return "Needs fix";
-  if (file.savedAt) return "Saved";
-  return "Draft";
+  return file.dirty ? "*" : "✓";
 }
 
 function renderCompileConsolePanel(project, file = activeCompileFile(project)) {
@@ -9378,9 +9397,14 @@ function compilePanelTabs(project, file = activeCompileFile(project)) {
 function renderCompileStdinWindow(project, file = activeCompileFile(project)) {
   const workspace = ensureCompileCode(project);
   if (!workspace.stdinWindowOpen || !file) return "";
+  const position = workspace.stdinWindowPosition || {};
+  const hasPosition = Number.isFinite(Number(position.x)) && Number.isFinite(Number(position.y));
+  const style = hasPosition
+    ? ` style="left:${Math.max(8, Number(position.x))}px; top:${Math.max(8, Number(position.y))}px; right:auto;"`
+    : "";
   return `
-    <section class="compile-stdin-window" aria-label="Program input window">
-      <div class="compile-stdin-window-heading">
+    <section class="compile-stdin-window" aria-label="Program input window"${style}>
+      <div class="compile-stdin-window-heading" data-compile-stdin-drag title="Drag to move Program input">
         <div>
           <strong>Program input</strong>
           <span>${escapeHtml(file.fileName || "Active source")}</span>
@@ -9393,6 +9417,65 @@ function renderCompileStdinWindow(project, file = activeCompileFile(project)) {
         rows="10"
         placeholder="Input passed to stdin when this source runs"
       >${escapeHtml(file.stdin || "")}</textarea>
+    </section>
+  `;
+}
+
+function compileFileRoleLabel(file = {}) {
+  if (isHdlLanguage(file.language)) return file.role === "testbench" ? "Testbench" : "Design";
+  const extension = String(file.fileName || "").split(".").pop()?.toLowerCase() || "";
+  if (["h", "hpp", "hh", "hxx", "svh"].includes(extension)) return "Header / include";
+  if (["xdc", "sdc", "tcl", "do", "cfg", "ini", "yaml", "yml"].includes(extension)) return "Include / support";
+  return "Source";
+}
+
+function renderCompileFileDetailsWindow(project, file = activeCompileFile(project)) {
+  if (!file) return "";
+  const workspace = ensureCompileCode(project);
+  if (!workspace.showFileDetails) return "";
+  const position = workspace.fileDetailsPosition || {};
+  const hasPosition = Number.isFinite(Number(position.x)) && Number.isFinite(Number(position.y));
+  const style = hasPosition
+    ? ` style="left:${Math.max(8, Number(position.x))}px; top:${Math.max(8, Number(position.y))}px; right:auto;"`
+    : "";
+  const status = file.dirty ? "Unsaved changes" : file.savedAt ? "Saved" : "Not saved to disk yet";
+  return `
+    <section class="compile-file-details-window" aria-label="Source file details"${style}>
+      <div class="compile-file-details-heading" data-compile-file-details-drag title="Drag to move file details">
+        <div>
+          <strong>File details</strong>
+          <span>${escapeHtml(file.fileName || "Active source")}</span>
+        </div>
+        <button class="compile-mini-window-close" type="button" data-compile-toggle-file-details aria-label="Close file details">&times;</button>
+      </div>
+      <div class="compile-file-details-grid">
+        <label>
+          <span>Name</span>
+          <input type="text" value="${escapeHtml(file.fileName || "")}" disabled />
+        </label>
+        <label>
+          <span>Type</span>
+          <input type="text" value="${escapeHtml(compileFileRoleLabel(file))}" disabled />
+        </label>
+        <label class="wide-field">
+          <span>Workspace path</span>
+          <input type="text" data-compile-field="fileName" value="${escapeHtml(compileFileAbsolutePath(project, file))}" placeholder="${escapeHtml(compileFileAbsolutePath(project, { ...file, relativePath: defaultCodeFileName(file.language) }))}" />
+        </label>
+        <label>
+          <span>Language</span>
+          <select data-compile-field="language">${compileLanguageOptions(file.language)}</select>
+        </label>
+        <label>
+          <span>${isHdlLanguage(file.language) ? "HDL role" : "Source role"}</span>
+          ${isHdlLanguage(file.language)
+            ? `<select data-compile-field="role">${compileRoleOptions(file.role)}</select>`
+            : `<input type="text" value="Program source" disabled />`}
+        </label>
+        <label class="wide-field">
+          <span>Save status</span>
+          <input type="text" value="${escapeHtml(status)}${file.savedAt ? ` - ${escapeHtml(new Date(file.savedAt).toLocaleString())}` : ""}" disabled />
+        </label>
+      </div>
     </section>
   `;
 }
@@ -9434,6 +9517,7 @@ function renderCompileIdeMenuBar(project, file = activeCompileFile(project)) {
         { label: "Import directory", action: "import-directory" },
         { separator: true },
         { label: "Save source", action: "save-source", shortcut: "Ctrl+S", disabled: !hasFile },
+        { label: "Save source as...", action: "save-source-as", disabled: !hasFile },
         { label: "Save project", action: "save-project" }
       ]
     },
@@ -9477,10 +9561,7 @@ function renderCompileIdeMenuBar(project, file = activeCompileFile(project)) {
         { label: "Compile", action: "compile", disabled: !hasFile },
         { label: "Build project", action: "build", disabled: !hasFile },
         { label: "Run", action: "run", disabled: !hasFile || hdlFile },
-        { label: "Simulate", action: "simulate", disabled: !hasFile || !hdlFile },
-        { separator: true },
-        { label: "Install tools", action: "install-tools", disabled: !hasFile },
-        { label: "Check compilers", action: "check-tools" }
+        { label: "Simulate", action: "simulate", disabled: !hasFile || !hdlFile }
       ]
     },
     {
@@ -9536,9 +9617,7 @@ function renderCompileTreeContextMenu() {
     { label: "Import directory", action: "import-directory" },
     { separator: true },
     { label: "Move selected file", action: "move-tree-file" },
-    { label: "Delete selected", action: "delete-tree-target" },
-    { separator: true },
-    { label: "Check compilers", action: "check-tools" }
+    { label: "Delete selected", action: "delete-tree-target" }
   ];
   return `
     <div class="compile-tree-context-menu" data-compile-tree-context-menu hidden>
@@ -9598,7 +9677,6 @@ function renderCompileCodeSection(project) {
             <button type="button" data-compile-add title="Add code file" aria-label="Add code file">+</button>
             <button type="button" data-compile-add-directory title="Add folder" aria-label="Add folder">F</button>
             <button type="button" data-compile-import title="Import files" aria-label="Import files">I</button>
-            <button type="button" data-compile-tools title="Check compilers" aria-label="Check compilers">T</button>
           </div>
         </div>
         <div class="compile-code-workspace-tree" aria-label="Project workspace tree">
@@ -9612,28 +9690,6 @@ function renderCompileCodeSection(project) {
         ${compileEditorTabs(project, activeFile)}
         ${activeFile ? `
           ${compileFileBreadcrumbs(activeFile)}
-          ${workspace.showFileDetails ? `
-            <div class="compile-code-meta-grid">
-              <label>
-                <span>File path</span>
-                <input type="text" data-compile-field="fileName" value="${escapeHtml(compileFileAbsolutePath(project, activeFile))}" placeholder="${escapeHtml(compileFileAbsolutePath(project, { ...activeFile, relativePath: defaultCodeFileName(activeFile.language) }))}" />
-              </label>
-              <label>
-                <span>Language</span>
-                <select data-compile-field="language">${compileLanguageOptions(activeFile.language)}</select>
-              </label>
-              <label>
-                <span>${isHdlLanguage(activeFile.language) ? "HDL role" : "Source role"}</span>
-                ${isHdlLanguage(activeFile.language)
-                  ? `<select data-compile-field="role">${compileRoleOptions(activeFile.role)}</select>`
-                  : `<input type="text" value="Program source" disabled />`}
-              </label>
-              <label>
-                <span>File title</span>
-                <input type="text" value="${escapeHtml(activeFile.fileName || "")}" disabled />
-              </label>
-            </div>
-          ` : ""}
           <div class="compile-code-editor-grid compile-code-editor-grid-single">
             <section class="compile-code-preview-panel compile-code-active-panel" aria-label="Active syntax highlighted code editor">
               <div class="compile-code-preview-heading">
@@ -9657,7 +9713,6 @@ function renderCompileCodeSection(project) {
             <button class="compile-output-button" type="button" data-compile-show-output title="Open the terminal output for this source"><span class="compile-command-icon" aria-hidden="true">&gt;_</span><span>Show output</span></button>
             ${isHdlLanguage(activeFile.language) ? `<button class="compile-output-button" type="button" data-compile-show-scope title="Open the HDL waveform scope"><span class="compile-command-icon" aria-hidden="true">~</span><span>Show scope</span></button>` : ""}
             <button class="compile-output-button compile-append-icon-button" type="button" data-compile-toggle-append title="Append this source to a project section" aria-label="Append this source to a project section"><span class="compile-command-icon" aria-hidden="true">&gt;&gt;</span></button>
-            <button type="button" data-compile-install>Install tools</button>
             <button class="danger-icon" type="button" data-compile-delete>Delete source</button>
           </div>
           ${renderCompileAppendChooser(project, workspace)}
@@ -9689,6 +9744,7 @@ function renderCompileCodeSection(project) {
         </section>
       </section>
       ${renderCompileStdinWindow(project, activeFile)}
+      ${renderCompileFileDetailsWindow(project, activeFile)}
     </div>
   `;
 }
@@ -9696,6 +9752,14 @@ function renderCompileCodeSection(project) {
 function isCompileCodeBuilderSection(section = {}) {
   const label = projectSearchText(`${section.id || ""} ${section.title || ""}`);
   return /\bcompile\s+code\b/.test(label) || label.includes("compile-code");
+}
+
+function activeSectionIsCompileCode(project = selectedProject()) {
+  if (activeSectionId === "compile-code") return true;
+  if (!String(activeSectionId || "").startsWith("custom:")) return false;
+  const sectionId = activeSectionId.slice("custom:".length);
+  const section = (project?.sections || []).find((item) => item.id === sectionId);
+  return Boolean(section && isCompileCodeBuilderSection(section));
 }
 
 function renderSectionContent(project) {
@@ -10186,6 +10250,21 @@ async function handleGlobalKeyboardShortcuts(event) {
 
   if (key === "s") {
     event.preventDefault();
+    const project = selectedProject();
+    if (projectDialog?.open && activeSectionIsCompileCode(project) && project) {
+      const file = activeCompileFile(project);
+      if (file) {
+        try {
+          await saveCompileFile(project, file);
+          setStatus("Compile source saved.");
+          scheduleAutosave();
+          renderSectionContent(project);
+        } catch (error) {
+          setStatus(error.message || "Compile source could not be saved.");
+        }
+        return;
+      }
+    }
     await saveCurrentBuilderContext();
     return;
   }
@@ -10525,6 +10604,27 @@ function syncCompileEditorScroll(textarea) {
   preview.scrollLeft = textarea.scrollLeft;
 }
 
+function syncActiveCompileEditorToFile(project = selectedProject()) {
+  const { file } = activeCompileWorkspaceAndFile(project);
+  if (!file) return null;
+  const codeInput = sectionContent.querySelector("[data-compile-active-editor]");
+  if (codeInput && typeof codeInput.value === "string" && file.code !== codeInput.value) {
+    file.code = codeInput.value;
+    file.dirty = true;
+    file.lastResult = null;
+    if (isHdlLanguage(file.language) && (!file.role || file.role === "source")) {
+      file.role = inferCompileFileRole(file.fileName, file.code, file.language);
+    }
+    updateCompilePreview(file);
+  }
+  const stdinInput = sectionContent.querySelector(".compile-stdin-window [data-compile-field='stdin']");
+  if (stdinInput && typeof stdinInput.value === "string" && file.stdin !== stdinInput.value) {
+    file.stdin = stdinInput.value;
+    file.dirty = true;
+  }
+  return file;
+}
+
 function compilePayload(project, file, options = {}) {
   const workspace = ensureCompileCode(project);
   return {
@@ -10559,6 +10659,7 @@ function selectedCompileAppendDestination(project) {
 }
 
 function appendCompileCodeToProject(project, file) {
+  file = syncActiveCompileEditorToFile(project) || file;
   const block = codeBlockForCompileFile(file);
   if (!block.code.trim()) {
     setStatus("Type or import code before appending it to the project.");
@@ -10599,6 +10700,7 @@ function appendCompileCodeToProject(project, file) {
 
 async function saveCompileFile(project, file) {
   if (!project || !file) return null;
+  syncActiveCompileEditorToFile(project);
   const response = await fetch(`/api/code/save?t=${Date.now()}`, {
     method: "POST",
     cache: "no-store",
@@ -10617,6 +10719,47 @@ async function saveCompileFile(project, file) {
   addCompileDirectoryPath(ensureCompileCode(project), compileFileDirectory(file.relativePath));
   addCompileMessage(project, `Saved ${file.fileName || "source file"}.`, "info");
   return result.saved;
+}
+
+async function saveCompileFileAs(project, file) {
+  if (!project || !file) return null;
+  syncActiveCompileEditorToFile(project);
+  const suggestedName = file.fileName || defaultCodeFileName(file.language);
+  if (window.showSaveFilePicker) {
+    const handle = await window.showSaveFilePicker({
+      suggestedName,
+      types: [{
+        description: `${codeLanguageLabel(file.language)} source`,
+        accept: { "text/plain": [`.${suggestedName.split(".").pop() || "txt"}`] }
+      }]
+    });
+    const writable = await handle.createWritable();
+    await writable.write(file.code || "");
+    await writable.close();
+    file.externalSavedAt = new Date().toISOString();
+    file.dirty = false;
+    addCompileMessage(project, `Saved external copy: ${handle.name || suggestedName}.`, "success");
+    setStatus("Saved source copy to the selected location. Save Source still writes the project workspace copy.");
+    scheduleAutosave();
+    renderSectionContent(project);
+    return { external: true, fileName: handle.name || suggestedName };
+  }
+
+  const blob = new Blob([file.code || ""], { type: "text/plain;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = suggestedName;
+  document.body.append(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+  file.externalSavedAt = new Date().toISOString();
+  addCompileMessage(project, `Downloaded external copy: ${suggestedName}.`, "success");
+  setStatus("The browser saved a copy using its download/save dialog.");
+  scheduleAutosave();
+  renderSectionContent(project);
+  return { external: true, fileName: suggestedName };
 }
 
 async function importCompileFiles(project, options = {}) {
@@ -10638,7 +10781,11 @@ async function importCompileFiles(project, options = {}) {
   }
   if (!entries.length && !importedDirectories.length) return;
   const allowedExtensions = supportedCodeLanguages.flatMap((item) => item.extensions || []);
-  const targetDirectory = compileDirectoryPath(options.targetDirectory || "");
+  let targetDirectory = compileDirectoryPath(options.targetDirectory || "");
+  if (!targetDirectory && !directoryImport && options.promptForDirectory !== false) {
+    targetDirectory = compileDirectoryPath(window.prompt("Folder inside this project workspace for imported files (blank keeps the project root).", "") || "");
+    if (targetDirectory) addCompileDirectoryPath(workspace, targetDirectory);
+  }
   importedDirectories.forEach((directory) => {
     const targetPath = [targetDirectory, directory].filter(Boolean).join("/");
     addCompileDirectoryPath(workspace, targetPath);
@@ -10790,6 +10937,7 @@ function moveCompileTreeFile(project, context = activeCompileTreeContext) {
 
 async function beautifyCompileFile(project, file) {
   if (!file) return;
+  syncActiveCompileEditorToFile(project);
   try {
     const response = await fetch(`/api/code/beautify?t=${Date.now()}`, {
       method: "POST",
@@ -10818,6 +10966,7 @@ async function beautifyCompileFile(project, file) {
 
 async function compileActiveFile(project, file, options = {}) {
   if (!file) return;
+  syncActiveCompileEditorToFile(project);
   const workspace = ensureCompileCode(project);
   const action = options.action || (isHdlLanguage(file.language) ? "simulate" : "run");
   const actionLabel = action === "compile" ? "Compile" : action === "build" ? "Build project" : action === "simulate" ? "Simulate" : "Run";
@@ -10905,8 +11054,7 @@ async function runCompileTerminalCommand(project) {
   terminal.cwd = cwd;
   workspace.activePanel = "terminal";
   const previousOutput = terminal.output || "";
-  terminal.output = appendCompileTerminalOutput(previousOutput, `${prompt} ${command}\nPlease wait...`);
-  addCompileMessage(project, `Terminal command started: ${command}`, "info");
+  terminal.output = appendCompileTerminalOutput(previousOutput, `${prompt} ${command}`);
   renderSectionContent(project);
   requestAnimationFrame(focusTerminalCommandLine);
   try {
@@ -10933,12 +11081,10 @@ async function runCompileTerminalCommand(project) {
       { at: new Date().toISOString(), command, output: result.output || "" },
       ...(terminal.history || [])
     ].slice(0, 40);
-    addCompileMessage(project, `Terminal command finished: ${command}`, result.exitCode === 0 ? "success" : "warning");
     setStatus(result.exitCode === 0 ? "Terminal command completed." : `Terminal command exited with code ${result.exitCode}.`);
   } catch (error) {
     terminal.output = appendCompileTerminalOutput(previousOutput, `${prompt} ${command}\n${error.message || "Terminal command failed."}`);
     terminal.command = "";
-    addCompileMessage(project, `Terminal command failed: ${command}`, "error");
     setStatus(error.message || "Terminal command failed.");
   }
   scheduleAutosave();
@@ -11044,6 +11190,14 @@ async function runCompileIdeAction(project, action = "") {
       renderSectionContent(project);
     } catch (error) {
       setStatus(error.message || "Compile source could not be saved.");
+    }
+    return;
+  }
+  if (action === "save-source-as") {
+    try {
+      await saveCompileFileAs(project, file);
+    } catch (error) {
+      setStatus(error.message || "Compile source could not be saved to another location.");
     }
     return;
   }
@@ -13567,8 +13721,45 @@ projectViewContextMenu?.addEventListener("click", (event) => {
   if (action === "open-tab" && pendingProjectViewContext) {
     openProjectViewTab(pendingProjectViewContext.stateKey, { title: pendingProjectViewContext.title });
   }
+  if (action === "edit-node" && pendingProjectViewContext) {
+    openPendingEditor({
+      type: "custom",
+      mode: "edit",
+      sectionId: pendingProjectViewContext.sectionId,
+      nodePath: pendingProjectViewContext.nodePath
+    });
+  }
+  if (action === "delete-node" && pendingProjectViewContext) {
+    const project = selectedProject();
+    if (project) {
+      deleteProjectNodeByPath(project, pendingProjectViewContext.sectionId, nodePathFromString(pendingProjectViewContext.nodePath || ""));
+    }
+  }
   hideProjectViewContextMenu();
 });
+
+function deleteProjectNodeByPath(project, sectionId, path = []) {
+  const section = (project.sections || []).find((item) => item.id === sectionId);
+  const parent = section ? findBuilderNodeParent(section, path) : null;
+  const item = parent?.children?.[parent.index];
+  if (!section || !item) return;
+  openDeleteConfirm({
+    title: item?.url || item?.artifact ? "Delete file" : "Delete subsection",
+    message: `Are you sure you want to delete "${itemTitle(item) || "this item"}"?`,
+    onConfirm: () => {
+      parent.children.splice(parent.index, 1);
+      if (!item.url && !item.artifact && activeCustomSectionView.sectionId === section.id) {
+        const activePath = activeCustomSectionPath(section.id);
+        const deletedPathValue = nodePathToString(path);
+        if (nodePathToString(activePath).startsWith(deletedPathValue)) {
+          setActiveCustomSectionPath(section.id, path.slice(0, -1));
+        }
+      }
+      scheduleAutosave();
+      renderAll();
+    }
+  });
+}
 
 sectionContent.addEventListener("contextmenu", (event) => {
   if (event.target.closest(".compile-code-sidebar")) return;
@@ -13583,7 +13774,7 @@ sectionContent.addEventListener("contextmenu", (event) => {
   const title = node ? builderNodeTitle(node) : section?.title || "Project view";
   const pathValue = nodePathToString(path);
   const stateKey = pathValue ? `custom:${sectionId}|${pathValue}` : `custom:${sectionId}`;
-  showProjectViewContextMenu(event, { stateKey, title });
+  showProjectViewContextMenu(event, { stateKey, title, kind: path.length ? "node" : "section", sectionId, nodePath: pathValue });
 });
 
 sectionContent.addEventListener("click", async (event) => {
@@ -13683,6 +13874,14 @@ sectionContent.addEventListener("click", async (event) => {
       renderSectionContent(project);
     } catch (error) {
       setStatus(error.message || "Compile source could not be saved.");
+    }
+    return;
+  }
+  if (hasDataset("compileSaveAs")) {
+    try {
+      await saveCompileFileAs(project, compileFile);
+    } catch (error) {
+      setStatus(error.message || "Compile source could not be saved to another location.");
     }
     return;
   }
@@ -13849,27 +14048,7 @@ sectionContent.addEventListener("click", async (event) => {
     return;
   }
   if (button.dataset.deleteNode !== undefined) {
-    const section = project.sections.find((item) => item.id === button.dataset.deleteNode);
-    const path = nodePathFromString(button.dataset.nodePath || "");
-    const parent = section ? findBuilderNodeParent(section, path) : null;
-    const item = parent?.children?.[parent.index];
-    if (!item) return;
-    openDeleteConfirm({
-      title: item?.url || item?.artifact ? "Delete file" : "Delete subsection",
-      message: `Are you sure you want to delete "${itemTitle(item) || "this item"}"?`,
-      onConfirm: () => {
-        parent.children.splice(parent.index, 1);
-        if (!item.url && !item.artifact && activeCustomSectionView.sectionId === section.id) {
-          const activePath = activeCustomSectionPath(section.id);
-          const deletedPathValue = nodePathToString(path);
-          if (nodePathToString(activePath).startsWith(deletedPathValue)) {
-            setActiveCustomSectionPath(section.id, path.slice(0, -1));
-          }
-        }
-        scheduleAutosave();
-        renderAll();
-      }
-    });
+    deleteProjectNodeByPath(project, button.dataset.deleteNode, nodePathFromString(button.dataset.nodePath || ""));
     return;
   }
   if (button.dataset.clearDesignSummary) {
@@ -14059,6 +14238,36 @@ sectionContent.addEventListener("pointerdown", (event) => {
 
   const dragHandle = event.target.closest("[data-compile-output-drag]");
   const dock = dragHandle?.closest(".compile-output-workbench.is-output-dock-unlocked");
+  const stdinHandle = event.target.closest("[data-compile-stdin-drag]");
+  const stdinWindow = stdinHandle?.closest(".compile-stdin-window");
+  if (stdinWindow && event.button === 0) {
+    const rect = stdinWindow.getBoundingClientRect();
+    activeCompileStdinDrag = {
+      offsetX: event.clientX - rect.left,
+      offsetY: event.clientY - rect.top,
+      pointerId: event.pointerId
+    };
+    stdinHandle.setPointerCapture?.(event.pointerId);
+    stdinWindow.classList.add("is-dragging");
+    event.preventDefault();
+    return;
+  }
+
+  const detailsHandle = event.target.closest("[data-compile-file-details-drag]");
+  const detailsWindow = detailsHandle?.closest(".compile-file-details-window");
+  if (detailsWindow && event.button === 0) {
+    const rect = detailsWindow.getBoundingClientRect();
+    activeCompileFileDetailsDrag = {
+      offsetX: event.clientX - rect.left,
+      offsetY: event.clientY - rect.top,
+      pointerId: event.pointerId
+    };
+    detailsHandle.setPointerCapture?.(event.pointerId);
+    detailsWindow.classList.add("is-dragging");
+    event.preventDefault();
+    return;
+  }
+
   if (!dock || event.button !== 0) return;
   const rect = dock.getBoundingClientRect();
   activeOutputDockDrag = {
@@ -14092,6 +14301,42 @@ document.addEventListener("pointermove", (event) => {
     const nextHeight = normalizeCompileOutputHeight(activeOutputDockResize.startHeight + activeOutputDockResize.startY - event.clientY);
     workspace.outputDockHeight = nextHeight;
     dock.style.setProperty("--compile-output-height", `${nextHeight}px`);
+    event.preventDefault();
+    return;
+  }
+
+  if (activeCompileStdinDrag) {
+    const project = selectedProject();
+    if (!project) return;
+    const workspace = ensureCompileCode(project);
+    const panel = sectionContent.querySelector(".compile-stdin-window");
+    if (!panel) return;
+    const rect = panel.getBoundingClientRect();
+    const margin = 8;
+    const x = Math.max(margin, Math.min(event.clientX - activeCompileStdinDrag.offsetX, window.innerWidth - rect.width - margin));
+    const y = Math.max(margin, Math.min(event.clientY - activeCompileStdinDrag.offsetY, window.innerHeight - rect.height - margin));
+    workspace.stdinWindowPosition = { x, y };
+    panel.style.left = `${x}px`;
+    panel.style.top = `${y}px`;
+    panel.style.right = "auto";
+    event.preventDefault();
+    return;
+  }
+
+  if (activeCompileFileDetailsDrag) {
+    const project = selectedProject();
+    if (!project) return;
+    const workspace = ensureCompileCode(project);
+    const panel = sectionContent.querySelector(".compile-file-details-window");
+    if (!panel) return;
+    const rect = panel.getBoundingClientRect();
+    const margin = 8;
+    const x = Math.max(margin, Math.min(event.clientX - activeCompileFileDetailsDrag.offsetX, window.innerWidth - rect.width - margin));
+    const y = Math.max(margin, Math.min(event.clientY - activeCompileFileDetailsDrag.offsetY, window.innerHeight - rect.height - margin));
+    workspace.fileDetailsPosition = { x, y };
+    panel.style.left = `${x}px`;
+    panel.style.top = `${y}px`;
+    panel.style.right = "auto";
     event.preventDefault();
     return;
   }
@@ -14131,8 +14376,25 @@ function endOutputDockDrag(event) {
   scheduleAutosave(900);
 }
 
+function endCompileFloatingWindowDrag() {
+  if (activeCompileStdinDrag) {
+    sectionContent.querySelector("[data-compile-stdin-drag]")?.releasePointerCapture?.(activeCompileStdinDrag.pointerId);
+    sectionContent.querySelector(".compile-stdin-window")?.classList.remove("is-dragging");
+    activeCompileStdinDrag = null;
+    scheduleAutosave(900);
+  }
+  if (activeCompileFileDetailsDrag) {
+    sectionContent.querySelector("[data-compile-file-details-drag]")?.releasePointerCapture?.(activeCompileFileDetailsDrag.pointerId);
+    sectionContent.querySelector(".compile-file-details-window")?.classList.remove("is-dragging");
+    activeCompileFileDetailsDrag = null;
+    scheduleAutosave(900);
+  }
+}
+
 document.addEventListener("pointerup", endOutputDockDrag);
 document.addEventListener("pointercancel", endOutputDockDrag);
+document.addEventListener("pointerup", endCompileFloatingWindowDrag);
+document.addEventListener("pointercancel", endCompileFloatingWindowDrag);
 
 document.addEventListener("click", (event) => {
   if (event.target.closest("[data-compile-tree-context-menu]")) return;
