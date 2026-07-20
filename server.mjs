@@ -1640,13 +1640,33 @@ async function compileAndRunCode(payload = {}) {
       ? runSource.writtenSources.filter((file) => normalizeCodeLanguage(file.language) === "javascript")
       : runSource.writtenSources.filter((file) => file.sourcePath === runSource.runSourcePath);
     ok = true;
-    for (const target of targets.length ? targets : [{ sourcePath: runSource.runSourcePath, uniqueName: saved.fileName }]) {
-      const check = await runProcess(node, ["--check", target.sourcePath], { cwd: runSource.runDir, timeoutMs: 15000 });
-      terminal.push(terminalLine(`${path.basename(node)} --check ${sourceDisplayName(target)}`, processTerminalText(check)));
-      ok = ok && check.ok;
+    const checkTargets = targets.length ? targets : [{ sourcePath: runSource.runSourcePath, uniqueName: saved.fileName, code: sourceCode }];
+    const syntaxCacheKey = compileCacheKey({
+      language,
+      mode: action === "build" ? "workspace-syntax" : "active-syntax",
+      activeFileName: saved.fileName,
+      files: checkTargets.map((file) => ({ name: sourceDisplayName(file), code: file.code || "" })),
+      runtime: node
+    });
+    const syntaxCacheDir = compileCacheDirectory(payload.projectId, language, syntaxCacheKey);
+    const syntaxMarker = path.join(syntaxCacheDir, "syntax-ok.txt");
+    const syntaxCached = (action === "compile" || action === "build") && !forceRebuild && await pathExists(syntaxMarker);
+    if (syntaxCached) {
+      terminal.push(cachedBuildLine("JavaScript syntax check", syntaxMarker));
+    } else {
+      for (const target of checkTargets) {
+        const check = await runProcess(node, ["--check", target.sourcePath], { cwd: runSource.runDir, timeoutMs: 15000 });
+        terminal.push(terminalLine(`${path.basename(node)} --check ${sourceDisplayName(target)}`, processTerminalText(check)));
+        ok = ok && check.ok;
+      }
+      if ((action === "compile" || action === "build") && ok) {
+        await mkdir(syntaxCacheDir, { recursive: true });
+        await writeFile(syntaxMarker, `JavaScript syntax check passed for ${saved.fileName}\n`, "utf8");
+      }
     }
     if (action === "compile" || action === "build") {
-      terminal.push(ok ? "JavaScript syntax check completed." : "JavaScript syntax check found errors.");
+      terminal.push(syntaxCached || ok ? "JavaScript syntax check completed." : "JavaScript syntax check found errors.");
+      ok = syntaxCached || ok;
     } else if (ok) {
       const run = await runProcess(node, [runSource.runSourcePath], { cwd: runSource.runDir, timeoutMs: 20000, ...stdinOptions });
       append(`${path.basename(node)} ${saved.fileName}`, run);
@@ -1661,13 +1681,33 @@ async function compileAndRunCode(payload = {}) {
       ? runSource.writtenSources.filter((file) => normalizeCodeLanguage(file.language) === "python")
       : runSource.writtenSources.filter((file) => file.sourcePath === runSource.runSourcePath);
     ok = true;
-    for (const target of targets.length ? targets : [{ sourcePath: runSource.runSourcePath, uniqueName: saved.fileName }]) {
-      const check = await runProcess(python, ["-m", "py_compile", target.sourcePath], { cwd: runSource.runDir, timeoutMs: 15000 });
-      terminal.push(terminalLine(`${path.basename(python)} -m py_compile ${sourceDisplayName(target)}`, processTerminalText(check)));
-      ok = ok && check.ok;
+    const checkTargets = targets.length ? targets : [{ sourcePath: runSource.runSourcePath, uniqueName: saved.fileName, code: sourceCode }];
+    const syntaxCacheKey = compileCacheKey({
+      language,
+      mode: action === "build" ? "workspace-bytecode" : "active-bytecode",
+      activeFileName: saved.fileName,
+      files: checkTargets.map((file) => ({ name: sourceDisplayName(file), code: file.code || "" })),
+      runtime: python
+    });
+    const syntaxCacheDir = compileCacheDirectory(payload.projectId, language, syntaxCacheKey);
+    const syntaxMarker = path.join(syntaxCacheDir, "syntax-ok.txt");
+    const syntaxCached = (action === "compile" || action === "build") && !forceRebuild && await pathExists(syntaxMarker);
+    if (syntaxCached) {
+      terminal.push(cachedBuildLine("Python bytecode compile check", syntaxMarker));
+    } else {
+      for (const target of checkTargets) {
+        const check = await runProcess(python, ["-m", "py_compile", target.sourcePath], { cwd: runSource.runDir, timeoutMs: 15000 });
+        terminal.push(terminalLine(`${path.basename(python)} -m py_compile ${sourceDisplayName(target)}`, processTerminalText(check)));
+        ok = ok && check.ok;
+      }
+      if ((action === "compile" || action === "build") && ok) {
+        await mkdir(syntaxCacheDir, { recursive: true });
+        await writeFile(syntaxMarker, `Python bytecode compile check passed for ${saved.fileName}\n`, "utf8");
+      }
     }
     if (action === "compile" || action === "build") {
-      terminal.push(ok ? "Python bytecode compile check completed." : "Python compile check found errors.");
+      terminal.push(syntaxCached || ok ? "Python bytecode compile check completed." : "Python compile check found errors.");
+      ok = syntaxCached || ok;
     } else if (ok) {
       const run = await runProcess(python, [runSource.runSourcePath], { cwd: runSource.runDir, timeoutMs: 20000, ...stdinOptions });
       append(`${path.basename(python)} ${saved.fileName}`, run);
@@ -1685,9 +1725,10 @@ async function compileAndRunCode(payload = {}) {
       ? workspaceSources.filter((file) => !cFamilyCompileProfile(language, file.fileName).header)
       : workspaceSources.filter((file) => file.fileName === saved.fileName);
     const compilerVersion = await toolVersionLine(found[toolName]);
+    const cacheMode = action === "build" ? "workspace-build" : cProfile.header ? "header-syntax" : "active-binary";
     const cacheKey = compileCacheKey({
       language,
-      action,
+      mode: cacheMode,
       activeFileName: saved.fileName,
       files: buildTargets.map((file) => ({ fileName: file.fileName, code: file.code })),
       compiler: found[toolName],
@@ -1854,9 +1895,10 @@ async function compileAndRunCode(payload = {}) {
       topModule
     });
     const cacheDir = compileCacheDirectory(payload.projectId, language, cacheKey);
-    await rm(cacheDir, { recursive: true, force: true });
-    await mkdir(cacheDir, { recursive: true });
     const output = path.join(cacheDir, "simulation.vvp");
+    const cached = !forceRebuild && await pathExists(output);
+    if (!cached) await rm(cacheDir, { recursive: true, force: true });
+    await mkdir(cacheDir, { recursive: true });
     const sourceFiles = await writeHdlSimulationSources(hdlFiles, cacheDir);
     const replacements = sourceFiles.map((file) => ({ from: file.sourcePath, to: file.uniqueName }));
     const designCount = sourceFiles.filter((file) => file.role !== "testbench").length;
@@ -1866,7 +1908,7 @@ async function compileAndRunCode(payload = {}) {
     const verilator = await findTool("verilator");
     const gtkwave = await findTool("gtkwave");
     terminal.push(`HDL debug tools: Verilator lint ${verilator ? `available at ${verilator}` : "not installed"}; GTKWave viewer ${gtkwave ? `available at ${gtkwave}` : "not installed"}.`);
-    if (verilator) {
+    if (verilator && !cached) {
       const lintArgs = [
         "--lint-only",
         ...(usesSystemVerilog ? ["--sv"] : []),
@@ -1880,8 +1922,9 @@ async function compileAndRunCode(payload = {}) {
       if (!lint.ok) {
         terminal.push("Verilator lint reported issues. This advisory lint does not replace the integrated Icarus/VVP simulation used to generate the built-in scope.");
       }
+    } else if (verilator && cached) {
+      terminal.push("Verilator lint skipped because the cached simulation artifact matches the current HDL source snapshot.");
     }
-    const cached = false;
     if (cached) {
       terminal.push(cachedBuildLine(`${profile.label} simulation`, output));
     } else {

@@ -2870,19 +2870,24 @@ function normalizeBuilderZoom(value = 1) {
 function normalizeCompileOutputHeight(value) {
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) return 170;
-  return Math.max(120, Math.min(340, Math.round(numeric)));
+  return Math.max(120, Math.min(620, Math.round(numeric)));
 }
 
 function normalizeCompileFloatingWidth(value) {
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) return 900;
-  return Math.max(420, Math.min(1280, Math.round(numeric)));
+  return Math.max(420, Math.min(2200, Math.round(numeric)));
 }
 
 function normalizeCompileFloatingHeight(value) {
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) return 430;
   return Math.max(180, Math.min(780, Math.round(numeric)));
+}
+
+function compileOutputResizeHandles(unlocked = false) {
+  const edges = unlocked ? ["n", "e", "s", "w", "ne", "nw", "se", "sw"] : ["n", "s"];
+  return edges.map((edge) => `<div class="compile-output-resize-handle resize-${edge}" data-compile-output-resize="${edge}" title="Drag to resize output panel"></div>`).join("");
 }
 
 function normalizeCompileSidebarWidth(value) {
@@ -9347,6 +9352,12 @@ function updateCompileTerminalPanel(project, file = activeCompileFile(project)) 
   });
 }
 
+function refreshCompileOutputPanels(project, file = activeCompileFile(project)) {
+  updateCompileTerminalPanel(project, file);
+  updateCompileMessagesPanel(project);
+  updateCompileSystemTerminalPanel(project);
+}
+
 function updateCompileMessagesPanel(project) {
   const workspace = ensureCompileCode(project);
   const log = sectionContent.querySelector("[data-compile-messages]");
@@ -10428,7 +10439,7 @@ function renderCompileTreeContextMenu() {
     { label: "Import files", action: "import-files" },
     { label: "Import directory", action: "import-directory" },
     { separator: true },
-    { label: "Move selected file", action: "move-tree-file" },
+    { label: "Move selected", action: "move-tree-file" },
     { label: "Delete selected", action: "delete-tree-target" }
   ];
   return `
@@ -10438,6 +10449,17 @@ function renderCompileTreeContextMenu() {
         : `<button type="button" data-compile-menu-action="${escapeHtml(item.action)}">${escapeHtml(item.label)}</button>`).join("")}
     </div>
   `;
+}
+
+function compileTreeContextFromMenu(menu = null) {
+  if (!menu) return null;
+  const type = menu.dataset.contextType || "";
+  if (!type) return null;
+  return {
+    type,
+    fileId: menu.dataset.contextFileId || "",
+    path: menu.dataset.contextPath || ""
+  };
 }
 
 function renderCompileAppendChooser(project, workspace = {}) {
@@ -10480,7 +10502,7 @@ function renderCompileCodeSection(project) {
     ? ` style="left:${Math.max(8, Number(dockPosition.x) || 72)}px; top:${Math.max(8, Number(dockPosition.y) || 120)}px; width:${normalizeCompileFloatingWidth(dockSize.width)}px; height:${normalizeCompileFloatingHeight(dockSize.height)}px;"`
     : ` style="--compile-output-height:${outputHeight}px;"`;
   return `
-    <div class="compile-code-workspace" data-compile-workspace data-compile-theme="${escapeHtml(compileTheme)}" style="--compile-sidebar-width:${sidebarWidth}px;">
+    <div class="compile-code-workspace is-output-panel-${escapeHtml(activePanel)}" data-compile-workspace data-compile-theme="${escapeHtml(compileTheme)}" style="--compile-sidebar-width:${sidebarWidth}px; --compile-output-height:${outputHeight}px;">
       ${renderCompileIdeMenuBar(project, activeFile)}
       <aside class="compile-code-sidebar" aria-label="Compile code files">
         <div class="compile-code-sidebar-heading">
@@ -10533,8 +10555,8 @@ function renderCompileCodeSection(project) {
             <p>Add a source file for C, C++, SystemVerilog, LTspice, Java, JavaScript, Python, or HTML.</p>
           </div>
         `}
-        <section class="compile-output-workbench ${dockUnlocked ? "is-output-dock-unlocked" : "is-output-dock-locked"}" aria-label="Compile output workbench"${dockStyle}>
-          <div class="compile-output-resize-handle" data-compile-output-resize title="Drag to resize output panel"></div>
+        <section class="compile-output-workbench ${dockUnlocked ? "is-output-dock-unlocked" : "is-output-dock-locked"} is-active-panel-${escapeHtml(activePanel)}" data-active-output-panel="${escapeHtml(activePanel)}" aria-label="Compile output workbench"${dockStyle}>
+          ${compileOutputResizeHandles(dockUnlocked)}
           ${compilePanelTabs(project, activeFile)}
           <div class="compile-output-dock">
             ${renderCompileActiveOutputPanel(project, activeFile)}
@@ -11041,6 +11063,10 @@ async function handleGlobalKeyboardShortcuts(event) {
   const key = String(event.key || "").toLowerCase();
   const modifier = event.ctrlKey || event.metaKey;
   if (!modifier || event.altKey) return;
+  const target = event.target;
+  const editableTarget = target?.closest?.("input, textarea, [contenteditable='true']");
+
+  if (editableTarget && ["z", "y"].includes(key)) return;
 
   if (["+", "=", "-", "_", "0"].includes(key)) {
     event.preventDefault();
@@ -11074,7 +11100,6 @@ async function handleGlobalKeyboardShortcuts(event) {
     return;
   }
 
-  const target = event.target;
   const richEditor = activeRichEditorFromTarget(target);
   const plainControl = activePlainTextControlFromTarget(target);
 
@@ -11844,6 +11869,54 @@ function deleteCompileTreeTarget(project, context = activeCompileTreeContext) {
 
 function moveCompileTreeFile(project, context = activeCompileTreeContext) {
   const workspace = ensureCompileCode(project);
+  const selectedIds = compileSelectedFileIds(workspace);
+  const selectedFiles = context?.type === "file" && selectedIds.has(context.fileId) && selectedIds.size > 1
+    ? workspace.files.filter((item) => selectedIds.has(item.id))
+    : [];
+  if (selectedFiles.length > 1) {
+    const targetDirectory = compileDirectoryPath(window.prompt("Move selected source files into this folder", compileContextBaseDirectory(context) || "src") || "");
+    if (!targetDirectory) return;
+    const movingIds = new Set(selectedFiles.map((item) => item.id));
+    const usedPaths = new Set(workspace.files
+      .filter((item) => !movingIds.has(item.id))
+      .map((item) => compileFilePath(item).toLowerCase()));
+    const uniquePathForMove = (file) => {
+      const basePath = safeClientCodeRelativePath(`${targetDirectory}/${file.fileName || defaultCodeFileName(file.language)}`, file.language);
+      if (!usedPaths.has(basePath.toLowerCase())) {
+        usedPaths.add(basePath.toLowerCase());
+        return basePath;
+      }
+      const segments = compilePathSegments(basePath);
+      const fileName = segments.pop() || defaultCodeFileName(file.language);
+      const extensionMatch = fileName.match(/(\.[^.]+)$/);
+      const extension = extensionMatch?.[1] || "";
+      const baseName = extension ? fileName.slice(0, -extension.length) : fileName;
+      const directory = compileDirectoryPath(segments.join("/"));
+      for (let index = 2; index < 1000; index += 1) {
+        const candidate = `${directory ? `${directory}/` : ""}${baseName}-${index}${extension}`;
+        if (!usedPaths.has(candidate.toLowerCase())) {
+          usedPaths.add(candidate.toLowerCase());
+          return candidate;
+        }
+      }
+      const fallback = `${directory ? `${directory}/` : ""}${baseName}-${Date.now()}${extension}`;
+      usedPaths.add(fallback.toLowerCase());
+      return fallback;
+    };
+    selectedFiles.forEach((file) => {
+      file.relativePath = uniquePathForMove(file);
+      file.fileName = compileFileNameFromPath(file.relativePath, file.language);
+      file.title = file.fileName;
+      file.role = normalizeCompileFileRole(file.role || inferCompileFileRole(file.fileName, file.code, file.language), file.language);
+      file.dirty = true;
+    });
+    addCompileDirectoryPath(workspace, targetDirectory);
+    addCompileMessage(project, `Moved ${selectedFiles.length} selected source files into ${targetDirectory}. Click Save source on edited files to write them to disk.`, "info");
+    setStatus(`Moved ${selectedFiles.length} selected files into ${targetDirectory}.`);
+    scheduleAutosave();
+    renderSectionContent(project);
+    return;
+  }
   const file = context?.type === "file"
     ? workspace.files.find((item) => item.id === context.fileId)
     : activeCompileFile(project);
@@ -11909,8 +11982,16 @@ async function compileActiveFile(project, file, options = {}) {
   workspace.terminal = file.lastResult.terminal;
   addCompileMessage(project, `${actionLabel} started for ${file.fileName || file.title || "source file"}.`, "info");
   renderSectionContent(project);
+  requestAnimationFrame(() => refreshCompileOutputPanels(project, file));
   try {
     await saveCompileFile(project, file);
+    file.lastResult = {
+      ok: null,
+      terminal: `${actionLabel} started.\n\nSource saved. Compiler is running...`
+    };
+    workspace.terminal = file.lastResult.terminal;
+    addCompileMessage(project, `${actionLabel} request sent to the local compiler backend.`, "info");
+    refreshCompileOutputPanels(project, file);
     const response = await fetch(`/api/code/compile?t=${Date.now()}`, {
       method: "POST",
       cache: "no-store",
@@ -11950,7 +12031,9 @@ async function compileActiveFile(project, file, options = {}) {
     }
     setStatus(result.ok ? `${actionLabel} succeeded.` : `${actionLabel} completed with errors.`);
     scheduleAutosave();
+    refreshCompileOutputPanels(project, file);
     renderSectionContent(project);
+    requestAnimationFrame(() => refreshCompileOutputPanels(project, file));
   } catch (error) {
     file.lastResult = {
       ok: false,
@@ -11960,7 +12043,9 @@ async function compileActiveFile(project, file, options = {}) {
     ensureCompileCode(project).terminal = file.lastResult.terminal;
     addCompileMessage(project, `${actionLabel} failed for ${file.fileName || "source file"}.`, "error");
     setStatus(error.message || `${actionLabel} failed.`);
+    refreshCompileOutputPanels(project, file);
     renderSectionContent(project);
+    requestAnimationFrame(() => refreshCompileOutputPanels(project, file));
   }
 }
 
@@ -12073,11 +12158,12 @@ async function installCompileTools(project, file) {
   }
 }
 
-async function runCompileIdeAction(project, action = "") {
+async function runCompileIdeAction(project, action = "", options = {}) {
   if (!project || !action) return;
   const workspace = ensureCompileCode(project);
   const file = activeCompileFile(project);
-  const contextDirectory = compileContextBaseDirectory(activeCompileTreeContext);
+  const context = options.context || activeCompileTreeContext;
+  const contextDirectory = compileContextBaseDirectory(context);
   if (action === "new-file") return addCompileSourceFile(project, null, { directory: contextDirectory });
   if (action === "new-folder") return addCompileDirectory(project, { baseDirectory: contextDirectory });
   if (action === "add-testbench") return addCompileTestbenchFile(project, { directory: contextDirectory });
@@ -12091,8 +12177,8 @@ async function runCompileIdeAction(project, action = "") {
   if (action === "preferences") return openPreferencesDialog();
   if (action === "check-updates") return checkForAppUpdates({ force: true, manual: true });
   if (action === "check-tools") return checkCompileTools(project);
-  if (action === "delete-tree-target") return deleteCompileTreeTarget(project);
-  if (action === "move-tree-file") return moveCompileTreeFile(project);
+  if (action === "delete-tree-target") return deleteCompileTreeTarget(project, context);
+  if (action === "move-tree-file") return moveCompileTreeFile(project, context);
   if (action === "clear-messages") {
     workspace.messages = [];
     updateCompileMessagesPanel(project);
@@ -14842,8 +14928,9 @@ sectionContent.addEventListener("click", async (event) => {
 
   const hasDataset = (key) => Object.prototype.hasOwnProperty.call(button.dataset, key);
   if (button.dataset.compileMenuAction) {
-    hideCompileTreeContextMenus();
-    await runCompileIdeAction(project, button.dataset.compileMenuAction);
+    const menuContext = compileTreeContextFromMenu(button.closest("[data-compile-tree-context-menu]")) || activeCompileTreeContext;
+    hideCompileTreeContextMenus({ clearContext: false });
+    await runCompileIdeAction(project, button.dataset.compileMenuAction, { context: menuContext });
     hideCompileTreeContextMenus();
     return;
   }
@@ -15386,30 +15473,38 @@ sectionContent.addEventListener("pointerdown", (event) => {
   const unlockedDock = resizeHandle?.closest(".compile-output-workbench.is-output-dock-unlocked");
   if (unlockedDock && event.button === 0) {
     const rect = unlockedDock.getBoundingClientRect();
+    const edge = resizeHandle.dataset.compileOutputResize || "se";
     activeOutputDockResize = {
       mode: "floating",
+      edge,
       startX: event.clientX,
       startY: event.clientY,
       startWidth: rect.width,
       startHeight: rect.height,
       startLeft: rect.left,
       startTop: rect.top,
-      pointerId: event.pointerId
+      pointerId: event.pointerId,
+      handle: resizeHandle
     };
     resizeHandle.setPointerCapture?.(event.pointerId);
     unlockedDock.classList.add("is-resizing");
+    unlockedDock.dataset.resizingEdge = edge;
     event.preventDefault();
     return;
   }
   if (lockedDock && event.button === 0) {
+    const edge = ["n", "s"].includes(resizeHandle.dataset.compileOutputResize) ? resizeHandle.dataset.compileOutputResize : "n";
     activeOutputDockResize = {
       mode: "locked",
+      edge,
       startY: event.clientY,
       startHeight: lockedDock.getBoundingClientRect().height,
-      pointerId: event.pointerId
+      pointerId: event.pointerId,
+      handle: resizeHandle
     };
     resizeHandle.setPointerCapture?.(event.pointerId);
     lockedDock.classList.add("is-resizing");
+    lockedDock.dataset.resizingEdge = edge;
     event.preventDefault();
     return;
   }
@@ -15493,21 +15588,59 @@ document.addEventListener("pointermove", (event) => {
     if (activeOutputDockResize.mode === "floating") {
       const dock = sectionContent.querySelector(".compile-output-workbench.is-output-dock-unlocked");
       if (!dock) return;
-      const maxWidth = Math.max(420, window.innerWidth - activeOutputDockResize.startLeft - 8);
-      const maxHeight = Math.max(180, window.innerHeight - activeOutputDockResize.startTop - 8);
-      const nextWidth = Math.max(420, Math.min(maxWidth, activeOutputDockResize.startWidth + event.clientX - activeOutputDockResize.startX));
-      const nextHeight = Math.max(180, Math.min(maxHeight, activeOutputDockResize.startHeight + event.clientY - activeOutputDockResize.startY));
+      const edge = activeOutputDockResize.edge || "se";
+      const dx = event.clientX - activeOutputDockResize.startX;
+      const dy = event.clientY - activeOutputDockResize.startY;
+      const minWidth = 420;
+      const minHeight = 180;
+      const viewportMargin = 8;
+      const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+      const startRight = activeOutputDockResize.startLeft + activeOutputDockResize.startWidth;
+      const startBottom = activeOutputDockResize.startTop + activeOutputDockResize.startHeight;
+      let nextLeft = activeOutputDockResize.startLeft;
+      let nextTop = activeOutputDockResize.startTop;
+      let nextWidth = activeOutputDockResize.startWidth;
+      let nextHeight = activeOutputDockResize.startHeight;
+      if (edge.includes("e")) {
+        nextWidth = clamp(activeOutputDockResize.startWidth + dx, minWidth, window.innerWidth - activeOutputDockResize.startLeft - viewportMargin);
+      }
+      if (edge.includes("s")) {
+        nextHeight = clamp(activeOutputDockResize.startHeight + dy, minHeight, window.innerHeight - activeOutputDockResize.startTop - viewportMargin);
+      }
+      if (edge.includes("w")) {
+        nextLeft = clamp(activeOutputDockResize.startLeft + dx, viewportMargin, startRight - minWidth);
+        nextWidth = startRight - nextLeft;
+      }
+      if (edge.includes("n")) {
+        nextTop = clamp(activeOutputDockResize.startTop + dy, viewportMargin, startBottom - minHeight);
+        nextHeight = startBottom - nextTop;
+      }
+      nextWidth = normalizeCompileFloatingWidth(clamp(nextWidth, minWidth, window.innerWidth - nextLeft - viewportMargin));
+      nextHeight = normalizeCompileFloatingHeight(clamp(nextHeight, minHeight, window.innerHeight - nextTop - viewportMargin));
+      if (edge.includes("w")) nextLeft = startRight - nextWidth;
+      if (edge.includes("n")) nextTop = startBottom - nextHeight;
+      nextLeft = clamp(nextLeft, viewportMargin, window.innerWidth - nextWidth - viewportMargin);
+      nextTop = clamp(nextTop, viewportMargin, window.innerHeight - nextHeight - viewportMargin);
       workspace.outputDockSize = {
-        width: normalizeCompileFloatingWidth(nextWidth),
-        height: normalizeCompileFloatingHeight(nextHeight)
+        width: nextWidth,
+        height: nextHeight
       };
+      workspace.outputDockPosition = { x: Math.round(nextLeft), y: Math.round(nextTop) };
+      dock.style.left = `${workspace.outputDockPosition.x}px`;
+      dock.style.top = `${workspace.outputDockPosition.y}px`;
       dock.style.width = `${workspace.outputDockSize.width}px`;
       dock.style.height = `${workspace.outputDockSize.height}px`;
     } else {
       const dock = sectionContent.querySelector(".compile-output-workbench.is-output-dock-locked");
       if (!dock) return;
-      const nextHeight = normalizeCompileOutputHeight(activeOutputDockResize.startHeight + activeOutputDockResize.startY - event.clientY);
+      const edge = activeOutputDockResize.edge || "n";
+      const delta = event.clientY - activeOutputDockResize.startY;
+      const nextHeight = normalizeCompileOutputHeight(edge === "s"
+        ? activeOutputDockResize.startHeight + delta
+        : activeOutputDockResize.startHeight - delta);
       workspace.outputDockHeight = nextHeight;
+      sectionContent.querySelector("[data-compile-workspace]")?.style.setProperty("--compile-output-height", `${nextHeight}px`);
+      sectionContent.querySelector(".compile-code-main")?.style.setProperty("--compile-output-height", `${nextHeight}px`);
       dock.style.setProperty("--compile-output-height", `${nextHeight}px`);
     }
     event.preventDefault();
@@ -15581,8 +15714,10 @@ function endOutputDockDrag(event) {
     scheduleAutosave(900);
   }
   if (activeOutputDockResize) {
-    sectionContent.querySelector("[data-compile-output-resize]")?.releasePointerCapture?.(activeOutputDockResize.pointerId);
-    sectionContent.querySelector(".compile-output-workbench.is-output-dock-locked, .compile-output-workbench.is-output-dock-unlocked")?.classList.remove("is-resizing");
+    activeOutputDockResize.handle?.releasePointerCapture?.(activeOutputDockResize.pointerId);
+    const resizingDock = sectionContent.querySelector(".compile-output-workbench.is-output-dock-locked, .compile-output-workbench.is-output-dock-unlocked");
+    resizingDock?.classList.remove("is-resizing");
+    if (resizingDock) delete resizingDock.dataset.resizingEdge;
     activeOutputDockResize = null;
     scheduleAutosave(900);
   }
