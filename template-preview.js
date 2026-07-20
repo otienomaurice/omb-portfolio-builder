@@ -548,6 +548,8 @@ let activeSummaryEditor = null;
 let activeSummaryBlock = null;
 let activePlainTextControl = null;
 let activePlainTextSelection = null;
+let activeCompileEditorControl = null;
+let activeCompileSelectionRange = null;
 let activeRichSelectionRange = null;
 let activeTextSelectionRange = null;
 let activeStaticSelectionText = "";
@@ -7256,13 +7258,20 @@ function configureSummaryContextMenu(mode = "rich", options = {}) {
     "toggle-italic",
     "toggle-underline"
   ]);
+  const compileActions = new Set(["copy-text", "paste-text", "cut-text", "select-all-text"]);
   const selectionActions = new Set(["copy-text"]);
   summaryContextMenu.querySelectorAll("[data-rich-action]").forEach((button) => {
     const action = button.dataset.richAction;
-    button.hidden = mode === "selection" ? !selectionActions.has(action) : mode === "plain" ? !plainActions.has(action) : false;
+    button.hidden = mode === "selection"
+      ? !selectionActions.has(action)
+      : mode === "plain"
+        ? !plainActions.has(action)
+        : mode === "compile"
+          ? !compileActions.has(action)
+          : false;
   });
   summaryContextMenu.querySelectorAll(".rich-menu-field").forEach((field) => {
-    field.hidden = mode === "selection";
+    field.hidden = mode === "selection" || mode === "compile";
   });
   if (richContextColorSwatches) richContextColorSwatches.hidden = true;
   if (mode === "rich") {
@@ -7490,6 +7499,8 @@ function hideSummaryContextMenu() {
   summaryContextMenu.hidden = true;
   activePlainTextControl = null;
   activePlainTextSelection = null;
+  activeCompileEditorControl = null;
+  activeCompileSelectionRange = null;
   activeStaticSelectionText = "";
   if (richContextColorSwatches) richContextColorSwatches.hidden = true;
 }
@@ -11534,10 +11545,89 @@ function restoreCompileEditorSelection(root, offset = 0) {
   selection?.addRange(range);
 }
 
-function insertCompileEditorText(text = "") {
+function compileEditorFromTarget(target = null) {
+  return target?.closest?.("[data-compile-active-editor]")
+    || target?.closest?.(".compile-code-preview, .compile-code-active-editor, .compile-code-preview-panel")?.querySelector?.("[data-compile-active-editor]")
+    || null;
+}
+
+function activeCompileEditorElement() {
+  return sectionContent.querySelector("[data-compile-active-editor]");
+}
+
+function compileEditorRangeFromPoint(editor, x = 0, y = 0) {
+  if (!editor || !Number.isFinite(Number(x)) || !Number.isFinite(Number(y))) return null;
+  let range = null;
+  if (document.caretPositionFromPoint) {
+    const position = document.caretPositionFromPoint(x, y);
+    if (position) {
+      range = document.createRange();
+      range.setStart(position.offsetNode, position.offset);
+      range.collapse(true);
+    }
+  } else if (document.caretRangeFromPoint) {
+    range = document.caretRangeFromPoint(x, y);
+  }
+  if (range && editor.contains(range.startContainer)) return range;
+  return null;
+}
+
+function focusCompileEditorAtPoint(editor, x = null, y = null) {
+  if (!editor) return false;
+  editor.focus({ preventScroll: true });
+  const selection = window.getSelection?.();
+  if (!selection) return false;
+  let range = Number.isFinite(Number(x)) && Number.isFinite(Number(y))
+    ? compileEditorRangeFromPoint(editor, Number(x), Number(y))
+    : null;
+  if (!range) {
+    range = document.createRange();
+    range.selectNodeContents(editor);
+    range.collapse(false);
+  }
+  selection.removeAllRanges();
+  selection.addRange(range);
+  activeCompileEditorControl = editor;
+  activeCompileSelectionRange = range.cloneRange();
+  return true;
+}
+
+function ensureCompileEditorInsertionPoint(editor = activeCompileEditorElement()) {
+  if (!editor) return false;
+  const selection = window.getSelection?.();
+  if (selection?.rangeCount && editor.contains(selection.getRangeAt(0).startContainer)) {
+    activeCompileEditorControl = editor;
+    activeCompileSelectionRange = selection.getRangeAt(0).cloneRange();
+    return true;
+  }
+  if (activeCompileSelectionRange && editor.contains(activeCompileSelectionRange.startContainer)) {
+    selection?.removeAllRanges();
+    selection?.addRange(activeCompileSelectionRange.cloneRange());
+    activeCompileEditorControl = editor;
+    return true;
+  }
+  return focusCompileEditorAtPoint(editor);
+}
+
+function restoreCompileEditorActionRange(editor = activeCompileEditorControl || activeCompileEditorElement()) {
+  if (!editor) return null;
+  editor.focus({ preventScroll: true });
+  const selection = window.getSelection?.();
+  if (activeCompileSelectionRange && editor.contains(activeCompileSelectionRange.startContainer)) {
+    selection?.removeAllRanges();
+    selection?.addRange(activeCompileSelectionRange.cloneRange());
+  } else {
+    ensureCompileEditorInsertionPoint(editor);
+  }
+  return editor;
+}
+
+function insertCompileEditorText(text = "", editor = activeCompileEditorElement()) {
+  if (!ensureCompileEditorInsertionPoint(editor)) return false;
   const selection = window.getSelection?.();
   if (!selection?.rangeCount) return false;
   const range = selection.getRangeAt(0);
+  if (editor && !editor.contains(range.startContainer)) return false;
   range.deleteContents();
   const node = document.createTextNode(String(text || ""));
   range.insertNode(node);
@@ -11545,7 +11635,53 @@ function insertCompileEditorText(text = "") {
   range.collapse(true);
   selection.removeAllRanges();
   selection.addRange(range);
+  activeCompileEditorControl = editor || null;
+  activeCompileSelectionRange = range.cloneRange();
   return true;
+}
+
+async function handleCompileEditorAction(action) {
+  const editor = restoreCompileEditorActionRange();
+  if (!editor) return;
+  const selection = window.getSelection?.();
+  const selectedText = selection && !selection.isCollapsed && selection.rangeCount && editor.contains(selection.getRangeAt(0).startContainer)
+    ? selection.toString()
+    : "";
+
+  if (action === "copy-text") {
+    if (selectedText) await navigator.clipboard.writeText(selectedText);
+    return;
+  }
+
+  if (action === "cut-text") {
+    if (selectedText) {
+      await navigator.clipboard.writeText(selectedText);
+      insertCompileEditorText("", editor);
+      editor.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "deleteByCut", data: "" }));
+    }
+    return;
+  }
+
+  if (action === "paste-text") {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (text) {
+        insertCompileEditorText(text, editor);
+        editor.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertFromPaste", data: text }));
+      }
+    } catch (error) {
+      setStatus("Clipboard paste was blocked by the browser. Use Ctrl+V in the code editor.");
+    }
+    return;
+  }
+
+  if (action === "select-all-text") {
+    const range = document.createRange();
+    range.selectNodeContents(editor);
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    activeCompileSelectionRange = range.cloneRange();
+  }
 }
 
 function syncActiveCompileEditorToFile(project = selectedProject()) {
@@ -13772,6 +13908,39 @@ function selectedDocumentText() {
   return selection && !selection.isCollapsed ? String(selection.toString() || "").trim() : "";
 }
 
+function handleCompileEditorContextMenu(event) {
+  const editor = compileEditorFromTarget(event.target);
+  if (!editor || editor.closest("#summary-context-menu")) return;
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  hideTextSelectionInspector();
+  activeSummaryEditor = null;
+  activeSummaryBlock = null;
+  activePlainTextControl = null;
+  activePlainTextSelection = null;
+  activeStaticSelectionText = "";
+  activeCompileEditorControl = editor;
+
+  const selection = window.getSelection?.();
+  const range = selection?.rangeCount ? selection.getRangeAt(0) : null;
+  if (range && editor.contains(range.startContainer) && !selection.isCollapsed) {
+    activeCompileSelectionRange = range.cloneRange();
+  } else {
+    focusCompileEditorAtPoint(editor, event.clientX, event.clientY);
+  }
+
+  configureSummaryContextMenu("compile");
+  const menuHost = editor.closest("dialog") || document.body;
+  if (summaryContextMenu.parentElement !== menuHost) menuHost.append(summaryContextMenu);
+  summaryContextMenu.style.left = `${event.clientX}px`;
+  summaryContextMenu.style.top = `${event.clientY}px`;
+  summaryContextMenu.style.maxHeight = "";
+  summaryContextMenu.hidden = false;
+  positionCompactContextMenu(summaryContextMenu, event, menuHost, { minHeight: 120, maxHeight: 230 });
+}
+
+document.addEventListener("contextmenu", handleCompileEditorContextMenu, true);
+
 function showStaticSelectionContextMenu(event, selectedText) {
   if (!summaryContextMenu || !selectedText) return;
   event.preventDefault();
@@ -14538,6 +14707,13 @@ summaryContextMenu.addEventListener("click", async (event) => {
   const actionButton = event.target.closest("[data-rich-action]");
   if (!actionButton) return;
   const action = actionButton.dataset.richAction;
+  if (activeCompileEditorControl) {
+    await handleCompileEditorAction(action);
+    if (["copy-text", "paste-text", "cut-text", "select-all-text"].includes(action)) {
+      hideSummaryContextMenu();
+    }
+    return;
+  }
   if (activeStaticSelectionText) {
     if (action === "copy-text") await navigator.clipboard.writeText(activeStaticSelectionText);
     hideSummaryContextMenu();
@@ -16003,13 +16179,22 @@ deleteConfirmDialog.addEventListener("click", (event) => {
 });
 
 sectionContent.addEventListener("paste", (event) => {
-  const compileEditor = event.target.closest?.("[data-compile-active-editor]");
+  const compileEditor = compileEditorFromTarget(event.target) || compileEditorFromTarget(document.activeElement);
   if (!compileEditor) return;
   const text = event.clipboardData?.getData("text/plain") || "";
   if (!text) return;
   event.preventDefault();
-  insertCompileEditorText(text);
+  insertCompileEditorText(text, compileEditor);
   compileEditor.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertFromPaste", data: text }));
+});
+
+sectionContent.addEventListener("click", (event) => {
+  const editor = compileEditorFromTarget(event.target);
+  if (!editor) return;
+  if (event.target.closest("button, input, select, textarea, a")) return;
+  const selection = window.getSelection?.();
+  if (selection?.rangeCount && editor.contains(selection.getRangeAt(0).startContainer) && !selection.isCollapsed) return;
+  focusCompileEditorAtPoint(editor, event.clientX, event.clientY);
 });
 
 sectionContent.addEventListener("keydown", (event) => {
@@ -16017,7 +16202,7 @@ sectionContent.addEventListener("keydown", (event) => {
   if (!compileEditor) return;
   if (event.key === "Tab") {
     event.preventDefault();
-    insertCompileEditorText("  ");
+    insertCompileEditorText("  ", compileEditor);
     compileEditor.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: "  " }));
   }
 });

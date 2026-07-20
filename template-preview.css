@@ -11680,12 +11680,15 @@ body[data-builder-theme="dark"] .project-dialog .project-section-toolbar {
 
 .project-dialog.is-compile-code-active [data-compile-workspace] [data-compile-active-editor] {
   display: block !important;
+  width: 100% !important;
   min-width: max-content !important;
   min-height: 100% !important;
+  box-sizing: border-box !important;
   padding: 12px 14px !important;
   outline: none !important;
   white-space: pre !important;
   tab-size: 2 !important;
+  cursor: text !important;
   color: var(--compile-text, #e6edf3) !important;
   -webkit-text-fill-color: currentColor !important;
   caret-color: var(--compile-text, #ffffff) !important;
