@@ -306,6 +306,26 @@ function compileFileRoleLabel(role = "source") {
   return "Program source";
 }
 
+function normalizeCompileFileType(value = "", file = {}) {
+  const clean = String(value || "").trim().toLowerCase().replace(/[_\s-]+/g, "-");
+  if (["design", "testbench", "source", "header", "include", "support"].includes(clean)) return clean;
+  const extension = String(file.fileName || file.relativePath || "").split(".").pop()?.toLowerCase() || "";
+  if (isHdlLanguage(file.language)) return normalizeCompileFileRole(file.role || inferCompileFileRole(file.fileName, file.code, file.language), file.language);
+  if (["h", "hpp", "hh", "hxx", "svh"].includes(extension)) return "header";
+  if (["xdc", "sdc", "tcl", "do", "cfg", "ini", "yaml", "yml", "json", "xml", "md", "txt", "csv", "log"].includes(extension)) return "support";
+  return "source";
+}
+
+function compileFileTypeLabel(value = "source") {
+  const type = normalizeCompileFileType(value);
+  if (type === "design") return "HDL design";
+  if (type === "testbench") return "HDL testbench";
+  if (type === "header") return "Header / include";
+  if (type === "include") return "Include file";
+  if (type === "support") return "Support file";
+  return "Program source";
+}
+
 const defaultFunFacts = [];
 
 const defaultSiteContent = {
@@ -733,17 +753,17 @@ function ensureDialogWindowControls(dialog, handle) {
     target.append(cluster);
   }
 
-  const previewIsReadOnly = dialog === projectPreviewDialog;
+  const projectWindowUsesNativeSizing = dialog === projectDialog || dialog === projectPreviewDialog;
   cluster.querySelectorAll("[data-dialog-hide='true']").forEach((button) => button.remove());
-  if (previewIsReadOnly) {
+  if (projectWindowUsesNativeSizing) {
     cluster.querySelectorAll("[data-dialog-minimize='true'], [data-dialog-maximize='true']").forEach((button) => button.remove());
   }
-  if (!previewIsReadOnly && !cluster.querySelector("[data-dialog-minimize='true']")) {
+  if (!projectWindowUsesNativeSizing && !cluster.querySelector("[data-dialog-minimize='true']")) {
     const minimize = makeDialogControl("minimize", "\u2212", "Minimize window");
     minimize.dataset.dialogMinimize = "true";
     cluster.append(minimize);
   }
-  if (!previewIsReadOnly && !cluster.querySelector("[data-dialog-maximize='true']")) {
+  if (!projectWindowUsesNativeSizing && !cluster.querySelector("[data-dialog-maximize='true']")) {
     const maximize = makeDialogControl("maximize", "\u25a1", "Maximize window");
     maximize.dataset.dialogMaximize = "true";
     cluster.append(maximize);
@@ -9571,12 +9591,24 @@ function renderCompileStdinWindow(project, file = activeCompileFile(project)) {
   `;
 }
 
-function compileFileRoleLabel(file = {}) {
-  if (isHdlLanguage(file.language)) return file.role === "testbench" ? "Testbench" : "Design";
-  const extension = String(file.fileName || "").split(".").pop()?.toLowerCase() || "";
-  if (["h", "hpp", "hh", "hxx", "svh"].includes(extension)) return "Header / include";
-  if (["xdc", "sdc", "tcl", "do", "cfg", "ini", "yaml", "yml"].includes(extension)) return "Include / support";
-  return "Source";
+function compileFileTypeOptions(file = {}) {
+  const selected = normalizeCompileFileType(file.fileType || file.type, file);
+  const options = isHdlLanguage(file.language)
+    ? [
+      ["design", "HDL design"],
+      ["testbench", "HDL testbench"],
+      ["include", "HDL include"],
+      ["support", "Support file"]
+    ]
+    : [
+      ["source", "Program source"],
+      ["header", "Header / include"],
+      ["include", "Include file"],
+      ["support", "Support file"]
+    ];
+  return options.map(([value, label]) => `
+    <option value="${escapeHtml(value)}"${value === selected ? " selected" : ""}>${escapeHtml(label)}</option>
+  `).join("");
 }
 
 function renderCompileFileDetailsWindow(project, file = activeCompileFile(project)) {
@@ -9601,11 +9633,11 @@ function renderCompileFileDetailsWindow(project, file = activeCompileFile(projec
       <div class="compile-file-details-grid">
         <label>
           <span>Name</span>
-          <input type="text" value="${escapeHtml(file.fileName || "")}" disabled />
+          <input type="text" data-compile-field="fileNameOnly" value="${escapeHtml(file.fileName || "")}" />
         </label>
         <label>
           <span>Type</span>
-          <input type="text" value="${escapeHtml(compileFileRoleLabel(file))}" disabled />
+          <select data-compile-field="fileType">${compileFileTypeOptions(file)}</select>
         </label>
         <label class="wide-field">
           <span>Workspace path</span>
@@ -9914,12 +9946,18 @@ function activeSectionIsCompileCode(project = selectedProject()) {
 
 function renderSectionContent(project) {
   if (!project) {
+    projectDialog?.classList.remove("is-compile-code-active");
     sectionContent.hidden = true;
     sectionContent.innerHTML = "";
     return;
   }
 
   const section = sectionOptions(project).find((item) => item.id === activeSectionId) || standardSections[0];
+  const customSection = section.id.startsWith("custom:")
+    ? (project.sections || []).find((item) => item.id === section.id.replace("custom:", ""))
+    : null;
+  const isCompileSection = section.id === "compile-code" || Boolean(customSection && isCompileCodeBuilderSection(customSection));
+  projectDialog?.classList.toggle("is-compile-code-active", isCompileSection);
   const isOverview = section.id === "brief";
   projectFields.hidden = !isOverview;
   sectionContent.hidden = isOverview;
@@ -9935,7 +9973,6 @@ function renderSectionContent(project) {
 
   if (section.id.startsWith("custom:")) {
     const customSectionId = section.id.replace("custom:", "");
-    const customSection = (project.sections || []).find((item) => item.id === customSectionId);
     sectionContent.innerHTML = isCompileCodeBuilderSection(customSection)
       ? renderCompileCodeSection(project)
       : renderCustomSection(project, customSectionId);
@@ -10535,6 +10572,7 @@ function chooseFile() {
   return new Promise((resolve) => {
     filePicker.value = "";
     filePicker.multiple = false;
+    filePicker.accept = "";
     filePicker.removeAttribute("webkitdirectory");
     filePicker.removeAttribute("directory");
     filePicker.onchange = () => resolve(filePicker.files[0] || null);
@@ -10542,10 +10580,37 @@ function chooseFile() {
   });
 }
 
-function chooseFiles(options = {}) {
+async function chooseFiles(options = {}) {
+  if (!options.directory && typeof window.showOpenFilePicker === "function") {
+    try {
+      const handles = await window.showOpenFilePicker({
+        multiple: options.multiple !== false,
+        excludeAcceptAllOption: false
+      });
+      return Promise.all(handles.map((handle) => handle.getFile()));
+    } catch (error) {
+      if (error?.name === "AbortError") return [];
+    }
+  }
+
   return new Promise((resolve) => {
+    let settled = false;
+    const finish = (files = []) => {
+      if (settled) return;
+      settled = true;
+      filePicker.onchange = null;
+      filePicker.oncancel = null;
+      filePicker.multiple = false;
+      filePicker.accept = "";
+      filePicker.webkitdirectory = false;
+      filePicker.directory = false;
+      filePicker.removeAttribute("webkitdirectory");
+      filePicker.removeAttribute("directory");
+      resolve(files);
+    };
     filePicker.value = "";
     filePicker.multiple = options.multiple !== false;
+    filePicker.accept = "";
     if (options.directory) {
       filePicker.webkitdirectory = true;
       filePicker.directory = true;
@@ -10559,13 +10624,9 @@ function chooseFiles(options = {}) {
     }
     filePicker.onchange = () => {
       const files = [...(filePicker.files || [])];
-      filePicker.multiple = false;
-      filePicker.webkitdirectory = false;
-      filePicker.directory = false;
-      filePicker.removeAttribute("webkitdirectory");
-      filePicker.removeAttribute("directory");
-      resolve(files);
+      finish(files);
     };
+    filePicker.oncancel = () => finish([]);
     filePicker.click();
   });
 }
@@ -10613,6 +10674,7 @@ function newCompileFile(language = "javascript", seed = {}) {
   const relativePath = safeClientCodeRelativePath(seed.relativePath || seed.fileName || defaultCodeFileName(normalized), normalized);
   const fileName = compileFileNameFromPath(relativePath, normalized);
   const role = normalizeCompileFileRole(seed.role || inferCompileFileRole(fileName, seed.code || "", normalized), normalized);
+  const fileType = normalizeCompileFileType(seed.fileType || seed.type || role, { fileName, relativePath, language: normalized, role, code: seed.code || "" });
   return {
     id: slugify(`${fileName}-${Date.now()}-${Math.random().toString(16).slice(2)}`),
     title: fileName,
@@ -10620,6 +10682,7 @@ function newCompileFile(language = "javascript", seed = {}) {
     relativePath,
     language: normalized,
     role,
+    fileType,
     code: String(seed.code || ""),
     stdin: "",
     savedPath: "",
@@ -10742,8 +10805,9 @@ function addCompileUvmStyleTestbenchFile(project, options = {}) {
   renderSectionContent(project);
 }
 
-function updateCompilePreview(file) {
-  const preview = sectionContent.querySelector("[data-compile-preview]");
+function updateCompilePreview(file, sourceElement = null) {
+  const editor = sourceElement?.closest?.(".compile-code-active-editor");
+  const preview = editor?.querySelector("[data-compile-preview]") || sectionContent.querySelector("[data-compile-preview]");
   if (preview && file) preview.innerHTML = tokenizedCodeHtml(file.code || "", file.language);
 }
 
@@ -10766,7 +10830,7 @@ function syncActiveCompileEditorToFile(project = selectedProject()) {
     if (isHdlLanguage(file.language) && (!file.role || file.role === "source")) {
       file.role = inferCompileFileRole(file.fileName, file.code, file.language);
     }
-    updateCompilePreview(file);
+    updateCompilePreview(file, codeInput);
   }
   const stdinInput = sectionContent.querySelector(".compile-stdin-window [data-compile-field='stdin']");
   if (stdinInput && typeof stdinInput.value === "string" && file.stdin !== stdinInput.value) {
@@ -10786,6 +10850,7 @@ function compilePayload(project, file, options = {}) {
     relativePath: compileFilePath(file),
     language: file.language,
     role: file.role || inferCompileFileRole(file.fileName, file.code, file.language),
+    fileType: normalizeCompileFileType(file.fileType || file.type || file.role, file),
     code: file.code,
     stdin: file.stdin || "",
     workspaceFiles: (workspace.files || []).map((workspaceFile) => ({
@@ -10795,6 +10860,7 @@ function compilePayload(project, file, options = {}) {
       relativePath: compileFilePath(workspaceFile),
       language: workspaceFile.language,
       role: workspaceFile.role || inferCompileFileRole(workspaceFile.fileName, workspaceFile.code, workspaceFile.language),
+      fileType: normalizeCompileFileType(workspaceFile.fileType || workspaceFile.type || workspaceFile.role, workspaceFile),
       code: workspaceFile.code || ""
     })),
     action: options.action || "",
@@ -10866,9 +10932,11 @@ async function saveCompileFile(project, file) {
   file.relativePath = result.saved?.relativePath || file.relativePath || file.fileName;
   file.title = file.fileName;
   file.language = result.saved?.language || file.language;
+  file.fileType = result.saved?.fileType || normalizeCompileFileType(file.fileType || file.role, file);
   file.dirty = false;
   addCompileDirectoryPath(ensureCompileCode(project), compileFileDirectory(file.relativePath));
   addCompileMessage(project, `Saved ${file.fileName || "source file"}.`, "info");
+  updateCompilePreview(file);
   return result.saved;
 }
 
@@ -14474,6 +14542,7 @@ sectionContent.addEventListener("pointerdown", (event) => {
   const stdinHandle = event.target.closest("[data-compile-stdin-drag]");
   const stdinWindow = stdinHandle?.closest(".compile-stdin-window");
   if (stdinWindow && event.button === 0) {
+    if (event.target.closest("button, a, input, select, textarea")) return;
     const rect = stdinWindow.getBoundingClientRect();
     activeCompileStdinDrag = {
       offsetX: event.clientX - rect.left,
@@ -14489,6 +14558,7 @@ sectionContent.addEventListener("pointerdown", (event) => {
   const detailsHandle = event.target.closest("[data-compile-file-details-drag]");
   const detailsWindow = detailsHandle?.closest(".compile-file-details-window");
   if (detailsWindow && event.button === 0) {
+    if (event.target.closest("button, a, input, select, textarea")) return;
     const rect = detailsWindow.getBoundingClientRect();
     activeCompileFileDetailsDrag = {
       offsetX: event.clientX - rect.left,
@@ -14645,6 +14715,10 @@ sectionContent.addEventListener("submit", (event) => {
 sectionContent.addEventListener("change", (event) => {
   const project = selectedProject();
   if (!project) return;
+  if (event.target.dataset.compileField) {
+    event.target.dispatchEvent(new Event("input", { bubbles: true }));
+    return;
+  }
   if (event.target.dataset.scopeControl) {
     const workspace = ensureCompileCode(project);
     const key = event.target.dataset.scopeSignal || "";
@@ -14709,11 +14783,14 @@ sectionContent.addEventListener("input", (event) => {
       file.fileName = compileFileNameFromPath(file.relativePath, file.language);
       file.title = file.fileName;
       file.role = normalizeCompileFileRole(file.role || inferCompileFileRole(file.fileName, file.code, file.language), file.language);
+      file.fileType = normalizeCompileFileType(file.fileType || file.role, file);
       const fileNameInput = sectionContent.querySelector("[data-compile-field='fileName']");
       if (fileNameInput) fileNameInput.value = compileFileAbsolutePath(project, file);
+      const simpleNameInput = sectionContent.querySelector("[data-compile-field='fileNameOnly']");
+      if (simpleNameInput) simpleNameInput.value = file.fileName;
       const heading = sectionContent.querySelector(".compile-code-preview-heading span");
       if (heading) heading.textContent = `${codeLanguageLabel(file.language)} preview`;
-      updateCompilePreview(file);
+      updateCompilePreview(file, event.target);
       if (wasHdl !== isNowHdl) {
         file.dirty = true;
         file.lastResult = null;
@@ -14727,8 +14804,30 @@ sectionContent.addEventListener("input", (event) => {
       file.fileName = compileFileNameFromPath(file.relativePath, file.language);
       file.title = file.fileName;
       file.role = normalizeCompileFileRole(file.role || inferCompileFileRole(file.fileName, file.code, file.language), file.language);
+      file.fileType = normalizeCompileFileType(file.fileType || file.role, file);
+      const simpleNameInput = sectionContent.querySelector("[data-compile-field='fileNameOnly']");
+      if (simpleNameInput) simpleNameInput.value = file.fileName;
+    } else if (field === "fileNameOnly") {
+      const currentDirectory = compileFileDirectory(file.relativePath || "");
+      const nextFileName = safeClientCodeFileName(event.target.value || file.fileName || defaultCodeFileName(file.language), file.language);
+      file.relativePath = safeClientCodeRelativePath([currentDirectory, nextFileName].filter(Boolean).join("/"), file.language);
+      file.fileName = compileFileNameFromPath(file.relativePath, file.language);
+      file.title = file.fileName;
+      file.role = normalizeCompileFileRole(file.role || inferCompileFileRole(file.fileName, file.code, file.language), file.language);
+      file.fileType = normalizeCompileFileType(file.fileType || file.role, file);
+      event.target.value = file.fileName;
+      const fileNameInput = sectionContent.querySelector("[data-compile-field='fileName']");
+      if (fileNameInput) fileNameInput.value = compileFileAbsolutePath(project, file);
+    } else if (field === "fileType") {
+      file.fileType = normalizeCompileFileType(event.target.value, file);
+      if (["design", "testbench"].includes(file.fileType)) {
+        file.role = normalizeCompileFileRole(file.fileType, file.language);
+      } else {
+        file.role = normalizeCompileFileRole(file.role || inferCompileFileRole(file.fileName, file.code, file.language), file.language);
+      }
     } else if (field === "role") {
       file.role = normalizeCompileFileRole(event.target.value, file.language);
+      file.fileType = normalizeCompileFileType(file.role, file);
     } else {
       file[field] = event.target.value;
       if (field === "code" && isHdlLanguage(file.language) && (!file.role || file.role === "source")) {
@@ -14736,11 +14835,11 @@ sectionContent.addEventListener("input", (event) => {
       }
     }
     if (field === "code") {
-      updateCompilePreview(file);
+      updateCompilePreview(file, event.target);
       syncCompileEditorScroll(event.target);
     }
     file.dirty = true;
-    file.lastResult = ["code", "role", "language", "fileName"].includes(field) ? null : file.lastResult;
+    file.lastResult = ["code", "role", "language", "fileName", "fileNameOnly", "fileType"].includes(field) ? null : file.lastResult;
     setStatus("Unsaved compile source changes.");
     scheduleAutosave(field === "code" ? 1600 : 900);
     return;
