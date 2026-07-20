@@ -268,6 +268,7 @@ let activeCompileSidebarResize = null;
 let activeCompileScrollElement = null;
 let activeCompileStdinDrag = null;
 let activeCompileFileDetailsDrag = null;
+let activeScopeCursorDrag = null;
 
 const supportedCodeLanguages = [
   { id: "c", label: "C", aliases: ["c"], extensions: [".c", ".h"], defaultFile: "main.c" },
@@ -2132,6 +2133,9 @@ function ensureCompileCode(project) {
   project.compileCode.scopeExpandedSignals = Array.isArray(project.compileCode.scopeExpandedSignals)
     ? project.compileCode.scopeExpandedSignals.map((key) => String(key || "")).filter(Boolean)
     : [];
+  project.compileCode.scopeCursorEnabled = Boolean(project.compileCode.scopeCursorEnabled);
+  const scopeCursorTime = Number(project.compileCode.scopeCursorTime);
+  project.compileCode.scopeCursorTime = Number.isFinite(scopeCursorTime) ? Math.max(0, scopeCursorTime) : 0;
   project.compileCode.sidebarWidth = normalizeCompileSidebarWidth(project.compileCode.sidebarWidth);
   project.compileCode.selectedFileIds = Array.isArray(project.compileCode.selectedFileIds)
     ? project.compileCode.selectedFileIds.filter((id) => fileIds.has(id))
@@ -9655,6 +9659,179 @@ function scopeSignalValueAt(changes = [], index = 0) {
   return "x";
 }
 
+function scopeValueAtTime(changes = [], cursorTime = 0) {
+  const normalized = normalizeScopeChanges(changes);
+  const target = Number(cursorTime) || 0;
+  let value = normalized[0]?.value ?? "x";
+  for (const change of normalized) {
+    if ((Number(change.time) || 0) > target) break;
+    value = change.value;
+  }
+  return String(value ?? "x").toLowerCase();
+}
+
+function scopeCursorRowSnapshot(project, row, cursorTime = 0) {
+  if (!row) {
+    return { name: "No signal", value: "x", kind: "x", rawValue: "x", rowType: "signal" };
+  }
+  const signal = row.signal || row.parent || {};
+  const signalName = String(signal.name || signal.reference || `signal_${Number(row.signalIndex || 0) + 1}`);
+  const widthBits = row.width || scopeSignalBitWidth(signal);
+  const settings = row.settings || scopeSignalSettings(project, signal, row.signalIndex || 0);
+  const changes = row.type === "bit" ? row.changes : signal.changes;
+  const rawValue = scopeValueAtTime(changes, cursorTime);
+  const value = row.type === "bit"
+    ? rawValue
+    : formatScopeValue(rawValue, widthBits, settings.radix, settings.stateMap);
+  return {
+    name: row.type === "bit" ? `${signalName}[${row.bit}]` : signalName,
+    value,
+    kind: scopeValueKind(rawValue),
+    rawValue,
+    rowType: row.type || "signal"
+  };
+}
+
+function scopeCursorReadoutText(snapshot = {}, cursorTime = 0, timeScale = "ticks") {
+  const time = Number.isFinite(Number(cursorTime)) ? Math.round(Number(cursorTime)) : 0;
+  const signal = snapshot.name || "No signal";
+  const value = snapshot.value || snapshot.rawValue || "x";
+  const raw = snapshot.rawValue && snapshot.rawValue !== value ? ` | raw=${snapshot.rawValue}` : "";
+  return `x=${time} ${timeScale} | y=${signal} | value=${value}${raw} | ${snapshot.rowType || "signal"}`;
+}
+
+function scopeSignalsForWorkspace(workspace = {}, waveform = {}) {
+  const allSignals = Array.isArray(waveform?.signals) ? waveform.signals : [];
+  const filter = String(workspace.scopeFilter || "").trim().toLowerCase();
+  return (filter
+    ? allSignals.filter((signal) => String(signal.name || signal.reference || "").toLowerCase().includes(filter))
+    : allSignals).slice(0, 48);
+}
+
+function scopeMaxTimeForSignals(waveform = {}, signals = []) {
+  return Math.max(1, Number(waveform.maxTime) || Math.max(...signals.flatMap((signal) => (signal.changes || []).map((change) => Number(change.time) || 0)), 1));
+}
+
+function clampScopeCursorTime(value = 0, maxTime = 1) {
+  return Math.max(0, Math.min(Math.max(1, Number(maxTime) || 1), Number(value) || 0));
+}
+
+function scopeCursorXForTime(cursorTime = 0, maxTime = 1, left = 150, width = 680) {
+  return left + (clampScopeCursorTime(cursorTime, maxTime) / Math.max(1, maxTime)) * width;
+}
+
+function renderScopeCursorOverlay(project, displayRows = [], options = {}) {
+  const workspace = ensureCompileCode(project);
+  if (!workspace.scopeCursorEnabled) return "";
+  const maxTime = Math.max(1, Number(options.maxTime) || 1);
+  const left = Number(options.left) || 150;
+  const width = Number(options.width) || 680;
+  const height = Number(options.height) || 180;
+  const timeScale = options.timeScale || "ticks";
+  const savedCursorTime = Number(workspace.scopeCursorTime);
+  const cursorTime = clampScopeCursorTime(Number.isFinite(savedCursorTime) ? savedCursorTime : maxTime / 2, maxTime);
+  workspace.scopeCursorTime = cursorTime;
+  const cursorX = scopeCursorXForTime(cursorTime, maxTime, left, width);
+  const snapshot = scopeCursorRowSnapshot(project, displayRows[0], cursorTime);
+  const readoutX = Math.max(left + 6, Math.min(left + width - 342, cursorX + 10));
+  const readoutY = Math.max(22, Math.min(height - 50, 28));
+  return `
+    <g class="scope-cursor" data-scope-cursor>
+      <line class="scope-cursor-line" data-scope-cursor-line x1="${cursorX.toFixed(1)}" x2="${cursorX.toFixed(1)}" y1="18" y2="${height - 18}" />
+      <circle class="scope-cursor-handle" data-scope-cursor-handle cx="${cursorX.toFixed(1)}" cy="18" r="6" />
+      <foreignObject class="scope-cursor-readout-object" data-scope-cursor-readout-object x="${readoutX.toFixed(1)}" y="${readoutY.toFixed(1)}" width="336" height="46">
+        <div xmlns="http://www.w3.org/1999/xhtml" class="scope-cursor-readout-box" data-scope-cursor-readout-box>
+          ${escapeHtml(scopeCursorReadoutText(snapshot, cursorTime, timeScale))}
+        </div>
+      </foreignObject>
+    </g>
+  `;
+}
+
+function scopePointFromPointer(svg, event) {
+  if (!svg || !event) return { x: 0, y: 0 };
+  if (typeof svg.createSVGPoint === "function" && svg.getScreenCTM()) {
+    const point = svg.createSVGPoint();
+    point.x = event.clientX;
+    point.y = event.clientY;
+    return point.matrixTransform(svg.getScreenCTM().inverse());
+  }
+  const rect = svg.getBoundingClientRect();
+  const viewBox = svg.viewBox?.baseVal;
+  const width = viewBox?.width || Number(svg.dataset.scopeLeft || 0) + Number(svg.dataset.scopeWidth || rect.width);
+  const height = viewBox?.height || Number(svg.dataset.scopeHeight || rect.height);
+  return {
+    x: ((event.clientX - rect.left) / Math.max(1, rect.width)) * width,
+    y: ((event.clientY - rect.top) / Math.max(1, rect.height)) * height
+  };
+}
+
+function currentScopeGeometry(svg, project = selectedProject()) {
+  const workspace = project ? ensureCompileCode(project) : {};
+  const waveform = project ? activeCompileWaveform(project) : null;
+  const signals = scopeSignalsForWorkspace(workspace, waveform);
+  const displayRows = project ? scopeDisplayRows(project, signals) : [];
+  return {
+    workspace,
+    waveform,
+    signals,
+    displayRows,
+    left: Number(svg?.dataset.scopeLeft) || 165,
+    width: Number(svg?.dataset.scopeWidth) || 760,
+    top: Number(svg?.dataset.scopeTop) || 28,
+    rowHeight: Number(svg?.dataset.scopeRowHeight) || 34,
+    height: Number(svg?.dataset.scopeHeight) || 180,
+    maxTime: Number(svg?.dataset.scopeMaxTime) || scopeMaxTimeForSignals(waveform, signals),
+    timeScale: svg?.dataset.scopeTimeScale || waveform?.timeScale || "ticks"
+  };
+}
+
+function setScopeCursorDom(svg, geometry, cursorTime = 0, rowIndex = 0) {
+  if (!svg || !geometry) return;
+  const cursorX = scopeCursorXForTime(cursorTime, geometry.maxTime, geometry.left, geometry.width);
+  const row = geometry.displayRows[Math.max(0, Math.min(geometry.displayRows.length - 1, rowIndex))];
+  const rowY = geometry.top + Math.max(0, rowIndex) * geometry.rowHeight;
+  const snapshot = scopeCursorRowSnapshot(selectedProject(), row, cursorTime);
+  const readoutWidth = Math.min(336, Math.max(240, geometry.width - 12));
+  const readoutX = Math.max(geometry.left + 6, Math.min(geometry.left + geometry.width - readoutWidth - 6, cursorX + 10));
+  const readoutY = Math.max(18, Math.min(geometry.height - 50, rowY + 2));
+  const line = svg.querySelector("[data-scope-cursor-line]");
+  const handle = svg.querySelector("[data-scope-cursor-handle]");
+  const readoutObject = svg.querySelector("[data-scope-cursor-readout-object]");
+  const readoutBox = svg.querySelector("[data-scope-cursor-readout-box]");
+  line?.setAttribute("x1", cursorX.toFixed(1));
+  line?.setAttribute("x2", cursorX.toFixed(1));
+  handle?.setAttribute("cx", cursorX.toFixed(1));
+  readoutObject?.setAttribute("x", readoutX.toFixed(1));
+  readoutObject?.setAttribute("y", readoutY.toFixed(1));
+  readoutObject?.setAttribute("width", String(readoutWidth));
+  if (readoutBox) readoutBox.textContent = scopeCursorReadoutText(snapshot, cursorTime, geometry.timeScale);
+  svg.querySelectorAll("[data-scope-display-row-index]").forEach((element) => {
+    element.classList.toggle("is-scope-cursor-row", Number(element.dataset.scopeDisplayRowIndex) === rowIndex);
+  });
+}
+
+function updateScopeCursorFromPointer(event, options = {}) {
+  const project = selectedProject();
+  const svg = options.svg || activeScopeCursorDrag?.svg || event?.target?.closest?.(".compile-scope-svg") || sectionContent.querySelector(".compile-scope-svg");
+  if (!project || !svg) return false;
+  const workspace = ensureCompileCode(project);
+  if (!workspace.scopeCursorEnabled) return false;
+  const geometry = currentScopeGeometry(svg, project);
+  const point = scopePointFromPointer(svg, event);
+  let cursorTime = clampScopeCursorTime(workspace.scopeCursorTime, geometry.maxTime);
+  if (options.moveCursor) {
+    cursorTime = clampScopeCursorTime(((point.x - geometry.left) / Math.max(1, geometry.width)) * geometry.maxTime, geometry.maxTime);
+    workspace.scopeCursorTime = cursorTime;
+  }
+  const rowIndex = Math.max(0, Math.min(
+    Math.max(0, geometry.displayRows.length - 1),
+    Math.floor((point.y - geometry.top) / Math.max(1, geometry.rowHeight))
+  ));
+  setScopeCursorDom(svg, geometry, cursorTime, rowIndex);
+  return true;
+}
+
 function renderScalarWaveSegments(changes = [], maxTime = 1, rowY = 0, left = 150, width = 680, signalColor = "#38bdf8") {
   const normalized = normalizeScopeChanges(changes);
   const top = rowY + 5;
@@ -9751,7 +9928,11 @@ function renderScopeSignalContextMenu() {
         <span>State names</span>
         <input type="text" data-scope-context-state-map placeholder="0=IDLE, 1=RUN" />
       </label>
-      <button type="button" data-scope-apply-context>Apply</button>
+      <div class="scope-context-actions">
+        <button type="button" data-scope-apply-context>Apply signal</button>
+        <button type="button" data-scope-add-cursor>Add cursor</button>
+        <button type="button" data-scope-remove-cursor>Remove cursor</button>
+      </div>
     </div>
   `;
 }
@@ -9759,11 +9940,7 @@ function renderScopeSignalContextMenu() {
 function renderHdlScope(waveform, project = selectedProject()) {
   const workspace = ensureCompileCode(project);
   const allSignals = Array.isArray(waveform?.signals) ? waveform.signals : [];
-  const filter = String(workspace.scopeFilter || "").trim().toLowerCase();
-  const matchedSignals = filter
-    ? allSignals.filter((signal) => String(signal.name || signal.reference || "").toLowerCase().includes(filter))
-    : allSignals;
-  const signals = matchedSignals.slice(0, 48);
+  const signals = scopeSignalsForWorkspace(workspace, waveform);
   if (!allSignals.length) {
     return `
       <div class="compile-scope-empty">
@@ -9793,7 +9970,7 @@ function renderHdlScope(waveform, project = selectedProject()) {
   const top = 28;
   const displayRows = scopeDisplayRows(project, signals);
   const height = top + displayRows.length * rowHeight + 28;
-  const maxTime = Math.max(1, Number(waveform.maxTime) || Math.max(...signals.flatMap((signal) => (signal.changes || []).map((change) => Number(change.time) || 0)), 1));
+  const maxTime = scopeMaxTimeForSignals(waveform, signals);
   const unknownSignalCount = allSignals.filter((signal) =>
     (signal.changes || []).some((change) => /[xz]/i.test(String(change.value ?? "")))
   ).length;
@@ -9823,7 +10000,7 @@ function renderHdlScope(waveform, project = selectedProject()) {
       : "";
     const labelX = isBus || row.type === "bit" ? 30 : 12;
     return `
-      <g class="scope-row${row.type === "bit" ? " is-scope-bit-row" : ""}" data-scope-signal-key="${escapeHtml(settings.key)}">
+      <g class="scope-row${row.type === "bit" ? " is-scope-bit-row" : ""}" data-scope-signal-key="${escapeHtml(settings.key)}" data-scope-display-row-index="${rowIndex}">
         ${wedge}
         <text x="${labelX}" y="${rowY + 20}" class="${labelClass}">${escapeHtml(name.length > 24 ? `${name.slice(0, 24)}...` : name)}</text>
         <line x1="${left}" x2="${left + width}" y1="${rowY + 27}" y2="${rowY + 27}" class="scope-row-line" />
@@ -9843,9 +10020,23 @@ function renderHdlScope(waveform, project = selectedProject()) {
     </div>
     ${renderScopeSignalControls(project, signals)}
     <div class="compile-scope-scroll" data-scope-scroll>
-      <svg class="compile-scope-svg ${scopeView === "fit" ? "is-scope-fit-width" : "is-scope-natural-width"}" style="${scopeView === "fit" ? "width:100%; min-width:0; max-width:none;" : `width:${left + width + 20}px; max-width:none;`}" viewBox="0 0 ${left + width + 20} ${height}" role="img" aria-label="HDL waveform scope">
+      <svg
+        class="compile-scope-svg ${scopeView === "fit" ? "is-scope-fit-width" : "is-scope-natural-width"}"
+        style="${scopeView === "fit" ? "width:100%; min-width:0; max-width:none;" : `width:${left + width + 20}px; max-width:none;`}"
+        viewBox="0 0 ${left + width + 20} ${height}"
+        role="img"
+        aria-label="HDL waveform scope"
+        data-scope-left="${left}"
+        data-scope-width="${width}"
+        data-scope-top="${top}"
+        data-scope-row-height="${rowHeight}"
+        data-scope-height="${height}"
+        data-scope-max-time="${maxTime}"
+        data-scope-time-scale="${escapeHtml(waveform.timeScale || "ticks")}"
+      >
         ${grid}
         ${rows}
+        ${renderScopeCursorOverlay(project, displayRows, { left, width, height, maxTime, timeScale: waveform.timeScale || "ticks" })}
       </svg>
     </div>
     ${renderScopeSignalContextMenu()}
@@ -14656,6 +14847,28 @@ sectionContent.addEventListener("click", async (event) => {
     hideCompileTreeContextMenus();
     return;
   }
+  if (hasDataset("scopeAddCursor")) {
+    const workspace = ensureCompileCode(project);
+    const waveform = activeCompileWaveform(project);
+    const signals = scopeSignalsForWorkspace(workspace, waveform);
+    const maxTime = scopeMaxTimeForSignals(waveform, signals);
+    workspace.scopeCursorEnabled = true;
+    workspace.scopeCursorTime = maxTime / 2;
+    addCompileMessage(project, "Scope cursor added at mid-scope.", "info");
+    hideScopeSignalContextMenu();
+    scheduleAutosave(900);
+    renderSectionContent(project);
+    return;
+  }
+  if (hasDataset("scopeRemoveCursor")) {
+    const workspace = ensureCompileCode(project);
+    workspace.scopeCursorEnabled = false;
+    addCompileMessage(project, "Scope cursor removed.", "info");
+    hideScopeSignalContextMenu();
+    scheduleAutosave(900);
+    renderSectionContent(project);
+    return;
+  }
   if (hasDataset("scopeApplyContext")) {
     if (!activeScopeSignalContext?.signalKey) return;
     const menu = button.closest("[data-scope-signal-context-menu]");
@@ -15068,25 +15281,32 @@ function currentScopeSignalContextSettings(project, signalKey = "") {
 
 sectionContent.addEventListener("contextmenu", (event) => {
   const scopeRow = event.target.closest("[data-scope-signal-key]");
-  if (scopeRow) {
+  const scopeSvg = event.target.closest(".compile-scope-svg");
+  if (scopeRow || scopeSvg) {
     const project = selectedProject();
     const menu = sectionContent.querySelector("[data-scope-signal-context-menu]");
-    const signalKey = scopeRow.dataset.scopeSignalKey || "";
-    if (!project || !menu || !signalKey) return;
+    const signalKey = scopeRow?.dataset.scopeSignalKey || "";
+    if (!project || !menu) return;
     event.preventDefault();
     hideCompileTreeContextMenus();
     hideScopeSignalContextMenu({ clearContext: false });
-    const settings = currentScopeSignalContextSettings(project, signalKey);
     const color = menu.querySelector("[data-scope-context-color]");
     const radix = menu.querySelector("[data-scope-context-radix]");
     const stateMap = menu.querySelector("[data-scope-context-state-map]");
-    if (color) color.value = settings.color;
-    if (radix) radix.value = settings.radix;
-    if (stateMap) stateMap.value = scopeStateMapText(settings.stateMap);
+    const apply = menu.querySelector("[data-scope-apply-context]");
+    if (signalKey) {
+      const settings = currentScopeSignalContextSettings(project, signalKey);
+      if (color) color.value = settings.color;
+      if (radix) radix.value = settings.radix;
+      if (stateMap) stateMap.value = scopeStateMapText(settings.stateMap);
+    }
+    [color, radix, stateMap, apply].forEach((control) => {
+      if (control) control.disabled = !signalKey;
+    });
     activeScopeSignalContext = { signalKey };
     menu.hidden = false;
     const width = 220;
-    const height = 150;
+    const height = 205;
     menu.style.left = `${Math.min(event.clientX, window.innerWidth - width - 8)}px`;
     menu.style.top = `${Math.min(event.clientY, window.innerHeight - height - 8)}px`;
     return;
@@ -15130,6 +15350,20 @@ sectionContent.addEventListener("contextmenu", (event) => {
 });
 
 sectionContent.addEventListener("pointerdown", (event) => {
+  const scopeCursorTarget = event.target.closest("[data-scope-cursor], [data-scope-cursor-line], [data-scope-cursor-handle]");
+  const scopeSvg = scopeCursorTarget?.closest(".compile-scope-svg");
+  if (scopeSvg && event.button === 0) {
+    activeScopeCursorDrag = {
+      svg: scopeSvg,
+      pointerId: event.pointerId
+    };
+    scopeSvg.setPointerCapture?.(event.pointerId);
+    scopeSvg.classList.add("is-scope-cursor-dragging");
+    updateScopeCursorFromPointer(event, { svg: scopeSvg, moveCursor: true });
+    event.preventDefault();
+    return;
+  }
+
   const sidebarResizeHandle = event.target.closest("[data-compile-sidebar-resize]");
   const compileWorkspaceElement = sidebarResizeHandle?.closest("[data-compile-workspace]");
   if (sidebarResizeHandle && compileWorkspaceElement && event.button === 0) {
@@ -15227,7 +15461,20 @@ sectionContent.addEventListener("pointerdown", (event) => {
   event.preventDefault();
 });
 
+sectionContent.addEventListener("pointermove", (event) => {
+  if (activeScopeCursorDrag) return;
+  const scopeSvg = event.target.closest(".compile-scope-svg");
+  if (!scopeSvg) return;
+  updateScopeCursorFromPointer(event, { svg: scopeSvg, moveCursor: false });
+});
+
 document.addEventListener("pointermove", (event) => {
+  if (activeScopeCursorDrag) {
+    updateScopeCursorFromPointer(event, { svg: activeScopeCursorDrag.svg, moveCursor: true });
+    event.preventDefault();
+    return;
+  }
+
   if (activeCompileSidebarResize) {
     const project = selectedProject();
     if (!project) return;
@@ -15318,6 +15565,14 @@ document.addEventListener("pointermove", (event) => {
   dock.style.top = `${y}px`;
 });
 
+function endScopeCursorDrag(event) {
+  if (!activeScopeCursorDrag) return;
+  activeScopeCursorDrag.svg?.releasePointerCapture?.(activeScopeCursorDrag.pointerId);
+  activeScopeCursorDrag.svg?.classList.remove("is-scope-cursor-dragging");
+  activeScopeCursorDrag = null;
+  scheduleAutosave(900);
+}
+
 function endOutputDockDrag(event) {
   if (activeCompileSidebarResize) {
     sectionContent.querySelector("[data-compile-sidebar-resize]")?.releasePointerCapture?.(activeCompileSidebarResize.pointerId);
@@ -15353,6 +15608,8 @@ function endCompileFloatingWindowDrag() {
   }
 }
 
+document.addEventListener("pointerup", endScopeCursorDrag);
+document.addEventListener("pointercancel", endScopeCursorDrag);
 document.addEventListener("pointerup", endOutputDockDrag);
 document.addEventListener("pointercancel", endOutputDockDrag);
 document.addEventListener("pointerup", endCompileFloatingWindowDrag);
