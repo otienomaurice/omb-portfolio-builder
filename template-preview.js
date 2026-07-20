@@ -86,6 +86,8 @@ const projectMetaGrid = document.querySelector("#project-meta-grid");
 const projectMetaClose = document.querySelector("#project-meta-close");
 const projectFields = document.querySelector("#project-fields");
 const sectionTabs = document.querySelector("#section-tabs");
+const projectViewTabsBar = document.querySelector("#project-view-tabs");
+const projectViewContextMenu = document.querySelector("#project-view-context-menu");
 const sectionContent = document.querySelector("#section-content");
 const projectWindowContent = document.querySelector(".project-window-content");
 const projectPreviewDialog = document.querySelector("#project-preview-dialog");
@@ -259,6 +261,8 @@ let builderPreferences = { ...defaultBuilderPreferences };
 let activeCompileTreeContext = null;
 let activeOutputDockDrag = null;
 let activeOutputDockResize = null;
+let activeCompileSidebarResize = null;
+let activeCompileScrollElement = null;
 
 const supportedCodeLanguages = [
   { id: "c", label: "C", aliases: ["c"], extensions: [".c", ".h"], defaultFile: "main.c" },
@@ -496,6 +500,9 @@ let savedPortfolioCatalog = { categories: [], projects: [] };
 let templates = [];
 let selectedProjectId = "";
 let activeSectionId = "brief";
+let projectViewTabs = [];
+let activeProjectViewTabId = "";
+let pendingProjectViewContext = null;
 let expandedCategories = new Set();
 let pendingCreateCategoryId = "";
 let editingCategoryId = "";
@@ -718,13 +725,17 @@ function ensureDialogWindowControls(dialog, handle) {
     target.append(cluster);
   }
 
+  const previewIsReadOnly = dialog === projectPreviewDialog;
   cluster.querySelectorAll("[data-dialog-hide='true']").forEach((button) => button.remove());
-  if (!cluster.querySelector("[data-dialog-minimize='true']")) {
+  if (previewIsReadOnly) {
+    cluster.querySelectorAll("[data-dialog-minimize='true'], [data-dialog-maximize='true']").forEach((button) => button.remove());
+  }
+  if (!previewIsReadOnly && !cluster.querySelector("[data-dialog-minimize='true']")) {
     const minimize = makeDialogControl("minimize", "\u2212", "Minimize window");
     minimize.dataset.dialogMinimize = "true";
     cluster.append(minimize);
   }
-  if (!cluster.querySelector("[data-dialog-maximize='true']")) {
+  if (!previewIsReadOnly && !cluster.querySelector("[data-dialog-maximize='true']")) {
     const maximize = makeDialogControl("maximize", "\u25a1", "Maximize window");
     maximize.dataset.dialogMaximize = "true";
     cluster.append(maximize);
@@ -2058,11 +2069,15 @@ function ensureCompileCode(project) {
   project.compileCode.files.forEach((file) => addCompileDirectoryPath(project.compileCode, compileFileDirectory(file.relativePath)));
   const fileIds = new Set(project.compileCode.files.map((file) => file.id));
   const hadOpenFileIds = Array.isArray(project.compileCode.openFileIds);
+  const validActiveFileId = fileIds.has(project.compileCode.activeFileId) ? project.compileCode.activeFileId : "";
   project.compileCode.openFileIds = hadOpenFileIds
     ? project.compileCode.openFileIds.filter((id) => fileIds.has(id))
-    : project.compileCode.files.map((file) => file.id);
+    : (validActiveFileId ? [validActiveFileId] : []);
   if (project.compileCode.activeFileId && !fileIds.has(project.compileCode.activeFileId)) {
     project.compileCode.activeFileId = project.compileCode.openFileIds[0] || "";
+  }
+  if (project.compileCode.activeFileId && !project.compileCode.openFileIds.includes(project.compileCode.activeFileId)) {
+    project.compileCode.openFileIds.unshift(project.compileCode.activeFileId);
   }
   if (!project.compileCode.activeFileId && project.compileCode.openFileIds.length) {
     project.compileCode.activeFileId = project.compileCode.openFileIds[0];
@@ -2083,6 +2098,12 @@ function ensureCompileCode(project) {
     : 30000;
   project.compileCode.scopeFilter = String(project.compileCode.scopeFilter || "");
   project.compileCode.scopeZoom = normalizeScopeZoom(project.compileCode.scopeZoom);
+  project.compileCode.sidebarWidth = normalizeCompileSidebarWidth(project.compileCode.sidebarWidth);
+  project.compileCode.selectedFileIds = Array.isArray(project.compileCode.selectedFileIds)
+    ? project.compileCode.selectedFileIds.filter((id) => fileIds.has(id))
+    : [];
+  project.compileCode.stdinWindowOpen = Boolean(project.compileCode.stdinWindowOpen);
+  project.compileCode.showFileDetails = Boolean(project.compileCode.showFileDetails);
   project.compileCode.systemTerminal = {
     cwd: compileDirectoryPath(project.compileCode.systemTerminal?.cwd || project.compileCode.terminalCwd || ""),
     command: String(project.compileCode.systemTerminal?.command || ""),
@@ -2370,6 +2391,7 @@ function detectCodeLanguage(value = "", fileName = "") {
 }
 
 function tokenizedCodeHtml(code = "", language = "javascript") {
+  const normalizedLanguage = normalizeCodeLanguage(language);
   let html = escapeCodeHtml(code);
   const tokens = [];
   const tokenName = (index) => {
@@ -2390,17 +2412,24 @@ function tokenizedCodeHtml(code = "", language = "javascript") {
     });
   };
 
-  if (language === "html") {
+  if (normalizedLanguage === "html") {
     protect(/&lt;!--[\s\S]*?--&gt;/g, "code-token-comment");
     protect(/(&lt;\/?)([a-zA-Z0-9:-]+)([\s\S]*?)(\/?&gt;)/g, "code-token-tag");
   } else {
-    const commentPattern = ["python", "ltspice"].includes(normalizeCodeLanguage(language))
+    const commentPattern = ["python", "ltspice"].includes(normalizedLanguage)
       ? /\/\*[\s\S]*?\*\/|\/\/[^\n]*|#[^\n]*/g
       : /\/\*[\s\S]*?\*\/|\/\/[^\n]*/g;
     protect(commentPattern, "code-token-comment");
     protect(/"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`/g, "code-token-string");
-    if (["c", "cpp"].includes(normalizeCodeLanguage(language))) {
+    if (["c", "cpp"].includes(normalizedLanguage)) {
       protect(/^#\s*\w+[^\n]*/gm, "code-token-preprocessor");
+    }
+    if (["verilog", "systemverilog"].includes(normalizedLanguage)) {
+      protect(/`[a-zA-Z_]\w*/g, "code-token-preprocessor");
+      protect(/\b\d*'[sS]?[bBoOdDhH][0-9a-fA-F_xXzZ?]+\b/g, "code-token-number");
+    }
+    if (normalizedLanguage === "ltspice") {
+      protect(/^\s*\.[a-zA-Z]+[^\n]*/gm, "code-token-preprocessor");
     }
   }
 
@@ -2410,15 +2439,29 @@ function tokenizedCodeHtml(code = "", language = "javascript") {
     c: "_Alignas|_Alignof|_Atomic|_Bool|_Complex|_Generic|_Imaginary|_Noreturn|_Static_assert|_Thread_local|auto|break|case|char|const|continue|default|do|double|else|enum|extern|float|for|goto|if|inline|int|long|register|restrict|return|short|signed|sizeof|static|struct|switch|typedef|union|unsigned|void|volatile|while",
     cpp: "alignas|alignof|and|and_eq|asm|auto|bitand|bitor|bool|break|case|catch|char|char8_t|char16_t|char32_t|class|compl|concept|const|consteval|constexpr|constinit|const_cast|continue|co_await|co_return|co_yield|decltype|default|delete|do|double|dynamic_cast|else|enum|explicit|export|extern|false|float|for|friend|if|inline|int|long|mutable|namespace|new|noexcept|not|not_eq|nullptr|operator|or|or_eq|private|protected|public|register|reinterpret_cast|requires|return|short|signed|sizeof|static|static_assert|static_cast|struct|switch|template|this|thread_local|throw|true|try|typedef|typeid|typename|union|unsigned|using|virtual|void|volatile|wchar_t|while|xor|xor_eq",
     verilog: "always|and|assign|begin|buf|case|casex|casez|deassign|default|defparam|disable|edge|else|end|endcase|endfunction|endmodule|endprimitive|endspecify|endtable|endtask|event|for|force|forever|fork|function|generate|genvar|if|initial|inout|input|integer|join|module|nand|negedge|nor|not|or|output|parameter|posedge|primitive|reg|release|repeat|signed|specify|supply0|supply1|table|task|tri|wand|while|wire|wor|xnor|xor",
-    systemverilog: "always|always_comb|always_ff|always_latch|assign|automatic|begin|bit|case|class|clocking|covergroup|default|disable|do|else|end|endcase|endclass|endclocking|endfunction|endmodule|endpackage|endtask|enum|for|forever|function|generate|genvar|if|initial|input|int|interface|logic|module|negedge|output|package|parameter|posedge|reg|return|signed|task|typedef|wire",
+    systemverilog: "always|always_comb|always_ff|always_latch|assign|automatic|begin|bit|byte|case|class|clocking|covergroup|coverpoint|default|disable|do|else|end|endcase|endclass|endclocking|endfunction|endinterface|endmodule|endpackage|endprogram|endproperty|endsequence|endtask|enum|final|for|foreach|forever|fork|function|generate|genvar|if|import|initial|inout|input|inside|int|integer|interface|join|join_any|join_none|localparam|logic|longint|modport|module|negedge|output|package|parameter|posedge|program|property|rand|randc|ref|reg|return|sequence|shortint|signed|static|string|struct|task|time|typedef|union|unique|unsigned|var|virtual|void|wait|wire|with",
     ltspice: "ac|dc|end|ends|four|func|global|ic|include|lib|meas|model|nodeset|op|options|param|plot|probe|save|step|subckt|temp|tran",
     java: "abstract|assert|boolean|break|byte|case|catch|char|class|const|continue|default|do|double|else|enum|extends|final|finally|float|for|if|implements|import|instanceof|int|interface|long|native|new|null|package|private|protected|public|return|short|static|strictfp|super|switch|synchronized|this|throw|throws|transient|try|void|volatile|while",
     javascript: "async|await|break|case|catch|class|const|continue|debugger|default|delete|do|else|export|extends|false|finally|for|from|function|if|import|in|instanceof|let|new|null|of|return|static|super|switch|this|throw|true|try|typeof|undefined|var|void|while|yield",
     python: "and|as|assert|async|await|break|class|continue|def|del|elif|else|except|False|finally|for|from|global|if|import|in|is|lambda|None|nonlocal|not|or|pass|raise|return|True|try|while|with|yield",
     html: "html|head|body|main|section|article|div|span|script|style|link|meta|title|header|footer|nav|button|input|form|label|img|a|p|pre|code"
   };
-  const keywords = keywordMap[normalizeCodeLanguage(language)] || keywordMap.javascript;
-  html = html.replace(new RegExp(`\\b(${keywords})\\b`, "g"), '<span class="code-token-keyword">$1</span>');
+  const typeMap = {
+    c: "bool|char|double|float|int|int8_t|int16_t|int32_t|int64_t|long|short|size_t|ssize_t|uint8_t|uint16_t|uint32_t|uint64_t|void",
+    cpp: "auto|bool|char|char8_t|char16_t|char32_t|double|float|int|long|size_t|string|uint8_t|uint16_t|uint32_t|uint64_t|void|wchar_t",
+    java: "boolean|byte|char|double|float|int|long|short|String|void",
+    javascript: "Array|BigInt|Boolean|Date|Map|Math|Number|Object|Promise|Set|String|Symbol|console|document|window",
+    python: "bool|dict|float|int|list|set|str|tuple",
+    verilog: "integer|real|reg|time|wire",
+    systemverilog: "bit|byte|chandle|event|int|integer|logic|longint|real|realtime|reg|shortint|string|time|tri|wire"
+  };
+  const keywords = keywordMap[normalizedLanguage] || keywordMap.javascript;
+  const types = typeMap[normalizedLanguage] || "";
+  if (types) protect(new RegExp(`\\b(${types})\\b`, "g"), "code-token-type");
+  protect(new RegExp(`\\b(${keywords})\\b`, "g"), "code-token-keyword");
+  if (["c", "cpp", "java", "javascript", "python"].includes(normalizedLanguage)) {
+    protect(/\b([a-zA-Z_$][\w$]*)(?=\s*\()/g, "code-token-function");
+  }
   tokens.forEach((token) => {
     html = html.replaceAll(token.token, token.html);
   });
@@ -2518,6 +2561,12 @@ function normalizeCompileOutputHeight(value) {
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) return 190;
   return Math.max(104, Math.min(320, Math.round(numeric)));
+}
+
+function normalizeCompileSidebarWidth(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return 340;
+  return Math.max(240, Math.min(640, Math.round(numeric)));
 }
 
 function applyBuilderPreferences() {
@@ -3960,6 +4009,111 @@ function projectWindowStateKey(sectionId = activeSectionId) {
   return sectionId || "brief";
 }
 
+function projectViewTabId() {
+  return `project-view-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function projectViewStateTitle(project, stateKey = "brief") {
+  const [sectionId, pathValue = ""] = String(stateKey || "brief").split("|");
+  const section = sectionOptions(project).find((item) => item.id === sectionId);
+  if (!section) return "Project view";
+  if (!sectionId.startsWith("custom:")) return section.label || "Project view";
+  const sectionDataId = sectionId.replace("custom:", "");
+  const sectionData = (project.sections || []).find((item) => item.id === sectionDataId);
+  const path = nodePathFromString(pathValue);
+  if (!path.length) return section.label || sectionData?.title || "Section";
+  const node = sectionData ? findBuilderNode(sectionData, path) : null;
+  return node ? builderNodeTitle(node) : section.label || "Subsection";
+}
+
+function syncActiveProjectViewTabFromState() {
+  const project = selectedProject();
+  if (!project || !projectViewTabsBar) return;
+  const currentState = projectWindowStateKey();
+  if (!projectViewTabs.length) {
+    const id = projectViewTabId();
+    projectViewTabs = [{ id, stateKey: currentState, title: projectViewStateTitle(project, currentState), backStack: [], forwardStack: [] }];
+    activeProjectViewTabId = id;
+    return;
+  }
+  const activeTab = projectViewTabs.find((tab) => tab.id === activeProjectViewTabId) || projectViewTabs[0];
+  activeProjectViewTabId = activeTab.id;
+  activeTab.stateKey = currentState;
+  activeTab.title = projectViewStateTitle(project, currentState);
+  activeTab.backStack = [...projectWindowBackStack];
+  activeTab.forwardStack = [...projectWindowForwardStack];
+}
+
+function openProjectViewTab(stateKey = "brief", options = {}) {
+  const project = selectedProject();
+  if (!project) return false;
+  const existing = projectViewTabs.find((tab) => tab.stateKey === stateKey);
+  if (existing) {
+    activeProjectViewTabId = existing.id;
+    projectWindowBackStack = [...(existing.backStack || [])];
+    projectWindowForwardStack = [...(existing.forwardStack || [])];
+    applyProjectWindowStateKey(existing.stateKey);
+    pendingEditor = null;
+    renderAll();
+    resetProjectWindowScroll();
+    return true;
+  }
+  if (projectViewTabs.length >= 4) {
+    setStatus("You can keep up to four project section tabs open at the same time.");
+    return false;
+  }
+  const id = projectViewTabId();
+  projectViewTabs.push({
+    id,
+    stateKey,
+    title: options.title || projectViewStateTitle(project, stateKey),
+    backStack: [],
+    forwardStack: []
+  });
+  activeProjectViewTabId = id;
+  projectWindowBackStack = [];
+  projectWindowForwardStack = [];
+  applyProjectWindowStateKey(stateKey);
+  pendingEditor = null;
+  renderAll();
+  resetProjectWindowScroll();
+  setStatus("Opened project section in a separate tab.");
+  return true;
+}
+
+function activateProjectViewTab(tabId = "") {
+  const tab = projectViewTabs.find((item) => item.id === tabId);
+  if (!tab) return;
+  activeProjectViewTabId = tab.id;
+  projectWindowBackStack = [...(tab.backStack || [])];
+  projectWindowForwardStack = [...(tab.forwardStack || [])];
+  applyProjectWindowStateKey(tab.stateKey);
+  pendingEditor = null;
+  renderAll();
+  resetProjectWindowScroll();
+}
+
+function closeProjectViewTab(tabId = "") {
+  if (projectViewTabs.length <= 1) {
+    setStatus("Keep at least one project section tab open.");
+    return;
+  }
+  const index = projectViewTabs.findIndex((tab) => tab.id === tabId);
+  if (index < 0) return;
+  const wasActive = projectViewTabs[index].id === activeProjectViewTabId;
+  projectViewTabs.splice(index, 1);
+  if (wasActive) {
+    const next = projectViewTabs[Math.min(index, projectViewTabs.length - 1)] || projectViewTabs[0];
+    activeProjectViewTabId = next.id;
+    projectWindowBackStack = [...(next.backStack || [])];
+    projectWindowForwardStack = [...(next.forwardStack || [])];
+    applyProjectWindowStateKey(next.stateKey);
+  }
+  pendingEditor = null;
+  renderAll();
+  resetProjectWindowScroll();
+}
+
 function applyProjectWindowStateKey(stateKey = "brief") {
   const [sectionId, pathValue = ""] = String(stateKey || "brief").split("|");
   activeSectionId = sectionId || "brief";
@@ -3985,6 +4139,9 @@ function openProjectWindow(projectId, sectionId = "brief") {
   setActiveCustomSectionPath("", []);
   projectWindowBackStack = [];
   projectWindowForwardStack = [];
+  const initialStateKey = projectWindowStateKey(activeSectionId);
+  projectViewTabs = [{ id: projectViewTabId(), stateKey: initialStateKey, title: "Overview", backStack: [], forwardStack: [] }];
+  activeProjectViewTabId = projectViewTabs[0].id;
   projectTitleMenu.hidden = true;
   projectDialog.removeAttribute("style");
   projectDialog.classList.remove(
@@ -4408,9 +4565,10 @@ function fullProjectPreviewHtmlExact(project) {
       }
 
       .project-isolated-shell {
-        width: min(1180px, calc(100vw - 32px));
-        margin: 0 auto;
-        padding: 28px 0 36px;
+        width: 100%;
+        max-width: none;
+        margin: 0;
+        padding: 0;
       }
 
       .project-isolated-support {
@@ -4419,6 +4577,9 @@ function fullProjectPreviewHtmlExact(project) {
 
       body.project-isolated-preview .project-grid {
         display: block;
+        width: 100%;
+        max-width: none;
+        margin: 0;
       }
 
       body.project-isolated-preview .category-section {
@@ -4438,12 +4599,14 @@ function fullProjectPreviewHtmlExact(project) {
 
       body.project-isolated-preview .project-card {
         margin: 0;
+        width: 100%;
+        max-width: none;
       }
 
       @media (max-width: 720px) {
         .project-isolated-shell {
-          width: min(100vw - 20px, 100%);
-          padding: 14px 0 24px;
+          width: 100%;
+          padding: 0;
         }
       }
     </style>
@@ -6374,47 +6537,207 @@ function refreshSummaryCodeDialogPreview() {
     : `<p class="evidence-empty">Code preview appears here.</p>`;
 }
 
+function indentBraceCodeClient(code = "") {
+  let depth = 0;
+  return String(code || "")
+    .replace(/\r\n?/g, "\n")
+    .split("\n")
+    .map((rawLine) => {
+      const line = rawLine.trim();
+      if (!line) return "";
+      const hasLeadingClose = /^[}\])]/.test(line);
+      if (hasLeadingClose) depth = Math.max(0, depth - 1);
+      const formatted = `${"  ".repeat(depth)}${line}`;
+      const opens = (line.match(/[{\[(]/g) || []).length;
+      const closeCount = (line.match(/[}\])]/g) || []).length;
+      const closes = Math.max(0, closeCount - (hasLeadingClose ? 1 : 0));
+      depth = Math.max(0, depth + opens - closes);
+      return formatted;
+    })
+    .join("\n")
+    .trimEnd();
+}
+
+function expandBraceCodeClient(code = "") {
+  const source = String(code || "").replace(/\r\n?/g, "\n");
+  let result = "";
+  let quote = "";
+  let escaped = false;
+  let lineComment = false;
+  let blockComment = false;
+  let parenDepth = 0;
+  const appendNewline = () => {
+    result = result.replace(/[ \t]+$/g, "");
+    if (!result.endsWith("\n")) result += "\n";
+  };
+  for (let index = 0; index < source.length; index += 1) {
+    const char = source[index];
+    const next = source[index + 1] || "";
+    if (lineComment) {
+      result += char;
+      if (char === "\n") lineComment = false;
+      continue;
+    }
+    if (blockComment) {
+      result += char;
+      if (char === "*" && next === "/") {
+        result += next;
+        index += 1;
+        blockComment = false;
+      }
+      continue;
+    }
+    if (quote) {
+      result += char;
+      if (escaped) escaped = false;
+      else if (char === "\\") escaped = true;
+      else if (char === quote) quote = "";
+      continue;
+    }
+    if (char === "/" && next === "/") {
+      result += char + next;
+      index += 1;
+      lineComment = true;
+      continue;
+    }
+    if (char === "/" && next === "*") {
+      result += char + next;
+      index += 1;
+      blockComment = true;
+      continue;
+    }
+    if (char === "\"" || char === "`") {
+      quote = char;
+      result += char;
+      continue;
+    }
+    const previous = source[index - 1] || "";
+    const systemVerilogWidthLiteral = char === "'" && /[0-9a-zA-Z_$\])]/.test(previous) && /[bBdDhHoOsS01xzXZ]/.test(next);
+    if (char === "'" && !systemVerilogWidthLiteral) {
+      quote = char;
+      result += char;
+      continue;
+    }
+    if (char === "(" || char === "[") parenDepth += 1;
+    if (char === ")" || char === "]") parenDepth = Math.max(0, parenDepth - 1);
+    if (char === "{") {
+      result = result.replace(/[ \t]+$/g, "");
+      result += " {";
+      appendNewline();
+      continue;
+    }
+    if (char === "}") {
+      appendNewline();
+      result += "}";
+      if (next && next !== ";" && next !== "," && next !== ")" && next !== "\n") appendNewline();
+      continue;
+    }
+    if (char === ";" && parenDepth === 0) {
+      result += ";";
+      appendNewline();
+      continue;
+    }
+    if (char === "\n") {
+      appendNewline();
+      continue;
+    }
+    result += char;
+  }
+  return result.replace(/[ \t]+$/gm, "").replace(/\n{4,}/g, "\n\n\n").trimEnd();
+}
+
+function beautifyHdlCodeClient(code = "") {
+  const expanded = String(code || "")
+    .replace(/\r\n?/g, "\n")
+    .replace(/\t/g, "  ")
+    .replace(/;\s*(?=\S)/g, ";\n")
+    .replace(/\b(begin|case|casex|casez|fork|generate)\b\s*(?=\S)/gi, "$1\n")
+    .replace(/\s+\b(end|endcase|endgenerate|endtask|endfunction|endmodule|join|join_any|join_none)\b/gi, "\n$1")
+    .replace(/\belse\b\s*(?=\S)/gi, "else\n")
+    .replace(/\n{3,}/g, "\n\n");
+  let depth = 0;
+  return expanded.split("\n").map((rawLine) => {
+    const line = rawLine.trim();
+    if (!line) return "";
+    const lower = line.toLowerCase();
+    const closes = /^(end|endcase|endgenerate|endtask|endfunction|endmodule|join|join_any|join_none)\b/.test(lower);
+    const middle = /^(else)\b/.test(lower);
+    if (closes || middle) depth = Math.max(0, depth - 1);
+    const nextLine = /^`/.test(line) ? line : `${"  ".repeat(depth)}${line}`;
+    if (/\b(module|begin|case|casex|casez|fork|generate|task|function)\b/.test(lower) && !/\bendmodule\b/.test(lower)) depth += 1;
+    if (middle) depth += 1;
+    return nextLine;
+  }).join("\n").replace(/\n{4,}/g, "\n\n\n").trimEnd();
+}
+
+function beautifyPythonCodeClient(code = "") {
+  let depth = 0;
+  return String(code || "")
+    .replace(/\r\n?/g, "\n")
+    .replace(/\t/g, "    ")
+    .split("\n")
+    .map((rawLine) => {
+      const line = rawLine.trim();
+      if (!line) return "";
+      if (/^(elif|else|except|finally)\b/.test(line)) depth = Math.max(0, depth - 1);
+      const formatted = `${"    ".repeat(depth)}${line}`;
+      if (/:\s*(?:#.*)?$/.test(line) && !line.startsWith("#")) depth += 1;
+      if (/^(return|raise|break|continue|pass)\b/.test(line)) depth = Math.max(0, depth - 1);
+      return formatted;
+    })
+    .join("\n")
+    .replace(/\n{4,}/g, "\n\n\n")
+    .trimEnd();
+}
+
+function beautifyHtmlCodeClient(code = "") {
+  const voidTags = new Set(["area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source", "track", "wbr"]);
+  const lines = String(code || "")
+    .replace(/\r\n?/g, "\n")
+    .replace(/>\s+</g, ">\n<")
+    .replace(/(<[^>]+>)/g, "\n$1\n")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+  let depth = 0;
+  return lines.map((line) => {
+    const closing = /^<\//.test(line);
+    const tagName = (line.match(/^<\/?\s*([a-zA-Z0-9:-]+)/) || [])[1]?.toLowerCase() || "";
+    const selfClosing = /\/>$/.test(line) || voidTags.has(tagName) || /^<!|^<\?/.test(line);
+    if (closing) depth = Math.max(0, depth - 1);
+    const formatted = `${"  ".repeat(depth)}${line}`;
+    if (!closing && !selfClosing && /^</.test(line) && !line.includes(`</${tagName}>`)) depth += 1;
+    return formatted;
+  }).join("\n").trimEnd();
+}
+
+function beautifyLtspiceCodeClient(code = "") {
+  return String(code || "")
+    .replace(/\r\n?/g, "\n")
+    .split("\n")
+    .map((rawLine) => {
+      const trimmed = rawLine.trim();
+      if (!trimmed) return "";
+      if (/^[+]/.test(trimmed)) return `+ ${trimmed.slice(1).trim()}`;
+      if (/^[*.]/.test(trimmed)) return trimmed;
+      return trimmed.replace(/\s+/g, " ");
+    })
+    .join("\n")
+    .replace(/\n{4,}/g, "\n\n\n")
+    .trimEnd();
+}
+
 function beautifyCodeClient(code = "", language = "javascript") {
   const normalized = String(code || "").replace(/\r\n?/g, "\n").replace(/\t/g, "  ");
   const lang = normalizeCodeLanguage(language);
-  if (["verilog", "systemverilog"].includes(lang)) {
-    const expanded = normalized
-      .replace(/;\s*(?=\S)/g, ";\n")
-      .replace(/\b(begin|case|casex|casez|fork|generate)\b\s*(?=\S)/gi, "$1\n")
-      .replace(/\s+\b(end|endcase|endgenerate|endtask|endfunction|endmodule|join|join_any|join_none)\b/gi, "\n$1")
-      .replace(/\belse\b\s*(?=\S)/gi, "else\n")
-      .replace(/\n{3,}/g, "\n\n");
-    let depth = 0;
-    return expanded.split("\n").map((rawLine) => {
-      const line = rawLine.trim();
-      if (!line) return "";
-      const lower = line.toLowerCase();
-      const closes = /^(end|endcase|endgenerate|endtask|endfunction|endmodule|join|join_any|join_none)\b/.test(lower);
-      const middle = /^(else)\b/.test(lower);
-      if (closes || middle) depth = Math.max(0, depth - 1);
-      const nextLine = /^`/.test(line) ? line : `${"  ".repeat(depth)}${line}`;
-      if (/\b(module|begin|case|casex|casez|fork|generate|task|function)\b/.test(lower) && !/\bendmodule\b/.test(lower)) depth += 1;
-      if (middle) depth += 1;
-      return nextLine;
-    }).join("\n").replace(/\n{4,}/g, "\n\n\n").trimEnd();
-  }
+  if (["verilog", "systemverilog"].includes(lang)) return beautifyHdlCodeClient(normalized);
   if (["c", "cpp", "java", "javascript"].includes(lang)) {
-    let depth = 0;
-    return normalized.split("\n").map((rawLine) => {
-      const line = rawLine.trim();
-      if (!line) return "";
-      if (/^[}\])]/.test(line)) depth = Math.max(0, depth - 1);
-      const nextLine = `${"  ".repeat(depth)}${line}`;
-      const opens = (line.match(/[{\[(]/g) || []).length;
-      const closes = (line.match(/[}\])]/g) || []).length;
-      depth = Math.max(0, depth + opens - closes);
-      return nextLine;
-    }).join("\n").trimEnd();
+    return indentBraceCodeClient(expandBraceCodeClient(normalized)).replace(/[ \t]+$/gm, "").replace(/\n{4,}/g, "\n\n\n");
   }
-  if (lang === "html") {
-    return normalized.replace(/>\s+</g, ">\n<").split("\n").map((line) => line.trim()).join("\n").trim();
-  }
-  return normalized.split("\n").map((line) => line.trimEnd()).join("\n").trimEnd();
+  if (lang === "python") return beautifyPythonCodeClient(code);
+  if (lang === "html") return beautifyHtmlCodeClient(code);
+  if (lang === "ltspice") return beautifyLtspiceCodeClient(code);
+  return normalized.split("\n").map((line) => line.trimEnd()).join("\n").replace(/\n{4,}/g, "\n\n\n").trimEnd();
 }
 
 async function beautifySummaryCodeDialog() {
@@ -7201,6 +7524,7 @@ function clearSiteSectionBackground(sectionId) {
 function renderSectionTabs(project) {
   if (!project) {
     sectionTabs.innerHTML = "";
+    if (projectViewTabsBar) projectViewTabsBar.innerHTML = "";
     return;
   }
 
@@ -7220,6 +7544,55 @@ function renderSectionTabs(project) {
     </div>
     <button type="button" data-add-section="true">Add section</button>
   `;
+}
+
+function renderProjectViewTabs(project) {
+  if (!projectViewTabsBar) return;
+  if (!project) {
+    projectViewTabsBar.innerHTML = "";
+    return;
+  }
+  syncActiveProjectViewTabFromState();
+  projectViewTabsBar.innerHTML = `
+    <div class="project-view-tab-list" role="tablist" aria-label="Open project views">
+      ${projectViewTabs.map((tab) => `
+        <button
+          class="project-view-tab${tab.id === activeProjectViewTabId ? " is-active" : ""}"
+          type="button"
+          role="tab"
+          aria-selected="${tab.id === activeProjectViewTabId ? "true" : "false"}"
+          data-project-view-tab="${escapeHtml(tab.id)}"
+          title="${escapeHtml(tab.title || "Project view")}"
+        >
+          <span>${escapeHtml(tab.title || "Project view")}</span>
+          <small>${escapeHtml(tab.stateKey.split("|")[0].replace("custom:", "section:"))}</small>
+        </button>
+        <button
+          class="project-view-tab-close"
+          type="button"
+          data-close-project-view-tab="${escapeHtml(tab.id)}"
+          aria-label="Close ${escapeHtml(tab.title || "project view")} tab"
+        >&times;</button>
+      `).join("")}
+    </div>
+    <span class="project-view-tab-count">${projectViewTabs.length}/4</span>
+  `;
+}
+
+function hideProjectViewContextMenu() {
+  if (projectViewContextMenu) projectViewContextMenu.hidden = true;
+  pendingProjectViewContext = null;
+}
+
+function showProjectViewContextMenu(event, context = {}) {
+  if (!projectViewContextMenu || !context.stateKey) return;
+  event.preventDefault();
+  pendingProjectViewContext = context;
+  projectViewContextMenu.hidden = false;
+  const width = 190;
+  const height = 92;
+  projectViewContextMenu.style.left = `${Math.min(event.clientX, window.innerWidth - width - 8)}px`;
+  projectViewContextMenu.style.top = `${Math.min(event.clientY, window.innerHeight - height - 8)}px`;
 }
 
 function renderTextArray(project, key, label) {
@@ -7862,7 +8235,7 @@ function renderBuilderExplorerRows(section, items = sectionRootChildren(section)
               <div class="builder-explorer-actions">
                 ${hasUrl ? "" : `<button type="button" data-add-node-subsection="${escapeHtml(section.id)}" data-node-path="${escapeHtml(pathValue)}">Add subsection</button>`}
                 ${hasUrl ? "" : `<button type="button" data-upload-node="${escapeHtml(section.id)}" data-node-path="${escapeHtml(pathValue)}">Add file</button>`}
-                <button type="button" data-open-editor="custom" data-mode="edit" data-section-id="${escapeHtml(section.id)}" data-node-path="${escapeHtml(pathValue)}">Edit</button>
+                ${hasUrl ? "" : `<button type="button" data-open-editor="custom" data-mode="edit" data-section-id="${escapeHtml(section.id)}" data-node-path="${escapeHtml(pathValue)}">Edit</button>`}
                 <button class="danger-icon" type="button" data-delete-node="${escapeHtml(section.id)}" data-node-path="${escapeHtml(pathValue)}">Delete</button>
               </div>
             </div>
@@ -7935,7 +8308,6 @@ function renderCustomFilesList(section, currentChildren = [], currentPath = []) 
                 <span class="builder-explorer-title">${escapeHtml(builderNodeTitle(item))}</span>
               </button>
               <div class="builder-explorer-actions">
-                <button type="button" data-open-editor="custom" data-mode="edit" data-section-id="${escapeHtml(section.id)}" data-node-path="${escapeHtml(pathValue)}">Edit</button>
                 <button class="danger-icon" type="button" data-delete-node="${escapeHtml(section.id)}" data-node-path="${escapeHtml(pathValue)}">Delete</button>
               </div>
             </div>
@@ -8403,7 +8775,7 @@ function compileWorkspaceTree(workspace = {}) {
   return rootNode;
 }
 
-function renderCompileTreeFolder(node, activeId = "") {
+function renderCompileTreeFolder(node, activeId = "", selectedIds = new Set()) {
   const folders = [...node.children.values()].sort((left, right) => left.name.localeCompare(right.name));
   const files = [...node.files].sort((left, right) => compileFilePath(left).localeCompare(compileFilePath(right)));
   const folderHtml = folders.map((folder) => `
@@ -8413,13 +8785,13 @@ function renderCompileTreeFolder(node, activeId = "") {
         <span>${escapeHtml(folder.name)}</span>
       </summary>
       <div class="compile-code-tree-children">
-        ${renderCompileTreeFolder(folder, activeId)}
+        ${renderCompileTreeFolder(folder, activeId, selectedIds)}
       </div>
     </details>
   `).join("");
   const fileHtml = files.map((file) => `
     <button
-      class="compile-code-tree-file${file.id === activeId ? " is-active" : ""}"
+      class="compile-code-tree-file${file.id === activeId ? " is-active" : ""}${selectedIds.has(file.id) ? " is-selected" : ""}"
       type="button"
       data-compile-select="${escapeHtml(file.id)}"
       data-compile-tree-file-id="${escapeHtml(file.id)}"
@@ -8435,7 +8807,8 @@ function renderCompileTreeFolder(node, activeId = "") {
 
 function renderCompileWorkspaceTree(workspace = {}, projectTitle = "Project workspace") {
   const tree = compileWorkspaceTree(workspace);
-  const contents = renderCompileTreeFolder(tree, workspace.activeFileId || "");
+  const selectedIds = new Set(Array.isArray(workspace.selectedFileIds) ? workspace.selectedFileIds : []);
+  const contents = renderCompileTreeFolder(tree, workspace.activeFileId || "", selectedIds);
   return `
     <details class="compile-code-root-folder" open>
       <summary>
@@ -8924,7 +9297,37 @@ function compilePanelTabs(project, file = activeCompileFile(project)) {
           data-compile-open-panel="${tab.id}"
         >${escapeHtml(tab.label)}</button>
       `).join("")}
+      <button
+        class="compile-panel-tool-button${workspace.stdinWindowOpen ? " is-active" : ""}"
+        type="button"
+        data-compile-toggle-stdin
+        title="Open Program input for the active source"
+        aria-pressed="${workspace.stdinWindowOpen ? "true" : "false"}"
+        ${file ? "" : "disabled"}
+      >Input</button>
     </div>
+  `;
+}
+
+function renderCompileStdinWindow(project, file = activeCompileFile(project)) {
+  const workspace = ensureCompileCode(project);
+  if (!workspace.stdinWindowOpen || !file) return "";
+  return `
+    <section class="compile-stdin-window" aria-label="Program input window">
+      <div class="compile-stdin-window-heading">
+        <div>
+          <strong>Program input</strong>
+          <span>${escapeHtml(file.fileName || "Active source")}</span>
+        </div>
+        <button class="compile-mini-window-close" type="button" data-compile-toggle-stdin aria-label="Close Program input">&times;</button>
+      </div>
+      <textarea
+        data-compile-field="stdin"
+        spellcheck="false"
+        rows="10"
+        placeholder="Input passed to stdin when this source runs"
+      >${escapeHtml(file.stdin || "")}</textarea>
+    </section>
   `;
 }
 
@@ -9109,6 +9512,7 @@ function renderCompileCodeSection(project) {
   const dockUnlocked = Boolean(workspace.outputDockUnlocked);
   const dockPosition = workspace.outputDockPosition || { x: 72, y: 120 };
   const outputHeight = normalizeCompileOutputHeight(workspace.outputDockHeight);
+  const sidebarWidth = normalizeCompileSidebarWidth(workspace.sidebarWidth);
   const compileTheme = compileThemeIds.includes(builderPreferences.compileTheme)
     ? builderPreferences.compileTheme
     : defaultBuilderPreferences.compileTheme;
@@ -9116,7 +9520,7 @@ function renderCompileCodeSection(project) {
     ? ` style="left:${Math.max(8, Number(dockPosition.x) || 72)}px; top:${Math.max(8, Number(dockPosition.y) || 120)}px;"`
     : ` style="--compile-output-height:${outputHeight}px;"`;
   return `
-    <div class="compile-code-workspace" data-compile-workspace data-compile-theme="${escapeHtml(compileTheme)}">
+    <div class="compile-code-workspace" data-compile-workspace data-compile-theme="${escapeHtml(compileTheme)}" style="--compile-sidebar-width:${sidebarWidth}px;">
       ${renderCompileIdeMenuBar(project, activeFile)}
       <aside class="compile-code-sidebar" aria-label="Compile code files">
         <div class="compile-code-sidebar-heading">
@@ -9136,31 +9540,34 @@ function renderCompileCodeSection(project) {
         </div>
         ${renderCompileTreeContextMenu()}
       </aside>
+      <div class="compile-sidebar-resize-handle" data-compile-sidebar-resize title="Drag to resize Solution Explorer"></div>
 
       <section class="compile-code-main" aria-label="Compile code editor">
         ${compileEditorTabs(project, activeFile)}
         ${activeFile ? `
           ${compileFileBreadcrumbs(activeFile)}
-          <div class="compile-code-meta-grid">
-            <label>
-              <span>File path</span>
-              <input type="text" data-compile-field="fileName" value="${escapeHtml(compileFileAbsolutePath(project, activeFile))}" placeholder="${escapeHtml(compileFileAbsolutePath(project, { ...activeFile, relativePath: defaultCodeFileName(activeFile.language) }))}" />
-            </label>
-            <label>
-              <span>Language</span>
-              <select data-compile-field="language">${compileLanguageOptions(activeFile.language)}</select>
-            </label>
-            <label>
-              <span>${isHdlLanguage(activeFile.language) ? "HDL role" : "Source role"}</span>
-              ${isHdlLanguage(activeFile.language)
-                ? `<select data-compile-field="role">${compileRoleOptions(activeFile.role)}</select>`
-                : `<input type="text" value="Program source" disabled />`}
-            </label>
-            <label>
-              <span>File title</span>
-              <input type="text" value="${escapeHtml(activeFile.fileName || "")}" disabled />
-            </label>
-          </div>
+          ${workspace.showFileDetails ? `
+            <div class="compile-code-meta-grid">
+              <label>
+                <span>File path</span>
+                <input type="text" data-compile-field="fileName" value="${escapeHtml(compileFileAbsolutePath(project, activeFile))}" placeholder="${escapeHtml(compileFileAbsolutePath(project, { ...activeFile, relativePath: defaultCodeFileName(activeFile.language) }))}" />
+              </label>
+              <label>
+                <span>Language</span>
+                <select data-compile-field="language">${compileLanguageOptions(activeFile.language)}</select>
+              </label>
+              <label>
+                <span>${isHdlLanguage(activeFile.language) ? "HDL role" : "Source role"}</span>
+                ${isHdlLanguage(activeFile.language)
+                  ? `<select data-compile-field="role">${compileRoleOptions(activeFile.role)}</select>`
+                  : `<input type="text" value="Program source" disabled />`}
+              </label>
+              <label>
+                <span>File title</span>
+                <input type="text" value="${escapeHtml(activeFile.fileName || "")}" disabled />
+              </label>
+            </div>
+          ` : ""}
           <div class="compile-code-editor-grid compile-code-editor-grid-single">
             <section class="compile-code-preview-panel compile-code-active-panel" aria-label="Active syntax highlighted code editor">
               <div class="compile-code-preview-heading">
@@ -9172,13 +9579,10 @@ function renderCompileCodeSection(project) {
               </div>
             </section>
           </div>
-          <label class="compile-stdin-field">
-            <span>Program input, optional</span>
-            <textarea data-compile-field="stdin" rows="4" placeholder="Input passed to stdin when the code runs">${escapeHtml(activeFile.stdin || "")}</textarea>
-          </label>
           <div class="compile-code-command-bar">
             <button type="button" data-compile-save>Save source</button>
             <button type="button" data-compile-beautify>Beautify</button>
+            <button type="button" data-compile-toggle-file-details aria-pressed="${workspace.showFileDetails ? "true" : "false"}">${workspace.showFileDetails ? "Hide details" : "File details"}</button>
             <button type="button" data-compile-compile>Compile</button>
             <button type="button" data-compile-build>Build project</button>
             ${isHdlLanguage(activeFile.language)
@@ -9218,6 +9622,7 @@ function renderCompileCodeSection(project) {
           ${compileIdeStatusBar(project, activeFile)}
         </section>
       </section>
+      ${renderCompileStdinWindow(project, activeFile)}
     </div>
   `;
 }
@@ -9516,6 +9921,7 @@ function renderAll() {
   renderTree();
   renderFields(project);
   renderSectionTabs(project);
+  renderProjectViewTabs(project);
   renderSectionContent(project);
   if (portfolioPreviewDialog?.open) renderPreview();
   updateBuilderWorkflow();
@@ -9732,6 +10138,38 @@ function handleBuilderZoomWheel(event) {
   setBuilderZoom(normalizeBuilderZoom(builderPreferences.zoom) + direction * 0.05);
 }
 
+function compileScrollableOwner(element) {
+  return element?.closest?.([
+    ".compile-editor-tabs",
+    ".compile-code-workspace-tree",
+    ".compile-code-active-editor textarea",
+    ".compile-terminal",
+    ".compile-system-terminal",
+    ".compile-terminal-screen",
+    ".compile-messages-log",
+    ".compile-scope-scroll"
+  ].join(", "));
+}
+
+sectionContent.addEventListener("pointerdown", (event) => {
+  const scrollable = compileScrollableOwner(event.target);
+  if (scrollable) activeCompileScrollElement = scrollable;
+}, true);
+
+sectionContent.addEventListener("wheel", (event) => {
+  if (event.ctrlKey || event.metaKey) return;
+  const scrollable = compileScrollableOwner(event.target);
+  if (!scrollable) return;
+  if (activeCompileScrollElement !== scrollable) {
+    event.preventDefault();
+    return;
+  }
+  if (scrollable.classList.contains("compile-editor-tabs") && Math.abs(event.deltaY) > Math.abs(event.deltaX)) {
+    event.preventDefault();
+    scrollable.scrollLeft += event.deltaY;
+  }
+}, { passive: false, capture: true });
+
 function makeItemForSection(key, title, description = "", url = "") {
   if (key === "documents") return { title, type: "Document", url, status: url ? "uploaded" : "draft" };
   if (key === "tests") return { name: title, method: description || "Validation notes", status: url ? "uploaded" : "draft", artifact: url, result: description };
@@ -9890,6 +10328,27 @@ function openCompileFileView(workspace, fileId = "") {
   workspace.openFileIds = Array.isArray(workspace.openFileIds) ? workspace.openFileIds : [];
   if (!workspace.openFileIds.includes(fileId)) workspace.openFileIds.push(fileId);
   workspace.activeFileId = fileId;
+}
+
+function compileSelectedFileIds(workspace = {}) {
+  const validIds = new Set((workspace.files || []).map((file) => file.id));
+  return new Set((workspace.selectedFileIds || []).filter((id) => validIds.has(id)));
+}
+
+function setCompileSelectedFileIds(workspace = {}, ids = []) {
+  const validIds = new Set((workspace.files || []).map((file) => file.id));
+  workspace.selectedFileIds = [...new Set(ids)].filter((id) => validIds.has(id));
+}
+
+function toggleCompileFileSelection(project, fileId = "") {
+  const workspace = ensureCompileCode(project);
+  if (!fileId || !workspace.files.some((file) => file.id === fileId)) return;
+  const selected = compileSelectedFileIds(workspace);
+  if (selected.has(fileId)) selected.delete(fileId);
+  else selected.add(fileId);
+  setCompileSelectedFileIds(workspace, [...selected]);
+  setStatus(`${workspace.selectedFileIds.length} compile file${workspace.selectedFileIds.length === 1 ? "" : "s"} selected.`);
+  scheduleAutosave(900);
 }
 
 function closeCompileFileView(project, fileId = "") {
@@ -10132,7 +10591,6 @@ async function importCompileFiles(project, options = {}) {
     });
     addCompileDirectoryPath(workspace, compileFileDirectory(relativePath));
     workspace.files.push(sourceFile);
-    openCompileFileView(workspace, sourceFile.id);
     imported += 1;
   }
   if (!imported && !importedDirectories.length) {
@@ -10140,7 +10598,8 @@ async function importCompileFiles(project, options = {}) {
     return;
   }
   const folderText = importedDirectories.length ? ` and ${importedDirectories.length} folder${importedDirectories.length === 1 ? "" : "s"}` : "";
-  setStatus(`Imported ${imported} source/support file${imported === 1 ? "" : "s"}${folderText}${targetDirectory ? ` into ${targetDirectory}` : ""}${skipped ? ` and skipped ${skipped} unreadable or oversized file${skipped === 1 ? "" : "s"}` : ""}. Click Save source before compiling.`);
+  addCompileMessage(project, `Imported ${imported} file${imported === 1 ? "" : "s"}${folderText}. Open imported sources from Solution Explorer when you want to edit them.`, "success");
+  setStatus(`Imported ${imported} source/support file${imported === 1 ? "" : "s"}${folderText}${targetDirectory ? ` into ${targetDirectory}` : ""}${skipped ? ` and skipped ${skipped} unreadable or oversized file${skipped === 1 ? "" : "s"}` : ""}. Imported files are in Solution Explorer, not editor tabs.`);
   scheduleAutosave();
   renderSectionContent(project);
 }
@@ -10164,18 +10623,34 @@ function deleteCompileTreeTarget(project, context = activeCompileTreeContext) {
     setStatus("Right-click a compile file or folder before deleting.");
     return;
   }
-  if (context.type === "file") {
-    const file = workspace.files.find((item) => item.id === context.fileId);
-    if (!file) return;
+  if (context.type === "file" || context.type === "workspace") {
+    const selectedIds = compileSelectedFileIds(workspace);
+    const deleteIds = context.type === "file" && selectedIds.has(context.fileId)
+      ? selectedIds
+      : context.type === "workspace" && selectedIds.size
+        ? selectedIds
+        : new Set(context.fileId ? [context.fileId] : []);
+    const filesToDelete = workspace.files.filter((item) => deleteIds.has(item.id));
+    if (!filesToDelete.length) {
+      setStatus("Select or right-click a compile file before deleting.");
+      return;
+    }
+    const singleFile = filesToDelete.length === 1 ? filesToDelete[0] : null;
     openDeleteConfirm({
-      title: "Delete source file",
-      message: `Are you sure you want to delete "${file.fileName || compileFilePath(file)}"?`,
+      title: filesToDelete.length === 1 ? "Delete source file" : "Delete selected source files",
+      message: filesToDelete.length === 1
+        ? `Are you sure you want to delete "${singleFile.fileName || compileFilePath(singleFile)}"?`
+        : `Delete ${filesToDelete.length} selected source file${filesToDelete.length === 1 ? "" : "s"} from this compile workspace?`,
       onConfirm: () => {
-        workspace.files = workspace.files.filter((item) => item.id !== file.id);
-        workspace.openFileIds = (workspace.openFileIds || []).filter((id) => id !== file.id);
+        const removedIds = new Set(filesToDelete.map((file) => file.id));
+        workspace.files = workspace.files.filter((item) => !removedIds.has(item.id));
+        workspace.openFileIds = (workspace.openFileIds || []).filter((id) => !removedIds.has(id));
+        setCompileSelectedFileIds(workspace, []);
         workspace.activeFileId = workspace.openFileIds.find((id) => workspace.files.some((item) => item.id === id)) || "";
         activeCompileTreeContext = null;
-        addCompileMessage(project, `Deleted ${file.fileName || "source file"}.`, "warning");
+        addCompileMessage(project, filesToDelete.length === 1
+          ? `Deleted ${singleFile.fileName || "source file"}.`
+          : `Deleted ${filesToDelete.length} selected source files.`, "warning");
         scheduleAutosave();
         renderSectionContent(project);
       }
@@ -10195,6 +10670,7 @@ function deleteCompileTreeTarget(project, context = activeCompileTreeContext) {
       workspace.files = workspace.files.filter((file) => !removedIds.has(file.id));
       workspace.directories = workspace.directories.filter((directory) => !childFolders.includes(directory));
       workspace.openFileIds = (workspace.openFileIds || []).filter((id) => !removedIds.has(id));
+      setCompileSelectedFileIds(workspace, (workspace.selectedFileIds || []).filter((id) => !removedIds.has(id)));
       if (!workspace.files.some((file) => file.id === workspace.activeFileId)) {
         workspace.activeFileId = workspace.openFileIds.find((id) => workspace.files.some((file) => file.id === id)) || "";
       }
@@ -10248,7 +10724,13 @@ async function beautifyCompileFile(project, file) {
     scheduleAutosave();
     renderSectionContent(project);
   } catch (error) {
-    setStatus(error.message || "Code beautifier failed.");
+    file.code = beautifyCodeClient(file.code || "", file.language);
+    file.dirty = true;
+    updateCompilePreview(file);
+    addCompileMessage(project, `Used local ${codeLanguageLabel(file.language)} beautifier because the server formatter did not respond.`, "warning");
+    setStatus(error.message ? `Server beautifier failed; local beautifier ran. ${error.message}` : "Server beautifier failed; local beautifier ran.");
+    scheduleAutosave();
+    renderSectionContent(project);
   }
 }
 
@@ -12918,6 +13400,51 @@ sectionTabs.addEventListener("click", async (event) => {
   updateDialogWindowButtons(projectDialog);
 });
 
+sectionTabs.addEventListener("contextmenu", (event) => {
+  const button = event.target.closest("[data-section-id]");
+  const project = selectedProject();
+  if (!button || !project) return;
+  const sectionId = button.dataset.sectionId || "brief";
+  const title = sectionOptions(project).find((section) => section.id === sectionId)?.label || "Project view";
+  showProjectViewContextMenu(event, { stateKey: sectionId, title });
+});
+
+projectViewTabsBar?.addEventListener("click", (event) => {
+  const closeButton = event.target.closest("[data-close-project-view-tab]");
+  if (closeButton) {
+    closeProjectViewTab(closeButton.dataset.closeProjectViewTab || "");
+    return;
+  }
+  const tab = event.target.closest("[data-project-view-tab]");
+  if (!tab) return;
+  activateProjectViewTab(tab.dataset.projectViewTab || "");
+});
+
+projectViewContextMenu?.addEventListener("click", (event) => {
+  const action = event.target.closest("[data-project-view-action]")?.dataset.projectViewAction;
+  if (!action) return;
+  if (action === "open-tab" && pendingProjectViewContext) {
+    openProjectViewTab(pendingProjectViewContext.stateKey, { title: pendingProjectViewContext.title });
+  }
+  hideProjectViewContextMenu();
+});
+
+sectionContent.addEventListener("contextmenu", (event) => {
+  if (event.target.closest(".compile-code-sidebar")) return;
+  const nodeButton = event.target.closest("[data-open-node-view]");
+  const project = selectedProject();
+  if (!nodeButton || !project) return;
+  const sectionId = nodeButton.dataset.sectionId || "";
+  if (!sectionId) return;
+  const path = nodePathFromString(nodeButton.dataset.nodePath || "");
+  const section = (project.sections || []).find((item) => item.id === sectionId);
+  const node = section && path.length ? findBuilderNode(section, path) : null;
+  const title = node ? builderNodeTitle(node) : section?.title || "Project view";
+  const pathValue = nodePathToString(path);
+  const stateKey = pathValue ? `custom:${sectionId}|${pathValue}` : `custom:${sectionId}`;
+  showProjectViewContextMenu(event, { stateKey, title });
+});
+
 sectionContent.addEventListener("click", async (event) => {
   const button = event.target.closest("button");
   const project = selectedProject();
@@ -12935,6 +13462,14 @@ sectionContent.addEventListener("click", async (event) => {
   }
   if (button.dataset.compileOpenPanel) {
     setCompilePanel(project, button.dataset.compileOpenPanel);
+    renderSectionContent(project);
+    return;
+  }
+  if (hasDataset("compileToggleStdin")) {
+    const workspace = ensureCompileCode(project);
+    workspace.stdinWindowOpen = !workspace.stdinWindowOpen;
+    setStatus(workspace.stdinWindowOpen ? "Program input window opened." : "Program input window closed.");
+    scheduleAutosave();
     renderSectionContent(project);
     return;
   }
@@ -12980,7 +13515,14 @@ sectionContent.addEventListener("click", async (event) => {
     return;
   }
   if (button.dataset.compileSelect) {
-    openCompileFileView(ensureCompileCode(project), button.dataset.compileSelect);
+    const workspace = ensureCompileCode(project);
+    if (event.ctrlKey || event.metaKey) {
+      toggleCompileFileSelection(project, button.dataset.compileSelect);
+      renderSectionContent(project);
+      return;
+    }
+    setCompileSelectedFileIds(workspace, [button.dataset.compileSelect]);
+    openCompileFileView(workspace, button.dataset.compileSelect);
     renderSectionContent(project);
     return;
   }
@@ -13002,6 +13544,13 @@ sectionContent.addEventListener("click", async (event) => {
   }
   if (hasDataset("compileBeautify")) {
     await beautifyCompileFile(project, compileFile);
+    return;
+  }
+  if (hasDataset("compileToggleFileDetails")) {
+    compileWorkspace.showFileDetails = !compileWorkspace.showFileDetails;
+    setStatus(compileWorkspace.showFileDetails ? "Compile file details shown." : "Compile file details hidden.");
+    scheduleAutosave();
+    renderSectionContent(project);
     return;
   }
   if (hasDataset("compileCompile")) {
@@ -13297,12 +13846,19 @@ function hideCompileTreeContextMenus(options = {}) {
 sectionContent.addEventListener("contextmenu", (event) => {
   const sidebar = event.target.closest(".compile-code-sidebar");
   if (!sidebar) return;
+  const project = selectedProject();
+  const workspace = project ? ensureCompileCode(project) : null;
   const menu = sidebar.querySelector("[data-compile-tree-context-menu]");
   if (!menu) return;
   event.preventDefault();
   hideCompileTreeContextMenus({ clearContext: false });
   const fileButton = event.target.closest("[data-compile-tree-file-id]");
   const folderNode = event.target.closest("[data-compile-folder-path]");
+  if (workspace && fileButton) {
+    const fileId = fileButton.dataset.compileTreeFileId || "";
+    const selected = compileSelectedFileIds(workspace);
+    if (!selected.has(fileId)) setCompileSelectedFileIds(workspace, [fileId]);
+  }
   activeCompileTreeContext = fileButton
     ? {
       type: "file",
@@ -13326,6 +13882,23 @@ sectionContent.addEventListener("contextmenu", (event) => {
 });
 
 sectionContent.addEventListener("pointerdown", (event) => {
+  const sidebarResizeHandle = event.target.closest("[data-compile-sidebar-resize]");
+  const compileWorkspaceElement = sidebarResizeHandle?.closest("[data-compile-workspace]");
+  if (sidebarResizeHandle && compileWorkspaceElement && event.button === 0) {
+    const project = selectedProject();
+    if (!project) return;
+    const workspace = ensureCompileCode(project);
+    activeCompileSidebarResize = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startWidth: normalizeCompileSidebarWidth(workspace.sidebarWidth)
+    };
+    sidebarResizeHandle.setPointerCapture?.(event.pointerId);
+    compileWorkspaceElement.classList.add("is-sidebar-resizing");
+    event.preventDefault();
+    return;
+  }
+
   const resizeHandle = event.target.closest("[data-compile-output-resize]");
   const lockedDock = resizeHandle?.closest(".compile-output-workbench.is-output-dock-locked");
   if (lockedDock && event.button === 0) {
@@ -13355,6 +13928,17 @@ sectionContent.addEventListener("pointerdown", (event) => {
 });
 
 document.addEventListener("pointermove", (event) => {
+  if (activeCompileSidebarResize) {
+    const project = selectedProject();
+    if (!project) return;
+    const workspace = ensureCompileCode(project);
+    const nextWidth = normalizeCompileSidebarWidth(activeCompileSidebarResize.startWidth + event.clientX - activeCompileSidebarResize.startX);
+    workspace.sidebarWidth = nextWidth;
+    sectionContent.querySelector("[data-compile-workspace]")?.style.setProperty("--compile-sidebar-width", `${nextWidth}px`);
+    event.preventDefault();
+    return;
+  }
+
   if (activeOutputDockResize) {
     const project = selectedProject();
     if (!project) return;
@@ -13384,6 +13968,12 @@ document.addEventListener("pointermove", (event) => {
 });
 
 function endOutputDockDrag(event) {
+  if (activeCompileSidebarResize) {
+    sectionContent.querySelector("[data-compile-sidebar-resize]")?.releasePointerCapture?.(activeCompileSidebarResize.pointerId);
+    sectionContent.querySelector("[data-compile-workspace]")?.classList.remove("is-sidebar-resizing");
+    activeCompileSidebarResize = null;
+    scheduleAutosave(900);
+  }
   if (activeOutputDockResize) {
     sectionContent.querySelector("[data-compile-output-resize]")?.releasePointerCapture?.(activeOutputDockResize.pointerId);
     sectionContent.querySelector(".compile-output-workbench.is-output-dock-locked")?.classList.remove("is-resizing");
@@ -13402,7 +13992,9 @@ document.addEventListener("pointercancel", endOutputDockDrag);
 
 document.addEventListener("click", (event) => {
   if (event.target.closest("[data-compile-tree-context-menu]")) return;
+  if (event.target.closest("#project-view-context-menu")) return;
   hideCompileTreeContextMenus();
+  hideProjectViewContextMenu();
 });
 
 sectionContent.addEventListener("submit", (event) => {
