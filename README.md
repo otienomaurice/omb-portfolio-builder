@@ -299,6 +299,7 @@ Use the workflow in [BRANCHING.md](BRANCHING.md):
 | `active_editor_readable_060` | Bumps the builder to `0.2.60` and restores readable active-editor text in Compile Code so the source area never goes blank when the syntax-highlight overlay is delayed or painted differently by the browser. | `development` | `development` | Active |
 | `compact_compile_guides_061` | Bumps the builder to `0.2.61`, removes compact Compile Code guide/title rows from the active editor, scope, and output dock, moves the M/L output-dock control beside Console, reconciles Save Source indicators from star to tick after successful saves, and makes file import close stale tree menus reliably. | `development` | `development` | Active |
 | `compile_editor_rendering_062` | Bumps the builder to `0.2.62`, replaces the transparent textarea overlay with an editable highlighted code surface, restores live syntax coloring and beautify sync, clamps the Compile Code output dock height, and anchors the blue status bar to the true bottom of the output panel. | `development` | `development` | Active |
+| `hdl_cache_refresh_063` | Bumps the builder to `0.2.63`, forces Verilog/SystemVerilog simulator runs to rebuild from the current source snapshot, and opens the Scope panel automatically when local simulation produces waveform data. | `development` | `development` | Active |
 
 </details>
 

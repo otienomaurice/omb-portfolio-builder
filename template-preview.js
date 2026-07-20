@@ -11463,7 +11463,11 @@ async function compileActiveFile(project, file, options = {}) {
       file.savedAt = compileResult.saved.savedAt || file.savedAt;
     }
     file.dirty = false;
-    ensureCompileCode(project).terminal = file.lastResult.terminal;
+    const refreshedWorkspace = ensureCompileCode(project);
+    refreshedWorkspace.terminal = file.lastResult.terminal;
+    if (action === "simulate" && compileResult.waveform?.signals?.length) {
+      refreshedWorkspace.activePanel = "scope";
+    }
     addCompileMessage(project, result.ok ? `${actionLabel} succeeded for ${file.fileName}.` : `${actionLabel} completed with errors for ${file.fileName}.`, result.ok ? "success" : "error");
     if (compileResult.waveform?.signals?.length) {
       addCompileMessage(project, `Scope updated with ${compileResult.waveform.signals.length} signal${compileResult.waveform.signals.length === 1 ? "" : "s"} from ${compileResult.waveform.source || "waveform.vcd"}.`, "success");
