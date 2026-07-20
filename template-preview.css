@@ -8460,3 +8460,328 @@ body[data-builder-theme="dark"] .project-dialog :is(
 ) {
   color: var(--builder-ui-text) !important;
 }
+
+/* Universal builder control sizing: keep project, section, dialog, and IDE controls visually aligned. */
+.template-preview-page {
+  --builder-control-height: 30px;
+  --builder-icon-size: 26px;
+  --builder-compact-control-height: 26px;
+}
+
+.template-preview-page :is(
+  .builder-header-actions .button,
+  .builder-header-actions button,
+  .workflow-actions .button,
+  .profile-asset-actions button,
+  .fun-facts-actions button,
+  .dialog-actions button,
+  .project-save-bar button,
+  .project-window-actions button,
+  .section-bar button,
+  .nested-section-link,
+  .project-section-actions button,
+  .summary-save-actions button,
+  .compile-code-command-bar button,
+  .compile-append-actions button,
+  .compile-panel-tabs button,
+  .compile-editor-tabs button,
+  .compile-terminal-heading button,
+  .compile-ide-menu-button
+) {
+  min-height: var(--builder-control-height);
+  height: var(--builder-control-height);
+  padding-top: 0;
+  padding-bottom: 0;
+  line-height: 1;
+}
+
+.template-preview-page :is(
+  .project-window-close,
+  .close-control,
+  .dialog-window-control,
+  .dialog-minimize-button,
+  .compile-output-dock-toggle,
+  .compile-code-mini-actions button,
+  .builder-explorer-actions button,
+  .local-card-controls button,
+  .local-section-controls button,
+  .rich-block-actions button,
+  .selection-inspector-heading button,
+  .selection-combo > button
+) {
+  width: var(--builder-icon-size);
+  min-width: var(--builder-icon-size);
+  height: var(--builder-icon-size);
+  min-height: var(--builder-icon-size);
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.template-preview-page :is(
+  .summary-context-menu button,
+  .compile-ide-dropdown button,
+  .compile-tree-context-menu button,
+  .project-title-menu button,
+  .title-context-menu button
+) {
+  min-height: var(--builder-compact-control-height);
+  height: var(--builder-compact-control-height);
+  padding-top: 0;
+  padding-bottom: 0;
+  line-height: 1;
+}
+
+/* Make Compile Code's source explorer feel like a compact IDE tree rather than a card list. */
+.compile-code-sidebar {
+  align-content: start;
+}
+
+.compile-code-workspace-tree {
+  border-radius: 3px;
+  background: #fbfdff;
+}
+
+.compile-code-workspace-tree summary {
+  min-height: 24px;
+}
+
+.compile-code-root-folder > summary,
+.compile-code-tree-folder summary {
+  min-height: 24px;
+  padding: 2px 6px;
+  border-radius: 2px;
+  font-size: 0.78rem;
+}
+
+.compile-code-tree-files,
+.compile-code-tree-children {
+  gap: 0;
+  padding-top: 2px;
+  padding-bottom: 2px;
+}
+
+.compile-code-tree-children {
+  padding-left: 16px;
+}
+
+.compile-code-tree-file {
+  grid-template-columns: 22px minmax(0, 1fr) auto;
+  min-height: 24px;
+  height: 24px;
+  padding: 2px 6px;
+  border: 0;
+  border-radius: 2px;
+  font-size: 0.78rem;
+}
+
+.compile-code-tree-file:hover,
+.compile-code-tree-file.is-active,
+.compile-code-tree-folder summary:hover {
+  border-color: transparent;
+  background: #dbeafe;
+}
+
+.compile-file-extension {
+  min-width: 18px;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #2563eb;
+  font-size: 0.68rem;
+}
+
+.compile-tree-folder-icon {
+  width: 14px;
+  height: 11px;
+  border: 1px solid #c59b21;
+  border-radius: 2px;
+  background: transparent;
+  box-shadow: none;
+  position: relative;
+}
+
+.compile-tree-folder-icon::before {
+  content: "";
+  position: absolute;
+  left: 1px;
+  top: -4px;
+  width: 7px;
+  height: 4px;
+  border: 1px solid #c59b21;
+  border-bottom: 0;
+  border-radius: 2px 2px 0 0;
+  background: transparent;
+}
+
+.compile-ide-menu-bar {
+  border-radius: 4px;
+}
+
+.compile-ide-dropdown,
+.compile-tree-context-menu {
+  width: min(220px, calc(100vw - 24px));
+  max-height: min(320px, calc(100vh - 80px));
+  overflow: auto;
+}
+
+body[data-builder-theme="dark"] .compile-code-workspace-tree {
+  background: #202225;
+}
+
+body[data-builder-theme="dark"] .compile-code-root-folder > summary,
+body[data-builder-theme="dark"] .compile-code-tree-folder summary,
+body[data-builder-theme="dark"] .compile-code-tree-file {
+  color: #edf6ff;
+}
+
+body[data-builder-theme="dark"] .compile-code-tree-file:hover,
+body[data-builder-theme="dark"] .compile-code-tree-file.is-active,
+body[data-builder-theme="dark"] .compile-code-tree-folder summary:hover {
+  background: #1f6fd0;
+  color: #ffffff;
+}
+
+body[data-builder-theme="dark"] .compile-file-extension {
+  color: #ffe082;
+}
+
+/* Compile Code IDE polish: source tabs close views, the tree stays compact, and locked output resizes from its top edge. */
+.compile-code-main {
+  grid-template-rows: auto auto auto minmax(220px, 1fr) auto auto auto auto;
+  max-height: calc(100vh - 124px);
+  overflow: hidden;
+}
+
+.compile-code-editor-grid {
+  min-height: 0;
+}
+
+.compile-code-active-editor,
+.compile-code-active-editor textarea {
+  min-height: 260px;
+}
+
+.compile-code-active-editor textarea {
+  max-height: none;
+}
+
+.compile-editor-tabs.is-empty {
+  align-items: center;
+  padding: 0 10px;
+  color: #9ca3af;
+  font-size: 0.76rem;
+}
+
+.compile-editor-tab {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  max-width: 240px;
+  min-height: 34px;
+  border-right: 1px solid #333842;
+  background: #2d2d30;
+}
+
+.compile-editor-tab.active {
+  background: #1e1e1e;
+  box-shadow: inset 0 2px 0 #3b82f6;
+}
+
+.compile-editor-tab.is-dirty .compile-editor-tab-label span::after {
+  content: "";
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  margin-left: 6px;
+  border-radius: 999px;
+  background: #facc15;
+  vertical-align: middle;
+}
+
+.compile-editor-tabs .compile-editor-tab-label {
+  min-width: 0;
+  min-height: 34px;
+  max-width: none;
+  padding: 0 8px 0 12px;
+  border: 0;
+  border-right: 0;
+  background: transparent;
+}
+
+.compile-editor-tab-close {
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  min-width: 20px;
+  height: 20px;
+  min-height: 20px;
+  margin-right: 5px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  color: #9ca3af;
+  background: transparent;
+  font: 800 0.86rem/1 Arial, sans-serif;
+}
+
+.compile-editor-tab-close:hover {
+  border-color: #7f1d1d;
+  color: #ffffff;
+  background: #dc2626;
+}
+
+.compile-output-workbench {
+  position: relative;
+}
+
+.compile-output-workbench.is-output-dock-locked {
+  height: var(--compile-output-height, 260px);
+  min-height: 132px;
+  max-height: min(620px, 72vh);
+  overflow: hidden;
+}
+
+.compile-output-workbench.is-output-dock-locked .compile-output-resize-handle {
+  position: absolute;
+  z-index: 2;
+  top: -3px;
+  left: 0;
+  width: 100%;
+  height: 7px;
+  cursor: ns-resize;
+  background: transparent;
+}
+
+.compile-output-workbench.is-output-dock-locked .compile-output-resize-handle:hover,
+.compile-output-workbench.is-output-dock-locked.is-resizing .compile-output-resize-handle {
+  background: rgba(59, 130, 246, 0.45);
+}
+
+.compile-output-workbench.is-output-dock-unlocked .compile-output-resize-handle {
+  display: none;
+}
+
+.compile-output-dock,
+.compile-output-dock > section,
+.compile-terminal-panel,
+.compile-messages-panel,
+.compile-system-terminal-panel,
+.compile-scope-panel {
+  min-height: 0;
+  height: 100%;
+}
+
+.compile-terminal,
+.compile-system-terminal,
+.compile-messages-log {
+  min-height: 0;
+  max-height: none;
+}
+
+.compile-terminal-screen {
+  min-height: 0;
+  height: 100%;
+}

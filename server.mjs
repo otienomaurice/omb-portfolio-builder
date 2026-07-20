@@ -14,6 +14,9 @@ const port = Number(process.env.PORT || 8080);
 const host = process.env.HOST || "0.0.0.0";
 const execFileAsync = promisify(execFile);
 const packageJson = JSON.parse(await readFile(path.join(root, "package.json"), "utf8").catch(() => "{}"));
+const compileTerminalSessions = new Map();
+const compileTerminalBufferLimit = 200_000;
+const compileTerminalIdleMs = 30 * 60 * 1000;
 
 const types = {
   ".css": "text/css",
@@ -404,6 +407,209 @@ function stripTerminalCwdSentinel(result = {}, sentinel = "") {
     .join("\n")
     .trimEnd();
   return { result: { ...result, stdout }, cwdAbsolute };
+}
+
+function terminalSessionKey(payload = {}) {
+  const projectFolder = safeSegment(payload.projectId, "project");
+  const shellName = process.platform === "win32" ? "powershell" : "bash";
+  return `${projectFolder}:${shellName}`;
+}
+
+async function terminalStartDirectory(payload = {}) {
+  const projectFolder = safeSegment(payload.projectId, "project");
+  const requestedAbsolute = String(payload.cwdAbsolute || "").trim();
+  const cwdRelative = safeCodeDirectoryPath(payload.cwd || "");
+  if (requestedAbsolute && path.isAbsolute(requestedAbsolute) && await pathExists(requestedAbsolute)) {
+    return requestedAbsolute;
+  }
+  const cwd = cwdRelative
+    ? resolveInsideCompileRoot(projectFolder, cwdRelative)
+    : resolveInsideCompileRoot(projectFolder);
+  await mkdir(cwd, { recursive: true });
+  return cwd;
+}
+
+function appendTerminalSessionBuffer(session, chunk = "") {
+  session.buffer += String(chunk || "");
+  if (session.buffer.length > compileTerminalBufferLimit) {
+    session.buffer = session.buffer.slice(-compileTerminalBufferLimit);
+  }
+}
+
+function closeCompileTerminalSession(key = "") {
+  const session = compileTerminalSessions.get(key);
+  if (!session) return;
+  session.closed = true;
+  compileTerminalSessions.delete(key);
+  try {
+    session.child.kill();
+  } catch {
+    // Shell may already be gone.
+  }
+}
+
+function cleanupIdleCompileTerminals() {
+  const now = Date.now();
+  for (const [key, session] of compileTerminalSessions) {
+    if (now - Number(session.lastUsed || 0) > compileTerminalIdleMs) closeCompileTerminalSession(key);
+  }
+}
+
+async function getCompileTerminalSession(payload = {}) {
+  cleanupIdleCompileTerminals();
+  const key = terminalSessionKey(payload);
+  const existing = compileTerminalSessions.get(key);
+  if (existing && !existing.closed && existing.child.exitCode == null) {
+    existing.lastUsed = Date.now();
+    return existing;
+  }
+
+  const cwd = await terminalStartDirectory(payload);
+  const env = {
+    ...process.env,
+    ...(await compileToolPathEnvironment())
+  };
+  const shellCommand = process.platform === "win32" ? "powershell.exe" : "bash";
+  const shellArgs = process.platform === "win32"
+    ? ["-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass"]
+    : ["--noprofile", "--norc"];
+  const child = spawn(shellCommand, shellArgs, {
+    cwd,
+    env,
+    shell: false,
+    windowsHide: true
+  });
+  const session = {
+    buffer: "",
+    child,
+    closed: false,
+    cwdAbsolute: cwd,
+    key,
+    lastUsed: Date.now(),
+    queue: Promise.resolve(),
+    shell: process.platform === "win32" ? "powershell" : "bash"
+  };
+  child.stdout?.on("data", (chunk) => appendTerminalSessionBuffer(session, chunk.toString()));
+  child.stderr?.on("data", (chunk) => appendTerminalSessionBuffer(session, chunk.toString()));
+  child.on("close", () => {
+    session.closed = true;
+    compileTerminalSessions.delete(key);
+  });
+  child.on("error", (error) => appendTerminalSessionBuffer(session, `\n${error.message}\n`));
+  compileTerminalSessions.set(key, session);
+  return session;
+}
+
+function terminalMarker(id = "", kind = "DONE") {
+  return `__OMB_TERMINAL_${kind}_${id}__`;
+}
+
+function terminalProbeLines(session, markerId = "") {
+  const cwdMarker = terminalMarker(markerId, "CWD");
+  const doneMarker = terminalMarker(markerId, "DONE");
+  if (session.shell === "powershell") {
+    return [
+      `$__ombExitCode = if ($global:LASTEXITCODE -is [int]) { $global:LASTEXITCODE } else { 0 }`,
+      `Write-Output "${cwdMarker}$((Get-Location).ProviderPath)"`,
+      `Write-Output "${doneMarker}$__ombExitCode"`
+    ].join("\n");
+  }
+  return [
+    `printf '\\n${cwdMarker}%s\\n' "$PWD"`,
+    `printf '${doneMarker}%s\\n' "$?"`
+  ].join("\n");
+}
+
+function parsePersistentTerminalResult(raw = "", cwdMarker = "", doneMarker = "", command = "") {
+  let cwdAbsolute = "";
+  let exitCode = 0;
+  const commandText = String(command || "").trim();
+  const commandPromptPattern = commandText
+    ? new RegExp(`^PS\\s+.+>\\s*${escapeRegExp(commandText)}\\s*$`, "i")
+    : null;
+  const lines = String(raw || "").split(/\r?\n/);
+  const visibleLines = [];
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (cwdMarker && line.includes(cwdMarker)) {
+      cwdAbsolute = line.slice(line.indexOf(cwdMarker) + cwdMarker.length).trim();
+      continue;
+    }
+    if (doneMarker && line.includes(doneMarker)) {
+      const parsed = Number(line.slice(line.indexOf(doneMarker) + doneMarker.length).trim());
+      exitCode = Number.isFinite(parsed) ? parsed : 0;
+      continue;
+    }
+    if (!trimmed) {
+      visibleLines.push(line);
+      continue;
+    }
+    if (commandText && trimmed === commandText) continue;
+    if (commandPromptPattern?.test(trimmed)) continue;
+    if (/^PS [A-Z]:\\.*>\s*$/i.test(trimmed)) continue;
+    if (/^PS\s+.+>\s*\$__ombExitCode\b/i.test(trimmed)) continue;
+    if (/^\$__ombExitCode\b/i.test(trimmed)) continue;
+    if (/^PS\s+.+>\s*Write-Output\s+"__OMB_TERMINAL_/i.test(trimmed)) continue;
+    if (/^Write-Output\s+"__OMB_TERMINAL_/i.test(trimmed)) continue;
+    visibleLines.push(line);
+  }
+  return {
+    cwdAbsolute,
+    exitCode,
+    output: visibleLines.join("\n").trimEnd()
+  };
+}
+
+async function runPersistentCompileTerminalCommand(payload = {}) {
+  const command = String(payload.command || "").trim();
+  if (!command) throw new Error("Terminal command is required.");
+  if (command.length > 2000) throw new Error("Terminal command is too long.");
+  const session = await getCompileTerminalSession(payload);
+  const runCommand = async () => new Promise((resolve) => {
+    const markerId = `${Date.now()}_${Math.random().toString(16).slice(2)}`;
+    const cwdMarker = terminalMarker(markerId, "CWD");
+    const doneMarker = terminalMarker(markerId, "DONE");
+    const timeoutMs = Math.max(3000, Math.min(Number(payload.timeoutMs || 30000), 120000));
+    session.buffer = "";
+    session.lastUsed = Date.now();
+    const timer = setTimeout(() => {
+      const parsed = parsePersistentTerminalResult(session.buffer, cwdMarker, doneMarker, command);
+      resolve({
+        cwdAbsolute: parsed.cwdAbsolute || session.cwdAbsolute,
+        exitCode: -1,
+        ok: false,
+        output: `${parsed.output}\nCommand is still running or did not return a terminal prompt before timeout.`.trim()
+      });
+    }, timeoutMs);
+    const interval = setInterval(() => {
+      if (!session.buffer.includes(doneMarker) && !session.closed) return;
+      clearInterval(interval);
+      clearTimeout(timer);
+      const parsed = parsePersistentTerminalResult(session.buffer, cwdMarker, doneMarker, command);
+      if (parsed.cwdAbsolute) session.cwdAbsolute = parsed.cwdAbsolute;
+      resolve({
+        cwdAbsolute: parsed.cwdAbsolute || session.cwdAbsolute,
+        exitCode: parsed.exitCode,
+        ok: parsed.exitCode === 0,
+        output: parsed.output || "Command completed with no output."
+      });
+    }, 45);
+    try {
+      session.child.stdin.write(`${command}\n${terminalProbeLines(session, markerId)}\n`);
+    } catch (error) {
+      clearInterval(interval);
+      clearTimeout(timer);
+      session.closed = true;
+      resolve({
+        cwdAbsolute: session.cwdAbsolute,
+        exitCode: -1,
+        ok: false,
+        output: error.message || "Terminal session could not receive the command."
+      });
+    }
+  });
+  session.queue = session.queue.then(runCommand, runCommand);
+  return session.queue;
 }
 
 function indentBraceCode(code = "") {
@@ -1593,6 +1799,42 @@ async function compileAndRunCode(payload = {}) {
 }
 
 async function runCompileTerminalCommand(payload = {}) {
+  const command = String(payload.command || "").trim();
+  if (!command) throw new Error("Terminal command is required.");
+  if (command.length > 2000) throw new Error("Terminal command is too long.");
+  const projectFolder = safeSegment(payload.projectId, "project");
+  if (/^(?:cls|clear)$/i.test(command)) {
+    const key = terminalSessionKey(payload);
+    const session = compileTerminalSessions.get(key);
+    if (session) session.buffer = "";
+    return {
+      cwd: safeCodeDirectoryPath(payload.cwd || ""),
+      rootPath: compileRoot,
+      cwdAbsolute: session?.cwdAbsolute || await terminalStartDirectory(payload),
+      promptPath: session?.cwdAbsolute || await terminalStartDirectory(payload),
+      exitCode: 0,
+      ok: true,
+      output: ""
+    };
+  }
+  const persistent = await runPersistentCompileTerminalCommand(payload);
+  const finalCwdAbsolute = persistent.cwdAbsolute || await terminalStartDirectory(payload);
+  const relativeToProject = path.relative(resolveInsideCompileRoot(projectFolder), finalCwdAbsolute);
+  const finalCwdRelative = relativeToProject && !relativeToProject.startsWith("..") && !path.isAbsolute(relativeToProject)
+    ? safeCodeDirectoryPath(relativeToProject)
+    : "";
+  return {
+    cwd: finalCwdRelative,
+    rootPath: compileRoot,
+    cwdAbsolute: finalCwdAbsolute,
+    promptPath: finalCwdAbsolute,
+    exitCode: persistent.exitCode,
+    ok: persistent.ok,
+    output: persistent.output || "Command completed with no output."
+  };
+}
+
+async function runOneShotCompileTerminalCommand(payload = {}) {
   const command = String(payload.command || "").trim();
   if (!command) throw new Error("Terminal command is required.");
   if (command.length > 2000) throw new Error("Terminal command is too long.");
