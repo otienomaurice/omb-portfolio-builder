@@ -2466,82 +2466,231 @@ function detectCodeLanguage(value = "", fileName = "") {
   return "text";
 }
 
+const codeSyntaxDefinitions = {
+  c: {
+    keywords: "_Alignas _Alignof _Atomic _Bool _Complex _Generic _Imaginary _Noreturn _Static_assert _Thread_local auto break case const continue default do else enum extern for goto if inline register restrict return signed sizeof static struct switch typedef union unsigned volatile while",
+    types: "bool char double float int int8_t int16_t int32_t int64_t long short size_t ssize_t uint8_t uint16_t uint32_t uint64_t void FILE"
+  },
+  cpp: {
+    keywords: "alignas alignof and and_eq asm auto bitand bitor break case catch class compl concept const consteval constexpr constinit const_cast continue co_await co_return co_yield decltype default delete do dynamic_cast else enum explicit export extern false for friend if inline mutable namespace new noexcept not not_eq nullptr operator or or_eq private protected public register reinterpret_cast requires return sizeof static static_assert static_cast struct switch template this thread_local throw true try typedef typeid typename union unsigned using virtual volatile while xor xor_eq",
+    types: "bool char char8_t char16_t char32_t double float int long short size_t std string uint8_t uint16_t uint32_t uint64_t void wchar_t"
+  },
+  verilog: {
+    keywords: "always and assign begin buf case casex casez deassign default defparam disable edge else end endcase endfunction endgenerate endmodule endprimitive endspecify endtable endtask event for force forever fork function generate genvar if initial inout input join localparam module nand negedge nor not or output parameter posedge primitive release repeat signed specify supply0 supply1 table task wand while wor xnor xor",
+    types: "integer real reg time tri wire"
+  },
+  systemverilog: {
+    keywords: "always always_comb always_ff always_latch assign automatic begin case class clocking constraint cover covergroup coverpoint default disable do else end endcase endclass endclocking endfunction endgenerate endgroup endinterface endmodule endpackage endprogram endproperty endsequence endtask enum final for foreach forever fork function generate genvar if iff import initial inout input inside interface join join_any join_none localparam modport module negedge output package parameter posedge program property rand randc ref return sequence signed static struct task typedef union unique unsigned var virtual wait with",
+    types: "bit byte chandle event int integer logic longint real realtime reg shortint string time tri void wire"
+  },
+  ltspice: {
+    keywords: "ac dc end ends four func global ic include lib meas model nodeset op options param plot probe save step subckt temp tran",
+    types: "V I R C L D Q M X E F G H K S W B"
+  },
+  java: {
+    keywords: "abstract assert break case catch class const continue default do else enum extends final finally for if implements import instanceof interface native new null package private protected public return static strictfp super switch synchronized this throw throws transient try volatile while",
+    types: "boolean byte char double float int long short String System void"
+  },
+  javascript: {
+    keywords: "async await break case catch class const continue debugger default delete do else export extends false finally for from function if import in instanceof let new null of return static super switch this throw true try typeof undefined var void while yield",
+    types: "Array BigInt Boolean Date Error JSON Map Math Number Object Promise RegExp Set String Symbol console document window"
+  },
+  python: {
+    keywords: "and as assert async await break class continue def del elif else except False finally for from global if import in is lambda None nonlocal not or pass raise return True try while with yield",
+    types: "bool dict float int list set str tuple"
+  },
+  html: {
+    keywords: "a article body button code div footer form h1 h2 h3 h4 h5 h6 head header html img input label link main meta nav p pre script section span style title",
+    types: ""
+  },
+  text: {
+    keywords: "",
+    types: ""
+  }
+};
+
+const codeSyntaxSets = Object.fromEntries(Object.entries(codeSyntaxDefinitions).map(([language, definition]) => [
+  language,
+  {
+    keywords: new Set(definition.keywords.split(/\s+/).filter(Boolean)),
+    types: new Set(definition.types.split(/\s+/).filter(Boolean))
+  }
+]));
+
+function codeTokenSpan(className, value = "") {
+  return `<span class="${className}">${escapeCodeHtml(value)}</span>`;
+}
+
+function nextNonSpaceCharacter(line = "", index = 0) {
+  const match = String(line).slice(index).match(/\S/);
+  return match ? match[0] : "";
+}
+
+function highlightIdentifierToken(word = "", line = "", nextIndex = 0, language = "javascript") {
+  const syntax = codeSyntaxSets[language] || codeSyntaxSets.javascript;
+  if (syntax.types.has(word)) return codeTokenSpan("code-token-type", word);
+  if (syntax.keywords.has(word)) return codeTokenSpan("code-token-keyword", word);
+  if (nextNonSpaceCharacter(line, nextIndex) === "(" && !["verilog", "systemverilog", "ltspice"].includes(language)) {
+    return codeTokenSpan("code-token-function", word);
+  }
+  if (language === "ltspice" && /^[A-Z][A-Za-z0-9_.$-]*/.test(word)) return codeTokenSpan("code-token-type", word);
+  return escapeCodeHtml(word);
+}
+
+function highlightHtmlLine(line = "", state = {}) {
+  let output = "";
+  let index = 0;
+  while (index < line.length) {
+    if (state.htmlComment) {
+      const end = line.indexOf("-->", index);
+      const nextIndex = end === -1 ? line.length : end + 3;
+      output += codeTokenSpan("code-token-comment", line.slice(index, nextIndex));
+      state.htmlComment = end === -1;
+      index = nextIndex;
+      continue;
+    }
+    if (line.startsWith("<!--", index)) {
+      state.htmlComment = true;
+      continue;
+    }
+    if (line[index] === "<") {
+      const end = line.indexOf(">", index);
+      const rawTag = line.slice(index, end === -1 ? line.length : end + 1);
+      output += rawTag.replace(/([A-Za-z_:][-A-Za-z0-9_:.]*)(\s*=)?|("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')|(<\/?|\/?>|=)/g, (match, name, equals, quoted, symbol) => {
+        if (quoted) return codeTokenSpan("code-token-string", quoted);
+        if (symbol) return codeTokenSpan("code-token-tag", symbol);
+        if (equals) return `${codeTokenSpan("code-token-attribute", name)}${escapeCodeHtml(equals)}`;
+        if (/^(DOCTYPE|html|head|body|main|section|article|div|span|script|style|link|meta|title|header|footer|nav|button|input|form|label|img|a|p|pre|code)$/i.test(name)) {
+          return codeTokenSpan("code-token-tag", name);
+        }
+        return codeTokenSpan("code-token-attribute", name);
+      });
+      index += rawTag.length;
+      continue;
+    }
+    output += escapeCodeHtml(line[index]);
+    index += 1;
+  }
+  return output;
+}
+
+function highlightCodeLine(line = "", language = "javascript", state = {}) {
+  const normalizedLanguage = normalizeCodeLanguage(language);
+  if (normalizedLanguage === "html") return highlightHtmlLine(line, state);
+  if (normalizedLanguage === "text") return escapeCodeHtml(line);
+  if (normalizedLanguage === "ltspice" && /^\s*[\*;]/.test(line)) return codeTokenSpan("code-token-comment", line);
+  if (["c", "cpp"].includes(normalizedLanguage) && /^\s*#/.test(line)) return codeTokenSpan("code-token-preprocessor", line);
+  if (normalizedLanguage === "ltspice" && /^\s*\.[A-Za-z]+/.test(line)) {
+    const directive = line.match(/^(\s*)(\.[A-Za-z]+)(.*)$/);
+    return directive
+      ? `${escapeCodeHtml(directive[1])}${codeTokenSpan("code-token-preprocessor", directive[2])}${escapeCodeHtml(directive[3])}`
+      : escapeCodeHtml(line);
+  }
+
+  let output = "";
+  let index = 0;
+  while (index < line.length) {
+    if (state.blockComment) {
+      const end = line.indexOf("*/", index);
+      const nextIndex = end === -1 ? line.length : end + 2;
+      output += codeTokenSpan("code-token-comment", line.slice(index, nextIndex));
+      state.blockComment = end === -1;
+      index = nextIndex;
+      continue;
+    }
+
+    const current = line[index];
+    const next = line[index + 1] || "";
+    if (current === "/" && next === "*") {
+      state.blockComment = true;
+      continue;
+    }
+    if (current === "/" && next === "/") {
+      output += codeTokenSpan("code-token-comment", line.slice(index));
+      break;
+    }
+    if (normalizedLanguage === "python" && current === "#") {
+      output += codeTokenSpan("code-token-comment", line.slice(index));
+      break;
+    }
+    if (normalizedLanguage === "ltspice" && current === ";") {
+      output += codeTokenSpan("code-token-comment", line.slice(index));
+      break;
+    }
+    if (["verilog", "systemverilog"].includes(normalizedLanguage) && current === "`") {
+      const match = line.slice(index).match(/^`[A-Za-z_]\w*/);
+      if (match) {
+        output += codeTokenSpan("code-token-preprocessor", match[0]);
+        index += match[0].length;
+        continue;
+      }
+    }
+
+    const stringQuote = current === "\"" || current === "'" || (current === "`" && normalizedLanguage === "javascript");
+    if (stringQuote) {
+      let end = index + 1;
+      let escaped = false;
+      while (end < line.length) {
+        const character = line[end];
+        if (escaped) {
+          escaped = false;
+        } else if (character === "\\") {
+          escaped = true;
+        } else if (character === current) {
+          end += 1;
+          break;
+        }
+        end += 1;
+      }
+      output += codeTokenSpan("code-token-string", line.slice(index, end));
+      index = end;
+      continue;
+    }
+
+    if (["verilog", "systemverilog"].includes(normalizedLanguage)) {
+      const hdlNumber = line.slice(index).match(/^\d*'[sS]?[bBoOdDhH][0-9a-fA-F_xXzZ?]+/);
+      if (hdlNumber) {
+        output += codeTokenSpan("code-token-number", hdlNumber[0]);
+        index += hdlNumber[0].length;
+        continue;
+      }
+    }
+
+    const number = line.slice(index).match(/^(?:0x[\da-fA-F]+|\d+(?:\.\d+)?(?:[eE][+-]?\d+)?(?:[munpfkKMG]?|ms|us|ns|ps|fs)?)/);
+    if (number) {
+      output += codeTokenSpan("code-token-number", number[0]);
+      index += number[0].length;
+      continue;
+    }
+
+    const identifier = line.slice(index).match(/^[A-Za-z_$][\w$]*/);
+    if (identifier) {
+      output += highlightIdentifierToken(identifier[0], line, index + identifier[0].length, normalizedLanguage);
+      index += identifier[0].length;
+      continue;
+    }
+
+    const operator = line.slice(index).match(/^(?:===|!==|==|!=|<=|>=|=>|->|::|&&|\|\||<<|>>|\+\+|--|[+\-*/%=&|!~^<>?:]+)/);
+    if (operator) {
+      output += codeTokenSpan("code-token-operator", operator[0]);
+      index += operator[0].length;
+      continue;
+    }
+
+    output += escapeCodeHtml(current);
+    index += 1;
+  }
+  return output;
+}
+
 function tokenizedCodeHtml(code = "", language = "javascript") {
   const normalizedLanguage = normalizeCodeLanguage(language);
-  let html = escapeCodeHtml(code);
-  const tokens = [];
-  const tokenName = (index) => {
-    let value = Number(index) + 1;
-    let output = "";
-    while (value > 0) {
-      value -= 1;
-      output = String.fromCharCode(65 + (value % 26)) + output;
-      value = Math.floor(value / 26);
-    }
-    return `\uE000${output}\uE001`;
-  };
-  const protect = (pattern, className) => {
-    html = html.replace(pattern, (match) => {
-      const token = tokenName(tokens.length);
-      tokens.push({ token, html: `<span class="${className}">${match}</span>` });
-      return token;
-    });
-  };
-
-  if (normalizedLanguage === "html") {
-    protect(/&lt;!--[\s\S]*?--&gt;/g, "code-token-comment");
-    protect(/(&lt;\/?)([a-zA-Z0-9:-]+)([\s\S]*?)(\/?&gt;)/g, "code-token-tag");
-  } else {
-    const commentPattern = ["python", "ltspice"].includes(normalizedLanguage)
-      ? /\/\*[\s\S]*?\*\/|\/\/[^\n]*|#[^\n]*/g
-      : /\/\*[\s\S]*?\*\/|\/\/[^\n]*/g;
-    protect(commentPattern, "code-token-comment");
-    protect(/"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`/g, "code-token-string");
-    if (["c", "cpp"].includes(normalizedLanguage)) {
-      protect(/^#\s*\w+[^\n]*/gm, "code-token-preprocessor");
-    }
-    if (["verilog", "systemverilog"].includes(normalizedLanguage)) {
-      protect(/`[a-zA-Z_]\w*/g, "code-token-preprocessor");
-      protect(/\b\d*'[sS]?[bBoOdDhH][0-9a-fA-F_xXzZ?]+\b/g, "code-token-number");
-    }
-    if (normalizedLanguage === "ltspice") {
-      protect(/^\s*\.[a-zA-Z]+[^\n]*/gm, "code-token-preprocessor");
-    }
-  }
-
-  protect(/\b(?:0x[\da-f]+|\d+(?:\.\d+)?(?:e[+-]?\d+)?)\b/gi, "code-token-number");
-
-  const keywordMap = {
-    c: "_Alignas|_Alignof|_Atomic|_Bool|_Complex|_Generic|_Imaginary|_Noreturn|_Static_assert|_Thread_local|auto|break|case|char|const|continue|default|do|double|else|enum|extern|float|for|goto|if|inline|int|long|register|restrict|return|short|signed|sizeof|static|struct|switch|typedef|union|unsigned|void|volatile|while",
-    cpp: "alignas|alignof|and|and_eq|asm|auto|bitand|bitor|bool|break|case|catch|char|char8_t|char16_t|char32_t|class|compl|concept|const|consteval|constexpr|constinit|const_cast|continue|co_await|co_return|co_yield|decltype|default|delete|do|double|dynamic_cast|else|enum|explicit|export|extern|false|float|for|friend|if|inline|int|long|mutable|namespace|new|noexcept|not|not_eq|nullptr|operator|or|or_eq|private|protected|public|register|reinterpret_cast|requires|return|short|signed|sizeof|static|static_assert|static_cast|struct|switch|template|this|thread_local|throw|true|try|typedef|typeid|typename|union|unsigned|using|virtual|void|volatile|wchar_t|while|xor|xor_eq",
-    verilog: "always|and|assign|begin|buf|case|casex|casez|deassign|default|defparam|disable|edge|else|end|endcase|endfunction|endmodule|endprimitive|endspecify|endtable|endtask|event|for|force|forever|fork|function|generate|genvar|if|initial|inout|input|integer|join|module|nand|negedge|nor|not|or|output|parameter|posedge|primitive|reg|release|repeat|signed|specify|supply0|supply1|table|task|tri|wand|while|wire|wor|xnor|xor",
-    systemverilog: "always|always_comb|always_ff|always_latch|assign|automatic|begin|bit|byte|case|class|clocking|covergroup|coverpoint|default|disable|do|else|end|endcase|endclass|endclocking|endfunction|endinterface|endmodule|endpackage|endprogram|endproperty|endsequence|endtask|enum|final|for|foreach|forever|fork|function|generate|genvar|if|import|initial|inout|input|inside|int|integer|interface|join|join_any|join_none|localparam|logic|longint|modport|module|negedge|output|package|parameter|posedge|program|property|rand|randc|ref|reg|return|sequence|shortint|signed|static|string|struct|task|time|typedef|union|unique|unsigned|var|virtual|void|wait|wire|with",
-    ltspice: "ac|dc|end|ends|four|func|global|ic|include|lib|meas|model|nodeset|op|options|param|plot|probe|save|step|subckt|temp|tran",
-    java: "abstract|assert|boolean|break|byte|case|catch|char|class|const|continue|default|do|double|else|enum|extends|final|finally|float|for|if|implements|import|instanceof|int|interface|long|native|new|null|package|private|protected|public|return|short|static|strictfp|super|switch|synchronized|this|throw|throws|transient|try|void|volatile|while",
-    javascript: "async|await|break|case|catch|class|const|continue|debugger|default|delete|do|else|export|extends|false|finally|for|from|function|if|import|in|instanceof|let|new|null|of|return|static|super|switch|this|throw|true|try|typeof|undefined|var|void|while|yield",
-    python: "and|as|assert|async|await|break|class|continue|def|del|elif|else|except|False|finally|for|from|global|if|import|in|is|lambda|None|nonlocal|not|or|pass|raise|return|True|try|while|with|yield",
-    html: "html|head|body|main|section|article|div|span|script|style|link|meta|title|header|footer|nav|button|input|form|label|img|a|p|pre|code"
-  };
-  const typeMap = {
-    c: "bool|char|double|float|int|int8_t|int16_t|int32_t|int64_t|long|short|size_t|ssize_t|uint8_t|uint16_t|uint32_t|uint64_t|void",
-    cpp: "auto|bool|char|char8_t|char16_t|char32_t|double|float|int|long|size_t|string|uint8_t|uint16_t|uint32_t|uint64_t|void|wchar_t",
-    java: "boolean|byte|char|double|float|int|long|short|String|void",
-    javascript: "Array|BigInt|Boolean|Date|Map|Math|Number|Object|Promise|Set|String|Symbol|console|document|window",
-    python: "bool|dict|float|int|list|set|str|tuple",
-    verilog: "integer|real|reg|time|wire",
-    systemverilog: "bit|byte|chandle|event|int|integer|logic|longint|real|realtime|reg|shortint|string|time|tri|wire"
-  };
-  const keywords = keywordMap[normalizedLanguage] || keywordMap.javascript;
-  const types = typeMap[normalizedLanguage] || "";
-  if (types) protect(new RegExp(`\\b(${types})\\b`, "g"), "code-token-type");
-  protect(new RegExp(`\\b(${keywords})\\b`, "g"), "code-token-keyword");
-  if (["c", "cpp", "java", "javascript", "python"].includes(normalizedLanguage)) {
-    protect(/\b([a-zA-Z_$][\w$]*)(?=\s*\()/g, "code-token-function");
-  }
-  tokens.forEach((token) => {
-    html = html.replaceAll(token.token, token.html);
-  });
-  return html;
+  const state = { blockComment: false, htmlComment: false };
+  return String(code || "")
+    .replace(/\r\n?/g, "\n")
+    .split("\n")
+    .map((line) => highlightCodeLine(line, normalizedLanguage, state))
+    .join("\n");
 }
 
 function renderRichCodeBlock(block = {}) {
