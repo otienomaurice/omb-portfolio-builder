@@ -1023,6 +1023,152 @@ function processTerminalTextWithPaths(result = {}, replacements = []) {
   return replacePathReferences(processTerminalText(result), replacements);
 }
 
+function processRawCompilerOutput(result = {}) {
+  return [result.stdout, result.stderr]
+    .map((part) => String(part || "").trimEnd())
+    .filter(Boolean)
+    .join("\n")
+    .trim();
+}
+
+function diagnosticColumnFromCaret(lines = [], index = 0) {
+  for (let offset = 1; offset <= 3; offset += 1) {
+    const caretLine = lines[index + offset];
+    if (!caretLine || !/\^/.test(caretLine)) continue;
+    const caretIndex = caretLine.indexOf("^");
+    return caretIndex >= 0 ? caretIndex + 1 : null;
+  }
+  return null;
+}
+
+function addCodeDiagnostic(diagnostics = [], diagnostic = {}) {
+  const line = Number.parseInt(diagnostic.line, 10);
+  const column = diagnostic.column === null || diagnostic.column === undefined || diagnostic.column === ""
+    ? null
+    : Number.parseInt(diagnostic.column, 10);
+  const normalizedLine = Number.isFinite(line) && line > 0 ? line : null;
+  const normalizedColumn = Number.isFinite(column) && column > 0
+    ? column
+    : normalizedLine
+      ? 1
+      : null;
+  const normalized = {
+    file: clampText(diagnostic.file || diagnostic.fallbackFile || "source", 220),
+    line: normalizedLine,
+    column: normalizedColumn,
+    character: normalizedColumn,
+    characterEstimated: Boolean(normalizedLine && !Number.isFinite(column)),
+    severity: ["error", "warning", "note", "info"].includes(String(diagnostic.severity || "").toLowerCase())
+      ? String(diagnostic.severity).toLowerCase()
+      : "error",
+    message: clampText(String(diagnostic.message || "Compiler diagnostic").replace(/\s+/g, " ").trim(), 900),
+    language: normalizeCodeLanguage(diagnostic.language || "")
+  };
+  const signature = [normalized.file, normalized.line, normalized.column, normalized.severity, normalized.message].join("|");
+  if (!diagnostics.some((item) => [item.file, item.line, item.column, item.severity, item.message].join("|") === signature)) {
+    diagnostics.push(normalized);
+  }
+}
+
+function extractCodeDiagnostics(rawText = "", language = "", options = {}) {
+  const replacements = Array.isArray(options.replacements) ? options.replacements : [];
+  const fallbackFile = options.fallbackFile || "";
+  const text = replacePathReferences(String(rawText || ""), replacements).replace(/\r\n?/g, "\n");
+  const lines = text.split("\n");
+  const diagnostics = [];
+  const normalizedLanguage = normalizeCodeLanguage(language);
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const lineText = lines[index].trimEnd();
+    if (!lineText) continue;
+
+    let match = lineText.match(/^(.+?):(\d+):(\d+):\s*(fatal error|error|warning|note):\s*(.+)$/i);
+    if (match) {
+      addCodeDiagnostic(diagnostics, {
+        file: match[1],
+        line: match[2],
+        column: match[3],
+        severity: /warning/i.test(match[4]) ? "warning" : /note/i.test(match[4]) ? "note" : "error",
+        message: match[5],
+        language: normalizedLanguage,
+        fallbackFile
+      });
+      continue;
+    }
+
+    match = lineText.match(/^(.+?):(\d+):\s*(fatal error|error|warning|syntax error|sorry|note)\b:?\s*(.*)$/i);
+    if (match) {
+      addCodeDiagnostic(diagnostics, {
+        file: match[1],
+        line: match[2],
+        column: diagnosticColumnFromCaret(lines, index),
+        severity: /warning/i.test(match[3]) ? "warning" : /note/i.test(match[3]) ? "note" : "error",
+        message: `${match[3]}${match[4] ? `: ${match[4]}` : ""}`,
+        language: normalizedLanguage,
+        fallbackFile
+      });
+      continue;
+    }
+
+    match = lineText.match(/^File "(.+?)", line (\d+)(?:,\s*in\s+.+)?$/i);
+    if (match) {
+      const messageLine = lines.slice(index + 1, index + 6).find((candidate) => /\b(?:SyntaxError|IndentationError|TabError|NameError|TypeError|ValueError)\b/.test(candidate || ""));
+      addCodeDiagnostic(diagnostics, {
+        file: match[1],
+        line: match[2],
+        column: diagnosticColumnFromCaret(lines, index),
+        severity: "error",
+        message: messageLine ? messageLine.trim() : "Python syntax error",
+        language: normalizedLanguage,
+        fallbackFile
+      });
+      continue;
+    }
+
+    match = lineText.match(/^(.+\.(?:js|mjs|cjs)):(\d+)$/i);
+    if (match) {
+      const messageLine = lines.slice(index + 1, index + 8).find((candidate) => /\b(?:SyntaxError|ReferenceError|TypeError)\b/.test(candidate || ""));
+      addCodeDiagnostic(diagnostics, {
+        file: match[1],
+        line: match[2],
+        column: diagnosticColumnFromCaret(lines, index),
+        severity: "error",
+        message: messageLine ? messageLine.trim() : "JavaScript syntax error",
+        language: normalizedLanguage,
+        fallbackFile
+      });
+      continue;
+    }
+
+    match = lineText.match(/^(.+\.java):(\d+):\s*(error|warning):\s*(.+)$/i);
+    if (match) {
+      addCodeDiagnostic(diagnostics, {
+        file: match[1],
+        line: match[2],
+        column: diagnosticColumnFromCaret(lines, index),
+        severity: /warning/i.test(match[3]) ? "warning" : "error",
+        message: match[4],
+        language: normalizedLanguage,
+        fallbackFile
+      });
+    }
+  }
+
+  if (!diagnostics.length && text && /\b(error|syntax error|SyntaxError|IndentationError)\b/i.test(text)) {
+    const firstMessage = lines.find((line) => /\b(error|syntax error|SyntaxError|IndentationError)\b/i.test(line)) || "Compiler reported an error.";
+    addCodeDiagnostic(diagnostics, {
+      file: fallbackFile || "source",
+      line: null,
+      column: null,
+      severity: "error",
+      message: firstMessage.trim(),
+      language: normalizedLanguage,
+      fallbackFile
+    });
+  }
+  return diagnostics;
+}
+
 function cFamilyCompileProfile(language = "c", fileName = "main.c") {
   const isCpp = language === "cpp";
   const ext = path.extname(String(fileName || "").toLowerCase());
@@ -1547,7 +1693,21 @@ async function compileAndRunCode(payload = {}) {
   const profile = compileLanguageProfiles[language] || compileLanguageProfiles.javascript;
   const fileName = safeCodeFileName(payload.fileName || payload.relativePath, language);
   const relativePath = safeCodeRelativePath(payload.relativePath || payload.fileName, language);
-  const saved = await saveCompileSource({ ...payload, language, fileName, relativePath });
+  const transient = payload.transient === true || payload.diagnosticsOnly === true;
+  const transientId = safeSegment(payload.fileId || relativePath || fileName, path.parse(fileName).name || "source");
+  const saved = transient
+    ? {
+        id: transientId,
+        title: clampText(payload.title || fileName, 180),
+        fileName,
+        relativePath,
+        language,
+        role: normalizeCompileFileRole(payload.role || inferCompileFileRole(fileName, payload.code, language), language),
+        fileType: clampText(payload.fileType || payload.role || "source", 60),
+        sourcePath: "",
+        savedAt: ""
+      }
+    : await saveCompileSource({ ...payload, language, fileName, relativePath });
   const projectFolder = safeSegment(payload.projectId, "project");
   const sourcePath = saved.sourcePath;
   const sourceCode = String(payload.code || "");
@@ -1570,7 +1730,11 @@ async function compileAndRunCode(payload = {}) {
     runSourcePath = active?.sourcePath || path.join(runDir, saved.relativePath || saved.fileName);
     if (!active) {
       await mkdir(path.dirname(runSourcePath), { recursive: true });
-      await cp(sourcePath, runSourcePath, { force: true });
+      if (sourcePath && await pathExists(sourcePath)) {
+        await cp(sourcePath, runSourcePath, { force: true });
+      } else {
+        await writeFile(runSourcePath, sourceCode, "utf8");
+      }
       runWorkspaceSources.push({
         id: saved.id,
         title: saved.title,
@@ -1995,6 +2159,58 @@ async function compileAndRunCode(payload = {}) {
     language,
     saved,
     terminal: terminal.join("\n\n").trim() || "No compiler output was returned."
+  };
+}
+
+function compileDiagnosticsFromResult(result = {}, payload = {}) {
+  const diagnostics = Array.isArray(result.diagnostics) ? result.diagnostics : [];
+  const fallbackFile = payload.relativePath || payload.fileName || result.saved?.relativePath || result.saved?.fileName || "source";
+  const normalizeFile = (value = "") => {
+    const file = String(value || "").trim();
+    if (!file) return fallbackFile;
+    if (/\.runs[\\/]/i.test(file) || path.isAbsolute(file)) return fallbackFile;
+    return file;
+  };
+  const parsed = diagnostics.length
+    ? diagnostics
+    : extractCodeDiagnostics(result.terminal || result.error || "", result.language || payload.language || "", { fallbackFile });
+  if (!parsed.length && result.ok === false) {
+    const diagnosticLine = String(result.error || result.terminal || "Syntax check failed.")
+      .split(/\r?\n/)
+      .find((line) => /\b(error|failed|issue|invalid|missing|may have|could not)\b/i.test(line))
+      || String(result.error || result.terminal || "Syntax check failed.").split(/\r?\n/).find(Boolean)
+      || "Syntax check failed.";
+    addCodeDiagnostic(parsed, {
+      file: fallbackFile,
+      line: null,
+      column: null,
+      severity: "error",
+      message: diagnosticLine,
+      language: result.language || payload.language || "",
+      fallbackFile
+    });
+  }
+  return parsed.map((diagnostic) => ({
+    ...diagnostic,
+    file: normalizeFile(diagnostic.file)
+  }));
+}
+
+async function runCodeDiagnostics(payload = {}) {
+  const result = await compileAndRunCode({
+    ...payload,
+    action: "compile",
+    diagnosticsOnly: true,
+    transient: true,
+    forceRebuild: true
+  });
+  const diagnostics = compileDiagnosticsFromResult(result, payload);
+  return {
+    ok: result.ok,
+    language: result.language || normalizeCodeLanguage(payload.language || ""),
+    diagnostics,
+    terminal: result.terminal || "",
+    checkedAt: new Date().toISOString()
   };
 }
 
@@ -4300,11 +4516,44 @@ async function handleApi(request, response, url) {
     return true;
   }
 
+  if (url.pathname === "/api/code/diagnostics") {
+    try {
+      const body = await readRequestJson(request);
+      const result = await runCodeDiagnostics(body);
+      sendJson(response, 200, { ok: result.ok, result });
+    } catch (error) {
+      sendJson(response, 400, {
+        ok: false,
+        error: error.message || "Code diagnostics could not be run.",
+        result: {
+          ok: false,
+          diagnostics: [{
+            file: "source",
+            line: null,
+            column: null,
+            character: null,
+            severity: "error",
+            message: error.message || "Code diagnostics could not be run.",
+            language: ""
+          }],
+          terminal: error.message || "Code diagnostics could not be run."
+        }
+      });
+    }
+    return true;
+  }
+
   if (url.pathname === "/api/code/compile") {
     try {
       const body = await readRequestJson(request);
       const result = await compileAndRunCode(body);
-      sendJson(response, 200, { ok: result.ok, result });
+      sendJson(response, 200, {
+        ok: result.ok,
+        result: {
+          ...result,
+          diagnostics: compileDiagnosticsFromResult(result, body)
+        }
+      });
     } catch (error) {
       sendJson(response, 400, { ok: false, error: error.message || "Code could not be compiled.", result: null });
     }

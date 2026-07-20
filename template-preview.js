@@ -269,6 +269,8 @@ let activeCompileScrollElement = null;
 let activeCompileStdinDrag = null;
 let activeCompileFileDetailsDrag = null;
 let activeScopeCursorDrag = null;
+const liveDiagnosticTimers = new Map();
+const liveDiagnosticSequences = new Map();
 
 const supportedCodeLanguages = [
   { id: "c", label: "C", aliases: ["c"], extensions: [".c", ".h"], defaultFile: "main.c" },
@@ -9236,15 +9238,67 @@ function addCompileMessage(project, text, level = "info") {
   updateCompileMessagesPanel(project);
 }
 
+function compileDiagnosticLocationLabel(diagnostic = {}) {
+  const file = diagnostic.file || diagnostic.fileName || "source";
+  const line = Number.parseInt(diagnostic.line, 10);
+  const character = Number.parseInt(diagnostic.character || diagnostic.column, 10);
+  const pieces = [file];
+  if (Number.isFinite(line) && line > 0) pieces.push(`line ${line}`);
+  if (Number.isFinite(character) && character > 0) {
+    pieces.push(`char ${character}${diagnostic.characterEstimated ? " est." : ""}`);
+  }
+  return pieces.join(", ");
+}
+
+function renderLiveDiagnostics(workspace = {}) {
+  const live = workspace.liveDiagnostics || {};
+  const diagnostics = Array.isArray(live.diagnostics) ? live.diagnostics : [];
+  const fileName = live.fileName || "active source";
+  if (live.checking) {
+    return `
+      <section class="compile-live-diagnostics is-checking" aria-label="Live syntax diagnostics">
+        <strong>Live syntax check</strong>
+        <span>Checking ${escapeHtml(fileName)}...</span>
+      </section>
+    `;
+  }
+  if (!live.checkedAt) return "";
+  if (!diagnostics.length) {
+    return `
+      <section class="compile-live-diagnostics is-clean" aria-label="Live syntax diagnostics">
+        <strong>Live syntax check</strong>
+        <span>${escapeHtml(fileName)} passed.</span>
+      </section>
+    `;
+  }
+  return `
+    <section class="compile-live-diagnostics is-dirty" aria-label="Live syntax diagnostics">
+      <strong>Live syntax diagnostics</strong>
+      <div class="compile-diagnostic-list">
+        ${diagnostics.slice(0, 12).map((diagnostic) => `
+          <article class="compile-diagnostic-row compile-diagnostic-${escapeHtml(diagnostic.severity || "error")}">
+            <span class="compile-diagnostic-location">${escapeHtml(compileDiagnosticLocationLabel(diagnostic))}</span>
+            <span class="compile-diagnostic-message">${escapeHtml(diagnostic.message || "Compiler diagnostic")}</span>
+          </article>
+        `).join("")}
+      </div>
+      ${diagnostics.length > 12 ? `<small>${diagnostics.length - 12} more diagnostic${diagnostics.length - 12 === 1 ? "" : "s"} hidden. Run Compile to see the full compiler output.</small>` : ""}
+    </section>
+  `;
+}
+
 function renderCompileMessages(workspace) {
   const messages = Array.isArray(workspace?.messages) ? workspace.messages : [];
-  if (!messages.length) return `<p class="compile-message-empty">No messages yet.</p>`;
-  return messages.map((message) => `
+  const live = renderLiveDiagnostics(workspace);
+  const history = messages.length
+    ? messages.map((message) => `
     <div class="compile-message compile-message-${escapeHtml(message.level || "info")}">
       <time>${escapeHtml(compileLogTimestamp(message.at))}</time>
       <span>${escapeHtml(message.text)}</span>
     </div>
-  `).join("");
+  `).join("")
+    : `<p class="compile-message-empty">No messages yet.</p>`;
+  return `${live}${history}`;
 }
 
 function normalizeCompilePanel(panel = "console", file = activeCompileFile(selectedProject())) {
@@ -10173,7 +10227,8 @@ function compilePanelTabs(project, file = activeCompileFile(project)) {
   const workspace = ensureCompileCode(project);
   const activePanel = activeCompilePanel(project, file);
   const dockUnlocked = Boolean(workspace.outputDockUnlocked);
-  const messageCount = Array.isArray(workspace.messages) ? workspace.messages.length : 0;
+  const liveDiagnosticCount = Array.isArray(workspace.liveDiagnostics?.diagnostics) ? workspace.liveDiagnostics.diagnostics.length : 0;
+  const messageCount = (Array.isArray(workspace.messages) ? workspace.messages.length : 0) + liveDiagnosticCount;
   const tabs = [
     { id: "console", label: "Console" },
     { id: "messages", label: messageCount ? `Messages (${messageCount})` : "Messages" },
@@ -11735,6 +11790,108 @@ function compilePayload(project, file, options = {}) {
   };
 }
 
+function liveDiagnosticKey(project, file) {
+  return `${project?.id || "project"}:${file?.id || file?.fileName || "source"}`;
+}
+
+function liveDiagnosticsSupported(file) {
+  const language = normalizeCodeLanguage(file?.language || "");
+  return Boolean(file && !["text", "ltspice"].includes(language));
+}
+
+function clearLiveDiagnosticsForFile(project, file) {
+  if (!project || !file) return;
+  const workspace = ensureCompileCode(project);
+  const key = liveDiagnosticKey(project, file);
+  clearTimeout(liveDiagnosticTimers.get(key));
+  liveDiagnosticTimers.delete(key);
+  if (workspace.liveDiagnostics?.fileId === file.id) {
+    workspace.liveDiagnostics = null;
+    updateCompileMessagesPanel(project);
+  }
+}
+
+function scheduleLiveCompileDiagnostics(project, file, delayMs = 950) {
+  if (!project || !file) return;
+  const workspace = ensureCompileCode(project);
+  if (!liveDiagnosticsSupported(file)) {
+    clearLiveDiagnosticsForFile(project, file);
+    return;
+  }
+  const key = liveDiagnosticKey(project, file);
+  clearTimeout(liveDiagnosticTimers.get(key));
+  const sequence = (liveDiagnosticSequences.get(key) || 0) + 1;
+  liveDiagnosticSequences.set(key, sequence);
+  workspace.liveDiagnostics = {
+    ...(workspace.liveDiagnostics || {}),
+    fileId: file.id,
+    fileName: file.fileName || file.title || "active source",
+    language: file.language,
+    checking: true,
+    diagnostics: Array.isArray(workspace.liveDiagnostics?.diagnostics) ? workspace.liveDiagnostics.diagnostics : [],
+    checkedAt: workspace.liveDiagnostics?.checkedAt || ""
+  };
+  updateCompileMessagesPanel(project);
+
+  const timer = setTimeout(async () => {
+    try {
+      const response = await fetch(`/api/code/diagnostics?t=${Date.now()}`, {
+        method: "POST",
+        cache: "no-store",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...compilePayload(project, file, { action: "compile", forceRebuild: true }),
+          diagnosticsOnly: true
+        })
+      });
+      const body = await response.json();
+      if (liveDiagnosticSequences.get(key) !== sequence) return;
+      const result = body.result || {};
+      const diagnostics = Array.isArray(result.diagnostics) ? result.diagnostics : [];
+      workspace.liveDiagnostics = {
+        fileId: file.id,
+        fileName: file.fileName || file.title || "active source",
+        language: result.language || file.language,
+        checking: false,
+        ok: Boolean(body.ok),
+        diagnostics,
+        terminal: result.terminal || body.error || "",
+        checkedAt: result.checkedAt || new Date().toISOString()
+      };
+      updateCompileMessagesPanel(project);
+      if (diagnostics.length) {
+        const first = diagnostics[0];
+        setStatus(`Live syntax check found ${diagnostics.length} issue${diagnostics.length === 1 ? "" : "s"} in ${file.fileName}: ${compileDiagnosticLocationLabel(first)}.`);
+      } else {
+        setStatus(`Live syntax check passed for ${file.fileName}.`);
+      }
+    } catch (error) {
+      if (liveDiagnosticSequences.get(key) !== sequence) return;
+      workspace.liveDiagnostics = {
+        fileId: file.id,
+        fileName: file.fileName || file.title || "active source",
+        language: file.language,
+        checking: false,
+        ok: false,
+        diagnostics: [{
+          file: file.fileName || "source",
+          line: null,
+          character: null,
+          severity: "error",
+          message: error.message || "Live syntax check failed.",
+          language: file.language
+        }],
+        terminal: error.message || "Live syntax check failed.",
+        checkedAt: new Date().toISOString()
+      };
+      updateCompileMessagesPanel(project);
+    } finally {
+      if (liveDiagnosticTimers.get(key) === timer) liveDiagnosticTimers.delete(key);
+    }
+  }, delayMs);
+  liveDiagnosticTimers.set(key, timer);
+}
+
 function selectedCompileAppendDestination(project) {
   const workspace = ensureCompileCode(project);
   const destinations = compileAppendDestinations(project);
@@ -12143,6 +12300,7 @@ async function compileActiveFile(project, file, options = {}) {
       ok: Boolean(result.ok),
       language: compileResult.language || file.language,
       terminal: compileResult.terminal || result.error || "No compiler output was returned.",
+      diagnostics: Array.isArray(compileResult.diagnostics) ? compileResult.diagnostics : [],
       waveform: compileResult.waveform || null,
       finishedAt: new Date().toISOString()
     };
@@ -12155,6 +12313,16 @@ async function compileActiveFile(project, file, options = {}) {
     file.dirty = false;
     const refreshedWorkspace = ensureCompileCode(project);
     refreshedWorkspace.terminal = file.lastResult.terminal;
+    refreshedWorkspace.liveDiagnostics = {
+      fileId: file.id,
+      fileName: file.fileName || file.title || "active source",
+      language: file.lastResult.language || file.language,
+      checking: false,
+      ok: Boolean(result.ok),
+      diagnostics: file.lastResult.diagnostics,
+      terminal: file.lastResult.terminal,
+      checkedAt: new Date().toISOString()
+    };
     if (action === "simulate" && compileResult.waveform?.signals?.length) {
       refreshedWorkspace.activePanel = "scope";
     }
@@ -16013,6 +16181,7 @@ sectionContent.addEventListener("input", (event) => {
     const { file } = activeCompileWorkspaceAndFile(project);
     if (!file) return;
     const field = compileFieldTarget.dataset.compileField;
+    const shouldRunLiveCheck = ["code", "role", "language", "fileName", "fileNameOnly", "fileType"].includes(field);
     if (field === "language") {
       const wasHdl = isHdlLanguage(file.language);
       file.language = normalizeCodeLanguage(compileFieldTarget.value);
@@ -16033,6 +16202,7 @@ sectionContent.addEventListener("input", (event) => {
         file.dirty = true;
         file.lastResult = null;
         setStatus("Unsaved compile source changes.");
+        scheduleLiveCompileDiagnostics(project, file, 350);
         scheduleAutosave(900);
         renderSectionContent(project);
         return;
@@ -16078,6 +16248,9 @@ sectionContent.addEventListener("input", (event) => {
     }
     file.dirty = true;
     file.lastResult = ["code", "role", "language", "fileName", "fileNameOnly", "fileType"].includes(field) ? null : file.lastResult;
+    if (shouldRunLiveCheck) {
+      scheduleLiveCompileDiagnostics(project, file, field === "code" ? 950 : 350);
+    }
     setStatus("Unsaved compile source changes.");
     scheduleAutosave(field === "code" ? 1600 : 900);
     return;
