@@ -11259,3 +11259,18 @@ body[data-builder-theme="dark"] .project-dialog .project-section-toolbar {
   max-height: 24px !important;
   margin: 0 !important;
 }
+
+/* Active editor readability fallback.
+   The syntax preview still renders behind the textarea, but the text input must
+   never become invisible if the overlay misses a frame or the browser paints
+   transparent textarea glyphs differently. */
+.project-dialog.is-compile-code-active [data-compile-workspace] .compile-code-active-editor textarea {
+  color: color-mix(in srgb, var(--compile-text, #e6edf3) 88%, transparent) !important;
+  -webkit-text-fill-color: color-mix(in srgb, var(--compile-text, #e6edf3) 88%, transparent) !important;
+  caret-color: var(--compile-text, #ffffff) !important;
+}
+
+.project-dialog.is-compile-code-active [data-compile-workspace] .compile-code-active-editor textarea::selection {
+  color: var(--compile-text, #ffffff) !important;
+  -webkit-text-fill-color: var(--compile-text, #ffffff) !important;
+}
