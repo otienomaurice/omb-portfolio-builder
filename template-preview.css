@@ -2816,15 +2816,32 @@ body.rich-image-dragging * {
 
 .scope-bus-toggle {
   cursor: pointer;
+  pointer-events: all;
+  user-select: none;
+}
+
+.scope-bus-toggle rect {
+  fill: transparent;
+  stroke: rgba(96, 165, 250, 0.2);
+  stroke-width: 1;
+}
+
+.scope-bus-toggle text {
   fill: #dbeafe;
   font-family: Consolas, "Courier New", monospace;
   font-size: 12px;
   font-weight: 900;
-  user-select: none;
+  pointer-events: none;
+  text-anchor: middle;
 }
 
-.scope-bus-toggle:hover {
+.scope-bus-toggle:hover text {
   fill: #60a5fa;
+}
+
+.scope-bus-toggle:hover rect {
+  fill: rgba(96, 165, 250, 0.12);
+  stroke: rgba(96, 165, 250, 0.55);
 }
 
 .scope-value-label {
@@ -11515,4 +11532,42 @@ body[data-builder-theme="dark"] .project-dialog .project-section-toolbar {
   color: var(--compile-text, #ffffff) !important;
   -webkit-text-fill-color: var(--compile-text, #ffffff) !important;
   background: color-mix(in srgb, var(--compile-active, #007acc) 48%, transparent) !important;
+}
+
+/* Final Compile Code bottom-status contract.
+   Both L and M output modes use the same output-panel structure. The blue IDE
+   status strip is the workspace footer, directly above Save / Save and close. */
+.project-dialog.is-compile-code-active .project-dialog-shell {
+  gap: 3px !important;
+}
+
+.project-dialog.is-compile-code-active .project-save-bar {
+  margin-top: 0 !important;
+  padding-top: 3px !important;
+}
+
+.project-dialog.is-compile-code-active .compile-code-workspace {
+  grid-template-rows: auto minmax(0, 1fr) 24px !important;
+  gap: 0 !important;
+}
+
+.project-dialog.is-compile-code-active .compile-code-workspace > .compile-ide-status-bar {
+  grid-column: 1 / -1 !important;
+  grid-row: 3 !important;
+  align-self: end !important;
+  height: 24px !important;
+  min-height: 24px !important;
+  max-height: 24px !important;
+  margin: 0 !important;
+}
+
+.project-dialog.is-compile-code-active .compile-code-sidebar,
+.project-dialog.is-compile-code-active .compile-sidebar-resize-handle,
+.project-dialog.is-compile-code-active .compile-code-main {
+  grid-row: 2 !important;
+}
+
+.project-dialog.is-compile-code-active .compile-output-workbench.is-output-dock-locked,
+.project-dialog.is-compile-code-active .compile-output-workbench.is-output-dock-unlocked {
+  grid-template-rows: auto minmax(0, 1fr) !important;
 }

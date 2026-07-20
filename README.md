@@ -306,7 +306,8 @@ Use the workflow in [BRANCHING.md](BRANCHING.md):
 | `project_overlay_window_067` | Bumps the builder to `0.2.67` and keeps right-click project section windows layered inside the active project workspace instead of being hidden behind or rendered outside the current view. | `development` | `development` | Active |
 | `locked_status_bottom_068` | Bumps the builder to `0.2.68` and makes the locked Compile Code output status strip the true bottom grid row so no dark gap appears below the blue status area. | `development` | `development` | Active |
 | `scope_resize_scroll_069` | Bumps the builder to `0.2.69`, lets Scope fit or use natural waveform width with horizontal and vertical scrolling, makes the moveable output panel resizable by drag, improves Verilog/SystemVerilog coloring for instances and named port connections, and defaults X waveform spans to red and Z spans to blue. | `development` | `development` | Merged into `development` |
-| `scope_bus_expand_070` | Bumps the builder to `0.2.70`, keeps bus value labels above waveform strokes, and adds collapsed-by-default bus expansion so Verilog/SystemVerilog buses can open into individual bit waveforms. | `development` | `development` | Active |
+| `scope_bus_expand_070` | Bumps the builder to `0.2.70`, keeps bus value labels above waveform strokes, and adds collapsed-by-default bus expansion so Verilog/SystemVerilog buses can open into individual bit waveforms. | `development` | `development` | Merged into `development` |
+| `status_strip_save_gap_071` | Bumps the builder to `0.2.71`, makes bus expansion infer bit width from waveform values when needed, and pins the Compile Code blue status strip as the workspace footer directly above Save / Save and close in both L and M output modes. | `development` | `development` | Active |
 
 </details>
 

@@ -1430,6 +1430,11 @@ function normalizeVcdValue(raw = "") {
   return clean.toLowerCase();
 }
 
+function vcdValueWidth(value = "") {
+  const clean = String(value || "").replace(/[^01xz]/gi, "");
+  return clean.length || 1;
+}
+
 function parseVcdScopeText(text = "", source = "waveform.vcd") {
   const lines = String(text || "").split(/\r?\n/);
   const scopes = [];
@@ -1503,6 +1508,7 @@ function parseVcdScopeText(text = "", source = "waveform.vcd") {
     }
     const signal = signalsByCode.get(code);
     if (!signal || !value) continue;
+    signal.width = Math.max(Number(signal.width) || 1, vcdValueWidth(value));
     const previous = signal.changes[signal.changes.length - 1];
     if (!previous || previous.value !== value || previous.time !== time) {
       if (signal.changes.length < 600) signal.changes.push({ time, value });

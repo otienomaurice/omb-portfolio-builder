@@ -9499,6 +9499,14 @@ function scopeBusBitsForValue(value = "", width = 1) {
   return clean.padStart(size, "0").slice(-size);
 }
 
+function scopeSignalBitWidth(signal = {}) {
+  const declared = Math.max(1, Number(signal.width || 1));
+  const observed = normalizeScopeChanges(signal.changes)
+    .map((change) => String(change.value || "").replace(/[^01xz]/gi, "").length)
+    .filter(Boolean);
+  return Math.max(declared, ...observed, 1);
+}
+
 function scopeBitChanges(changes = [], width = 1, bitIndex = 0) {
   const size = Math.max(1, Number(width) || 1);
   const offset = Math.max(0, Math.min(size - 1, size - 1 - bitIndex));
@@ -9519,7 +9527,7 @@ function scopeDisplayRows(project, signals = []) {
   const rows = [];
   signals.forEach((signal, index) => {
     const settings = scopeSignalSettings(project, signal, index);
-    const width = Math.max(1, Number(signal.width || 1));
+    const width = scopeSignalBitWidth(signal);
     const key = settings.key;
     rows.push({ type: "signal", signal, signalIndex: index, settings, key, width, expanded: width > 1 && expanded.has(key) });
     if (width <= 1 || !expanded.has(key)) return;
@@ -9803,7 +9811,7 @@ function renderHdlScope(waveform, project = selectedProject()) {
     const index = row.signalIndex;
     const rowY = top + rowIndex * rowHeight;
     const signalName = String(signal.name || signal.reference || `signal_${index + 1}`);
-    const widthBits = Math.max(1, Number(signal.width || 1));
+    const widthBits = row.width || scopeSignalBitWidth(signal);
     const isBus = row.type === "signal" && widthBits > 1;
     const name = row.type === "bit" ? `${signalName}[${row.bit}]` : signalName;
     const changes = row.type === "bit" ? row.changes : (Array.isArray(signal.changes) ? signal.changes : []);
@@ -9811,7 +9819,7 @@ function renderHdlScope(waveform, project = selectedProject()) {
     const settings = row.settings || scopeSignalSettings(project, signal, index);
     const labelClass = row.type === "bit" ? "scope-signal-label scope-bit-label" : "scope-signal-label";
     const wedge = isBus
-      ? `<text x="10" y="${rowY + 20}" class="scope-bus-toggle" data-scope-bus-toggle data-scope-bus-key="${escapeHtml(row.key)}" role="button" aria-label="${row.expanded ? "Collapse" : "Expand"} ${escapeHtml(signalName)}">${row.expanded ? "&#9662;" : "&#9656;"}</text>`
+      ? `<g class="scope-bus-toggle" data-scope-bus-toggle data-scope-bus-key="${escapeHtml(row.key)}" role="button" aria-label="${row.expanded ? "Collapse" : "Expand"} ${escapeHtml(signalName)}"><rect x="2" y="${rowY + 7}" width="20" height="20" rx="3"></rect><text x="10" y="${rowY + 20}">${row.expanded ? "&#9662;" : "&#9656;"}</text></g>`
       : "";
     const labelX = isBus || row.type === "bit" ? 30 : 12;
     return `
@@ -9821,7 +9829,7 @@ function renderHdlScope(waveform, project = selectedProject()) {
         <line x1="${left}" x2="${left + width}" y1="${rowY + 27}" y2="${rowY + 27}" class="scope-row-line" />
         ${scalar
           ? renderScalarWaveSegments(changes, maxTime, rowY, left, width, settings.color)
-          : `${renderBusWaveSegments(changes, maxTime, rowY, left, width, settings.color)}${renderBusWaveLabels(changes, maxTime, rowY, left, width, settings.radix, signal.width, settings.stateMap)}`}
+          : `${renderBusWaveSegments(changes, maxTime, rowY, left, width, settings.color)}${renderBusWaveLabels(changes, maxTime, rowY, left, width, settings.radix, widthBits, settings.stateMap)}`}
       </g>
     `;
   }).join("");
@@ -10340,9 +10348,9 @@ function renderCompileCodeSection(project) {
           <div class="compile-output-dock">
             ${renderCompileActiveOutputPanel(project, activeFile)}
           </div>
-          ${compileIdeStatusBar(project, activeFile)}
         </section>
       </section>
+      ${compileIdeStatusBar(project, activeFile)}
       ${renderCompileStdinWindow(project, activeFile)}
       ${renderCompileFileDetailsWindow(project, activeFile)}
     </div>
