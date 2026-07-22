@@ -12396,7 +12396,7 @@ async function runCompileTerminalCommand(project) {
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || "Terminal command failed.");
     terminal.output = appendCompileTerminalOutput(previousOutput, `${prompt} ${command}\n${result.output || "Command completed with no output."}`);
-    terminal.cwd = result.cwd || cwd;
+    terminal.cwd = result.cwd ?? cwd;
     terminal.rootPath = result.rootPath || terminal.rootPath || compileTerminalBasePath();
     terminal.cwdAbsolute = result.cwdAbsolute || terminal.cwdAbsolute || "";
     terminal.promptPath = result.promptPath || terminal.cwdAbsolute || "";
