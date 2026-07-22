@@ -11,7 +11,7 @@
     <link rel="shortcut icon" href="assets/favicon.ico" />
     <link rel="apple-touch-icon" sizes="180x180" href="assets/apple-touch-icon.png" />
     <link rel="stylesheet" href="styles.css" />
-    <link rel="stylesheet" href="template-preview.css?v=0.2.76" />
+    <link rel="stylesheet" href="template-preview.css?v=0.2.77" />
   </head>
   <body class="template-preview-page">
       <header class="template-header">
@@ -441,7 +441,8 @@
                               <li>New projects include only Overview by default.</li>
                               <li>Every other section, such as Design, Simulation, Tests, Tools, PCB Builds, Documentation, References, Results, or Compile Code, must be added manually.</li>
                               <li>Sections and subsections are nested manually. A section can contain subsections, and each subsection can contain its own child sections when the project needs that depth.</li>
-                              <li>Open a subsection to use its action row, or right-click the subsection link, when you need to edit or delete that subsection.</li>
+                              <li>Subsection links appear directly under their parent section as compact navigation chips. Click one chip to focus only that subsection in the workspace.</li>
+                              <li>Right-click a section or subsection chip to open it, open it in a separate project window, copy its project path, add child subsections, add files, edit, delete, or clean empty child placeholders.</li>
                               <li>Section chips stay in the top navigation band. Actions for the selected section stay on the far right of that same row, so the content area is reserved for text, files, images, and previews.</li>
                               <li>An overview appears automatically when it exists; it is not shown as a separate clickable Overview icon.</li>
                               <li>Project status is metadata. Right-click the project title and open Details to set Draft, In progress, Completed, or Archived, and to choose whether that status appears on the public portfolio.</li>
@@ -451,6 +452,7 @@
                               <li>Use Overview for the short explanation of what the section is about.</li>
                               <li>Use subsections when a section needs separate clickable areas such as schematic design, simulation results, PCB layout, test setup, or code links.</li>
                               <li>Keep section order intentional. The website follows the order saved by the builder.</li>
+                              <li>Use Clean empty children when a section has placeholders that contain no overview, files, images, links, or nested content.</li>
                               <li>Delete empty placeholder sections before publishing so the project does not feel unfinished.</li>
                           </ul>
                           <p>Use Save to parse the project and update its project preview. Use Save and close when you are done editing that project window. If the project preview does not look right, fix it in the builder before using Save draft or Apply to site.</p>
@@ -512,6 +514,7 @@
                           <p>The left explorer holds folders and source files. Drag the vertical divider beside Solution Explorer when names need more room. Imported files and imported directories appear in the tree without opening editor tabs; click a file in the tree when you want to view or edit it. The editor opens closeable file views, and the bottom output area contains Console, Messages, Terminal, Input, and Scope so build feedback, live syntax diagnostics, and run settings stay organized instead of mixing everything into one box.</p>
                           <ol>
                               <li>Right-click the workspace tree to add a source file, create a folder, import several files, import a directory, move selected files, or delete a selected file or folder. Compiler checks and tool installation live under the Tools menu, not in the right-click tree menu.</li>
+                              <li>Use the Project menu inside Compile Code for project-level actions such as saving, previewing, cleaning empty project sections, or opening the append-code destination chooser.</li>
                               <li>Ctrl-click files in the Solution Explorer to select several files, then right-click one of the selected files and choose Delete selected or Move selected.</li>
                               <li>Right-click a folder to delete the folder and the files contained inside it after confirmation.</li>
                               <li>Use normal keyboard editing inside editable fields, including Ctrl+V paste, right-click Paste, Ctrl+Z undo, and Ctrl+Y redo. In the code editor, blank editor space is still treated as the active insertion area.</li>
@@ -829,9 +832,14 @@
               <div class="section-bar" id="section-tabs"></div>
               <div class="project-view-tabs" id="project-view-tabs" aria-label="Open project section tabs"></div>
               <div class="project-title-menu project-view-context-menu" id="project-view-context-menu" hidden>
+                  <button type="button" data-project-view-action="open">Open</button>
                   <button type="button" data-project-view-action="open-window">Open in new window</button>
-                  <button type="button" data-project-view-action="edit-node" data-project-view-node-action hidden>Edit subsection</button>
-                  <button class="danger-icon" type="button" data-project-view-action="delete-node" data-project-view-node-action hidden>Delete subsection</button>
+                  <button type="button" data-project-view-action="copy-path">Copy path</button>
+                  <button type="button" data-project-view-action="add-subsection" data-project-view-custom-action hidden>Add subsection</button>
+                  <button type="button" data-project-view-action="add-file" data-project-view-custom-action hidden>Add file or image</button>
+                  <button type="button" data-project-view-action="edit-current" data-project-view-custom-action hidden>Edit</button>
+                  <button type="button" data-project-view-action="clean-empty" data-project-view-custom-action hidden>Clean empty children</button>
+                  <button class="danger-icon" type="button" data-project-view-action="delete-current" data-project-view-delete-action hidden>Delete</button>
                   <button type="button" data-project-view-action="close">Close menu</button>
               </div>
               <div class="project-window-content">
@@ -1420,7 +1428,7 @@
           <button type="button" data-rich-action="edit-block">Edit selected block</button>
           <button class="danger-menu-item" type="button" data-rich-action="delete-block">Delete selected block</button>
       </div>
-      <script src="electronics-search.js?v=0.2.76"></script>
-      <script src="template-preview.js?v=0.2.76"></script>
+      <script src="electronics-search.js?v=0.2.77"></script>
+      <script src="template-preview.js?v=0.2.77"></script>
   </body>
 </html>
