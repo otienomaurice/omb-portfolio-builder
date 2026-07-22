@@ -10887,6 +10887,24 @@ body[data-compile-theme] .compile-scope-svg {
 
 .project-view-context-menu {
   z-index: 120;
+  display: grid;
+  gap: 2px;
+  width: 212px;
+  padding: 4px;
+}
+
+.project-view-context-menu[hidden] {
+  display: none;
+}
+
+.project-view-context-menu button {
+  justify-content: flex-start;
+  width: 100%;
+  min-height: 28px;
+  padding: 0 9px;
+  border-radius: 4px;
+  font-size: 0.76rem;
+  text-align: left;
 }
 
 .detached-project-view-window {
@@ -10956,12 +10974,15 @@ body[data-compile-theme] .compile-scope-svg {
 
 .detached-project-view-nav {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   gap: 6px;
   margin: 0;
-  padding: 0 0 8px;
-  border-bottom: 1px solid #d8ecf5;
+  padding: 0 0 4px;
+  border-bottom: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
 }
 
 .detached-project-view-window .section-window-view-canvas {
@@ -11530,6 +11551,96 @@ body[data-builder-theme="dark"] .project-dialog .project-section-list,
 body[data-builder-theme="dark"] .project-dialog .section-bar-subsections,
 body[data-builder-theme="dark"] .project-dialog .project-section-toolbar {
   background: var(--builder-ui-surface) !important;
+}
+
+/* Builder subsection polish.
+   Child subsections behave like navigation chips, not content headings, and
+   project files always keep the same explorer-list convention regardless of
+   the selected project appearance template. */
+.project-dialog .section-bar-subsections,
+.detached-project-view-nav {
+  min-height: var(--builder-control-height, 30px) !important;
+  padding-top: 0 !important;
+  padding-bottom: 2px !important;
+}
+
+.project-dialog .section-bar-subsections .nested-section-link,
+.detached-project-view-nav .nested-section-link {
+  display: inline-flex !important;
+  flex: 0 0 auto !important;
+  align-items: center !important;
+  justify-content: center !important;
+  height: var(--builder-control-height, 30px) !important;
+  min-height: var(--builder-control-height, 30px) !important;
+  max-height: var(--builder-control-height, 30px) !important;
+  max-width: min(280px, 38vw) !important;
+  padding: 0 12px !important;
+  overflow: hidden !important;
+  border: 1px solid transparent !important;
+  border-radius: 8px !important;
+  background: #d8f3fb !important;
+  color: var(--ink) !important;
+  box-shadow: none !important;
+  font-size: 0.82rem !important;
+  font-weight: 750 !important;
+  line-height: 1 !important;
+  text-align: left !important;
+  white-space: nowrap !important;
+}
+
+.project-dialog .section-bar-subsections .nested-section-link span,
+.detached-project-view-nav .nested-section-link span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-dialog .section-bar-subsections .nested-section-link:hover,
+.detached-project-view-nav .nested-section-link:hover {
+  border-color: #90d7ef !important;
+  background: #b9e9f8 !important;
+}
+
+.project-dialog .section-bar-subsections .nested-section-link:active,
+.detached-project-view-nav .nested-section-link:active {
+  background: #ffffff !important;
+}
+
+.project-dialog .builder-explorer-row.is-section .builder-explorer-main {
+  grid-template-columns: 18px minmax(0, 1fr) !important;
+}
+
+.project-dialog .builder-explorer-row.is-section .builder-explorer-icon {
+  color: #5d7890 !important;
+  font-size: 0.72rem !important;
+  font-weight: 900 !important;
+  text-transform: none !important;
+}
+
+.project-dialog .builder-explorer-row.is-section .builder-explorer-main small {
+  display: none !important;
+}
+
+.project-dialog .section-window-content-stack > :first-child {
+  margin-top: 0 !important;
+}
+
+.project-dialog .section-window-content-stack .builder-explorer-list {
+  justify-self: stretch !important;
+}
+
+body[data-builder-theme="dark"] .project-dialog .section-bar-subsections .nested-section-link,
+body[data-builder-theme="dark"] .detached-project-view-nav .nested-section-link {
+  border-color: transparent !important;
+  background: var(--builder-ui-surface-2) !important;
+  color: var(--builder-ui-text) !important;
+}
+
+body[data-builder-theme="dark"] .project-dialog .section-bar-subsections .nested-section-link:hover,
+body[data-builder-theme="dark"] .detached-project-view-nav .nested-section-link:hover {
+  border-color: var(--builder-ui-accent, #38bdf8) !important;
+  background: var(--builder-ui-accent-soft, #17344a) !important;
 }
 
 /* Compile Code bottom-fit layout.

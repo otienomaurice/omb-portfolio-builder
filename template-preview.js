@@ -4431,6 +4431,12 @@ function renderDetachedNestedSectionNav(section, currentChildren = [], currentPa
     <nav class="detached-project-view-nav" aria-label="Subsections in this detached view">
       ${childRows.map(({ item, index }) => {
         const pathValue = customViewPathValue([...currentPath, index]);
+        const counts = builderNodeVisibleCounts(item);
+        const countText = [
+          counts.sections ? `${counts.sections} subsection${counts.sections === 1 ? "" : "s"}` : "",
+          counts.files ? `${counts.files} file${counts.files === 1 ? "" : "s"}` : ""
+        ].filter(Boolean).join(", ");
+        const title = builderNodeTitle(item);
         return `
           <button
             class="nested-section-link"
@@ -4438,8 +4444,9 @@ function renderDetachedNestedSectionNav(section, currentChildren = [], currentPa
             data-detached-window-node="${escapeHtml(windowId)}"
             data-section-id="${escapeHtml(section.id)}"
             data-node-path="${escapeHtml(pathValue)}"
+            title="${escapeHtml(countText ? `Open ${title} (${countText})` : `Open ${title}`)}"
           >
-            ${escapeHtml(builderNodeTitle(item))}
+            <span>${escapeHtml(title)}</span>
           </button>
         `;
       }).join("")}
@@ -8123,13 +8130,25 @@ function showProjectViewContextMenu(event, context = {}) {
   if (!projectViewContextMenu || !context.stateKey) return;
   event.preventDefault();
   pendingProjectViewContext = context;
+  const isCustom = Boolean(context.sectionId);
   const isNestedNode = context.kind === "node" && context.sectionId && context.nodePath;
-  projectViewContextMenu.querySelectorAll("[data-project-view-node-action]").forEach((button) => {
-    button.hidden = !isNestedNode;
+  const canDelete = context.kind === "section" || isNestedNode;
+  projectViewContextMenu.querySelectorAll("[data-project-view-custom-action]").forEach((button) => {
+    button.hidden = !isCustom;
   });
+  projectViewContextMenu.querySelectorAll("[data-project-view-delete-action]").forEach((button) => {
+    button.hidden = !canDelete;
+  });
+  const editButton = projectViewContextMenu.querySelector("[data-project-view-action='edit-current']");
+  if (editButton) editButton.textContent = isNestedNode ? "Edit subsection" : "Edit section";
+  const deleteButton = projectViewContextMenu.querySelector("[data-project-view-action='delete-current']");
+  if (deleteButton) deleteButton.textContent = isNestedNode ? "Delete subsection" : "Delete section";
+  const addFileButton = projectViewContextMenu.querySelector("[data-project-view-action='add-file']");
+  if (addFileButton) addFileButton.hidden = !isCustom || context.kind === "standard";
   projectViewContextMenu.hidden = false;
-  const width = 190;
-  const height = isNestedNode ? 152 : 92;
+  const visibleButtons = [...projectViewContextMenu.querySelectorAll("button")].filter((button) => !button.hidden).length;
+  const width = 212;
+  const height = Math.max(92, visibleButtons * 30 + 12);
   projectViewContextMenu.style.left = `${Math.min(event.clientX, window.innerWidth - width - 8)}px`;
   projectViewContextMenu.style.top = `${Math.min(event.clientY, window.innerHeight - height - 8)}px`;
 }
@@ -8749,6 +8768,93 @@ function builderNodeKindLabel(node) {
   return "Section";
 }
 
+function builderNodeVisibleCounts(node) {
+  const children = builderNodeChildren(node);
+  return children.reduce((counts, child) => {
+    if (!child) return counts;
+    if (child.url || child.artifact) counts.files += 1;
+    else counts.sections += 1;
+    return counts;
+  }, { sections: 0, files: 0 });
+}
+
+function builderPathLabelsForContext(project, context = {}) {
+  const labels = [project?.title || "Project"];
+  const sectionId = context.sectionId || (String(context.stateKey || "").startsWith("custom:")
+    ? String(context.stateKey).split("|")[0].replace("custom:", "")
+    : "");
+  const section = (project?.sections || []).find((item) => item.id === sectionId);
+  if (section) labels.push(section.title || "Untitled section");
+  if (!section && context.stateKey) {
+    const standard = sectionOptions(project).find((item) => item.id === String(context.stateKey).split("|")[0]);
+    if (standard?.label) labels.push(standard.label);
+  }
+  const path = nodePathFromString(context.nodePath || String(context.stateKey || "").split("|")[1] || "");
+  let children = section ? sectionRootChildren(section) : [];
+  path.forEach((index) => {
+    const node = children[index];
+    if (!node) return;
+    labels.push(builderNodeTitle(node));
+    children = builderNodeChildren(node);
+  });
+  return labels.filter(Boolean);
+}
+
+function builderContextPathText(project, context = {}) {
+  return builderPathLabelsForContext(project, context).join(" / ");
+}
+
+function countBuilderTreeItems(items = []) {
+  return (items || []).reduce((count, item) => {
+    if (!item) return count;
+    if (item.url || item.artifact) return count + 1;
+    return count + 1 + countBuilderTreeItems(builderNodeChildren(item));
+  }, 0);
+}
+
+function replaceArrayContents(target = [], source = []) {
+  target.splice(0, target.length, ...source);
+  return target;
+}
+
+function cleanEmptyBuilderChildren(project, context = {}) {
+  if (!project) return;
+  const scope = context.sectionId ? builderContextPathText(project, context) : (project.title || "this project");
+  openDeleteConfirm({
+    title: "Clean empty sections",
+    message: `Remove empty sections and subsections under "${scope}"? Content-bearing items will be kept.`,
+    onConfirm: () => cleanEmptyBuilderChildrenConfirmed(project, context)
+  });
+}
+
+function cleanEmptyBuilderChildrenConfirmed(project, context = {}) {
+  if (!project) return;
+  if (!context.sectionId) {
+    const before = (project.sections || []).length + countBuilderTreeItems((project.sections || []).flatMap((section) => sectionRootChildren(section)));
+    project.sections = (project.sections || []).map(pruneProjectSectionTree).filter(Boolean);
+    const after = (project.sections || []).length + countBuilderTreeItems((project.sections || []).flatMap((section) => sectionRootChildren(section)));
+    setStatus(before === after ? "No empty project sections were found." : `Removed ${before - after} empty project item${before - after === 1 ? "" : "s"}.`);
+    scheduleAutosave();
+    renderAll();
+    return;
+  }
+
+  const section = (project.sections || []).find((item) => item.id === context.sectionId);
+  if (!section) return;
+  normalizeBuilderSectionStorage(section);
+  const path = nodePathFromString(context.nodePath || "");
+  const target = path.length ? findBuilderNode(section, path) : section;
+  if (!target) return;
+  const children = path.length ? builderNodeChildren(target) : sectionRootChildren(section);
+  const before = countBuilderTreeItems(children);
+  const afterChildren = children.map(pruneBuilderNodeTree).filter(Boolean);
+  replaceArrayContents(children, afterChildren);
+  const after = countBuilderTreeItems(children);
+  setStatus(before === after ? "No empty child sections or files were found." : `Removed ${before - after} empty child item${before - after === 1 ? "" : "s"}.`);
+  scheduleAutosave();
+  renderAll();
+}
+
 function renderBuilderExplorerRows(section, items = sectionRootChildren(section), path = [], depth = 0) {
   const visibleItems = (items || []).filter(Boolean);
   if (!visibleItems.length) {
@@ -8767,7 +8873,7 @@ function renderBuilderExplorerRows(section, items = sectionRootChildren(section)
               <button class="builder-explorer-main" type="button" ${hasUrl
                 ? `data-open-file-view="true" data-section-id="${escapeHtml(section.id)}" data-node-path="${escapeHtml(pathValue)}"`
                 : `data-open-node-view="true" data-section-id="${escapeHtml(section.id)}" data-node-path="${escapeHtml(pathValue)}"`}>
-                <span class="builder-explorer-icon" aria-hidden="true">${hasUrl ? "file" : "section"}</span>
+                <span class="builder-explorer-icon" aria-hidden="true">${hasUrl ? "" : ">"}</span>
                 <span class="builder-explorer-title">${escapeHtml(builderNodeTitle(item))}</span>
                 <small>${escapeHtml(builderNodeKindLabel(item))}</small>
               </button>
@@ -8813,6 +8919,12 @@ function renderNestedSectionNav(section, currentChildren = [], currentPath = [],
     <nav class="nested-section-link-strip ${escapeHtml(extraClass)}" aria-label="Subsections in this section">
       ${childRows.map(({ item, index }) => {
         const pathValue = customViewPathValue([...currentPath, index]);
+        const counts = builderNodeVisibleCounts(item);
+        const countText = [
+          counts.sections ? `${counts.sections} subsection${counts.sections === 1 ? "" : "s"}` : "",
+          counts.files ? `${counts.files} file${counts.files === 1 ? "" : "s"}` : ""
+        ].filter(Boolean).join(", ");
+        const title = builderNodeTitle(item);
         return `
           <button
             class="nested-section-link"
@@ -8820,8 +8932,9 @@ function renderNestedSectionNav(section, currentChildren = [], currentPath = [],
             data-open-node-view="true"
             data-section-id="${escapeHtml(section.id)}"
             data-node-path="${escapeHtml(pathValue)}"
+            title="${escapeHtml(countText ? `Open ${title} (${countText})` : `Open ${title}`)}"
           >
-            ${escapeHtml(builderNodeTitle(item))}
+            <span>${escapeHtml(title)}</span>
           </button>
         `;
       }).join("")}
@@ -10441,6 +10554,7 @@ function renderCompileIdeMenuBar(project, file = activeCompileFile(project)) {
       items: [
         { label: "Save project", action: "save-project" },
         { label: "View project preview", action: "project-preview" },
+        { label: "Clean empty project sections", action: "clean-empty-project" },
         { label: "Append code to selected section", action: "append-code", disabled: !hasFile }
       ]
     },
@@ -12475,6 +12589,7 @@ async function runCompileIdeAction(project, action = "", options = {}) {
   if (action === "import-files") return importCompileFiles(project, { targetDirectory: contextDirectory });
   if (action === "import-directory") return importCompileFiles(project, { directory: true, targetDirectory: contextDirectory });
   if (action === "save-project") return saveSelectedProjectToPortfolio();
+  if (action === "clean-empty-project") return cleanEmptyBuilderChildren(project);
   if (action === "project-preview") return openProjectPortfolioPreview();
   if (action === "portfolio-preview") return openPortfolioPreview();
   if (action === "builder-guide") return builderGuideOpen?.click();
@@ -15080,12 +15195,37 @@ sectionTabs.addEventListener("click", async (event) => {
 });
 
 sectionTabs.addEventListener("contextmenu", (event) => {
-  const button = event.target.closest("[data-section-id]");
   const project = selectedProject();
-  if (!button || !project) return;
+  if (!project) return;
+  const nodeButton = event.target.closest("[data-open-node-view]");
+  if (nodeButton) {
+    const sectionId = nodeButton.dataset.sectionId || "";
+    const pathValue = nodeButton.dataset.nodePath || "";
+    const section = (project.sections || []).find((item) => item.id === sectionId);
+    const node = section ? findBuilderNode(section, nodePathFromString(pathValue)) : null;
+    const title = node ? builderNodeTitle(node) : "Subsection";
+    showProjectViewContextMenu(event, {
+      stateKey: `custom:${sectionId}|${pathValue}`,
+      title,
+      kind: "node",
+      sectionId,
+      nodePath: pathValue
+    });
+    return;
+  }
+
+  const button = event.target.closest("[data-section-id]");
+  if (!button) return;
   const sectionId = button.dataset.sectionId || "brief";
+  const customSectionId = sectionId.startsWith("custom:") ? sectionId.replace("custom:", "") : "";
   const title = sectionOptions(project).find((section) => section.id === sectionId)?.label || "Project view";
-  showProjectViewContextMenu(event, { stateKey: sectionId, title });
+  showProjectViewContextMenu(event, {
+    stateKey: sectionId,
+    title,
+    kind: customSectionId ? "section" : "standard",
+    sectionId: customSectionId,
+    nodePath: ""
+  });
 });
 
 projectViewTabsBar?.addEventListener("click", (event) => {
@@ -15099,24 +15239,83 @@ projectViewTabsBar?.addEventListener("click", (event) => {
   activateProjectViewTab(tab.dataset.projectViewTab || "");
 });
 
-projectViewContextMenu?.addEventListener("click", (event) => {
+projectViewContextMenu?.addEventListener("click", async (event) => {
   const action = event.target.closest("[data-project-view-action]")?.dataset.projectViewAction;
   if (!action) return;
-  if (action === "open-window" && pendingProjectViewContext) {
-    openDetachedProjectViewWindow(pendingProjectViewContext.stateKey, { title: pendingProjectViewContext.title });
+  const context = pendingProjectViewContext;
+  const project = selectedProject();
+  if (action === "close") {
+    hideProjectViewContextMenu();
+    return;
   }
-  if (action === "edit-node" && pendingProjectViewContext) {
+  if (!context || !project) {
+    hideProjectViewContextMenu();
+    return;
+  }
+  if (action === "open") {
+    if (context.stateKey && context.stateKey !== projectWindowStateKey()) {
+      projectWindowBackStack.push(projectWindowStateKey());
+      projectWindowForwardStack = [];
+    }
+    applyProjectWindowStateKey(context.stateKey);
+    pendingEditor = null;
+    renderAll();
+    resetProjectWindowScroll();
+  }
+  if (action === "open-window") {
+    openDetachedProjectViewWindow(context.stateKey, { title: context.title });
+  }
+  if (action === "copy-path") {
+    const text = builderContextPathText(project, context);
+    if (text) {
+      await navigator.clipboard.writeText(text);
+      setStatus("Project path copied.");
+    }
+  }
+  if (action === "add-subsection" && context.sectionId) {
+    applyProjectWindowStateKey(context.stateKey);
+    renderAll();
     openPendingEditor({
       type: "custom",
-      mode: "edit",
-      sectionId: pendingProjectViewContext.sectionId,
-      nodePath: pendingProjectViewContext.nodePath
+      mode: "add",
+      sectionId: context.sectionId,
+      parentPath: context.nodePath || "",
+      title: "",
+      description: ""
     });
   }
-  if (action === "delete-node" && pendingProjectViewContext) {
-    const project = selectedProject();
-    if (project) {
-      deleteProjectNodeByPath(project, pendingProjectViewContext.sectionId, nodePathFromString(pendingProjectViewContext.nodePath || ""));
+  if (action === "add-file" && context.sectionId) {
+    await uploadToSection("sections", context.sectionId, context.sectionId, null, context.nodePath || "");
+  }
+  if (action === "edit-current" && context.sectionId) {
+    applyProjectWindowStateKey(context.stateKey);
+    renderAll();
+    if (context.kind === "node" && context.nodePath) {
+      openPendingEditor({
+        type: "custom",
+        mode: "edit",
+        sectionId: context.sectionId,
+        nodePath: context.nodePath
+      });
+    } else {
+      openPendingEditor({
+        type: "custom-section",
+        mode: "edit",
+        sectionId: context.sectionId,
+        title: (project.sections || []).find((item) => item.id === context.sectionId)?.title || "",
+        description: (project.sections || []).find((item) => item.id === context.sectionId)?.description || "",
+        richDescription: (project.sections || []).find((item) => item.id === context.sectionId)?.richDescription || null
+      });
+    }
+  }
+  if (action === "clean-empty") {
+    cleanEmptyBuilderChildren(project, context);
+  }
+  if (action === "delete-current" && context.sectionId) {
+    if (context.kind === "node" && context.nodePath) {
+      deleteProjectNodeByPath(project, context.sectionId, nodePathFromString(context.nodePath || ""));
+    } else {
+      deleteProjectSectionById(project, context.sectionId);
     }
   }
   hideProjectViewContextMenu();
