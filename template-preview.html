@@ -11,7 +11,7 @@
     <link rel="shortcut icon" href="assets/favicon.ico" />
     <link rel="apple-touch-icon" sizes="180x180" href="assets/apple-touch-icon.png" />
     <link rel="stylesheet" href="styles.css" />
-    <link rel="stylesheet" href="template-preview.css?v=0.2.75" />
+    <link rel="stylesheet" href="template-preview.css?v=0.2.76" />
   </head>
   <body class="template-preview-page">
       <header class="template-header">
@@ -530,7 +530,7 @@
                               <li>Right-click a project section or subsection and choose Open in new window when you want to compare up to four parts of the same project without losing your current place.</li>
                               <li>Console shows compiler and runtime output for the active source.</li>
                               <li>Messages shows save, compile, build, append, tool-check, and simulation progress.</li>
-                              <li>Terminal runs local PowerShell-style commands from the selected project compile folder. Type beside the prompt, press Enter, read the output directly below the command, then continue from the next prompt.</li>
+                              <li>Terminal runs a persistent local PowerShell session under the current Windows user account. It starts in the project compile folder, can cd into any Windows drive or folder that user can access, inherits the user environment and compiler tool paths, and keeps the prompt path updated after each command.</li>
                               <li>Input opens stdin for the active source in a separate window so the code editor stays focused on source text.</li>
                               <li>Scope appears for Verilog/SystemVerilog and shows VCD waveforms after simulation.</li>
                               <li>Click a scrollable area before using the mouse wheel there. Solution Explorer, file tabs, editor, Console, Messages, Terminal, and Scope each keep their own scroll behavior.</li>
@@ -1420,7 +1420,7 @@
           <button type="button" data-rich-action="edit-block">Edit selected block</button>
           <button class="danger-menu-item" type="button" data-rich-action="delete-block">Delete selected block</button>
       </div>
-      <script src="electronics-search.js?v=0.2.75"></script>
-      <script src="template-preview.js?v=0.2.75"></script>
+      <script src="electronics-search.js?v=0.2.76"></script>
+      <script src="template-preview.js?v=0.2.76"></script>
   </body>
 </html>
