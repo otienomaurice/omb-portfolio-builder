@@ -538,7 +538,8 @@ function terminalProbeLines(session, markerId = "") {
   const doneMarker = terminalMarker(markerId, "DONE");
   if (session.shell === "powershell") {
     return [
-      `$__ombExitCode = if ($global:LASTEXITCODE -is [int]) { $global:LASTEXITCODE } else { 0 }`,
+      "$__ombLastSuccess = $?",
+      `$__ombExitCode = if ($global:LASTEXITCODE -is [int]) { $global:LASTEXITCODE } elseif ($__ombLastSuccess) { 0 } else { 1 }`,
       `Write-Output "${cwdMarker}$((Get-Location).ProviderPath)"`,
       `Write-Output "${doneMarker}$__ombExitCode"`
     ].join("\n");
@@ -576,6 +577,8 @@ function parsePersistentTerminalResult(raw = "", cwdMarker = "", doneMarker = ""
     if (commandText && trimmed === commandText) continue;
     if (commandPromptPattern?.test(trimmed)) continue;
     if (/^PS [A-Z]:\\.*>\s*$/i.test(trimmed)) continue;
+    if (/^PS\s+.+>\s*\$__ombLastSuccess\s*=\s*\$\?/i.test(trimmed)) continue;
+    if (/^\$__ombLastSuccess\s*=\s*\$\?/i.test(trimmed)) continue;
     if (/^PS\s+.+>\s*\$__ombExitCode\b/i.test(trimmed)) continue;
     if (/^\$__ombExitCode\b/i.test(trimmed)) continue;
     if (/^PS\s+.+>\s*Write-Output\s+"__OMB_TERMINAL_/i.test(trimmed)) continue;
@@ -603,11 +606,12 @@ async function runPersistentCompileTerminalCommand(payload = {}) {
     session.lastUsed = Date.now();
     const timer = setTimeout(() => {
       const parsed = parsePersistentTerminalResult(session.buffer, cwdMarker, doneMarker, command);
+      closeCompileTerminalSession(session.key);
       resolve({
         cwdAbsolute: parsed.cwdAbsolute || session.cwdAbsolute,
         exitCode: -1,
         ok: false,
-        output: `${parsed.output}\nCommand is still running or did not return a terminal prompt before timeout.`.trim()
+        output: `${parsed.output}\nCommand is still running or did not return a terminal prompt before timeout. The terminal session was reset so the next command starts cleanly.`.trim()
       });
     }, timeoutMs);
     const interval = setInterval(() => {
@@ -2233,7 +2237,26 @@ async function runCompileTerminalCommand(payload = {}) {
       output: ""
     };
   }
-  const terminalResult = await runOneShotCompileTerminalCommand(payload);
+  if (/^exit\b/i.test(command)) {
+    const key = terminalSessionKey(payload);
+    const session = compileTerminalSessions.get(key);
+    const lastCwdAbsolute = session?.cwdAbsolute || await terminalStartDirectory(payload);
+    closeCompileTerminalSession(key);
+    const relativeToProject = path.relative(resolveInsideCompileRoot(projectFolder), lastCwdAbsolute);
+    const finalCwdRelative = relativeToProject && !relativeToProject.startsWith("..") && !path.isAbsolute(relativeToProject)
+      ? safeCodeDirectoryPath(relativeToProject)
+      : "";
+    return {
+      cwd: finalCwdRelative,
+      rootPath: compileRoot,
+      cwdAbsolute: lastCwdAbsolute,
+      promptPath: lastCwdAbsolute,
+      exitCode: 0,
+      ok: true,
+      output: "Terminal session closed. Run another command to start a new session."
+    };
+  }
+  const terminalResult = await runPersistentCompileTerminalCommand(payload);
   const finalCwdAbsolute = terminalResult.cwdAbsolute || await terminalStartDirectory(payload);
   const relativeToProject = path.relative(resolveInsideCompileRoot(projectFolder), finalCwdAbsolute);
   const finalCwdRelative = relativeToProject && !relativeToProject.startsWith("..") && !path.isAbsolute(relativeToProject)
