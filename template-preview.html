@@ -11,7 +11,7 @@
     <link rel="shortcut icon" href="assets/favicon.ico" />
     <link rel="apple-touch-icon" sizes="180x180" href="assets/apple-touch-icon.png" />
     <link rel="stylesheet" href="styles.css" />
-    <link rel="stylesheet" href="template-preview.css?v=0.2.81" />
+    <link rel="stylesheet" href="template-preview.css?v=0.2.82" />
   </head>
   <body class="template-preview-page">
       <header class="template-header">
@@ -658,7 +658,7 @@
                   <details class="builder-guide-section" data-guide-section="update troubleshooting preferences">
                       <summary><span class="guide-card-title">App Updates And Troubleshooting</span><span class="guide-card-summary">Update the installed app, avoid duplicate installs, switch viewing themes, and recover from stale windows.</span></summary>
                       <div>
-                          <p>Use Check updates to manually look for a newer builder. Updates come from GitHub Releases after a new installer is built. Use Preferences to select dark builder mode, choose a dark color skin, and choose the Compile Code appearance. Preference changes repaint the builder immediately, so you can test several skins before closing the dialog. When dark mode is active, use the Day view control in the main header to return to the normal light editing view. Dark mode only changes how the builder application is viewed; the portfolio is still built from the saved content colors and selected appearances.</p>
+                          <p>Use Check updates to manually look for a newer builder. Updates come from GitHub Releases after a new installer is built. Use Preferences to select light or dark builder skins and choose the Compile Code appearance. Preference changes repaint the builder immediately, so you can test several skins before closing the dialog. Only Light - Default portfolio editing saves explicit text colors for the public website. Other light and dark skins are viewing modes: they keep text readable while you work, but saved website text colors normalize back to the default publish color unless the color was changed in the default light editor.</p>
                           <p>An update should behave like a repair of the existing app, not like a second installation. It should close the current builder, update the existing install location, and reopen the app with the new files.</p>
                           <ol>
                               <li>When an update is available, click Update.</li>
@@ -1327,6 +1327,19 @@
                   </select>
               </label>
               <label>
+                  <span>Light mode color</span>
+                  <select id="preference-light-theme">
+                      <option value="light-default">Light - Default portfolio editing</option>
+                      <option value="light-sky">Light - Sky engineering</option>
+                      <option value="light-paper">Light - Paper schematic</option>
+                      <option value="light-mint">Light - Mint lab</option>
+                      <option value="light-lavender">Light - Lavender signal</option>
+                      <option value="light-rose">Light - Rose review</option>
+                      <option value="light-amber">Light - Amber bench</option>
+                      <option value="light-slate">Light - Slate drafting</option>
+                  </select>
+              </label>
+              <label>
                   <span>Dark mode color</span>
                   <select id="preference-dark-theme">
                       <option value="dark-blue">Dark - Blueprint blue</option>
@@ -1355,7 +1368,7 @@
                       <option value="light-paper">Light - Paper schematic</option>
                   </select>
               </label>
-              <p class="preference-note">Preferences repaint the builder immediately. Portfolio appearance still comes from the selected site and project appearances.</p>
+              <p class="preference-note">Preferences repaint the builder immediately. Only Light - Default portfolio editing saves text colors for the public website. Other light and dark skins are view-only; saved website text colors normalize back to the default publish color unless changed in the default light editor.</p>
               <div class="dialog-actions">
                   <button class="button primary" type="submit">Save preferences</button>
                   <button class="project-window-close" id="preferences-close" type="button" aria-label="Close preferences">&times;</button>
@@ -1454,7 +1467,7 @@
           <button type="button" data-rich-action="edit-block">Edit selected block</button>
           <button class="danger-menu-item" type="button" data-rich-action="delete-block">Delete selected block</button>
       </div>
-      <script src="electronics-search.js?v=0.2.81"></script>
-      <script src="template-preview.js?v=0.2.81"></script>
+      <script src="electronics-search.js?v=0.2.82"></script>
+      <script src="template-preview.js?v=0.2.82"></script>
   </body>
 </html>
