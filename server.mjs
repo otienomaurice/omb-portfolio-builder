@@ -419,6 +419,56 @@ function windowsTerminalCommand(command = "", sentinel = "") {
   ].join("\n");
 }
 
+function powerShellQuoted(value = "") {
+  return `'${String(value || "").replace(/'/g, "''")}'`;
+}
+
+async function openCompilePowerShellTerminal(payload = {}) {
+  if (process.platform !== "win32") {
+    throw new Error("External PowerShell terminal launching is only available on Windows.");
+  }
+  const cwdAbsolute = await terminalStartDirectory(payload);
+  const projectFolder = safeSegment(payload.projectId, "project");
+  const env = {
+    ...process.env,
+    ...(await compileToolPathEnvironment())
+  };
+  const setupScript = [
+    `$Host.UI.RawUI.WindowTitle = ${powerShellQuoted(`OMB Compile Code - ${projectFolder}`)}`,
+    `Set-Location -LiteralPath ${powerShellQuoted(cwdAbsolute)}`,
+    `Write-Host ${powerShellQuoted("OMB Compile Code PowerShell")} -ForegroundColor Cyan`,
+    `Write-Host ${powerShellQuoted(`Workspace: ${cwdAbsolute}`)} -ForegroundColor DarkCyan`
+  ].join("; ");
+  const child = spawn("powershell.exe", [
+    "-NoLogo",
+    "-NoExit",
+    "-ExecutionPolicy",
+    "Bypass",
+    "-Command",
+    setupScript
+  ], {
+    cwd: cwdAbsolute,
+    detached: true,
+    env,
+    shell: false,
+    stdio: "ignore",
+    windowsHide: false
+  });
+  child.unref();
+  const relativeToProject = path.relative(resolveInsideCompileRoot(projectFolder), cwdAbsolute);
+  const cwd = relativeToProject && !relativeToProject.startsWith("..") && !path.isAbsolute(relativeToProject)
+    ? safeCodeDirectoryPath(relativeToProject)
+    : "";
+  return {
+    ok: true,
+    cwd,
+    rootPath: compileRoot,
+    cwdAbsolute,
+    promptPath: cwdAbsolute,
+    shell: "powershell.exe"
+  };
+}
+
 function stripTerminalCwdSentinel(result = {}, sentinel = "") {
   if (!sentinel) return { result, cwdAbsolute: "" };
   const marker = new RegExp(`^${escapeRegExp(sentinel)}(.+)$`, "m");
@@ -4590,6 +4640,17 @@ async function handleApi(request, response, url) {
       sendJson(response, 200, result);
     } catch (error) {
       sendJson(response, 400, { ok: false, error: error.message || "Terminal command could not be run." });
+    }
+    return true;
+  }
+
+  if (url.pathname === "/api/code/open-terminal") {
+    try {
+      const body = await readRequestJson(request);
+      const result = await openCompilePowerShellTerminal(body);
+      sendJson(response, 200, result);
+    } catch (error) {
+      sendJson(response, 400, { ok: false, error: error.message || "PowerShell terminal could not be opened." });
     }
     return true;
   }
