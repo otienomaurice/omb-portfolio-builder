@@ -4563,6 +4563,117 @@ body[data-builder-theme="dark"] .summary-context-menu button:hover {
   background: #ffffff;
 }
 
+.builder-section-accordion {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  width: 100%;
+}
+
+.builder-subsection-list {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  width: 100%;
+}
+
+.builder-subsection-list-item {
+  display: grid;
+  min-width: 0;
+}
+
+.builder-subsection-details {
+  display: grid;
+  width: 100%;
+  border: 1px solid #c6e7f4;
+  border-radius: 8px;
+  background: #ffffff;
+  overflow: hidden;
+}
+
+.builder-subsection-details summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  min-height: var(--builder-control-height, 30px);
+  padding: 0 12px;
+  color: var(--ink);
+  background: #f8fdff;
+  cursor: pointer;
+  font-size: 0.88rem;
+  font-weight: 750;
+  list-style-position: inside;
+}
+
+.builder-subsection-details summary:hover {
+  background: #d8f3fb;
+}
+
+.builder-subsection-details[open] > summary {
+  border-bottom: 1px solid #c6e7f4;
+  background: #d8f3fb;
+}
+
+.builder-subsection-details summary span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.builder-subsection-details summary small {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.builder-subsection-summary-meta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 0;
+}
+
+.builder-subsection-summary-delete {
+  min-height: var(--builder-control-height, 30px);
+  height: var(--builder-control-height, 30px);
+  padding: 0 10px;
+  font-size: 0.76rem;
+}
+
+.builder-subsection-content {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  background: #ffffff;
+}
+
+.builder-subsection-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+  width: 100%;
+}
+
+.builder-subsection-actions button {
+  min-height: var(--builder-control-height, 30px);
+  height: var(--builder-control-height, 30px);
+  padding: 0 10px;
+  font-size: 0.78rem;
+}
+
+.builder-subsection-children {
+  display: grid;
+  gap: 6px;
+  width: 100%;
+}
+
 .project-section-actions {
   display: flex;
   align-items: center;
@@ -5029,6 +5140,45 @@ body[data-builder-theme="dark"] .summary-context-menu button:hover {
 .subsection-grid.section-content-grid .section-open-card span {
   overflow-wrap: anywhere;
   white-space: normal;
+}
+
+.parsed-subsection-stack {
+  display: grid;
+  gap: 8px;
+  width: 100%;
+}
+
+.parsed-subsection-accordion {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.92);
+  overflow: hidden;
+}
+
+.parsed-subsection-accordion summary {
+  min-height: 34px;
+  padding: 7px 12px;
+  color: var(--ink);
+  background: rgba(215, 241, 250, 0.62);
+  cursor: pointer;
+  font-size: 0.92rem;
+  font-weight: 800;
+}
+
+.parsed-subsection-accordion summary:hover {
+  color: #ffffff;
+  background: var(--template-hover, #1f6ed4);
+}
+
+.parsed-subsection-accordion[open] > summary {
+  border-bottom: 1px solid var(--line);
+  background: rgba(226, 247, 253, 0.84);
+}
+
+.parsed-subsection-accordion > .parsed-window-panel {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
 }
 
 .project-template .section-open-card:active {
@@ -11870,6 +12020,32 @@ body[data-builder-theme="dark"] .project-dialog .section-bar-subsections .nested
 body[data-builder-theme="dark"] .detached-project-view-nav .nested-section-link:hover {
   border-color: var(--builder-ui-accent, #38bdf8) !important;
   background: var(--builder-ui-accent-soft, #17344a) !important;
+}
+
+body[data-builder-theme="dark"] .project-dialog :is(
+  .builder-subsection-details,
+  .builder-subsection-content
+) {
+  border-color: var(--builder-ui-line) !important;
+  background: var(--builder-ui-surface) !important;
+  color: var(--builder-ui-text) !important;
+}
+
+body[data-builder-theme="dark"] .project-dialog .builder-subsection-details summary {
+  border-color: var(--builder-ui-line) !important;
+  background: var(--builder-ui-surface-2) !important;
+  color: var(--builder-ui-text) !important;
+}
+
+body[data-builder-theme="dark"] .project-dialog .builder-subsection-details summary:hover,
+body[data-builder-theme="dark"] .project-dialog .builder-subsection-details[open] > summary {
+  border-color: var(--builder-ui-focus) !important;
+  background: var(--builder-ui-command-hover) !important;
+  color: #ffffff !important;
+}
+
+body[data-builder-theme="dark"] .project-dialog .builder-subsection-details summary small {
+  color: color-mix(in srgb, var(--builder-ui-muted) 75%, #ffffff 25%) !important;
 }
 
 /* Compile Code bottom-fit layout.
