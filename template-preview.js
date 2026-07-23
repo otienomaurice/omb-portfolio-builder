@@ -215,6 +215,7 @@ const summaryCodeCancel = document.querySelector("#summary-code-cancel");
 const preferencesDialog = document.querySelector("#preferences-dialog");
 const preferencesForm = document.querySelector("#preferences-form");
 const preferenceTheme = document.querySelector("#preference-theme");
+const preferenceDarkTheme = document.querySelector("#preference-dark-theme");
 const preferenceCompileTheme = document.querySelector("#preference-compile-theme");
 const preferencesClose = document.querySelector("#preferences-close");
 const summaryContextMenu = document.querySelector("#summary-context-menu");
@@ -249,16 +250,32 @@ const standardSections = [
 const projectStatusOptions = ["Draft", "In progress", "Completed", "Archived"];
 
 const preferenceStorageKey = "omb-builder-preferences";
+const builderDarkThemeIds = [
+  "dark-blue",
+  "dark-graphite",
+  "dark-emerald",
+  "dark-violet",
+  "dark-amber",
+  "dark-teal",
+  "dark-crimson",
+  "dark-steel"
+];
 const compileThemeIds = [
   "dark-vs",
   "dark-navy",
   "dark-graphite",
   "dark-emerald",
   "dark-violet",
+  "dark-cobalt",
+  "dark-copper",
+  "dark-crimson",
+  "dark-solarized",
   "light-sky",
   "light-paper"
 ];
-const defaultBuilderPreferences = { theme: "light", compileTheme: "dark-vs", zoom: 1 };
+const maxProjectViewTabs = 8;
+const maxDetachedProjectViewWindows = 8;
+const defaultBuilderPreferences = { theme: "light", darkTheme: "dark-blue", compileTheme: "dark-vs", zoom: 1 };
 let builderPreferences = { ...defaultBuilderPreferences };
 let activeCompileTreeContext = null;
 let activeScopeSignalContext = null;
@@ -2856,6 +2873,7 @@ function loadBuilderPreferences() {
       ...defaultBuilderPreferences,
       ...stored,
       theme: ["light", "dark"].includes(stored.theme) ? stored.theme : defaultBuilderPreferences.theme,
+      darkTheme: builderDarkThemeIds.includes(stored.darkTheme) ? stored.darkTheme : defaultBuilderPreferences.darkTheme,
       compileTheme: compileThemeIds.includes(stored.compileTheme) ? stored.compileTheme : defaultBuilderPreferences.compileTheme,
       zoom: normalizeBuilderZoom(stored.zoom)
     };
@@ -2902,12 +2920,16 @@ function normalizeCompileSidebarWidth(value) {
 
 function applyBuilderPreferences() {
   const theme = ["light", "dark"].includes(builderPreferences.theme) ? builderPreferences.theme : "light";
+  const darkTheme = builderDarkThemeIds.includes(builderPreferences.darkTheme) ? builderPreferences.darkTheme : defaultBuilderPreferences.darkTheme;
   const compileTheme = compileThemeIds.includes(builderPreferences.compileTheme) ? builderPreferences.compileTheme : defaultBuilderPreferences.compileTheme;
   const zoom = normalizeBuilderZoom(builderPreferences.zoom);
   builderPreferences.zoom = zoom;
+  builderPreferences.darkTheme = darkTheme;
   builderPreferences.compileTheme = compileTheme;
   document.documentElement.dataset.builderTheme = theme;
   document.body.dataset.builderTheme = theme;
+  document.documentElement.dataset.builderDarkTheme = darkTheme;
+  document.body.dataset.builderDarkTheme = darkTheme;
   document.documentElement.dataset.compileTheme = compileTheme;
   document.body.dataset.compileTheme = compileTheme;
   document.documentElement.style.setProperty("--builder-app-zoom", String(zoom));
@@ -2916,6 +2938,7 @@ function applyBuilderPreferences() {
     workspace.dataset.compileTheme = compileTheme;
   });
   if (preferenceTheme) preferenceTheme.value = theme;
+  if (preferenceDarkTheme) preferenceDarkTheme.value = darkTheme;
   if (preferenceCompileTheme) preferenceCompileTheme.value = compileTheme;
   if (lightModeReturnButton) lightModeReturnButton.hidden = theme !== "dark";
 }
@@ -2925,6 +2948,13 @@ function setBuilderTheme(theme = "light") {
   localStorage.setItem(preferenceStorageKey, JSON.stringify(builderPreferences));
   applyBuilderPreferences();
   setStatus(`Builder ${builderPreferences.theme} mode enabled.`);
+}
+
+function setBuilderDarkTheme(theme = defaultBuilderPreferences.darkTheme) {
+  builderPreferences.darkTheme = builderDarkThemeIds.includes(theme) ? theme : defaultBuilderPreferences.darkTheme;
+  localStorage.setItem(preferenceStorageKey, JSON.stringify(builderPreferences));
+  applyBuilderPreferences();
+  setStatus(`Dark mode color set to ${builderPreferences.darkTheme.replace(/^dark-/, "").replace(/-/g, " ")}.`);
 }
 
 function setCompileTheme(theme = defaultBuilderPreferences.compileTheme) {
@@ -2950,6 +2980,7 @@ function openPreferencesDialog() {
 
 function saveBuilderPreferencesFromDialog() {
   setBuilderTheme(preferenceTheme?.value || "light");
+  setBuilderDarkTheme(preferenceDarkTheme?.value || defaultBuilderPreferences.darkTheme);
   setCompileTheme(preferenceCompileTheme?.value || defaultBuilderPreferences.compileTheme);
   setStatus("Preferences saved.");
 }
@@ -4395,8 +4426,8 @@ function openProjectViewTab(stateKey = "brief", options = {}) {
     resetProjectWindowScroll();
     return true;
   }
-  if (projectViewTabs.length >= 4) {
-    setStatus("You can keep up to four project section views open at the same time.");
+  if (projectViewTabs.length >= maxProjectViewTabs) {
+    setStatus(`You can keep up to ${maxProjectViewTabs} project section tabs open at the same time.`);
     return false;
   }
   const id = projectViewTabId();
@@ -4535,8 +4566,8 @@ function detachedProjectViewElement(windowId = "") {
 function openDetachedProjectViewWindow(stateKey = "brief", options = {}) {
   const project = selectedProject();
   if (!project) return false;
-  if (detachedProjectViewWindows.length >= 4) {
-    setStatus("You can keep up to four detached project windows open at the same time.");
+  if (detachedProjectViewWindows.length >= maxDetachedProjectViewWindows) {
+    setStatus(`You can keep up to ${maxDetachedProjectViewWindows} detached project windows open at the same time.`);
     return false;
   }
   const existing = detachedProjectViewWindows.find((win) => win.projectId === project.id && win.stateKey === stateKey);
@@ -8117,7 +8148,7 @@ function renderProjectViewTabs(project) {
         </span>
       `).join("")}
     </div>
-    <span class="project-view-tab-count">${projectViewTabs.length}/4</span>
+    <span class="project-view-tab-count">${projectViewTabs.length}/${maxProjectViewTabs}</span>
   `;
 }
 
@@ -15532,6 +15563,9 @@ projectViewContextMenu?.addEventListener("click", async (event) => {
     pendingEditor = null;
     renderAll();
     resetProjectWindowScroll();
+  }
+  if (action === "open-tab") {
+    openProjectViewTab(context.stateKey, { title: context.title });
   }
   if (action === "open-window") {
     openDetachedProjectViewWindow(context.stateKey, { title: context.title });
