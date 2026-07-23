@@ -8130,9 +8130,11 @@ function showProjectViewContextMenu(event, context = {}) {
   if (!projectViewContextMenu || !context.stateKey) return;
   event.preventDefault();
   pendingProjectViewContext = context;
+  const project = selectedProject();
   const isCustom = Boolean(context.sectionId);
   const isNestedNode = context.kind === "node" && context.sectionId && context.nodePath;
   const canDelete = context.kind === "section" || isNestedNode;
+  const moveInfo = builderContextMoveInfo(project, context);
   projectViewContextMenu.querySelectorAll("[data-project-view-custom-action]").forEach((button) => {
     button.hidden = !isCustom;
   });
@@ -8145,6 +8147,23 @@ function showProjectViewContextMenu(event, context = {}) {
   if (deleteButton) deleteButton.textContent = isNestedNode ? "Delete subsection" : "Delete section";
   const addFileButton = projectViewContextMenu.querySelector("[data-project-view-action='add-file']");
   if (addFileButton) addFileButton.hidden = !isCustom || context.kind === "standard";
+  const duplicateButton = projectViewContextMenu.querySelector("[data-project-view-action='duplicate-current']");
+  if (duplicateButton) {
+    duplicateButton.hidden = !isCustom || context.kind === "standard";
+    duplicateButton.textContent = isNestedNode ? "Duplicate subsection" : "Duplicate section";
+  }
+  const movePreviousButton = projectViewContextMenu.querySelector("[data-project-view-action='move-previous']");
+  if (movePreviousButton) {
+    movePreviousButton.hidden = !isCustom || context.kind === "standard";
+    movePreviousButton.disabled = !moveInfo.canMovePrevious;
+    movePreviousButton.textContent = isNestedNode ? "Move subsection up" : "Move section earlier";
+  }
+  const moveNextButton = projectViewContextMenu.querySelector("[data-project-view-action='move-next']");
+  if (moveNextButton) {
+    moveNextButton.hidden = !isCustom || context.kind === "standard";
+    moveNextButton.disabled = !moveInfo.canMoveNext;
+    moveNextButton.textContent = isNestedNode ? "Move subsection down" : "Move section later";
+  }
   projectViewContextMenu.hidden = false;
   const visibleButtons = [...projectViewContextMenu.querySelectorAll("button")].filter((button) => !button.hidden).length;
   const width = 212;
@@ -8853,6 +8872,254 @@ function cleanEmptyBuilderChildrenConfirmed(project, context = {}) {
   setStatus(before === after ? "No empty child sections or files were found." : `Removed ${before - after} empty child item${before - after === 1 ? "" : "s"}.`);
   scheduleAutosave();
   renderAll();
+}
+
+function uniqueProjectSectionId(project, title = "section") {
+  const base = slugify(title) || "section";
+  const used = new Set((project?.sections || []).map((section) => section.id));
+  const collectNodeIds = (items = []) => {
+    (items || []).forEach((item) => {
+      if (item?.id) used.add(item.id);
+      collectNodeIds(item?.children || item?.items || []);
+    });
+  };
+  (project?.sections || []).forEach((section) => collectNodeIds(section.items || section.children || []));
+  let id = base;
+  let suffix = 2;
+  while (used.has(id)) {
+    id = `${base}-${suffix}`;
+    suffix += 1;
+  }
+  return id;
+}
+
+function makeDuplicatedBuilderNode(node, project, sectionId, path = []) {
+  const next = clone(node || {});
+  const baseTitle = builderNodeTitle(next);
+  if (next.title) next.title = `${baseTitle} copy`;
+  else if (next.name) next.name = `${baseTitle} copy`;
+  else if (next.label) next.label = `${baseTitle} copy`;
+  else next.title = `${baseTitle} copy`;
+  if (next.id) next.id = uniqueProjectSectionId(project, `${sectionId}-${baseTitle}-${Date.now()}`);
+  normalizeBuilderNodeStorage(next);
+  const refreshChildIds = (items = [], prefix = "") => {
+    items.forEach((child, index) => {
+      if (child?.id) child.id = uniqueProjectSectionId(project, `${sectionId}-${baseTitle}-${prefix}-${path.join("-")}-${index}`);
+      refreshChildIds(builderNodeChildren(child), `${prefix}-${index}`);
+    });
+  };
+  refreshChildIds(builderNodeChildren(next));
+  return next;
+}
+
+function refreshProjectSectionTreeIds(section, project) {
+  if (!section) return section;
+  normalizeBuilderSectionStorage(section);
+  section.items.forEach((item, index) => {
+    if (item?.id) item.id = uniqueProjectSectionId(project, `${section.id}-${builderNodeTitle(item)}-${index}`);
+    const refresh = (node, prefix = "") => {
+      builderNodeChildren(node).forEach((child, childIndex) => {
+        if (child?.id) child.id = uniqueProjectSectionId(project, `${section.id}-${builderNodeTitle(child)}-${prefix}-${childIndex}`);
+        refresh(child, `${prefix}-${childIndex}`);
+      });
+    };
+    refresh(item, String(index));
+  });
+  return section;
+}
+
+function duplicateProjectSection(project, sectionId) {
+  if (!project || !sectionId) return;
+  const sections = project.sections || [];
+  const index = sections.findIndex((section) => section.id === sectionId);
+  const section = sections[index];
+  if (!section) return;
+  const next = clone(section);
+  next.id = uniqueProjectSectionId(project, `${section.title || sectionId} copy`);
+  next.title = `${section.title || "Untitled section"} copy`;
+  refreshProjectSectionTreeIds(next, project);
+  sections.splice(index + 1, 0, next);
+  project.sections = sections;
+  project.sectionModelVersion = 3;
+  activeSectionId = `custom:${next.id}`;
+  setActiveCustomSectionPath(next.id, []);
+  setStatus(`Duplicated "${section.title || "section"}". Click Save project to rebuild the project preview.`);
+  scheduleAutosave();
+  renderAll();
+}
+
+function duplicateProjectNode(project, sectionId, path = []) {
+  const section = (project?.sections || []).find((item) => item.id === sectionId);
+  const parent = section ? findBuilderNodeParent(section, path) : null;
+  const node = parent?.children?.[parent.index];
+  if (!section || !node || node.url || node.artifact) return;
+  const next = makeDuplicatedBuilderNode(node, project, sectionId, path);
+  parent.children.splice(parent.index + 1, 0, next);
+  project.sectionModelVersion = 3;
+  activeSectionId = `custom:${sectionId}`;
+  setActiveCustomSectionPath(sectionId, [...path.slice(0, -1), parent.index + 1]);
+  setStatus(`Duplicated "${builderNodeTitle(node)}". Click Save project to rebuild the project preview.`);
+  scheduleAutosave();
+  renderAll();
+}
+
+function moveProjectSection(project, sectionId, direction = 0) {
+  if (!project || !sectionId || !direction) return;
+  const sections = project.sections || [];
+  const index = sections.findIndex((section) => section.id === sectionId);
+  const nextIndex = index + direction;
+  if (index < 0 || nextIndex < 0 || nextIndex >= sections.length) return;
+  [sections[index], sections[nextIndex]] = [sections[nextIndex], sections[index]];
+  activeSectionId = `custom:${sectionId}`;
+  setActiveCustomSectionPath(sectionId, []);
+  setStatus(`Moved section ${direction < 0 ? "earlier" : "later"}. Click Save project to rebuild the project preview.`);
+  scheduleAutosave();
+  renderAll();
+}
+
+function moveProjectNode(project, sectionId, path = [], direction = 0) {
+  if (!project || !sectionId || !path.length || !direction) return;
+  const section = (project.sections || []).find((item) => item.id === sectionId);
+  const parent = section ? findBuilderNodeParent(section, path) : null;
+  const index = parent?.index ?? -1;
+  const nextIndex = index + direction;
+  if (!parent || index < 0 || nextIndex < 0 || nextIndex >= parent.children.length) return;
+  [parent.children[index], parent.children[nextIndex]] = [parent.children[nextIndex], parent.children[index]];
+  activeSectionId = `custom:${sectionId}`;
+  setActiveCustomSectionPath(sectionId, [...path.slice(0, -1), nextIndex]);
+  setStatus(`Moved subsection ${direction < 0 ? "earlier" : "later"}. Click Save project to rebuild the project preview.`);
+  scheduleAutosave();
+  renderAll();
+}
+
+function builderContextMoveInfo(project, context = {}) {
+  if (!project || !context.sectionId) return { canMovePrevious: false, canMoveNext: false };
+  if (context.kind === "section") {
+    const index = (project.sections || []).findIndex((section) => section.id === context.sectionId);
+    return {
+      canMovePrevious: index > 0,
+      canMoveNext: index >= 0 && index < (project.sections || []).length - 1
+    };
+  }
+  if (context.kind === "node" && context.nodePath) {
+    const section = (project.sections || []).find((item) => item.id === context.sectionId);
+    const path = nodePathFromString(context.nodePath);
+    const parent = section ? findBuilderNodeParent(section, path) : null;
+    const index = parent?.index ?? -1;
+    return {
+      canMovePrevious: index > 0,
+      canMoveNext: Boolean(parent) && index >= 0 && index < parent.children.length - 1
+    };
+  }
+  return { canMovePrevious: false, canMoveNext: false };
+}
+
+function countBuilderFilesInTree(items = []) {
+  return (items || []).reduce((count, item) => {
+    if (!item) return count;
+    if (item.url || item.artifact) return count + 1;
+    return count + countBuilderFilesInTree(builderNodeChildren(item));
+  }, 0);
+}
+
+function builderTreeHealthStats(project) {
+  const stats = {
+    customSections: 0,
+    nestedSubsections: 0,
+    files: 0,
+    emptySections: 0,
+    emptySubsections: 0,
+    maxDepth: 0
+  };
+  (project?.sections || []).forEach((section) => {
+    if (isCompileCodeBuilderSection(section)) return;
+    normalizeBuilderSectionStorage(section);
+    stats.customSections += 1;
+    if (!builderProjectSectionHasContent(section)) stats.emptySections += 1;
+    const walk = (items = [], depth = 1) => {
+      stats.maxDepth = Math.max(stats.maxDepth, depth);
+      (items || []).forEach((item) => {
+        if (!item) return;
+        if (item.url || item.artifact) {
+          stats.files += 1;
+          return;
+        }
+        stats.nestedSubsections += 1;
+        if (!builderSectionNodeHasContent(item)) stats.emptySubsections += 1;
+        walk(builderNodeChildren(item), depth + 1);
+      });
+    };
+    walk(sectionRootChildren(section));
+  });
+  return stats;
+}
+
+function projectHealthRows(project) {
+  const stats = builderTreeHealthStats(project);
+  const savedProject = (savedPortfolioCatalog.projects || []).find((item) => item.id === project.id);
+  const overviewReady = Boolean(project.summary || richHasContent(project.summaryRich));
+  const compileWorkspace = ensureCompileCode(project);
+  const sourceFileCount = compileWorkspace?.files?.length || 0;
+  const emptyCount = stats.emptySections + stats.emptySubsections;
+  return [
+    {
+      label: "Project preview",
+      value: savedProject ? "Parsed and saved" : "Not saved yet",
+      tone: savedProject ? "good" : "warn",
+      detail: savedProject ? "The isolated project preview has a saved parser output." : "Click Save in this project before relying on the preview or publishing."
+    },
+    {
+      label: "Overview",
+      value: overviewReady ? "Ready" : "Empty",
+      tone: overviewReady ? "good" : "warn",
+      detail: overviewReady ? "The project has an overview recruiters can read first." : "Add a short overview before publishing this project."
+    },
+    {
+      label: "Visible structure",
+      value: `${stats.customSections} section${stats.customSections === 1 ? "" : "s"}, ${stats.nestedSubsections} nested`,
+      tone: stats.customSections ? "info" : "warn",
+      detail: stats.maxDepth ? `Deepest nested path is ${stats.maxDepth} level${stats.maxDepth === 1 ? "" : "s"}.` : "No custom project sections are populated yet."
+    },
+    {
+      label: "Evidence files",
+      value: `${stats.files} attached`,
+      tone: stats.files ? "good" : "info",
+      detail: stats.files ? "These files live inside saved project sections/subsections." : "No section evidence files are attached yet."
+    },
+    {
+      label: "Empty placeholders",
+      value: emptyCount ? `${emptyCount} found` : "None found",
+      tone: emptyCount ? "warn" : "good",
+      detail: emptyCount ? "Use Clean empty children before publishing if these placeholders are not intentional." : "The saved section tree is clean."
+    },
+    {
+      label: "Compile workspace",
+      value: `${sourceFileCount} source file${sourceFileCount === 1 ? "" : "s"}`,
+      tone: sourceFileCount ? "info" : "neutral",
+      detail: "Compile Code is builder tooling and does not publish unless you append source into a project section."
+    },
+    {
+      label: "Status",
+      value: normalizeProjectStatus(project.status),
+      tone: project.showStatusOnPortfolio === false ? "neutral" : "info",
+      detail: project.showStatusOnPortfolio === false ? "Status is hidden from the public portfolio." : "Status is visible on the public portfolio."
+    }
+  ];
+}
+
+function openProjectHealthReport() {
+  const project = selectedProject();
+  if (!project || !projectMetaDialog || !projectMetaGrid || !projectMetaTitle) return;
+  projectTitleMenu.hidden = true;
+  projectMetaTitle.textContent = `${project.title || "Project"} health report`;
+  projectMetaGrid.innerHTML = projectHealthRows(project).map((row) => `
+    <article class="project-meta-health-card is-${escapeHtml(row.tone || "neutral")}">
+      <span>${escapeHtml(row.label)}</span>
+      <strong>${escapeHtml(row.value)}</strong>
+      <p>${escapeHtml(row.detail || "")}</p>
+    </article>
+  `).join("");
+  if (!projectMetaDialog.open) projectMetaDialog.showModal();
 }
 
 function renderBuilderExplorerRows(section, items = sectionRootChildren(section), path = [], depth = 0) {
@@ -10554,6 +10821,7 @@ function renderCompileIdeMenuBar(project, file = activeCompileFile(project)) {
       items: [
         { label: "Save project", action: "save-project" },
         { label: "View project preview", action: "project-preview" },
+        { label: "Project health report", action: "project-health" },
         { label: "Clean empty project sections", action: "clean-empty-project" },
         { label: "Append code to selected section", action: "append-code", disabled: !hasFile }
       ]
@@ -12590,6 +12858,7 @@ async function runCompileIdeAction(project, action = "", options = {}) {
   if (action === "import-directory") return importCompileFiles(project, { directory: true, targetDirectory: contextDirectory });
   if (action === "save-project") return saveSelectedProjectToPortfolio();
   if (action === "clean-empty-project") return cleanEmptyBuilderChildren(project);
+  if (action === "project-health") return openProjectHealthReport();
   if (action === "project-preview") return openProjectPortfolioPreview();
   if (action === "portfolio-preview") return openPortfolioPreview();
   if (action === "builder-guide") return builderGuideOpen?.click();
@@ -13705,6 +13974,8 @@ projectTitleMenu.addEventListener("click", async (event) => {
   }
   if (action === "rename") renameSelectedProject();
   if (action === "details") openProjectMetaDetails();
+  if (action === "health") openProjectHealthReport();
+  projectTitleMenu.hidden = true;
 });
 
 titleRenameSave.addEventListener("click", () => endTitleRename(true));
@@ -15308,8 +15579,32 @@ projectViewContextMenu?.addEventListener("click", async (event) => {
       });
     }
   }
+  if (action === "duplicate-current" && context.sectionId) {
+    if (context.kind === "node" && context.nodePath) {
+      duplicateProjectNode(project, context.sectionId, nodePathFromString(context.nodePath || ""));
+    } else if (context.kind === "section") {
+      duplicateProjectSection(project, context.sectionId);
+    }
+  }
+  if (action === "move-previous" && context.sectionId) {
+    if (context.kind === "node" && context.nodePath) {
+      moveProjectNode(project, context.sectionId, nodePathFromString(context.nodePath || ""), -1);
+    } else if (context.kind === "section") {
+      moveProjectSection(project, context.sectionId, -1);
+    }
+  }
+  if (action === "move-next" && context.sectionId) {
+    if (context.kind === "node" && context.nodePath) {
+      moveProjectNode(project, context.sectionId, nodePathFromString(context.nodePath || ""), 1);
+    } else if (context.kind === "section") {
+      moveProjectSection(project, context.sectionId, 1);
+    }
+  }
   if (action === "clean-empty") {
     cleanEmptyBuilderChildren(project, context);
+  }
+  if (action === "health-report") {
+    openProjectHealthReport();
   }
   if (action === "delete-current" && context.sectionId) {
     if (context.kind === "node" && context.nodePath) {
