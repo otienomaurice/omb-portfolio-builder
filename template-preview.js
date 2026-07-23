@@ -2978,10 +2978,34 @@ function openPreferencesDialog() {
   if (!preferencesDialog?.open) preferencesDialog.showModal();
 }
 
+function readPreferencesDialogDraft() {
+  const theme = ["light", "dark"].includes(preferenceTheme?.value)
+    ? preferenceTheme.value
+    : defaultBuilderPreferences.theme;
+  const darkTheme = builderDarkThemeIds.includes(preferenceDarkTheme?.value)
+    ? preferenceDarkTheme.value
+    : defaultBuilderPreferences.darkTheme;
+  const compileTheme = compileThemeIds.includes(preferenceCompileTheme?.value)
+    ? preferenceCompileTheme.value
+    : defaultBuilderPreferences.compileTheme;
+  return { theme, darkTheme, compileTheme };
+}
+
+function applyPreferenceDialogDraft(options = {}) {
+  const draft = readPreferencesDialogDraft();
+  builderPreferences = {
+    ...builderPreferences,
+    theme: draft.theme,
+    darkTheme: draft.darkTheme,
+    compileTheme: draft.compileTheme
+  };
+  localStorage.setItem(preferenceStorageKey, JSON.stringify(builderPreferences));
+  applyBuilderPreferences();
+  if (options.announce) setStatus("Preferences preview updated.");
+}
+
 function saveBuilderPreferencesFromDialog() {
-  setBuilderTheme(preferenceTheme?.value || "light");
-  setBuilderDarkTheme(preferenceDarkTheme?.value || defaultBuilderPreferences.darkTheme);
-  setCompileTheme(preferenceCompileTheme?.value || defaultBuilderPreferences.compileTheme);
+  applyPreferenceDialogDraft();
   setStatus("Preferences saved.");
 }
 
@@ -16982,6 +17006,16 @@ preferencesForm?.addEventListener("submit", (event) => {
   event.preventDefault();
   saveBuilderPreferencesFromDialog();
   closeDialogElement(preferencesDialog, "save");
+});
+preferenceTheme?.addEventListener("change", () => {
+  applyPreferenceDialogDraft({ announce: true });
+});
+preferenceDarkTheme?.addEventListener("change", () => {
+  if (preferenceTheme) preferenceTheme.value = "dark";
+  applyPreferenceDialogDraft({ announce: true });
+});
+preferenceCompileTheme?.addEventListener("change", () => {
+  applyPreferenceDialogDraft({ announce: true });
 });
 lightModeReturnButton?.addEventListener("click", () => {
   setBuilderTheme("light");
