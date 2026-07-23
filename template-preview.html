@@ -11,7 +11,7 @@
     <link rel="shortcut icon" href="assets/favicon.ico" />
     <link rel="apple-touch-icon" sizes="180x180" href="assets/apple-touch-icon.png" />
     <link rel="stylesheet" href="styles.css" />
-    <link rel="stylesheet" href="template-preview.css?v=0.2.78" />
+    <link rel="stylesheet" href="template-preview.css?v=0.2.80" />
   </head>
   <body class="template-preview-page">
       <header class="template-header">
@@ -533,7 +533,7 @@
                               <li>Use Append code to project to place the active source into a selected project section or nested subsection as a formatted code block.</li>
                           </ol>
                           <ul>
-                              <li>Right-click a project section or subsection and choose Open in new window when you want to compare up to four parts of the same project without losing your current place.</li>
+                              <li>Right-click a project section or subsection and choose Open in new tab or Open in new window when you want to compare several parts of the same project without losing your current place. The builder supports up to eight project tabs and up to eight detached project windows at the same time.</li>
                               <li>Console shows compiler and runtime output for the active source.</li>
                               <li>Messages shows save, compile, build, append, tool-check, and simulation progress.</li>
                               <li>Terminal runs a persistent local PowerShell session under the current Windows user account. It starts in the project compile folder, can cd into any Windows drive or folder that user can access, inherits the user environment and compiler tool paths, and keeps the prompt path updated after each command.</li>
@@ -658,7 +658,7 @@
                   <details class="builder-guide-section" data-guide-section="update troubleshooting preferences">
                       <summary><span class="guide-card-title">App Updates And Troubleshooting</span><span class="guide-card-summary">Update the installed app, avoid duplicate installs, switch viewing themes, and recover from stale windows.</span></summary>
                       <div>
-                          <p>Use Check updates to manually look for a newer builder. Updates come from GitHub Releases after a new installer is built. Use Preferences to select dark builder mode. When dark mode is active, use the Day view control in the main header to return to the normal light editing view. Dark mode only changes how the builder application is viewed; the portfolio is still built from the saved content colors and selected appearances.</p>
+                          <p>Use Check updates to manually look for a newer builder. Updates come from GitHub Releases after a new installer is built. Use Preferences to select dark builder mode, choose a dark color skin, and choose the Compile Code appearance. Preference changes repaint the builder immediately, so you can test several skins before closing the dialog. When dark mode is active, use the Day view control in the main header to return to the normal light editing view. Dark mode only changes how the builder application is viewed; the portfolio is still built from the saved content colors and selected appearances.</p>
                           <p>An update should behave like a repair of the existing app, not like a second installation. It should close the current builder, update the existing install location, and reopen the app with the new files.</p>
                           <ol>
                               <li>When an update is available, click Update.</li>
@@ -837,6 +837,7 @@
               <div class="project-view-tabs" id="project-view-tabs" aria-label="Open project section tabs"></div>
               <div class="project-title-menu project-view-context-menu" id="project-view-context-menu" hidden>
                   <button type="button" data-project-view-action="open">Open</button>
+                  <button type="button" data-project-view-action="open-tab">Open in new tab</button>
                   <button type="button" data-project-view-action="open-window">Open in new window</button>
                   <button type="button" data-project-view-action="copy-path">Copy path</button>
                   <button type="button" data-project-view-action="add-subsection" data-project-view-custom-action hidden>Add subsection</button>
@@ -1326,6 +1327,19 @@
                   </select>
               </label>
               <label>
+                  <span>Dark mode color</span>
+                  <select id="preference-dark-theme">
+                      <option value="dark-blue">Dark - Blueprint blue</option>
+                      <option value="dark-graphite">Dark - Graphite bench</option>
+                      <option value="dark-emerald">Dark - Emerald lab</option>
+                      <option value="dark-violet">Dark - Violet signal</option>
+                      <option value="dark-amber">Dark - Amber instrument</option>
+                      <option value="dark-teal">Dark - Teal oscilloscope</option>
+                      <option value="dark-crimson">Dark - Crimson debug</option>
+                      <option value="dark-steel">Dark - Steel workstation</option>
+                  </select>
+              </label>
+              <label>
                   <span>Compile Code appearance</span>
                   <select id="preference-compile-theme">
                       <option value="dark-vs">Dark - Visual Studio blue</option>
@@ -1333,11 +1347,15 @@
                       <option value="dark-graphite">Dark - Graphite ASIC</option>
                       <option value="dark-emerald">Dark - Emerald instrument</option>
                       <option value="dark-violet">Dark - Violet mixed signal</option>
+                      <option value="dark-cobalt">Dark - Cobalt IDE</option>
+                      <option value="dark-copper">Dark - Copper analog</option>
+                      <option value="dark-crimson">Dark - Crimson debug</option>
+                      <option value="dark-solarized">Dark - Solarized terminal</option>
                       <option value="light-sky">Light - Sky engineering</option>
                       <option value="light-paper">Light - Paper schematic</option>
                   </select>
               </label>
-              <p class="preference-note">Preferences affect the builder workspace only. Portfolio appearance still comes from the selected site and project appearances.</p>
+              <p class="preference-note">Preferences repaint the builder immediately. Portfolio appearance still comes from the selected site and project appearances.</p>
               <div class="dialog-actions">
                   <button class="button primary" type="submit">Save preferences</button>
                   <button class="project-window-close" id="preferences-close" type="button" aria-label="Close preferences">&times;</button>
@@ -1436,7 +1454,7 @@
           <button type="button" data-rich-action="edit-block">Edit selected block</button>
           <button class="danger-menu-item" type="button" data-rich-action="delete-block">Delete selected block</button>
       </div>
-      <script src="electronics-search.js?v=0.2.78"></script>
-      <script src="template-preview.js?v=0.2.78"></script>
+      <script src="electronics-search.js?v=0.2.80"></script>
+      <script src="template-preview.js?v=0.2.80"></script>
   </body>
 </html>
