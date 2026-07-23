@@ -4516,9 +4516,6 @@ function renderDetachedCustomSectionContent(project, sectionId, path = [], windo
   const currentNode = path.length ? findBuilderNode(section, path) : section;
   if (path.length && !currentNode) return `<p class="evidence-empty">Subsection not found.</p>`;
   const currentChildren = path.length ? builderNodeChildren(currentNode) : sectionRootChildren(section);
-  const description = path.length ? currentNode?.description || "" : section.description || "";
-  const richDescription = path.length ? currentNode?.richDescription : section.richDescription;
-  const hasViewContent = richHasContent(richDescription) || Boolean(String(description || "").trim());
   const fileListHtml = renderCustomFilesList(section, currentChildren, path);
   const hasChildSections = (currentChildren || []).some((item) => item && !item.url && !item.artifact);
   const emptyMetadata = !hasChildSections && !fileListHtml
@@ -4526,13 +4523,12 @@ function renderDetachedCustomSectionContent(project, sectionId, path = [], windo
     : "";
 
   return `
-    ${renderDetachedNestedSectionNav(section, currentChildren, path, windowId)}
-    <div class="section-window-view-canvas${hasViewContent || fileListHtml ? "" : " is-empty"}">
-      <div class="section-window-content-stack">
-        ${hasViewContent ? builderPreviewContent(richDescription, description, "") : ""}
-        ${fileListHtml}
+    <div class="section-window-view-canvas">
+      <div class="section-window-content-stack builder-section-accordion">
+        ${renderCustomNodeOverview(section, currentNode, path, { root: !path.length })}
+        ${renderCustomSubsectionList(section, currentChildren, path)}
+        ${emptyMetadata}
       </div>
-      ${emptyMetadata}
     </div>
   `;
 }
@@ -5442,21 +5438,17 @@ function previewNodeOverviewDetails(node, children = []) {
   `;
 }
 
-function previewNodeCard(node, sectionIndex, path) {
-  const title = displayTitle(node.title);
-  return `
-    <button class="section-open-card subsection-open-card" type="button" data-preview-section-index="${sectionIndex}" data-preview-resource-path="${previewPathToString(path)}">
-      <span>${escapeHtml(title)}</span>
-    </button>
-  `;
-}
-
-function previewChildCards(children, sectionIndex, basePath = []) {
+function previewChildAccordions(children, sectionIndex, basePath = []) {
   const visibleChildren = children.filter((child) => parsedItemHasContent(child) && !child.url && !previewNodeIsOverview(child));
   if (!visibleChildren.length) return "";
   return `
-    <div class="subsection-grid section-content-grid">
-      ${children.map((child, index) => parsedItemHasContent(child) && !child.url && !previewNodeIsOverview(child) ? previewNodeCard(child, sectionIndex, [...basePath, index]) : "").join("")}
+    <div class="parsed-subsection-stack" aria-label="Subsections">
+      ${children.map((child, index) => parsedItemHasContent(child) && !child.url && !previewNodeIsOverview(child) ? `
+        <details class="parsed-subsection-accordion">
+          <summary>${escapeHtml(displayTitle(child.title, "Subsection"))}</summary>
+          ${previewNodeContent(child, sectionIndex, [...basePath, index])}
+        </details>
+      ` : "").join("")}
     </div>
   `;
 }
@@ -5488,7 +5480,7 @@ function previewNodeContent(node, sectionIndex, path = []) {
   return `
     <article class="parsed-window-panel section-directory">
     ${previewNodeOverviewDetails(node, children)}
-    ${previewChildCards(children, sectionIndex, path)}
+    ${previewChildAccordions(children, sectionIndex, path)}
     ${previewFileList(contentChildren)}
     </article>
   `;
@@ -8091,7 +8083,6 @@ function renderSectionTabs(project) {
       </div>
       ${renderActiveSectionToolbar(project)}
     </div>
-    ${renderActiveSubsectionStrip(project)}
   `;
 }
 
@@ -8630,13 +8621,11 @@ function savePendingEditor(form) {
       const parentPath = nodePathFromString(pendingEditor.parentPath || "");
       const parentNode = parentPath.length ? findBuilderNode(section, parentPath) : null;
       const children = parentNode ? builderNodeChildren(parentNode) : sectionRootChildren(section);
-      const nextPath = [...parentPath, children.length];
       children.push({
         id: slugify(`${title}-${Date.now()}`),
         ...nextItem,
         children: []
       });
-      setActiveCustomSectionPath(section.id, nextPath);
     }
   }
 
@@ -9230,6 +9219,111 @@ function pendingEditorMatchesCustomView(sectionId, path = []) {
   return editPathValue === pathValue || parentPathValue === pathValue;
 }
 
+function pendingEditorIsEditingCustomPath(sectionId, path = []) {
+  if (!pendingEditor || pendingEditor.sectionId !== sectionId) return false;
+  const pathValue = customViewPathValue(path);
+  if (pendingEditor.type === "custom-section") return !pathValue;
+  if (pendingEditor.type !== "custom" || pendingEditor.mode !== "edit") return false;
+  return customViewPathValue(nodePathFromString(pendingEditor.nodePath || pendingEditor.index || "")) === pathValue;
+}
+
+function pendingEditorIsAddingUnderCustomPath(sectionId, path = []) {
+  if (!pendingEditor || pendingEditor.sectionId !== sectionId) return false;
+  if (pendingEditor.type !== "custom" || pendingEditor.mode !== "add") return false;
+  return (pendingEditor.parentPath || "") === customViewPathValue(path);
+}
+
+function renderCustomNodeActionBar(section, path = [], options = {}) {
+  const pathValue = customViewPathValue(path);
+  const isRoot = options.root === true;
+  const editButton = isRoot
+    ? `<button type="button" data-open-editor="custom-section" data-section-id="${escapeHtml(section.id)}">Edit overview</button>`
+    : `<button type="button" data-open-editor="custom" data-mode="edit" data-section-id="${escapeHtml(section.id)}" data-node-path="${escapeHtml(pathValue)}">Edit overview</button>`;
+  const deleteButton = isRoot
+    ? `<button class="danger-icon" type="button" data-delete-section="${escapeHtml(section.id)}">Delete section</button>`
+    : `<button class="danger-icon" type="button" data-delete-node="${escapeHtml(section.id)}" data-node-path="${escapeHtml(pathValue)}">Delete subsection</button>`;
+  return `
+    <div class="builder-subsection-actions" aria-label="${escapeHtml(isRoot ? "Section actions" : "Subsection actions")}">
+      <button class="button primary" type="button" data-add-node-subsection="${escapeHtml(section.id)}" data-node-path="${escapeHtml(pathValue)}">Add subsection</button>
+      <button class="button secondary" type="button" data-upload-node="${escapeHtml(section.id)}" data-node-path="${escapeHtml(pathValue)}">Add file or image</button>
+      ${editButton}
+      ${deleteButton}
+    </div>
+  `;
+}
+
+function renderCustomNodeOverview(section, node, path = [], options = {}) {
+  const isRoot = options.root === true;
+  const description = isRoot ? section.description || "" : node?.description || "";
+  const richDescription = isRoot ? section.richDescription : node?.richDescription;
+  const isEditing = pendingEditorIsEditingCustomPath(section.id, path);
+  const isAddingHere = pendingEditorIsAddingUnderCustomPath(section.id, path);
+  const children = isRoot ? sectionRootChildren(section) : builderNodeChildren(node);
+  const directFiles = renderCustomFilesList(section, children, path);
+
+  return `
+    <details class="builder-subsection-details builder-overview-details" open>
+      <summary><span>Overview</span></summary>
+      <div class="builder-subsection-content">
+        ${renderCustomNodeActionBar(section, path, { root: isRoot })}
+        ${isEditing
+          ? renderPendingEditor()
+          : builderPreviewContent(richDescription, description, "No overview has been added yet.")}
+        ${directFiles}
+        ${isAddingHere ? renderPendingEditor() : ""}
+      </div>
+    </details>
+  `;
+}
+
+function renderCustomSubsectionAccordion(section, node, path = []) {
+  const children = builderNodeChildren(node);
+  const childSections = children
+    .map((item, index) => ({ item, index }))
+    .filter(({ item }) => item && !item.url && !item.artifact);
+  const childHtml = childSections.map(({ item, index }) =>
+    renderCustomSubsectionAccordion(section, item, [...path, index])
+  ).join("");
+  const counts = builderNodeVisibleCounts(node);
+  const countText = [
+    counts.sections ? `${counts.sections} subsection${counts.sections === 1 ? "" : "s"}` : "",
+    counts.files ? `${counts.files} file${counts.files === 1 ? "" : "s"}` : ""
+  ].filter(Boolean).join(", ");
+
+  return `
+    <details class="builder-subsection-details" data-builder-subsection-path="${escapeHtml(customViewPathValue(path))}">
+      <summary>
+        <span>${escapeHtml(builderNodeTitle(node))}</span>
+        <span class="builder-subsection-summary-meta">
+          ${countText ? `<small>${escapeHtml(countText)}</small>` : ""}
+          <button class="danger-icon builder-subsection-summary-delete" type="button" data-delete-node="${escapeHtml(section.id)}" data-node-path="${escapeHtml(customViewPathValue(path))}">Delete</button>
+        </span>
+      </summary>
+      <div class="builder-subsection-content">
+        ${renderCustomNodeOverview(section, node, path)}
+        ${childHtml ? `<div class="builder-subsection-children">${childHtml}</div>` : ""}
+        ${!childHtml && !renderCustomFilesList(section, children, path) ? `<p class="evidence-empty explorer-empty section-window-bottom-metadata">No nested subsections or files added yet.</p>` : ""}
+      </div>
+    </details>
+  `;
+}
+
+function renderCustomSubsectionList(section, currentChildren = [], currentPath = []) {
+  const childRows = (currentChildren || [])
+    .map((item, index) => ({ item, index }))
+    .filter(({ item }) => item && !item.url && !item.artifact);
+  if (!childRows.length) return "";
+  return `
+    <div class="builder-subsection-list" role="list" aria-label="Subsections">
+      ${childRows.map(({ item, index }) => `
+        <div class="builder-subsection-list-item" role="listitem">
+          ${renderCustomSubsectionAccordion(section, item, [...currentPath, index])}
+        </div>
+      `).join("")}
+    </div>
+  `;
+}
+
 function renderNestedSectionNav(section, currentChildren = [], currentPath = [], extraClass = "") {
   const childRows = (currentChildren || [])
     .map((item, index) => ({ item, index }))
@@ -9303,27 +9397,20 @@ function renderCustomSection(project, sectionId) {
     return renderCustomSection(project, sectionId);
   }
   const currentChildren = currentPath.length ? builderNodeChildren(currentNode) : sectionRootChildren(section);
-  const pathValue = customViewPathValue(currentPath);
-  const description = currentPath.length ? currentNode?.description || "" : section.description || "";
-  const richDescription = currentPath.length ? currentNode?.richDescription : section.richDescription;
-  const editingCurrentView = pendingEditorMatchesCustomView(sectionId, currentPath);
-  const hasViewContent = richHasContent(richDescription) || Boolean(String(description || "").trim());
-  const fileListHtml = renderCustomFilesList(section, currentChildren, currentPath);
   const hasChildSections = (currentChildren || []).some((item) => item && !item.url && !item.artifact);
+  const fileListHtml = renderCustomFilesList(section, currentChildren, currentPath);
   const emptyMetadata = !hasChildSections && !fileListHtml
     ? `<p class="evidence-empty explorer-empty section-window-bottom-metadata">No subsections or files added yet.</p>`
     : "";
 
   return `
-    ${editingCurrentView ? renderPendingEditor() : `
-      <div class="section-window-view-canvas${hasViewContent || fileListHtml ? "" : " is-empty"}">
-        <div class="section-window-content-stack">
-          ${hasViewContent ? builderPreviewContent(richDescription, description, "") : ""}
-          ${fileListHtml}
-        </div>
+    <div class="section-window-view-canvas">
+      <div class="section-window-content-stack builder-section-accordion">
+        ${renderCustomNodeOverview(section, currentNode, currentPath, { root: !currentPath.length })}
+        ${renderCustomSubsectionList(section, currentChildren, currentPath)}
         ${emptyMetadata}
       </div>
-    `}
+    </div>
   `;
 }
 
@@ -15785,9 +15872,27 @@ function deleteProjectNodeByPath(project, sectionId, path = []) {
 
 sectionContent.addEventListener("contextmenu", (event) => {
   if (event.target.closest(".compile-code-sidebar")) return;
+  const subsectionRow = event.target.closest("[data-builder-subsection-path]");
   const nodeButton = event.target.closest("[data-open-node-view]");
   const project = selectedProject();
-  if (!nodeButton || !project) return;
+  if (!project) return;
+  if (subsectionRow) {
+    const sectionId = activeSectionId?.startsWith("custom:") ? activeSectionId.slice("custom:".length) : "";
+    if (!sectionId) return;
+    const pathValue = subsectionRow.dataset.builderSubsectionPath || "";
+    const section = (project.sections || []).find((item) => item.id === sectionId);
+    const node = section && pathValue ? findBuilderNode(section, nodePathFromString(pathValue)) : null;
+    const title = node ? builderNodeTitle(node) : "Subsection";
+    showProjectViewContextMenu(event, {
+      stateKey: `custom:${sectionId}|${pathValue}`,
+      title,
+      kind: "node",
+      sectionId,
+      nodePath: pathValue
+    });
+    return;
+  }
+  if (!nodeButton) return;
   const sectionId = nodeButton.dataset.sectionId || "";
   if (!sectionId) return;
   const path = nodePathFromString(nodeButton.dataset.nodePath || "");
@@ -15800,6 +15905,9 @@ sectionContent.addEventListener("contextmenu", (event) => {
 });
 
 sectionContent.addEventListener("click", async (event) => {
+  if (event.target.closest(".builder-subsection-summary-delete")) {
+    event.preventDefault();
+  }
   const project = selectedProject();
   const scopeToggle = event.target.closest("[data-scope-bus-toggle]");
   if (scopeToggle && project) {
