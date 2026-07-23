@@ -2191,6 +2191,7 @@ function ensureCompileCode(project) {
     rootPath: String(project.compileCode.systemTerminal?.rootPath || ""),
     cwdAbsolute: String(project.compileCode.systemTerminal?.cwdAbsolute || ""),
     promptPath: String(project.compileCode.systemTerminal?.promptPath || ""),
+    openedAt: String(project.compileCode.systemTerminal?.openedAt || ""),
     history: Array.isArray(project.compileCode.systemTerminal?.history)
       ? project.compileCode.systemTerminal.history.slice(0, 40).map((item) => ({
         at: item.at || new Date().toISOString(),
@@ -10110,20 +10111,23 @@ function appendCompileTerminalOutput(existing = "", next = "") {
 
 function renderCompileSystemTerminal(workspace = {}, project = selectedProject()) {
   const terminal = workspace.systemTerminal || {};
+  const cwd = compileTerminalPromptPath(terminal, project);
+  const openedAt = terminal.openedAt ? new Date(terminal.openedAt).toLocaleString() : "";
   return `
-    <section class="compile-system-terminal-panel" data-compile-output-panel="terminal" aria-label="Real terminal">
+    <section class="compile-system-terminal-panel compile-external-terminal-panel" data-compile-output-panel="terminal" aria-label="PowerShell terminal launcher">
       <div class="compile-terminal-heading">
-        <span class="compile-terminal-title"><span aria-hidden="true" class="terminal-dot"></span> Terminal</span>
+        <span class="compile-terminal-title"><span aria-hidden="true" class="terminal-dot"></span> Windows PowerShell</span>
         <span class="compile-terminal-controls">
-          <button type="button" data-compile-terminal-clear>Clear terminal</button>
+          <button type="button" data-compile-open-powershell>Open PowerShell</button>
         </span>
       </div>
-      <div class="compile-terminal-screen" data-compile-terminal-screen>
-        <pre class="compile-terminal compile-system-terminal" data-compile-system-terminal tabindex="0" role="log" aria-live="polite">${escapeHtml(compileTerminalDisplayText(terminal))}</pre>
-        <div class="compile-terminal-prompt-line">
-          <span class="compile-terminal-prompt" data-compile-terminal-prompt>${escapeHtml(compileTerminalPromptText(terminal, project))}</span>
-          <input class="compile-terminal-command-input" data-compile-terminal-command type="text" spellcheck="false" autocomplete="off" autocapitalize="off" aria-label="Terminal command" value="${escapeHtml(terminal.command || "")}" />
-        </div>
+      <div class="compile-external-terminal-body">
+        <p>Terminal commands run in a real Windows PowerShell window.</p>
+        <label>
+          <span>Working directory</span>
+          <input type="text" value="${escapeHtml(cwd)}" readonly />
+        </label>
+        ${openedAt ? `<p class="compile-external-terminal-status">Last opened: ${escapeHtml(openedAt)}</p>` : ""}
       </div>
     </section>
   `;
@@ -13045,6 +13049,41 @@ async function runCompileTerminalCommand(project) {
   requestAnimationFrame(focusTerminalCommandLine);
 }
 
+async function openCompilePowerShellTerminal(project) {
+  if (!project) return;
+  const workspace = ensureCompileCode(project);
+  const terminal = workspace.systemTerminal;
+  const cwd = compileDirectoryPath(terminal.cwd || "");
+  workspace.activePanel = "terminal";
+  try {
+    const response = await fetch(`/api/code/open-terminal?t=${Date.now()}`, {
+      method: "POST",
+      cache: "no-store",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        cwd,
+        cwdAbsolute: terminal.cwdAbsolute || "",
+        projectId: project.id
+      })
+    });
+    const result = await response.json();
+    if (!response.ok || !result.ok) throw new Error(result.error || "PowerShell terminal could not be opened.");
+    terminal.cwd = result.cwd ?? cwd;
+    terminal.rootPath = result.rootPath || terminal.rootPath || compileTerminalBasePath();
+    terminal.cwdAbsolute = result.cwdAbsolute || terminal.cwdAbsolute || "";
+    terminal.promptPath = result.promptPath || terminal.cwdAbsolute || "";
+    terminal.command = "";
+    terminal.openedAt = new Date().toISOString();
+    addCompileMessage(project, `Opened Windows PowerShell at ${terminal.promptPath || compileTerminalPromptPath(terminal, project)}.`, "success");
+    setStatus("Windows PowerShell terminal opened.");
+  } catch (error) {
+    addCompileMessage(project, error.message || "PowerShell terminal could not be opened.", "error");
+    setStatus(error.message || "PowerShell terminal could not be opened.");
+  }
+  scheduleAutosave();
+  renderSectionContent(project);
+}
+
 async function checkCompileTools(project) {
   try {
     const response = await fetch(`/api/code/tools?t=${Date.now()}`, { cache: "no-store" });
@@ -13130,8 +13169,10 @@ async function runCompileIdeAction(project, action = "", options = {}) {
     return;
   }
   if (action.startsWith("view-")) {
-    setCompilePanel(project, action.replace("view-", ""));
+    const panel = action.replace("view-", "");
+    setCompilePanel(project, panel);
     renderSectionContent(project);
+    if (panel === "terminal") await openCompilePowerShellTerminal(project);
     return;
   }
   if (!file) {
@@ -16083,8 +16124,14 @@ sectionContent.addEventListener("click", async (event) => {
     return;
   }
   if (button.dataset.compileOpenPanel) {
-    setCompilePanel(project, button.dataset.compileOpenPanel);
+    const panel = button.dataset.compileOpenPanel;
+    setCompilePanel(project, panel);
     renderSectionContent(project);
+    if (panel === "terminal") await openCompilePowerShellTerminal(project);
+    return;
+  }
+  if (hasDataset("compileOpenPowershell")) {
+    await openCompilePowerShellTerminal(project);
     return;
   }
   if (hasDataset("compileToggleStdin")) {
