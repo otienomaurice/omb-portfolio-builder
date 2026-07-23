@@ -6074,6 +6074,38 @@ body.full-window-open {
   overflow-wrap: anywhere;
 }
 
+.project-meta-grid .project-meta-health-card {
+  align-content: start;
+  min-height: 102px;
+}
+
+.project-meta-health-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+.project-meta-health-card.is-good {
+  border-color: #8ed7b0;
+  background: #f1fff6;
+}
+
+.project-meta-health-card.is-warn {
+  border-color: #ffd37c;
+  background: #fff9e9;
+}
+
+.project-meta-health-card.is-info {
+  border-color: #9ad8f2;
+  background: #f2fbff;
+}
+
+.project-meta-health-card.is-neutral {
+  border-color: var(--line);
+  background: #fafdff;
+}
+
 .project-meta-grid select {
   min-height: 34px;
   padding: 0 10px;

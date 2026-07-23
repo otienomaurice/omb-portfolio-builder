@@ -11,7 +11,7 @@
     <link rel="shortcut icon" href="assets/favicon.ico" />
     <link rel="apple-touch-icon" sizes="180x180" href="assets/apple-touch-icon.png" />
     <link rel="stylesheet" href="styles.css" />
-    <link rel="stylesheet" href="template-preview.css?v=0.2.77" />
+    <link rel="stylesheet" href="template-preview.css?v=0.2.78" />
   </head>
   <body class="template-preview-page">
       <header class="template-header">
@@ -442,16 +442,19 @@
                               <li>Every other section, such as Design, Simulation, Tests, Tools, PCB Builds, Documentation, References, Results, or Compile Code, must be added manually.</li>
                               <li>Sections and subsections are nested manually. A section can contain subsections, and each subsection can contain its own child sections when the project needs that depth.</li>
                               <li>Subsection links appear directly under their parent section as compact navigation chips. Click one chip to focus only that subsection in the workspace.</li>
-                              <li>Right-click a section or subsection chip to open it, open it in a separate project window, copy its project path, add child subsections, add files, edit, delete, or clean empty child placeholders.</li>
+                              <li>Right-click a section or subsection chip to open it, open it in a separate project window, copy its project path, add child subsections, add files, edit, duplicate, move earlier or later, delete, or clean empty child placeholders.</li>
                               <li>Section chips stay in the top navigation band. Actions for the selected section stay on the far right of that same row, so the content area is reserved for text, files, images, and previews.</li>
                               <li>An overview appears automatically when it exists; it is not shown as a separate clickable Overview icon.</li>
                               <li>Project status is metadata. Right-click the project title and open Details to set Draft, In progress, Completed, or Archived, and to choose whether that status appears on the public portfolio.</li>
+                              <li>Right-click the project title or open the Compile Code Project menu to run the project health report. The report shows whether the preview is parsed, whether the overview exists, how many empty placeholders remain, how deep the section tree is, and how many source files or evidence files are attached.</li>
                               <li>Empty sections, empty subsections, and empty files do not render on the website.</li>
                           </ol>
                           <ul>
                               <li>Use Overview for the short explanation of what the section is about.</li>
                               <li>Use subsections when a section needs separate clickable areas such as schematic design, simulation results, PCB layout, test setup, or code links.</li>
                               <li>Keep section order intentional. The website follows the order saved by the builder.</li>
+                              <li>Use Duplicate when two sections have a similar structure, then rename and edit the copy instead of recreating the same nested tree.</li>
+                              <li>Use Move earlier and Move later to reorder project sections without deleting and rebuilding content.</li>
                               <li>Use Clean empty children when a section has placeholders that contain no overview, files, images, links, or nested content.</li>
                               <li>Delete empty placeholder sections before publishing so the project does not feel unfinished.</li>
                           </ul>
@@ -823,6 +826,7 @@
                   <button type="button" data-title-action="select">Select title</button>
                   <button type="button" data-title-action="rename">Rename project</button>
                   <button type="button" data-title-action="details">Details</button>
+                  <button type="button" data-title-action="health">Project health report</button>
               </div>
               <div class="title-rename-actions" id="title-rename-actions" hidden>
                   <button class="button primary" id="title-rename-save" type="button">Save title</button>
@@ -838,7 +842,11 @@
                   <button type="button" data-project-view-action="add-subsection" data-project-view-custom-action hidden>Add subsection</button>
                   <button type="button" data-project-view-action="add-file" data-project-view-custom-action hidden>Add file or image</button>
                   <button type="button" data-project-view-action="edit-current" data-project-view-custom-action hidden>Edit</button>
+                  <button type="button" data-project-view-action="duplicate-current" data-project-view-custom-action hidden>Duplicate</button>
+                  <button type="button" data-project-view-action="move-previous" data-project-view-custom-action hidden>Move earlier</button>
+                  <button type="button" data-project-view-action="move-next" data-project-view-custom-action hidden>Move later</button>
                   <button type="button" data-project-view-action="clean-empty" data-project-view-custom-action hidden>Clean empty children</button>
+                  <button type="button" data-project-view-action="health-report">Health report</button>
                   <button class="danger-icon" type="button" data-project-view-action="delete-current" data-project-view-delete-action hidden>Delete</button>
                   <button type="button" data-project-view-action="close">Close menu</button>
               </div>
@@ -1428,7 +1436,7 @@
           <button type="button" data-rich-action="edit-block">Edit selected block</button>
           <button class="danger-menu-item" type="button" data-rich-action="delete-block">Delete selected block</button>
       </div>
-      <script src="electronics-search.js?v=0.2.77"></script>
-      <script src="template-preview.js?v=0.2.77"></script>
+      <script src="electronics-search.js?v=0.2.78"></script>
+      <script src="template-preview.js?v=0.2.78"></script>
   </body>
 </html>
