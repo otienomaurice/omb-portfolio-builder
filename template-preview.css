@@ -4563,6 +4563,117 @@ body[data-builder-theme="dark"] .summary-context-menu button:hover {
   background: #ffffff;
 }
 
+.builder-section-accordion {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  width: 100%;
+}
+
+.builder-subsection-list {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  width: 100%;
+}
+
+.builder-subsection-list-item {
+  display: grid;
+  min-width: 0;
+}
+
+.builder-subsection-details {
+  display: grid;
+  width: 100%;
+  border: 1px solid #c6e7f4;
+  border-radius: 8px;
+  background: #ffffff;
+  overflow: hidden;
+}
+
+.builder-subsection-details summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  min-height: var(--builder-control-height, 30px);
+  padding: 0 12px;
+  color: var(--ink);
+  background: #f8fdff;
+  cursor: pointer;
+  font-size: 0.88rem;
+  font-weight: 750;
+  list-style-position: inside;
+}
+
+.builder-subsection-details summary:hover {
+  background: #d8f3fb;
+}
+
+.builder-subsection-details[open] > summary {
+  border-bottom: 1px solid #c6e7f4;
+  background: #d8f3fb;
+}
+
+.builder-subsection-details summary span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.builder-subsection-details summary small {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.builder-subsection-summary-meta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 0;
+}
+
+.builder-subsection-summary-delete {
+  min-height: var(--builder-control-height, 30px);
+  height: var(--builder-control-height, 30px);
+  padding: 0 10px;
+  font-size: 0.76rem;
+}
+
+.builder-subsection-content {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  background: #ffffff;
+}
+
+.builder-subsection-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+  width: 100%;
+}
+
+.builder-subsection-actions button {
+  min-height: var(--builder-control-height, 30px);
+  height: var(--builder-control-height, 30px);
+  padding: 0 10px;
+  font-size: 0.78rem;
+}
+
+.builder-subsection-children {
+  display: grid;
+  gap: 6px;
+  width: 100%;
+}
+
 .project-section-actions {
   display: flex;
   align-items: center;
@@ -5029,6 +5140,45 @@ body[data-builder-theme="dark"] .summary-context-menu button:hover {
 .subsection-grid.section-content-grid .section-open-card span {
   overflow-wrap: anywhere;
   white-space: normal;
+}
+
+.parsed-subsection-stack {
+  display: grid;
+  gap: 8px;
+  width: 100%;
+}
+
+.parsed-subsection-accordion {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.92);
+  overflow: hidden;
+}
+
+.parsed-subsection-accordion summary {
+  min-height: 34px;
+  padding: 7px 12px;
+  color: var(--ink);
+  background: rgba(215, 241, 250, 0.62);
+  cursor: pointer;
+  font-size: 0.92rem;
+  font-weight: 800;
+}
+
+.parsed-subsection-accordion summary:hover {
+  color: #ffffff;
+  background: var(--template-hover, #1f6ed4);
+}
+
+.parsed-subsection-accordion[open] > summary {
+  border-bottom: 1px solid var(--line);
+  background: rgba(226, 247, 253, 0.84);
+}
+
+.parsed-subsection-accordion > .parsed-window-panel {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
 }
 
 .project-template .section-open-card:active {
@@ -8630,7 +8780,7 @@ body[data-builder-theme="dark"] :is(
   .front-rich-field,
   .main-builder-rich-input,
   .dialog-rich-input
-) :is(.rich-text-block, .rich-inline-style, span:not([class])) {
+) :is(.rich-text-block:not([style*="color" i]), .rich-inline-style:not([style*="color" i]), span:not([class]):not([style*="color" i])) {
   color: var(--builder-ui-text) !important;
 }
 
@@ -11872,6 +12022,32 @@ body[data-builder-theme="dark"] .detached-project-view-nav .nested-section-link:
   background: var(--builder-ui-accent-soft, #17344a) !important;
 }
 
+body[data-builder-theme="dark"] .project-dialog :is(
+  .builder-subsection-details,
+  .builder-subsection-content
+) {
+  border-color: var(--builder-ui-line) !important;
+  background: var(--builder-ui-surface) !important;
+  color: var(--builder-ui-text) !important;
+}
+
+body[data-builder-theme="dark"] .project-dialog .builder-subsection-details summary {
+  border-color: var(--builder-ui-line) !important;
+  background: var(--builder-ui-surface-2) !important;
+  color: var(--builder-ui-text) !important;
+}
+
+body[data-builder-theme="dark"] .project-dialog .builder-subsection-details summary:hover,
+body[data-builder-theme="dark"] .project-dialog .builder-subsection-details[open] > summary {
+  border-color: var(--builder-ui-focus) !important;
+  background: var(--builder-ui-command-hover) !important;
+  color: #ffffff !important;
+}
+
+body[data-builder-theme="dark"] .project-dialog .builder-subsection-details summary small {
+  color: color-mix(in srgb, var(--builder-ui-muted) 75%, #ffffff 25%) !important;
+}
+
 /* Compile Code bottom-fit layout.
    The source editor should own the free space, while the locked output dock and
    blue status bar stay pinned to the true bottom of the Compile Code window. */
@@ -12229,4 +12405,573 @@ body[data-builder-theme="dark"] .detached-project-view-nav .nested-section-link:
 
 .project-dialog.is-compile-code-active .compile-code-workspace:not(.is-output-panel-scope) .compile-output-workbench.is-output-dock-locked .compile-terminal-screen {
   grid-template-rows: minmax(0, auto) auto !important;
+}
+
+/* View-only light skins.
+   Light - Default portfolio editing is intentionally untouched because it is
+   the only mode whose explicit text colors are allowed into the public site. */
+body[data-builder-theme="light"]:not([data-builder-light-theme="light-default"]) {
+  color-scheme: light;
+  --builder-ui-bg: #eef8fc;
+  --builder-ui-bg-2: #e2f3fa;
+  --builder-ui-surface: #ffffff;
+  --builder-ui-surface-2: #f5fbfe;
+  --builder-ui-surface-3: #e2f3fa;
+  --builder-ui-line: #bad8e8;
+  --builder-ui-line-strong: #8fbfd5;
+  --builder-ui-text: #102235;
+  --builder-ui-muted: #4f6a80;
+  --builder-ui-soft-text: #314b60;
+  --builder-ui-command: #d7f1fb;
+  --builder-ui-command-hover: #2075c8;
+  --builder-ui-command-active: #ffffff;
+  --builder-ui-focus: #0f74b8;
+  --builder-ui-input-bg: #ffffff;
+  --builder-ui-danger: #c32131;
+  --bg: var(--builder-ui-bg);
+  --paper: var(--builder-ui-surface);
+  --panel: var(--builder-ui-surface);
+  --soft: var(--builder-ui-surface-2);
+  --ink: var(--builder-ui-text);
+  --muted: var(--builder-ui-muted);
+  --line: var(--builder-ui-line);
+  --focus: var(--builder-ui-focus);
+  --teal: var(--builder-ui-focus);
+  --accent: var(--builder-ui-focus);
+  --accent-deep: var(--builder-ui-command-hover);
+  background:
+    radial-gradient(circle at 16% 0%, color-mix(in srgb, var(--builder-ui-focus) 17%, transparent), transparent 34%),
+    linear-gradient(180deg, var(--builder-ui-bg-2), var(--builder-ui-bg));
+  color: var(--builder-ui-text);
+  accent-color: var(--builder-ui-focus);
+}
+
+body[data-builder-theme="light"][data-builder-light-theme="light-sky"] {
+  --builder-ui-bg: #e9f7fd;
+  --builder-ui-bg-2: #d7eff9;
+  --builder-ui-surface: #ffffff;
+  --builder-ui-surface-2: #f2fbff;
+  --builder-ui-surface-3: #d7f0fb;
+  --builder-ui-line: #b7ddeb;
+  --builder-ui-line-strong: #80bdd8;
+  --builder-ui-text: #11283a;
+  --builder-ui-muted: #4d6b80;
+  --builder-ui-command: #ccefff;
+  --builder-ui-command-hover: #1777c5;
+  --builder-ui-focus: #0a73b7;
+}
+
+body[data-builder-theme="light"][data-builder-light-theme="light-paper"] {
+  --builder-ui-bg: #f6f4ef;
+  --builder-ui-bg-2: #ede9df;
+  --builder-ui-surface: #fffefa;
+  --builder-ui-surface-2: #f9f6ed;
+  --builder-ui-surface-3: #eee8d8;
+  --builder-ui-line: #d7cdb7;
+  --builder-ui-line-strong: #ad9d80;
+  --builder-ui-text: #241f19;
+  --builder-ui-muted: #665b4a;
+  --builder-ui-command: #f1e7ce;
+  --builder-ui-command-hover: #8b5e18;
+  --builder-ui-focus: #9a650f;
+}
+
+body[data-builder-theme="light"][data-builder-light-theme="light-mint"] {
+  --builder-ui-bg: #edf9f3;
+  --builder-ui-bg-2: #d9f1e5;
+  --builder-ui-surface: #ffffff;
+  --builder-ui-surface-2: #f4fcf8;
+  --builder-ui-surface-3: #d8f2e6;
+  --builder-ui-line: #b8dbc8;
+  --builder-ui-line-strong: #79b99a;
+  --builder-ui-text: #122920;
+  --builder-ui-muted: #4b6a5d;
+  --builder-ui-command: #cdeedd;
+  --builder-ui-command-hover: #167c55;
+  --builder-ui-focus: #117348;
+}
+
+body[data-builder-theme="light"][data-builder-light-theme="light-lavender"] {
+  --builder-ui-bg: #f5f1ff;
+  --builder-ui-bg-2: #ebe2fb;
+  --builder-ui-surface: #ffffff;
+  --builder-ui-surface-2: #faf8ff;
+  --builder-ui-surface-3: #eadfff;
+  --builder-ui-line: #d3c2ee;
+  --builder-ui-line-strong: #a98ad3;
+  --builder-ui-text: #251b35;
+  --builder-ui-muted: #645174;
+  --builder-ui-command: #e9ddff;
+  --builder-ui-command-hover: #6c45aa;
+  --builder-ui-focus: #6840a6;
+}
+
+body[data-builder-theme="light"][data-builder-light-theme="light-rose"] {
+  --builder-ui-bg: #fff1f4;
+  --builder-ui-bg-2: #ffe2e8;
+  --builder-ui-surface: #ffffff;
+  --builder-ui-surface-2: #fff8fa;
+  --builder-ui-surface-3: #ffe0e7;
+  --builder-ui-line: #efbdca;
+  --builder-ui-line-strong: #d47b94;
+  --builder-ui-text: #311a20;
+  --builder-ui-muted: #76515d;
+  --builder-ui-command: #ffd9e3;
+  --builder-ui-command-hover: #b73556;
+  --builder-ui-focus: #a92e4d;
+}
+
+body[data-builder-theme="light"][data-builder-light-theme="light-amber"] {
+  --builder-ui-bg: #fff7e7;
+  --builder-ui-bg-2: #ffefcb;
+  --builder-ui-surface: #ffffff;
+  --builder-ui-surface-2: #fffbf0;
+  --builder-ui-surface-3: #ffeabf;
+  --builder-ui-line: #e6c884;
+  --builder-ui-line-strong: #c39233;
+  --builder-ui-text: #2e220b;
+  --builder-ui-muted: #755b24;
+  --builder-ui-command: #ffe3a6;
+  --builder-ui-command-hover: #985d05;
+  --builder-ui-focus: #8a5200;
+}
+
+body[data-builder-theme="light"][data-builder-light-theme="light-slate"] {
+  --builder-ui-bg: #edf2f7;
+  --builder-ui-bg-2: #dde8f1;
+  --builder-ui-surface: #ffffff;
+  --builder-ui-surface-2: #f7fafc;
+  --builder-ui-surface-3: #e1e9f0;
+  --builder-ui-line: #c2d0dc;
+  --builder-ui-line-strong: #8da0b1;
+  --builder-ui-text: #17202a;
+  --builder-ui-muted: #526170;
+  --builder-ui-command: #e2edf6;
+  --builder-ui-command-hover: #315f89;
+  --builder-ui-focus: #285a84;
+}
+
+body[data-builder-theme="light"]:not([data-builder-light-theme="light-default"]) * {
+  scrollbar-color: var(--builder-ui-line-strong) var(--builder-ui-bg-2);
+}
+
+body[data-builder-theme="light"]:not([data-builder-light-theme="light-default"]) ::selection {
+  color: #ffffff;
+  background: color-mix(in srgb, var(--builder-ui-focus) 46%, transparent);
+}
+
+body[data-builder-theme="light"]:not([data-builder-light-theme="light-default"]) :is(
+  .template-header,
+  .builder-panel,
+  .builder-sidebar,
+  .builder-editor,
+  .builder-inspector,
+  .template-preview,
+  .project-library-tools,
+  .workflow-card,
+  .builder-guide-panel,
+  .builder-guide-dialog-content,
+  .builder-guide-tools,
+  .builder-guide-sections,
+  .builder-guide-section,
+  .builder-guide-topic-body,
+  .project-dialog,
+  .project-window-shell,
+  .project-fields,
+  .project-section-workspace,
+  .project-section-list,
+  .project-section-row,
+  .section-editor,
+  .section-text-preview,
+  .pending-editor,
+  .asset-dialog,
+  .asset-dialog form,
+  .profile-asset-body,
+  .profile-asset-view-body,
+  .profile-asset-preview,
+  .profile-asset-document,
+  .profile-asset-file-card,
+  .profile-asset-empty,
+  .template-dialog-shell,
+  .template-card,
+  .delete-confirm-content,
+  .project-meta-dialog-content,
+  .project-metadata-panel,
+  .publish-target-current,
+  .publish-target-readiness,
+  .publish-result-box,
+  .app-update-body,
+  .security-report-body,
+  .security-report-card,
+  .tree-category,
+  .tree-category-heading,
+  .category-dropdown,
+  .builder-explorer-list,
+  .builder-explorer-row,
+  .site-section-item,
+  .site-subsection-item,
+  .site-link-list span
+) {
+  border-color: var(--builder-ui-line) !important;
+  background-color: var(--builder-ui-surface) !important;
+  color: var(--builder-ui-text) !important;
+}
+
+body[data-builder-theme="light"]:not([data-builder-light-theme="light-default"]) :is(
+  .builder-guide-section > div,
+  .builder-guide-section summary,
+  .project-library-tools,
+  .workflow-card,
+  .tree-category-heading,
+  .builder-explorer-row,
+  .site-section-item,
+  .site-subsection-item,
+  .pending-editor,
+  .rich-summary-panel,
+  .summary-rendered-preview,
+  .section-content-editor,
+  .profile-asset-manager,
+  .profile-asset-actions,
+  .front-page-text-fields,
+  .fun-facts-builder-panel
+) {
+  background-color: var(--builder-ui-surface-2) !important;
+}
+
+body[data-builder-theme="light"]:not([data-builder-light-theme="light-default"]) :is(
+  .builder-panel h1,
+  .builder-panel h2,
+  .builder-panel h3,
+  .builder-panel h4,
+  .builder-panel label,
+  .project-dialog label,
+  .asset-dialog label,
+  .template-dialog-shell label,
+  .builder-guide-section summary,
+  .project-library-heading h2,
+  .project-preview-heading h2,
+  .portfolio-preview-heading h2,
+  .summary-builder-heading span,
+  .builder-guide-dialog-content h2,
+  .builder-explorer-main,
+  .builder-explorer-title,
+  .project-section-select,
+  .site-section-item strong,
+  .site-subsection-item strong,
+  .security-report-card h3,
+  .project-meta-grid strong
+) {
+  color: var(--builder-ui-text) !important;
+}
+
+body[data-builder-theme="light"]:not([data-builder-light-theme="light-default"]) :is(
+  .builder-item p,
+  .builder-item span,
+  .project-search-field span,
+  .workflow-card span,
+  .tree-empty,
+  .builder-guide-results,
+  .builder-guide-section p,
+  .builder-guide-topic-body p,
+  .publish-target-field-note,
+  .publish-target-note,
+  .profile-asset-status,
+  .profile-asset-manager-copy p,
+  .profile-asset-manager-copy small,
+  .profile-asset-preview figcaption,
+  .asset-detected-note,
+  .preference-note,
+  .app-update-body p,
+  .app-update-release-meta,
+  .security-report-body p,
+  .security-report-card ul,
+  .project-fields label small,
+  .summary-builder-heading small,
+  .rich-editor-hint,
+  .builder-explorer-main small,
+  .builder-explorer-icon,
+  .category-dropdown small,
+  .site-section-item span,
+  .site-subsection-item p
+) {
+  color: var(--builder-ui-muted) !important;
+}
+
+body[data-builder-theme="light"]:not([data-builder-light-theme="light-default"]) :is(
+  button,
+  .button,
+  .portfolio-preview-button,
+  .add-project-button,
+  .builder-guide-topic-bar button,
+  .builder-guide-actions button,
+  .site-section-actions button,
+  .section-bar button,
+  .builder-item button,
+  .builder-explorer-actions button,
+  .category-dropdown button,
+  .local-card-controls button,
+  .local-section-controls button,
+  .summary-save-actions button,
+  .dialog-actions button,
+  .publish-target-tool-actions button,
+  .app-update-dialog-actions button,
+  .delete-confirm-actions button
+):not([data-rich-color-value]):not(.section-open-card):not(.compile-ide-menu-button):not(.compile-mini-window-close) {
+  border-color: var(--builder-ui-line-strong) !important;
+  color: var(--builder-ui-text) !important;
+  background: var(--builder-ui-command) !important;
+  box-shadow: none !important;
+}
+
+body[data-builder-theme="light"]:not([data-builder-light-theme="light-default"]) :is(
+  button,
+  .button,
+  .portfolio-preview-button,
+  .add-project-button,
+  .builder-guide-topic-bar button,
+  .builder-guide-actions button,
+  .site-section-actions button,
+  .section-bar button,
+  .builder-item button,
+  .builder-explorer-actions button,
+  .category-dropdown button,
+  .local-card-controls button,
+  .local-section-controls button,
+  .summary-save-actions button,
+  .dialog-actions button,
+  .publish-target-tool-actions button,
+  .app-update-dialog-actions button,
+  .delete-confirm-actions button
+):not([data-rich-color-value]):not(.section-open-card):not(.compile-ide-menu-button):not(.compile-mini-window-close):hover {
+  border-color: var(--builder-ui-focus) !important;
+  color: #ffffff !important;
+  background: var(--builder-ui-command-hover) !important;
+}
+
+body[data-builder-theme="light"]:not([data-builder-light-theme="light-default"]) :is(
+  button,
+  .button,
+  .portfolio-preview-button,
+  .add-project-button,
+  .builder-guide-topic-bar button,
+  .builder-guide-actions button,
+  .site-section-actions button,
+  .section-bar button,
+  .builder-item button,
+  .builder-explorer-actions button,
+  .category-dropdown button,
+  .local-card-controls button,
+  .local-section-controls button,
+  .summary-save-actions button,
+  .dialog-actions button,
+  .publish-target-tool-actions button,
+  .app-update-dialog-actions button,
+  .delete-confirm-actions button
+):not([data-rich-color-value]):not(.section-open-card):not(.compile-ide-menu-button):not(.compile-mini-window-close):active {
+  border-color: var(--builder-ui-text) !important;
+  color: var(--builder-ui-text) !important;
+  background: var(--builder-ui-command-active) !important;
+}
+
+body[data-builder-theme="light"]:not([data-builder-light-theme="light-default"]) :is(
+  input:not([type="color"]):not([type="file"]):not([type="checkbox"]):not([type="radio"]),
+  textarea,
+  select,
+  [contenteditable="true"],
+  .rich-summary-editor,
+  .front-rich-field,
+  .main-builder-rich-input,
+  .dialog-rich-input,
+  .summary-code-preview
+) {
+  border-color: var(--builder-ui-line-strong) !important;
+  background: var(--builder-ui-input-bg) !important;
+  color: var(--builder-ui-text) !important;
+  caret-color: var(--builder-ui-focus) !important;
+}
+
+body[data-builder-theme="light"]:not([data-builder-light-theme="light-default"]) :is(
+  input:not([type="color"]):not([type="file"]):not([type="checkbox"]):not([type="radio"]),
+  textarea,
+  select,
+  [contenteditable="true"],
+  .rich-summary-editor,
+  .front-rich-field,
+  .main-builder-rich-input,
+  .dialog-rich-input
+):focus {
+  border-color: var(--builder-ui-focus) !important;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--builder-ui-focus) 16%, transparent) !important;
+  outline: none;
+}
+
+body[data-builder-theme="light"]:not([data-builder-light-theme="light-default"]) :is(
+  .rich-summary-editor,
+  .front-rich-field,
+  .main-builder-rich-input,
+  .dialog-rich-input
+) :is(.rich-text-block:not([style*="color" i]), .rich-inline-style:not([style*="color" i]), span:not([class]):not([style*="color" i])) {
+  color: var(--builder-ui-text) !important;
+}
+
+body[data-builder-theme="light"]:not([data-builder-light-theme="light-default"]) :is(
+  .rich-summary-editor,
+  .front-rich-field,
+  .main-builder-rich-input,
+  .dialog-rich-input
+) a {
+  color: color-mix(in srgb, var(--builder-ui-focus) 88%, #000000 12%) !important;
+}
+
+body[data-builder-theme="light"]:not([data-builder-light-theme="light-default"]) :is(
+  input::placeholder,
+  textarea::placeholder,
+  .rich-summary-editor:empty::before,
+  .front-rich-field:empty::before,
+  .main-builder-rich-input:empty::before,
+  .dialog-rich-input:empty::before
+) {
+  color: color-mix(in srgb, var(--builder-ui-muted) 72%, #ffffff 28%) !important;
+}
+
+body[data-builder-theme="light"]:not([data-builder-light-theme="light-default"]) :is(
+  .dialog-window-control,
+  .dialog-minimize-button,
+  .project-window-close,
+  .close-control,
+  .project-control,
+  .section-view-back,
+  .section-view-forward,
+  .dialog-window-back-control,
+  .dialog-window-forward-control,
+  .dialog-window-refresh-control,
+  .dialog-window-minimize-control,
+  .dialog-window-maximize-control
+) {
+  border-color: var(--builder-ui-line-strong) !important;
+  color: var(--builder-ui-text) !important;
+  background: var(--builder-ui-command) !important;
+}
+
+body[data-builder-theme="light"]:not([data-builder-light-theme="light-default"]) :is(
+  .dialog-window-control,
+  .dialog-minimize-button,
+  .section-view-back,
+  .section-view-forward,
+  .dialog-window-back-control,
+  .dialog-window-forward-control,
+  .dialog-window-refresh-control,
+  .dialog-window-minimize-control,
+  .dialog-window-maximize-control
+):hover {
+  border-color: var(--builder-ui-focus) !important;
+  color: #ffffff !important;
+  background: var(--builder-ui-command-hover) !important;
+}
+
+body[data-builder-theme="light"]:not([data-builder-light-theme="light-default"]) :is(
+  .project-window-close,
+  .close-control,
+  .dialog-close-button,
+  .danger-button,
+  .danger-icon,
+  .danger-control,
+  .tree-project-delete
+) {
+  border-color: #e29aa3 !important;
+  color: #9f1239 !important;
+  background: #fff5f6 !important;
+}
+
+body[data-builder-theme="light"]:not([data-builder-light-theme="light-default"]) :is(
+  .project-window-close,
+  .close-control,
+  .dialog-close-button,
+  .danger-button,
+  .danger-icon,
+  .danger-control,
+  .tree-project-delete
+):hover {
+  border-color: #ef4444 !important;
+  color: #ffffff !important;
+  background: var(--builder-ui-danger) !important;
+}
+
+body[data-builder-theme="light"]:not([data-builder-light-theme="light-default"]) :is(
+  .tree-project-row,
+  .builder-explorer-row,
+  .project-section-row,
+  .nested-section-link,
+  .compile-code-tree-file,
+  .compile-append-target,
+  .compile-append-folder summary
+) {
+  background: transparent !important;
+  color: var(--builder-ui-text) !important;
+}
+
+body[data-builder-theme="light"]:not([data-builder-light-theme="light-default"]) :is(
+  .tree-project-row,
+  .builder-explorer-row,
+  .project-section-row,
+  .compile-code-tree-file,
+  .compile-append-target,
+  .compile-append-folder summary
+):hover,
+body[data-builder-theme="light"]:not([data-builder-light-theme="light-default"]) :is(
+  .project-section-row.active,
+  .nested-section-link:active,
+  .compile-code-tree-file.is-active,
+  .compile-append-target.is-active
+) {
+  color: #ffffff !important;
+  background: var(--builder-ui-command-hover) !important;
+}
+
+/* Formatting menus stay white in every app skin so color picking remains
+   readable and consistent while view-only themes repaint the surrounding app. */
+body[data-builder-theme] :is(
+  .summary-context-menu,
+  .text-selection-inspector,
+  .selection-options
+) {
+  border-color: #b8d8e8 !important;
+  background: #ffffff !important;
+  color: #17202a !important;
+  box-shadow: 0 18px 48px rgba(15, 35, 55, 0.18) !important;
+}
+
+body[data-builder-theme] :is(
+  .summary-context-menu button,
+  .selection-options button
+):not([data-rich-color-value]) {
+  color: #17202a !important;
+  background: #ffffff !important;
+}
+
+body[data-builder-theme] :is(
+  .summary-context-menu button,
+  .selection-options button
+):not([data-rich-color-value]):hover {
+  color: #ffffff !important;
+  background: #1f6ed4 !important;
+}
+
+body[data-builder-theme] :is(
+  .rich-menu-field select,
+  .rich-menu-field input:not([type="color"]),
+  .selection-combo > input,
+  .selection-color-options > input[type="color"],
+  .text-selection-inspector input,
+  .text-selection-inspector select
+) {
+  border-color: #b8d8e8 !important;
+  background: #ffffff !important;
+  color: #17202a !important;
+}
+
+body[data-builder-theme] .selection-text-preview {
+  border-color: #c9deea !important;
+  background: #f7fcff !important;
+  color: #17202a !important;
 }

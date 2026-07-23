@@ -215,6 +215,7 @@ const summaryCodeCancel = document.querySelector("#summary-code-cancel");
 const preferencesDialog = document.querySelector("#preferences-dialog");
 const preferencesForm = document.querySelector("#preferences-form");
 const preferenceTheme = document.querySelector("#preference-theme");
+const preferenceLightTheme = document.querySelector("#preference-light-theme");
 const preferenceDarkTheme = document.querySelector("#preference-dark-theme");
 const preferenceCompileTheme = document.querySelector("#preference-compile-theme");
 const preferencesClose = document.querySelector("#preferences-close");
@@ -250,6 +251,16 @@ const standardSections = [
 const projectStatusOptions = ["Draft", "In progress", "Completed", "Archived"];
 
 const preferenceStorageKey = "omb-builder-preferences";
+const builderLightThemeIds = [
+  "light-default",
+  "light-sky",
+  "light-paper",
+  "light-mint",
+  "light-lavender",
+  "light-rose",
+  "light-amber",
+  "light-slate"
+];
 const builderDarkThemeIds = [
   "dark-blue",
   "dark-graphite",
@@ -275,7 +286,7 @@ const compileThemeIds = [
 ];
 const maxProjectViewTabs = 8;
 const maxDetachedProjectViewWindows = 8;
-const defaultBuilderPreferences = { theme: "light", darkTheme: "dark-blue", compileTheme: "dark-vs", zoom: 1 };
+const defaultBuilderPreferences = { theme: "light", lightTheme: "light-default", darkTheme: "dark-blue", compileTheme: "dark-vs", zoom: 1 };
 let builderPreferences = { ...defaultBuilderPreferences };
 let activeCompileTreeContext = null;
 let activeScopeSignalContext = null;
@@ -1874,14 +1885,14 @@ function parsedPortfolioGlobals() {
   syncPortfolioTextInputsForParsing();
   return {
     categories: clone(catalog.categories || savedPortfolioCatalog.categories || []),
-    fieldStyles: clone(normalizeFieldStyles(catalog.fieldStyles || savedPortfolioCatalog.fieldStyles || {})),
+    fieldStyles: clone(fieldStylesForCurrentPublishMode(catalog.fieldStyles || savedPortfolioCatalog.fieldStyles || {})),
     funFacts: normalizeFunFacts(catalog.funFacts || savedPortfolioCatalog.funFacts || []),
-    funFactsRich: parsedFunFactsRich(),
+    funFactsRich: richForCurrentPublishMode(parsedFunFactsRich()),
     profile: clone(normalizeProfile(catalog.profile || savedPortfolioCatalog.profile || {})),
-    profileRich: parsedProfileRich(),
+    profileRich: richMapForCurrentPublishMode(parsedProfileRich()),
     siteContent: clone(normalizeSiteContent(catalog.siteContent || savedPortfolioCatalog.siteContent || {})),
-    siteContentRich: parsedSiteContentRich(),
-    siteSections: (catalog.siteSections || savedPortfolioCatalog.siteSections || []).filter(siteSectionRenderable).map(clone)
+    siteContentRich: richMapForCurrentPublishMode(parsedSiteContentRich()),
+    siteSections: (catalog.siteSections || savedPortfolioCatalog.siteSections || []).filter(siteSectionRenderable).map((section) => richObjectForCurrentPublishMode(section))
   };
 }
 
@@ -2873,6 +2884,7 @@ function loadBuilderPreferences() {
       ...defaultBuilderPreferences,
       ...stored,
       theme: ["light", "dark"].includes(stored.theme) ? stored.theme : defaultBuilderPreferences.theme,
+      lightTheme: builderLightThemeIds.includes(stored.lightTheme) ? stored.lightTheme : defaultBuilderPreferences.lightTheme,
       darkTheme: builderDarkThemeIds.includes(stored.darkTheme) ? stored.darkTheme : defaultBuilderPreferences.darkTheme,
       compileTheme: compileThemeIds.includes(stored.compileTheme) ? stored.compileTheme : defaultBuilderPreferences.compileTheme,
       zoom: normalizeBuilderZoom(stored.zoom)
@@ -2920,14 +2932,18 @@ function normalizeCompileSidebarWidth(value) {
 
 function applyBuilderPreferences() {
   const theme = ["light", "dark"].includes(builderPreferences.theme) ? builderPreferences.theme : "light";
+  const lightTheme = builderLightThemeIds.includes(builderPreferences.lightTheme) ? builderPreferences.lightTheme : defaultBuilderPreferences.lightTheme;
   const darkTheme = builderDarkThemeIds.includes(builderPreferences.darkTheme) ? builderPreferences.darkTheme : defaultBuilderPreferences.darkTheme;
   const compileTheme = compileThemeIds.includes(builderPreferences.compileTheme) ? builderPreferences.compileTheme : defaultBuilderPreferences.compileTheme;
   const zoom = normalizeBuilderZoom(builderPreferences.zoom);
   builderPreferences.zoom = zoom;
+  builderPreferences.lightTheme = lightTheme;
   builderPreferences.darkTheme = darkTheme;
   builderPreferences.compileTheme = compileTheme;
   document.documentElement.dataset.builderTheme = theme;
   document.body.dataset.builderTheme = theme;
+  document.documentElement.dataset.builderLightTheme = lightTheme;
+  document.body.dataset.builderLightTheme = lightTheme;
   document.documentElement.dataset.builderDarkTheme = darkTheme;
   document.body.dataset.builderDarkTheme = darkTheme;
   document.documentElement.dataset.compileTheme = compileTheme;
@@ -2938,6 +2954,7 @@ function applyBuilderPreferences() {
     workspace.dataset.compileTheme = compileTheme;
   });
   if (preferenceTheme) preferenceTheme.value = theme;
+  if (preferenceLightTheme) preferenceLightTheme.value = lightTheme;
   if (preferenceDarkTheme) preferenceDarkTheme.value = darkTheme;
   if (preferenceCompileTheme) preferenceCompileTheme.value = compileTheme;
   if (lightModeReturnButton) lightModeReturnButton.hidden = theme !== "dark";
@@ -2948,6 +2965,16 @@ function setBuilderTheme(theme = "light") {
   localStorage.setItem(preferenceStorageKey, JSON.stringify(builderPreferences));
   applyBuilderPreferences();
   setStatus(`Builder ${builderPreferences.theme} mode enabled.`);
+}
+
+function setBuilderLightTheme(theme = defaultBuilderPreferences.lightTheme) {
+  builderPreferences.lightTheme = builderLightThemeIds.includes(theme) ? theme : defaultBuilderPreferences.lightTheme;
+  localStorage.setItem(preferenceStorageKey, JSON.stringify(builderPreferences));
+  applyBuilderPreferences();
+  const label = builderPreferences.lightTheme === "light-default"
+    ? "default portfolio editing"
+    : builderPreferences.lightTheme.replace(/^light-/, "").replace(/-/g, " ");
+  setStatus(`Light mode color set to ${label}.`);
 }
 
 function setBuilderDarkTheme(theme = defaultBuilderPreferences.darkTheme) {
@@ -2982,13 +3009,16 @@ function readPreferencesDialogDraft() {
   const theme = ["light", "dark"].includes(preferenceTheme?.value)
     ? preferenceTheme.value
     : defaultBuilderPreferences.theme;
+  const lightTheme = builderLightThemeIds.includes(preferenceLightTheme?.value)
+    ? preferenceLightTheme.value
+    : defaultBuilderPreferences.lightTheme;
   const darkTheme = builderDarkThemeIds.includes(preferenceDarkTheme?.value)
     ? preferenceDarkTheme.value
     : defaultBuilderPreferences.darkTheme;
   const compileTheme = compileThemeIds.includes(preferenceCompileTheme?.value)
     ? preferenceCompileTheme.value
     : defaultBuilderPreferences.compileTheme;
-  return { theme, darkTheme, compileTheme };
+  return { theme, lightTheme, darkTheme, compileTheme };
 }
 
 function applyPreferenceDialogDraft(options = {}) {
@@ -2996,6 +3026,7 @@ function applyPreferenceDialogDraft(options = {}) {
   builderPreferences = {
     ...builderPreferences,
     theme: draft.theme,
+    lightTheme: draft.lightTheme,
     darkTheme: draft.darkTheme,
     compileTheme: draft.compileTheme
   };
@@ -3024,6 +3055,28 @@ function plainFieldStyleToCss(style = {}) {
 function plainFieldStyleAttribute(styles = {}, fieldId = "") {
   const css = plainFieldStyleToCss(styles[fieldId]);
   return css ? ` style="${escapeHtml(css)}"` : "";
+}
+
+function fieldStylesForCurrentPublishMode(styles = {}) {
+  const normalized = normalizeFieldStyles(styles);
+  if (builderAllowsPublishTextColors()) return normalized;
+  return Object.fromEntries(
+    Object.entries(normalized)
+      .map(([fieldId, style]) => {
+        const next = { ...style };
+        delete next.color;
+        return [fieldId, next];
+      })
+      .filter(([, style]) => Object.keys(style).length)
+  );
+}
+
+function plainStyleForCurrentPublishMode(style = {}) {
+  const normalized = normalizePlainFieldStyle(style);
+  if (builderAllowsPublishTextColors()) return normalized;
+  const next = { ...normalized };
+  delete next.color;
+  return next;
 }
 
 function plainStyleFromControl(control) {
@@ -3064,7 +3117,7 @@ function applyStoredPlainFieldStyle(control) {
 function storePlainControlStyle(control) {
   if (!control?.id || !persistentPlainStyleFieldIds.has(control.id)) return;
   const nextStyles = normalizeFieldStyles(catalog.fieldStyles || {});
-  const style = plainStyleFromControl(control);
+  const style = plainStyleForCurrentPublishMode(plainStyleFromControl(control));
   if (Object.keys(style).length) {
     nextStyles[control.id] = style;
   } else {
@@ -3317,7 +3370,8 @@ function normalizeInlineStyleSpans(root) {
   });
 }
 
-function sanitizeRichInlineHtml(value = "") {
+function sanitizeRichInlineHtml(value = "", options = {}) {
+  const preserveColor = options.preserveColor !== false;
   const template = document.createElement("template");
   template.innerHTML = String(value || "");
   const allowedTags = new Set(["A", "B", "BR", "EM", "I", "SPAN", "STRONG", "U"]);
@@ -3352,7 +3406,7 @@ function sanitizeRichInlineHtml(value = "") {
     }
     if (fontFamily) node.style.fontFamily = fontFamily;
     if (fontPx) node.style.fontSize = `${fontPx}px`;
-    if (color) node.style.color = color;
+    if (preserveColor && color) node.style.color = color;
     if (fontWeight) node.style.fontWeight = fontWeight;
     if (fontStyle) node.style.fontStyle = fontStyle;
     if (textDecoration) node.style.textDecoration = textDecoration;
@@ -3394,6 +3448,56 @@ function normalizeTextColor(value = "") {
         /^hsla?\(/i.test(color)
         ? color
         : "";
+}
+
+function builderAllowsPublishTextColors() {
+    return builderPreferences.theme === "light" &&
+        (builderPreferences.lightTheme || defaultBuilderPreferences.lightTheme) === "light-default";
+}
+
+function stripRichInlineColors(value = "") {
+    if (!value) return "";
+    const template = document.createElement("template");
+    template.innerHTML = String(value || "");
+    template.content.querySelectorAll("[style]").forEach((node) => {
+        node.style.color = "";
+        if (!node.getAttribute("style")) node.removeAttribute("style");
+    });
+    return template.innerHTML;
+}
+
+function richForCurrentPublishMode(rich) {
+    if (!rich?.blocks?.length) return rich;
+    if (builderAllowsPublishTextColors()) return clone(rich);
+    return {
+        ...clone(rich),
+        blocks: rich.blocks.map((block) => {
+            if (!block || block.type !== "paragraph") return clone(block);
+            const next = { ...clone(block), color: "" };
+            if (next.html) next.html = stripRichInlineColors(next.html);
+            return next;
+        })
+    };
+}
+
+function richMapForCurrentPublishMode(map = {}) {
+    return Object.fromEntries(
+        Object.entries(map || {}).map(([key, rich]) => [key, richForCurrentPublishMode(rich)])
+    );
+}
+
+function richObjectForCurrentPublishMode(value) {
+    if (builderAllowsPublishTextColors()) return clone(value);
+    if (Array.isArray(value)) return value.map((item) => richObjectForCurrentPublishMode(item));
+    if (!value || typeof value !== "object") return value;
+    if (value.blocks && Array.isArray(value.blocks)) return richForCurrentPublishMode(value);
+    return Object.fromEntries(
+        Object.entries(value).map(([key, item]) => {
+            if (key === "fieldStyles") return [key, fieldStylesForCurrentPublishMode(item)];
+            if (/rich/i.test(key) && item?.blocks) return [key, richForCurrentPublishMode(item)];
+            return [key, richObjectForCurrentPublishMode(item)];
+        })
+    );
 }
 
 function summaryRichPathFromTextPath(pathValue = "") {
@@ -3701,7 +3805,7 @@ function parserItem(title, description = "", url = "", meta = "", kind = "text",
     title: title || "Untitled item",
     url: url || ""
   };
-  if (rich?.blocks?.length) item.rich = clone(rich);
+  if (rich?.blocks?.length) item.rich = richForCurrentPublishMode(rich);
   return item;
 }
 
@@ -3953,7 +4057,7 @@ function parsedSection(id, title, items = [], description = "", rich = null) {
     items: items.filter(parsedItemHasContent),
     title
   };
-  if (richHasContent(rich)) section.rich = clone(rich);
+  if (richHasContent(rich)) section.rich = richForCurrentPublishMode(rich);
   return section;
 }
 
@@ -4306,7 +4410,7 @@ function parseProjectForPortfolio(project) {
   }).filter(parsedSectionHasContent);
 
   return {
-    ...clone(project),
+    ...richObjectForCurrentPublishMode(project),
     portfolioView: {
       builtAt: new Date().toISOString(),
       template: {
@@ -4516,9 +4620,6 @@ function renderDetachedCustomSectionContent(project, sectionId, path = [], windo
   const currentNode = path.length ? findBuilderNode(section, path) : section;
   if (path.length && !currentNode) return `<p class="evidence-empty">Subsection not found.</p>`;
   const currentChildren = path.length ? builderNodeChildren(currentNode) : sectionRootChildren(section);
-  const description = path.length ? currentNode?.description || "" : section.description || "";
-  const richDescription = path.length ? currentNode?.richDescription : section.richDescription;
-  const hasViewContent = richHasContent(richDescription) || Boolean(String(description || "").trim());
   const fileListHtml = renderCustomFilesList(section, currentChildren, path);
   const hasChildSections = (currentChildren || []).some((item) => item && !item.url && !item.artifact);
   const emptyMetadata = !hasChildSections && !fileListHtml
@@ -4526,13 +4627,12 @@ function renderDetachedCustomSectionContent(project, sectionId, path = [], windo
     : "";
 
   return `
-    ${renderDetachedNestedSectionNav(section, currentChildren, path, windowId)}
-    <div class="section-window-view-canvas${hasViewContent || fileListHtml ? "" : " is-empty"}">
-      <div class="section-window-content-stack">
-        ${hasViewContent ? builderPreviewContent(richDescription, description, "") : ""}
-        ${fileListHtml}
+    <div class="section-window-view-canvas">
+      <div class="section-window-content-stack builder-section-accordion">
+        ${renderCustomNodeOverview(section, currentNode, path, { root: !path.length })}
+        ${renderCustomSubsectionList(section, currentChildren, path)}
+        ${emptyMetadata}
       </div>
-      ${emptyMetadata}
     </div>
   `;
 }
@@ -5442,21 +5542,17 @@ function previewNodeOverviewDetails(node, children = []) {
   `;
 }
 
-function previewNodeCard(node, sectionIndex, path) {
-  const title = displayTitle(node.title);
-  return `
-    <button class="section-open-card subsection-open-card" type="button" data-preview-section-index="${sectionIndex}" data-preview-resource-path="${previewPathToString(path)}">
-      <span>${escapeHtml(title)}</span>
-    </button>
-  `;
-}
-
-function previewChildCards(children, sectionIndex, basePath = []) {
+function previewChildAccordions(children, sectionIndex, basePath = []) {
   const visibleChildren = children.filter((child) => parsedItemHasContent(child) && !child.url && !previewNodeIsOverview(child));
   if (!visibleChildren.length) return "";
   return `
-    <div class="subsection-grid section-content-grid">
-      ${children.map((child, index) => parsedItemHasContent(child) && !child.url && !previewNodeIsOverview(child) ? previewNodeCard(child, sectionIndex, [...basePath, index]) : "").join("")}
+    <div class="parsed-subsection-stack" aria-label="Subsections">
+      ${children.map((child, index) => parsedItemHasContent(child) && !child.url && !previewNodeIsOverview(child) ? `
+        <details class="parsed-subsection-accordion">
+          <summary>${escapeHtml(displayTitle(child.title, "Subsection"))}</summary>
+          ${previewNodeContent(child, sectionIndex, [...basePath, index])}
+        </details>
+      ` : "").join("")}
     </div>
   `;
 }
@@ -5488,7 +5584,7 @@ function previewNodeContent(node, sectionIndex, path = []) {
   return `
     <article class="parsed-window-panel section-directory">
     ${previewNodeOverviewDetails(node, children)}
-    ${previewChildCards(children, sectionIndex, path)}
+    ${previewChildAccordions(children, sectionIndex, path)}
     ${previewFileList(contentChildren)}
     </article>
   `;
@@ -6851,6 +6947,7 @@ function updateCurrentTextBlock(editor, updates) {
 function extractRichSummary(editor) {
   normalizeRichEditorStructure(editor);
   normalizeInlineStyleSpans(editor);
+  const preservePublishColor = builderAllowsPublishTextColors();
   const blocks = [...editor.querySelectorAll(".rich-block")].map((element) => {
     const align = element.dataset.align || "left";
     if (element.dataset.type === "image") {
@@ -6893,11 +6990,11 @@ function extractRichSummary(editor) {
     return {
       align,
       bold: element.dataset.bold === "true",
-      color: element.dataset.color || "",
+      color: preservePublishColor ? element.dataset.color || "" : "",
       fontFamily: element.dataset.fontFamily || "",
       fontPx: element.dataset.fontPx || "",
       fontSize: element.dataset.fontSize || "normal",
-      html: sanitizeRichInlineHtml(element.innerHTML),
+      html: sanitizeRichInlineHtml(element.innerHTML, { preserveColor: preservePublishColor }),
       italic: element.dataset.italic === "true",
       text,
       underline: element.dataset.underline === "true",
@@ -8091,7 +8188,6 @@ function renderSectionTabs(project) {
       </div>
       ${renderActiveSectionToolbar(project)}
     </div>
-    ${renderActiveSubsectionStrip(project)}
   `;
 }
 
@@ -8630,13 +8726,11 @@ function savePendingEditor(form) {
       const parentPath = nodePathFromString(pendingEditor.parentPath || "");
       const parentNode = parentPath.length ? findBuilderNode(section, parentPath) : null;
       const children = parentNode ? builderNodeChildren(parentNode) : sectionRootChildren(section);
-      const nextPath = [...parentPath, children.length];
       children.push({
         id: slugify(`${title}-${Date.now()}`),
         ...nextItem,
         children: []
       });
-      setActiveCustomSectionPath(section.id, nextPath);
     }
   }
 
@@ -9230,6 +9324,111 @@ function pendingEditorMatchesCustomView(sectionId, path = []) {
   return editPathValue === pathValue || parentPathValue === pathValue;
 }
 
+function pendingEditorIsEditingCustomPath(sectionId, path = []) {
+  if (!pendingEditor || pendingEditor.sectionId !== sectionId) return false;
+  const pathValue = customViewPathValue(path);
+  if (pendingEditor.type === "custom-section") return !pathValue;
+  if (pendingEditor.type !== "custom" || pendingEditor.mode !== "edit") return false;
+  return customViewPathValue(nodePathFromString(pendingEditor.nodePath || pendingEditor.index || "")) === pathValue;
+}
+
+function pendingEditorIsAddingUnderCustomPath(sectionId, path = []) {
+  if (!pendingEditor || pendingEditor.sectionId !== sectionId) return false;
+  if (pendingEditor.type !== "custom" || pendingEditor.mode !== "add") return false;
+  return (pendingEditor.parentPath || "") === customViewPathValue(path);
+}
+
+function renderCustomNodeActionBar(section, path = [], options = {}) {
+  const pathValue = customViewPathValue(path);
+  const isRoot = options.root === true;
+  const editButton = isRoot
+    ? `<button type="button" data-open-editor="custom-section" data-section-id="${escapeHtml(section.id)}">Edit overview</button>`
+    : `<button type="button" data-open-editor="custom" data-mode="edit" data-section-id="${escapeHtml(section.id)}" data-node-path="${escapeHtml(pathValue)}">Edit overview</button>`;
+  const deleteButton = isRoot
+    ? `<button class="danger-icon" type="button" data-delete-section="${escapeHtml(section.id)}">Delete section</button>`
+    : `<button class="danger-icon" type="button" data-delete-node="${escapeHtml(section.id)}" data-node-path="${escapeHtml(pathValue)}">Delete subsection</button>`;
+  return `
+    <div class="builder-subsection-actions" aria-label="${escapeHtml(isRoot ? "Section actions" : "Subsection actions")}">
+      <button class="button primary" type="button" data-add-node-subsection="${escapeHtml(section.id)}" data-node-path="${escapeHtml(pathValue)}">Add subsection</button>
+      <button class="button secondary" type="button" data-upload-node="${escapeHtml(section.id)}" data-node-path="${escapeHtml(pathValue)}">Add file or image</button>
+      ${editButton}
+      ${deleteButton}
+    </div>
+  `;
+}
+
+function renderCustomNodeOverview(section, node, path = [], options = {}) {
+  const isRoot = options.root === true;
+  const description = isRoot ? section.description || "" : node?.description || "";
+  const richDescription = isRoot ? section.richDescription : node?.richDescription;
+  const isEditing = pendingEditorIsEditingCustomPath(section.id, path);
+  const isAddingHere = pendingEditorIsAddingUnderCustomPath(section.id, path);
+  const children = isRoot ? sectionRootChildren(section) : builderNodeChildren(node);
+  const directFiles = renderCustomFilesList(section, children, path);
+
+  return `
+    <details class="builder-subsection-details builder-overview-details" open>
+      <summary><span>Overview</span></summary>
+      <div class="builder-subsection-content">
+        ${renderCustomNodeActionBar(section, path, { root: isRoot })}
+        ${isEditing
+          ? renderPendingEditor()
+          : builderPreviewContent(richDescription, description, "No overview has been added yet.")}
+        ${directFiles}
+        ${isAddingHere ? renderPendingEditor() : ""}
+      </div>
+    </details>
+  `;
+}
+
+function renderCustomSubsectionAccordion(section, node, path = []) {
+  const children = builderNodeChildren(node);
+  const childSections = children
+    .map((item, index) => ({ item, index }))
+    .filter(({ item }) => item && !item.url && !item.artifact);
+  const childHtml = childSections.map(({ item, index }) =>
+    renderCustomSubsectionAccordion(section, item, [...path, index])
+  ).join("");
+  const counts = builderNodeVisibleCounts(node);
+  const countText = [
+    counts.sections ? `${counts.sections} subsection${counts.sections === 1 ? "" : "s"}` : "",
+    counts.files ? `${counts.files} file${counts.files === 1 ? "" : "s"}` : ""
+  ].filter(Boolean).join(", ");
+
+  return `
+    <details class="builder-subsection-details" data-builder-subsection-path="${escapeHtml(customViewPathValue(path))}">
+      <summary>
+        <span>${escapeHtml(builderNodeTitle(node))}</span>
+        <span class="builder-subsection-summary-meta">
+          ${countText ? `<small>${escapeHtml(countText)}</small>` : ""}
+          <button class="danger-icon builder-subsection-summary-delete" type="button" data-delete-node="${escapeHtml(section.id)}" data-node-path="${escapeHtml(customViewPathValue(path))}">Delete</button>
+        </span>
+      </summary>
+      <div class="builder-subsection-content">
+        ${renderCustomNodeOverview(section, node, path)}
+        ${childHtml ? `<div class="builder-subsection-children">${childHtml}</div>` : ""}
+        ${!childHtml && !renderCustomFilesList(section, children, path) ? `<p class="evidence-empty explorer-empty section-window-bottom-metadata">No nested subsections or files added yet.</p>` : ""}
+      </div>
+    </details>
+  `;
+}
+
+function renderCustomSubsectionList(section, currentChildren = [], currentPath = []) {
+  const childRows = (currentChildren || [])
+    .map((item, index) => ({ item, index }))
+    .filter(({ item }) => item && !item.url && !item.artifact);
+  if (!childRows.length) return "";
+  return `
+    <div class="builder-subsection-list" role="list" aria-label="Subsections">
+      ${childRows.map(({ item, index }) => `
+        <div class="builder-subsection-list-item" role="listitem">
+          ${renderCustomSubsectionAccordion(section, item, [...currentPath, index])}
+        </div>
+      `).join("")}
+    </div>
+  `;
+}
+
 function renderNestedSectionNav(section, currentChildren = [], currentPath = [], extraClass = "") {
   const childRows = (currentChildren || [])
     .map((item, index) => ({ item, index }))
@@ -9303,27 +9502,20 @@ function renderCustomSection(project, sectionId) {
     return renderCustomSection(project, sectionId);
   }
   const currentChildren = currentPath.length ? builderNodeChildren(currentNode) : sectionRootChildren(section);
-  const pathValue = customViewPathValue(currentPath);
-  const description = currentPath.length ? currentNode?.description || "" : section.description || "";
-  const richDescription = currentPath.length ? currentNode?.richDescription : section.richDescription;
-  const editingCurrentView = pendingEditorMatchesCustomView(sectionId, currentPath);
-  const hasViewContent = richHasContent(richDescription) || Boolean(String(description || "").trim());
-  const fileListHtml = renderCustomFilesList(section, currentChildren, currentPath);
   const hasChildSections = (currentChildren || []).some((item) => item && !item.url && !item.artifact);
+  const fileListHtml = renderCustomFilesList(section, currentChildren, currentPath);
   const emptyMetadata = !hasChildSections && !fileListHtml
     ? `<p class="evidence-empty explorer-empty section-window-bottom-metadata">No subsections or files added yet.</p>`
     : "";
 
   return `
-    ${editingCurrentView ? renderPendingEditor() : `
-      <div class="section-window-view-canvas${hasViewContent || fileListHtml ? "" : " is-empty"}">
-        <div class="section-window-content-stack">
-          ${hasViewContent ? builderPreviewContent(richDescription, description, "") : ""}
-          ${fileListHtml}
-        </div>
+    <div class="section-window-view-canvas">
+      <div class="section-window-content-stack builder-section-accordion">
+        ${renderCustomNodeOverview(section, currentNode, currentPath, { root: !currentPath.length })}
+        ${renderCustomSubsectionList(section, currentChildren, currentPath)}
         ${emptyMetadata}
       </div>
-    `}
+    </div>
   `;
 }
 
@@ -13683,13 +13875,13 @@ function catalogForSave(endpoint) {
   const parsedGlobals = parsedPortfolioGlobals();
   if (endpoint === "/api/apply-catalog") {
     return {
-      ...savedPortfolioCatalog,
+      ...richObjectForCurrentPublishMode(savedPortfolioCatalog),
       ...parsedGlobals,
-      projects: clone(savedPortfolioCatalog.projects || [])
+      projects: richObjectForCurrentPublishMode(savedPortfolioCatalog.projects || [])
     };
   }
   return {
-    ...catalog,
+    ...richObjectForCurrentPublishMode(catalog),
     categories: parsedGlobals.categories,
     fieldStyles: parsedGlobals.fieldStyles,
     funFacts: parsedGlobals.funFacts,
@@ -13698,8 +13890,8 @@ function catalogForSave(endpoint) {
     profileRich: parsedGlobals.profileRich,
     siteContent: parsedGlobals.siteContent,
     siteContentRich: parsedGlobals.siteContentRich,
-    siteSections: clone(catalog.siteSections || []),
-    projects: clone(catalog.projects || [])
+    siteSections: richObjectForCurrentPublishMode(catalog.siteSections || []),
+    projects: richObjectForCurrentPublishMode(catalog.projects || [])
   };
 }
 
@@ -15785,9 +15977,27 @@ function deleteProjectNodeByPath(project, sectionId, path = []) {
 
 sectionContent.addEventListener("contextmenu", (event) => {
   if (event.target.closest(".compile-code-sidebar")) return;
+  const subsectionRow = event.target.closest("[data-builder-subsection-path]");
   const nodeButton = event.target.closest("[data-open-node-view]");
   const project = selectedProject();
-  if (!nodeButton || !project) return;
+  if (!project) return;
+  if (subsectionRow) {
+    const sectionId = activeSectionId?.startsWith("custom:") ? activeSectionId.slice("custom:".length) : "";
+    if (!sectionId) return;
+    const pathValue = subsectionRow.dataset.builderSubsectionPath || "";
+    const section = (project.sections || []).find((item) => item.id === sectionId);
+    const node = section && pathValue ? findBuilderNode(section, nodePathFromString(pathValue)) : null;
+    const title = node ? builderNodeTitle(node) : "Subsection";
+    showProjectViewContextMenu(event, {
+      stateKey: `custom:${sectionId}|${pathValue}`,
+      title,
+      kind: "node",
+      sectionId,
+      nodePath: pathValue
+    });
+    return;
+  }
+  if (!nodeButton) return;
   const sectionId = nodeButton.dataset.sectionId || "";
   if (!sectionId) return;
   const path = nodePathFromString(nodeButton.dataset.nodePath || "");
@@ -15800,6 +16010,9 @@ sectionContent.addEventListener("contextmenu", (event) => {
 });
 
 sectionContent.addEventListener("click", async (event) => {
+  if (event.target.closest(".builder-subsection-summary-delete")) {
+    event.preventDefault();
+  }
   const project = selectedProject();
   const scopeToggle = event.target.closest("[data-scope-bus-toggle]");
   if (scopeToggle && project) {
@@ -17008,6 +17221,10 @@ preferencesForm?.addEventListener("submit", (event) => {
   closeDialogElement(preferencesDialog, "save");
 });
 preferenceTheme?.addEventListener("change", () => {
+  applyPreferenceDialogDraft({ announce: true });
+});
+preferenceLightTheme?.addEventListener("change", () => {
+  if (preferenceTheme) preferenceTheme.value = "light";
   applyPreferenceDialogDraft({ announce: true });
 });
 preferenceDarkTheme?.addEventListener("change", () => {
