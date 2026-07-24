@@ -8342,6 +8342,51 @@ body[data-builder-theme="dark"] .selection-color-swatches button:hover {
   font: inherit;
 }
 
+.compile-external-terminal-panel {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
+}
+
+.compile-external-terminal-body {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  min-height: 0;
+  padding: 16px;
+  overflow: auto;
+  color: var(--compile-text, #f3f4f6);
+  background: var(--compile-bg, #1e1e1e);
+}
+
+.compile-external-terminal-body p {
+  margin: 0;
+  color: var(--compile-muted, #9ca3af);
+}
+
+.compile-external-terminal-body label {
+  display: grid;
+  gap: 6px;
+  max-width: min(920px, 100%);
+  margin: 0;
+  color: var(--compile-text, #f3f4f6);
+  font-size: 0.78rem;
+}
+
+.compile-external-terminal-body input {
+  width: 100%;
+  min-height: 34px;
+  border: 1px solid var(--compile-line, #333842);
+  border-radius: 4px;
+  color: var(--compile-text, #f3f4f6);
+  background: color-mix(in srgb, var(--compile-bg, #1e1e1e) 84%, #000000 16%);
+  font: 400 0.78rem/1.4 Consolas, "Courier New", monospace;
+}
+
+.compile-external-terminal-status {
+  color: var(--compile-accent-2, #38bdf8) !important;
+}
+
 .compile-append-panel {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
