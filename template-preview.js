@@ -4620,19 +4620,11 @@ function renderDetachedCustomSectionContent(project, sectionId, path = [], windo
   normalizeBuilderSectionStorage(section);
   const currentNode = path.length ? findBuilderNode(section, path) : section;
   if (path.length && !currentNode) return `<p class="evidence-empty">Subsection not found.</p>`;
-  const currentChildren = path.length ? builderNodeChildren(currentNode) : sectionRootChildren(section);
-  const fileListHtml = renderCustomFilesList(section, currentChildren, path);
-  const hasChildSections = (currentChildren || []).some((item) => item && !item.url && !item.artifact);
-  const emptyMetadata = !hasChildSections && !fileListHtml
-    ? `<p class="evidence-empty explorer-empty section-window-bottom-metadata">No subsections or files added yet.</p>`
-    : "";
 
   return `
     <div class="section-window-view-canvas">
       <div class="section-window-content-stack builder-section-accordion">
-        ${renderCustomNodeOverview(section, currentNode, path, { root: !path.length })}
-        ${renderCustomSubsectionList(section, currentChildren, path)}
-        ${emptyMetadata}
+        ${renderCustomNodeWorkspace(section, currentNode, path, { root: !path.length })}
       </div>
     </div>
   `;
@@ -7634,6 +7626,9 @@ async function handleRichAction(action, editor) {
       saveRichEditorToProject(editor);
     }
   }
+  if (action === "add-link") {
+    await addLinkToRichEditor(editor);
+  }
   if (action === "add-code") {
     const selectedText = window.getSelection()?.toString() || "";
     const codeBlock = await openSummaryCodeDialog(null, { code: selectedText, pasteMode: "source" });
@@ -9349,7 +9344,7 @@ function renderCustomNodeActionBar(section, path = [], options = {}) {
     ? `<button class="danger-icon" type="button" data-delete-section="${escapeHtml(section.id)}">Delete section</button>`
     : `<button class="danger-icon" type="button" data-delete-node="${escapeHtml(section.id)}" data-node-path="${escapeHtml(pathValue)}">Delete subsection</button>`;
   return `
-    <div class="builder-subsection-actions" aria-label="${escapeHtml(isRoot ? "Section actions" : "Subsection actions")}">
+    <div class="builder-subsection-actions builder-node-toolbar-row" aria-label="${escapeHtml(isRoot ? "Section actions" : "Subsection actions")}">
       <button class="button primary" type="button" data-add-node-subsection="${escapeHtml(section.id)}" data-node-path="${escapeHtml(pathValue)}">Add subsection</button>
       <button class="button secondary" type="button" data-upload-node="${escapeHtml(section.id)}" data-node-path="${escapeHtml(pathValue)}">Add file or image</button>
       ${editButton}
@@ -9363,33 +9358,45 @@ function renderCustomNodeOverview(section, node, path = [], options = {}) {
   const description = isRoot ? section.description || "" : node?.description || "";
   const richDescription = isRoot ? section.richDescription : node?.richDescription;
   const isEditing = pendingEditorIsEditingCustomPath(section.id, path);
-  const isAddingHere = pendingEditorIsAddingUnderCustomPath(section.id, path);
-  const children = isRoot ? sectionRootChildren(section) : builderNodeChildren(node);
-  const directFiles = renderCustomFilesList(section, children, path);
 
   return `
     <details class="builder-subsection-details builder-overview-details" open>
       <summary><span>Overview</span></summary>
       <div class="builder-subsection-content">
-        ${renderCustomNodeActionBar(section, path, { root: isRoot })}
         ${isEditing
           ? renderPendingEditor()
           : builderPreviewContent(richDescription, description, "No overview has been added yet.")}
-        ${directFiles}
-        ${isAddingHere ? renderPendingEditor() : ""}
       </div>
     </details>
   `;
 }
 
+function renderCustomNodeWorkspace(section, node, path = [], options = {}) {
+  const isRoot = options.root === true;
+  const children = isRoot ? sectionRootChildren(section) : builderNodeChildren(node);
+  const directFiles = renderCustomFilesList(section, children, path);
+  const subsectionList = renderCustomSubsectionList(section, children, path);
+  const isAddingHere = pendingEditorIsAddingUnderCustomPath(section.id, path);
+  const hasChildSections = (children || []).some((item) => item && !item.url && !item.artifact);
+  const hasFiles = Boolean(directFiles);
+  const emptyMetadata = !hasChildSections && !hasFiles
+    ? `<p class="evidence-empty explorer-empty section-window-bottom-metadata">No subsections or files added yet.</p>`
+    : "";
+
+  return `
+    <div class="builder-node-workspace" data-builder-current-path="${escapeHtml(customViewPathValue(path))}">
+      ${renderCustomNodeActionBar(section, path, { root: isRoot })}
+      ${renderCustomNodeOverview(section, node, path, { root: isRoot })}
+      ${isAddingHere ? `<div class="builder-child-create-editor">${renderPendingEditor()}</div>` : ""}
+      ${directFiles}
+      ${subsectionList}
+      ${emptyMetadata}
+    </div>
+  `;
+}
+
 function renderCustomSubsectionAccordion(section, node, path = []) {
   const children = builderNodeChildren(node);
-  const childSections = children
-    .map((item, index) => ({ item, index }))
-    .filter(({ item }) => item && !item.url && !item.artifact);
-  const childHtml = childSections.map(({ item, index }) =>
-    renderCustomSubsectionAccordion(section, item, [...path, index])
-  ).join("");
   const counts = builderNodeVisibleCounts(node);
   const countText = [
     counts.sections ? `${counts.sections} subsection${counts.sections === 1 ? "" : "s"}` : "",
@@ -9406,9 +9413,7 @@ function renderCustomSubsectionAccordion(section, node, path = []) {
         </span>
       </summary>
       <div class="builder-subsection-content">
-        ${renderCustomNodeOverview(section, node, path)}
-        ${childHtml ? `<div class="builder-subsection-children">${childHtml}</div>` : ""}
-        ${!childHtml && !renderCustomFilesList(section, children, path) ? `<p class="evidence-empty explorer-empty section-window-bottom-metadata">No nested subsections or files added yet.</p>` : ""}
+        ${renderCustomNodeWorkspace(section, node, path, { root: false })}
       </div>
     </details>
   `;
@@ -9502,19 +9507,11 @@ function renderCustomSection(project, sectionId) {
     setActiveCustomSectionPath(sectionId, []);
     return renderCustomSection(project, sectionId);
   }
-  const currentChildren = currentPath.length ? builderNodeChildren(currentNode) : sectionRootChildren(section);
-  const hasChildSections = (currentChildren || []).some((item) => item && !item.url && !item.artifact);
-  const fileListHtml = renderCustomFilesList(section, currentChildren, currentPath);
-  const emptyMetadata = !hasChildSections && !fileListHtml
-    ? `<p class="evidence-empty explorer-empty section-window-bottom-metadata">No subsections or files added yet.</p>`
-    : "";
 
   return `
     <div class="section-window-view-canvas">
       <div class="section-window-content-stack builder-section-accordion">
-        ${renderCustomNodeOverview(section, currentNode, currentPath, { root: !currentPath.length })}
-        ${renderCustomSubsectionList(section, currentChildren, currentPath)}
-        ${emptyMetadata}
+        ${renderCustomNodeWorkspace(section, currentNode, currentPath, { root: !currentPath.length })}
       </div>
     </div>
   `;
@@ -14921,6 +14918,34 @@ function insertHtmlIntoRichEditor(editor, pastedHtml) {
     insertFragmentIntoRichEditor(editor, template.content.cloneNode(true));
 }
 
+async function addLinkToRichEditor(editor) {
+    if (!editor) return;
+    restoreRichSelection(editor);
+    const selectedText = window.getSelection()?.toString()?.trim() || "";
+    const suggestedUrl = /^(https?:\/\/|www\.|mailto:|tel:)/i.test(selectedText) ? selectedText : "";
+    const rawUrl = window.prompt("Paste the link URL, email, phone number, or page anchor.", suggestedUrl);
+    if (rawUrl === null) return;
+    const target = normalizeLinkTarget(String(rawUrl || "").trim(), { assumeWeb: true });
+    if (!target) {
+      setStatus("Paste a valid link before adding it.");
+      return;
+    }
+    const fallbackLabel = selectedText || displayNameFromUrl(target, target);
+    const rawLabel = window.prompt("Text to display for this link.", fallbackLabel);
+    if (rawLabel === null) return;
+    const label = String(rawLabel || "").trim() || fallbackLabel || target;
+    const anchor = document.createElement("a");
+    anchor.href = target;
+    anchor.target = "_blank";
+    anchor.rel = "noreferrer";
+    anchor.textContent = label;
+    const fragment = document.createDocumentFragment();
+    fragment.append(anchor);
+    insertFragmentIntoRichEditor(editor, fragment);
+    saveRichEditorToProject(editor);
+    setStatus("Link added locally.");
+}
+
 projectFields.addEventListener("paste", handleRichEditorPaste);
 sectionContent.addEventListener("paste", handleRichEditorPaste);
 funFactsInput?.addEventListener("paste", handleRichEditorPaste);
@@ -15569,7 +15594,7 @@ summaryContextMenu.addEventListener("click", async (event) => {
     return;
   }
   await handleRichAction(action, activeSummaryEditor);
-  if (["add-image", "add-formula", "add-code", "paste-code", "copy-text", "paste-text", "cut-text", "select-all-text", "edit-block", "delete-block"].includes(action)) {
+  if (["add-image", "add-formula", "add-link", "add-code", "paste-code", "copy-text", "paste-text", "cut-text", "select-all-text", "edit-block", "delete-block"].includes(action)) {
     hideSummaryContextMenu();
   }
 });
