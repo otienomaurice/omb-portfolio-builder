@@ -11,7 +11,7 @@
     <link rel="shortcut icon" href="assets/favicon.ico" />
     <link rel="apple-touch-icon" sizes="180x180" href="assets/apple-touch-icon.png" />
     <link rel="stylesheet" href="styles.css" />
-    <link rel="stylesheet" href="template-preview.css?v=0.2.83" />
+    <link rel="stylesheet" href="template-preview.css?v=0.2.84" />
   </head>
   <body class="template-preview-page">
       <header class="template-header">
@@ -441,7 +441,8 @@
                               <li>New projects include only Overview by default.</li>
                               <li>Every other section, such as Design, Simulation, Tests, Tools, PCB Builds, Documentation, References, Results, or Compile Code, must be added manually.</li>
                               <li>Sections and subsections are nested manually. A section can contain subsections, and each subsection can contain its own child sections when the project needs that depth.</li>
-                              <li>Subsections appear as vertical expandable rows below Overview. Expand a row to work on that subsection in place, then collapse it when you want the project window clean again.</li>
+                              <li>Every section and subsection uses the same workspace pattern: controls first, Overview first, files as simple rows, then child subsections as vertical expandable rows.</li>
+                              <li>Expand a subsection row to view and edit that subsection in place. Its content, files, formulas, links, images, and child subsections stay inside that row so you can see exactly where the information lives.</li>
                               <li>Each subsection row includes controls for adding child subsections, attaching files or images, editing the overview, and deleting that subsection. Right-click still provides project path, duplicate, move, cleanup, and separate-window tools.</li>
                               <li>Section chips stay in the top navigation band. Actions for the selected section stay on the far right of that same row, so the content area is reserved for text, files, images, and previews.</li>
                               <li>An overview appears automatically when it exists; it is not shown as a separate clickable Overview icon.</li>
@@ -468,7 +469,7 @@
                           <p>The builder stores the text as structured content so the portfolio can render it cleanly later. That means the editor may standardize pasted formatting, but it should preserve intentional choices such as bold text, font size, color, links, hard line breaks, images, formulas, and code blocks.</p>
                           <p>Front-page, profile, contact, fun facts, and project overview fields now use the same selection-level text behavior. Highlight the exact words you want to edit, then right-click the highlighted text to copy, paste, cut, change font, change size, change color, bold, italicize, or underline where that field supports formatting. Identity and contact fields remain text-only, so image, formula, and code block insertion is intentionally disabled there.</p>
                           <ol>
-                              <li>Right-click highlighted text in any builder text field to copy, cut, paste, select all, change font, change size, change color, and apply bold, italic, or underline.</li>
+                              <li>Right-click highlighted text in any builder rich text field to copy, cut, paste, select all, add a link, change font, change size, change color, and apply bold, italic, or underline.</li>
                               <li>The default typing font is Arial.</li>
                               <li>Static text such as guide text, titles, and labels can also be copied by highlighting it and right-clicking the selection.</li>
                               <li>Use Enter for a new paragraph. Pasted line breaks remain line breaks.</li>
@@ -492,6 +493,7 @@
                           <p>Use this section when pasting content from ChatGPT, documentation, GitHub, LinkedIn, LTspice notes, equations, source code, or lab references. The builder tries to recognize the content, but you should still check the preview before publishing.</p>
                           <ol>
                               <li>URLs such as linkedin.com, github.com, www links, and https links are treated as links.</li>
+                              <li>Use Add link from the rich editor right-click menu when you want highlighted text to become a clickable website, email, phone, or page link.</li>
                               <li>Use Add mathematical formula only when you intentionally want a formula block.</li>
                               <li>Use Code block or Paste as code for C, C++, SystemVerilog, LTspice, Java, JavaScript, Python, and HTML snippets.</li>
                               <li>Choose Basic paste when you want the builder to clean extra trailing whitespace, or Keep source spacing when indentation is important.</li>
@@ -1401,6 +1403,7 @@
           <button class="code-menu-item" type="button" data-rich-action="paste-code">Paste as code</button>
           <button type="button" data-rich-action="add-image">Add image</button>
           <button type="button" data-rich-action="add-formula">Add mathematical formula</button>
+          <button type="button" data-rich-action="add-link">Add link</button>
             <button type="button" data-rich-action="copy-text">Copy</button>
             <button type="button" data-rich-action="paste-text">Paste</button>
             <button type="button" data-rich-action="cut-text">Cut</button>
@@ -1467,7 +1470,7 @@
           <button type="button" data-rich-action="edit-block">Edit selected block</button>
           <button class="danger-menu-item" type="button" data-rich-action="delete-block">Delete selected block</button>
       </div>
-      <script src="electronics-search.js?v=0.2.83"></script>
-      <script src="template-preview.js?v=0.2.83"></script>
+      <script src="electronics-search.js?v=0.2.84"></script>
+      <script src="template-preview.js?v=0.2.84"></script>
   </body>
 </html>
