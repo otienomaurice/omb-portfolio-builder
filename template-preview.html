@@ -11,7 +11,7 @@
     <link rel="shortcut icon" href="assets/favicon.ico" />
     <link rel="apple-touch-icon" sizes="180x180" href="assets/apple-touch-icon.png" />
     <link rel="stylesheet" href="styles.css" />
-    <link rel="stylesheet" href="template-preview.css?v=0.2.88" />
+    <link rel="stylesheet" href="template-preview.css?v=0.2.89" />
   </head>
   <body class="template-preview-page">
       <header class="template-header">
@@ -467,7 +467,7 @@
                       <div>
                           <p>Rich text fields behave like document editors. Click where you want to type, highlight the exact words you want to edit, then apply formatting to that selection. Formatting should not change an entire paragraph unless the whole paragraph is selected.</p>
                           <p>The builder stores the text as structured content so the portfolio can render it cleanly later. That means the editor may standardize pasted formatting, but it should preserve intentional choices such as bold text, font size, color, links, hard line breaks, images, videos, animations, formulas, tables, and code blocks.</p>
-                          <p>When a rich field is active, the builder shows a full-width editor toolbar with common document commands. Use it for bold, italic, underline, alignment, links, images, videos, animations, tables, formulas, code blocks, image wrapping, and crop editing. The same commands remain available from right-click menus so mouse-first and keyboard-first editing both work.</p>
+                          <p>When a rich field is active, the builder shows a compact editor toolbar at the top of the active window. Commands are grouped by Text, Align, Insert, Image, Block, and Clipboard; hover over a group or click it to open the related commands beneath it. The same commands remain available from right-click menus so mouse-first and keyboard-first editing both work.</p>
                           <p>Front-page, profile, contact, fun facts, and project overview fields now use the same selection-level text behavior. Highlight the exact words you want to edit, then right-click the highlighted text to copy, paste, cut, change font, change size, change color, bold, italicize, or underline where that field supports formatting. Identity and contact fields remain text-only, so image, formula, and code block insertion is intentionally disabled there.</p>
                           <ol>
                               <li>Right-click highlighted text in any builder rich text field to copy, cut, paste, select all, add a link, change font, change size, change color, and apply bold, italic, or underline.</li>
@@ -479,6 +479,8 @@
                               <li>Use Add link to enter the displayed label, destination URL, and whether the link opens in the same tab or a new tab.</li>
                               <li>Use Add video or animation for MP4, WebM, OGG, MOV, GIF, APNG, WebP, SVG animation files, YouTube links, Vimeo links, Google Drive previews, or direct media URLs.</li>
                               <li>Choose Show when the media should play or animate inside the portfolio. Choose Download only when the item is evidence that should be linked instead of embedded.</li>
+                              <li>Click an image, then use the Image toolbar group or right-click menu for wrap, caption, crop, edit, and delete commands. Images no longer show command buttons inside the content area.</li>
+                              <li>Drag an image toward the left or right side of the editor to wrap text around it automatically. Drop it near the middle to keep it on its own line unless it is small enough for inline placement.</li>
                               <li>Use the Code block command or Paste as code for source snippets so they render differently from general text.</li>
                               <li>Save project and Save all sections both pass front-page, profile, contact, fun facts, and project rich text into the parsed preview catalog before the website is generated.</li>
                           </ol>
@@ -1632,24 +1634,101 @@
       </div>
       <div class="rich-editor-toolbar" id="rich-editor-toolbar" hidden>
           <button type="button" class="rich-toolbar-close" id="rich-toolbar-close" aria-label="Close editor toolbar">&times;</button>
-          <button type="button" data-rich-toolbar-action="toggle-bold" title="Bold">B</button>
-          <button type="button" data-rich-toolbar-action="toggle-italic" title="Italic"><i>I</i></button>
-          <button type="button" data-rich-toolbar-action="toggle-underline" title="Underline"><u>U</u></button>
-          <button type="button" data-rich-toolbar-action="align-left" title="Align left">Left</button>
-          <button type="button" data-rich-toolbar-action="align-center" title="Align center">Center</button>
-          <button type="button" data-rich-toolbar-action="align-right" title="Align right">Right</button>
-          <button type="button" data-rich-toolbar-action="add-link" title="Add link">Link</button>
-          <button type="button" data-rich-toolbar-action="add-image" title="Add image">Image</button>
-          <button type="button" data-rich-toolbar-action="add-video" title="Add video or animation">Video</button>
-          <button type="button" data-rich-toolbar-action="add-table" title="Add table">Table</button>
-          <button type="button" data-rich-toolbar-action="add-formula" title="Add formula">Formula</button>
-          <button type="button" data-rich-toolbar-action="add-code" title="Add code block">Code</button>
-          <button type="button" data-rich-toolbar-action="image-wrap-inline" title="Inline selected image">Inline image</button>
-          <button type="button" data-rich-toolbar-action="image-wrap-left" title="Wrap text on right">Wrap right</button>
-          <button type="button" data-rich-toolbar-action="image-wrap-right" title="Wrap text on left">Wrap left</button>
-          <button type="button" data-rich-toolbar-action="crop-image" title="Crop selected image">Crop</button>
+          <div class="rich-toolbar-group" data-rich-toolbar-group>
+              <button type="button" class="rich-toolbar-menu-button" data-rich-toolbar-menu-button>Text</button>
+              <div class="rich-toolbar-menu">
+                  <button type="button" data-rich-toolbar-action="toggle-bold" title="Bold">Bold</button>
+                  <button type="button" data-rich-toolbar-action="toggle-italic" title="Italic">Italic</button>
+                  <button type="button" data-rich-toolbar-action="toggle-underline" title="Underline">Underline</button>
+                  <label>
+                      <span>Font</span>
+                      <select data-rich-toolbar-font-select>
+                          <option selected>Arial</option>
+                          <option>Calibri</option>
+                          <option>Cambria</option>
+                          <option>Georgia</option>
+                          <option>Times New Roman</option>
+                          <option>Verdana</option>
+                          <option>Tahoma</option>
+                          <option>Trebuchet MS</option>
+                          <option>Helvetica</option>
+                          <option>Garamond</option>
+                          <option>Palatino Linotype</option>
+                          <option>Courier New</option>
+                          <option>Consolas</option>
+                          <option>Lucida Console</option>
+                          <option>Segoe UI</option>
+                          <option>Inter</option>
+                          <option>Roboto</option>
+                          <option>Open Sans</option>
+                          <option>Lato</option>
+                          <option>Montserrat</option>
+                      </select>
+                  </label>
+                  <label>
+                      <span>Size</span>
+                      <select data-rich-toolbar-font-size>
+                          <option>8</option><option>9</option><option>10</option><option>11</option><option>12</option><option>13</option><option>14</option><option>15</option><option selected>16</option><option>17</option><option>18</option><option>19</option><option>20</option><option>21</option><option>22</option><option>23</option><option>24</option>
+                      </select>
+                  </label>
+                  <label>
+                      <span>Color</span>
+                      <input type="color" value="#17202a" data-rich-toolbar-color-input />
+                  </label>
+              </div>
+          </div>
+          <div class="rich-toolbar-group" data-rich-toolbar-group>
+              <button type="button" class="rich-toolbar-menu-button" data-rich-toolbar-menu-button>Align</button>
+              <div class="rich-toolbar-menu">
+                  <button type="button" data-rich-toolbar-action="align-left" title="Align left">Align left</button>
+                  <button type="button" data-rich-toolbar-action="align-center" title="Align center">Align center</button>
+                  <button type="button" data-rich-toolbar-action="align-right" title="Align right">Align right</button>
+              </div>
+          </div>
+          <div class="rich-toolbar-group" data-rich-toolbar-group>
+              <button type="button" class="rich-toolbar-menu-button" data-rich-toolbar-menu-button>Insert</button>
+              <div class="rich-toolbar-menu">
+                  <button type="button" data-rich-toolbar-action="add-link" title="Add link">Link</button>
+                  <button type="button" data-rich-toolbar-action="add-image" title="Add image">Image</button>
+                  <button type="button" data-rich-toolbar-action="add-video" title="Add video or animation">Video or animation</button>
+                  <button type="button" data-rich-toolbar-action="add-table" title="Add table">Table</button>
+                  <button type="button" data-rich-toolbar-action="add-formula" title="Add formula">Formula</button>
+                  <button type="button" data-rich-toolbar-action="add-code" title="Add code block">Code block</button>
+                  <button type="button" data-rich-toolbar-action="paste-code" title="Paste clipboard as code">Paste as code</button>
+              </div>
+          </div>
+          <div class="rich-toolbar-group" data-rich-toolbar-group data-rich-image-tools>
+              <button type="button" class="rich-toolbar-menu-button" data-rich-toolbar-menu-button>Image</button>
+              <div class="rich-toolbar-menu">
+                  <button type="button" data-rich-toolbar-action="image-wrap-inline" title="Inline selected image">Inline</button>
+                  <button type="button" data-rich-toolbar-action="image-wrap-left" title="Wrap text on right">Wrap right</button>
+                  <button type="button" data-rich-toolbar-action="image-wrap-right" title="Wrap text on left">Wrap left</button>
+                  <button type="button" data-rich-toolbar-action="image-wrap-block" title="Image on own line">Own line</button>
+                  <button type="button" data-rich-toolbar-action="caption-bottom">Caption below</button>
+                  <button type="button" data-rich-toolbar-action="caption-top">Caption above</button>
+                  <button type="button" data-rich-toolbar-action="caption-left">Caption left</button>
+                  <button type="button" data-rich-toolbar-action="caption-right">Caption right</button>
+                  <button type="button" data-rich-toolbar-action="crop-image" title="Crop selected image">Crop</button>
+              </div>
+          </div>
+          <div class="rich-toolbar-group" data-rich-toolbar-group>
+              <button type="button" class="rich-toolbar-menu-button" data-rich-toolbar-menu-button>Block</button>
+              <div class="rich-toolbar-menu">
+                  <button type="button" data-rich-toolbar-action="edit-block">Edit selected block</button>
+                  <button class="danger-menu-item" type="button" data-rich-toolbar-action="delete-block">Delete selected block</button>
+              </div>
+          </div>
+          <div class="rich-toolbar-group" data-rich-toolbar-group>
+              <button type="button" class="rich-toolbar-menu-button" data-rich-toolbar-menu-button>Clipboard</button>
+              <div class="rich-toolbar-menu">
+                  <button type="button" data-rich-toolbar-action="copy-text">Copy</button>
+                  <button type="button" data-rich-toolbar-action="paste-text">Paste</button>
+                  <button type="button" data-rich-toolbar-action="cut-text">Cut</button>
+                  <button type="button" data-rich-toolbar-action="select-all-text">Select all</button>
+              </div>
+          </div>
       </div>
-      <script src="electronics-search.js?v=0.2.88"></script>
-      <script src="template-preview.js?v=0.2.88"></script>
+      <script src="electronics-search.js?v=0.2.89"></script>
+      <script src="template-preview.js?v=0.2.89"></script>
   </body>
 </html>

@@ -4122,9 +4122,29 @@ body[data-builder-theme="dark"] .table-draw-grid button {
 }
 
 body[data-builder-theme="dark"] .rich-editor-toolbar button:hover,
+body[data-builder-theme="dark"] .rich-toolbar-group.is-open > .rich-toolbar-menu-button,
+body[data-builder-theme="dark"] .rich-toolbar-group:hover > .rich-toolbar-menu-button,
 body[data-builder-theme="dark"] .table-draw-grid button.selected {
   background: var(--builder-ui-command-hover) !important;
   color: #ffffff !important;
+}
+
+body[data-builder-theme="dark"] .rich-toolbar-menu {
+  border-color: var(--builder-ui-line) !important;
+  color: var(--builder-ui-text) !important;
+  background: var(--builder-ui-surface) !important;
+  box-shadow: 0 16px 34px rgba(0, 0, 0, 0.35);
+}
+
+body[data-builder-theme="dark"] .rich-toolbar-menu label {
+  color: var(--builder-ui-muted) !important;
+}
+
+body[data-builder-theme="dark"] .rich-toolbar-menu select,
+body[data-builder-theme="dark"] .rich-toolbar-menu input[type="color"] {
+  border-color: var(--builder-ui-line) !important;
+  color: var(--builder-ui-text) !important;
+  background: var(--builder-ui-panel) !important;
 }
 
 body[data-builder-theme="dark"] .rich-table {
@@ -4140,7 +4160,6 @@ body[data-builder-theme="dark"] .rich-table {
   width: min(100%, var(--rich-image-width, 60%));
   max-width: min(100%, var(--responsive-media-max, 720px));
   margin: 8px 0 14px;
-  padding-top: 36px;
 }
 
 .rich-image.wrap-inline,
@@ -4485,27 +4504,31 @@ body[data-builder-theme="dark"] .rich-table {
 }
 
 .rich-editor-toolbar {
-  position: sticky;
+  position: fixed;
   top: 0;
-  z-index: 65;
+  left: 0;
+  z-index: 99990;
   display: flex;
   align-items: center;
-  gap: 4px;
+  flex-wrap: wrap;
+  gap: 6px;
   width: 100%;
-  min-height: 34px;
+  min-height: 36px;
   padding: 4px 8px;
   border: 1px solid var(--line);
   border-radius: 0;
   background: #f7fcff;
   box-shadow: 0 10px 22px rgba(23, 32, 42, 0.12);
-  overflow-x: auto;
+  overflow: visible;
 }
 
 .rich-editor-toolbar[hidden] {
   display: none;
 }
 
-.rich-editor-toolbar button {
+.rich-editor-toolbar button,
+.rich-editor-toolbar select,
+.rich-editor-toolbar input[type="color"] {
   flex: 0 0 auto;
   min-height: 26px;
   padding: 0 8px;
@@ -4518,7 +4541,9 @@ body[data-builder-theme="dark"] .rich-table {
   font-weight: 850;
 }
 
-.rich-editor-toolbar button:hover {
+.rich-editor-toolbar button:hover,
+.rich-toolbar-group.is-open > .rich-toolbar-menu-button,
+.rich-toolbar-group:hover > .rich-toolbar-menu-button {
   color: #ffffff;
   background: #1f6ed4;
 }
@@ -4527,6 +4552,79 @@ body[data-builder-theme="dark"] .rich-table {
   margin-right: 6px;
   color: #b91c1c;
   border-color: #fecaca;
+}
+
+.rich-toolbar-group {
+  position: relative;
+  display: inline-flex;
+}
+
+.rich-toolbar-group[hidden] {
+  display: none;
+}
+
+.rich-toolbar-menu-button::after {
+  margin-left: 6px;
+  content: "\25BE";
+  font-size: 0.68rem;
+}
+
+.rich-toolbar-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 99991;
+  display: none;
+  min-width: 178px;
+  max-height: 320px;
+  padding: 6px;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #ffffff;
+  box-shadow: 0 14px 32px rgba(23, 32, 42, 0.18);
+}
+
+.rich-toolbar-group:hover .rich-toolbar-menu,
+.rich-toolbar-group:focus-within .rich-toolbar-menu,
+.rich-toolbar-group.is-open .rich-toolbar-menu {
+  display: grid;
+  gap: 5px;
+}
+
+.rich-toolbar-menu button,
+.rich-toolbar-menu label {
+  width: 100%;
+}
+
+.rich-toolbar-menu button {
+  justify-content: flex-start;
+  text-align: left;
+}
+
+.rich-toolbar-menu label {
+  display: grid;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 850;
+}
+
+.rich-toolbar-menu select,
+.rich-toolbar-menu input[type="color"] {
+  width: 100%;
+  min-height: 28px;
+}
+
+.rich-toolbar-menu .danger-menu-item {
+  border-color: #fecaca;
+  color: #b91c1c;
+}
+
+.rich-toolbar-menu .danger-menu-item:hover {
+  color: #ffffff;
+  border-color: #dc2626;
+  background: #dc2626;
 }
 
 .table-size-fields {
