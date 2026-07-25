@@ -11,7 +11,7 @@
     <link rel="shortcut icon" href="assets/favicon.ico" />
     <link rel="apple-touch-icon" sizes="180x180" href="assets/apple-touch-icon.png" />
     <link rel="stylesheet" href="styles.css" />
-    <link rel="stylesheet" href="template-preview.css?v=0.2.86" />
+    <link rel="stylesheet" href="template-preview.css?v=0.2.88" />
   </head>
   <body class="template-preview-page">
       <header class="template-header">
@@ -466,8 +466,8 @@
                       <summary><span class="guide-card-title">Rich Text Editing</span><span class="guide-card-summary">Format selected text, paste cleanly, use keyboard shortcuts, and keep line breaks predictable.</span></summary>
                       <div>
                           <p>Rich text fields behave like document editors. Click where you want to type, highlight the exact words you want to edit, then apply formatting to that selection. Formatting should not change an entire paragraph unless the whole paragraph is selected.</p>
-                          <p>The builder stores the text as structured content so the portfolio can render it cleanly later. That means the editor may standardize pasted formatting, but it should preserve intentional choices such as bold text, font size, color, links, hard line breaks, images, formulas, and code blocks.</p>
-                          <p>When a rich field is active, the builder shows a full-width editor toolbar with common document commands. Use it for bold, italic, underline, alignment, links, images, tables, formulas, code blocks, image wrapping, and crop editing. The same commands remain available from right-click menus so mouse-first and keyboard-first editing both work.</p>
+                          <p>The builder stores the text as structured content so the portfolio can render it cleanly later. That means the editor may standardize pasted formatting, but it should preserve intentional choices such as bold text, font size, color, links, hard line breaks, images, videos, animations, formulas, tables, and code blocks.</p>
+                          <p>When a rich field is active, the builder shows a full-width editor toolbar with common document commands. Use it for bold, italic, underline, alignment, links, images, videos, animations, tables, formulas, code blocks, image wrapping, and crop editing. The same commands remain available from right-click menus so mouse-first and keyboard-first editing both work.</p>
                           <p>Front-page, profile, contact, fun facts, and project overview fields now use the same selection-level text behavior. Highlight the exact words you want to edit, then right-click the highlighted text to copy, paste, cut, change font, change size, change color, bold, italicize, or underline where that field supports formatting. Identity and contact fields remain text-only, so image, formula, and code block insertion is intentionally disabled there.</p>
                           <ol>
                               <li>Right-click highlighted text in any builder rich text field to copy, cut, paste, select all, add a link, change font, change size, change color, and apply bold, italic, or underline.</li>
@@ -477,6 +477,8 @@
                               <li>Typing and wrapping should not create fake new paragraphs; only hard enters and pasted line breaks do.</li>
                               <li>Use Add table from the toolbar or right-click menu to draw a table size or type row and column counts before insertion.</li>
                               <li>Use Add link to enter the displayed label, destination URL, and whether the link opens in the same tab or a new tab.</li>
+                              <li>Use Add video or animation for MP4, WebM, OGG, MOV, GIF, APNG, WebP, SVG animation files, YouTube links, Vimeo links, Google Drive previews, or direct media URLs.</li>
+                              <li>Choose Show when the media should play or animate inside the portfolio. Choose Download only when the item is evidence that should be linked instead of embedded.</li>
                               <li>Use the Code block command or Paste as code for source snippets so they render differently from general text.</li>
                               <li>Save project and Save all sections both pass front-page, profile, contact, fun facts, and project rich text into the parsed preview catalog before the website is generated.</li>
                           </ol>
@@ -1279,6 +1281,70 @@
           </form>
       </dialog>
 
+      <dialog class="asset-dialog" id="summary-video-dialog">
+          <form method="dialog" id="summary-video-form">
+              <div>
+                  <p class="eyebrow">Overview media</p>
+                  <h2>Add video or animation</h2>
+              </div>
+              <label>
+                  <span>Source</span>
+                  <select id="summary-video-source">
+                      <option value="local">Local machine</option>
+                      <option value="web">Video or animation URL</option>
+                      <option value="drive">Google Drive link</option>
+                  </select>
+              </label>
+              <label class="summary-video-local-field">
+                  <span>Choose video or animation</span>
+                  <input id="summary-video-file" type="file" accept=".mp4,.webm,.ogg,.ogv,.mov,.m4v,.gif,.apng,.webp,.svg,video/*,image/gif,image/apng,image/webp,image/svg+xml" />
+              </label>
+              <label class="summary-video-url-field" hidden>
+                  <span>Video, animation, or share URL</span>
+                  <input id="summary-video-url" type="text" placeholder="https://youtu.be/..., https://vimeo.com/..., or direct media URL" />
+              </label>
+              <label>
+                  <span>Display title</span>
+                  <input id="summary-video-title" type="text" placeholder="Use file or video name" />
+              </label>
+              <label>
+                  <span>Caption</span>
+                  <textarea id="summary-video-caption" rows="3" placeholder="Optional caption"></textarea>
+              </label>
+              <label>
+                  <span>Justification</span>
+                  <select id="summary-video-align">
+                      <option value="center">Center</option>
+                      <option value="left">Left</option>
+                      <option value="right">Right</option>
+                  </select>
+              </label>
+              <label>
+                  <span>Media width</span>
+                  <input id="summary-video-width" type="range" min="24" max="100" step="1" value="76" />
+              </label>
+              <label>
+                  <span>Playback</span>
+                  <select id="summary-video-playback">
+                      <option value="controls">Show controls</option>
+                      <option value="loop-muted">Loop muted</option>
+                      <option value="autoplay-loop-muted">Autoplay loop muted</option>
+                  </select>
+              </label>
+              <label>
+                  <span>Website behavior</span>
+                  <select id="summary-video-display">
+                      <option value="show">Show playable media on website</option>
+                      <option value="download">Downloadable file or external link only</option>
+                  </select>
+              </label>
+              <div class="dialog-actions">
+                  <button class="button primary" type="submit">Add media</button>
+                  <button class="project-window-close" id="summary-video-cancel" type="button" aria-label="Close video dialog">&times;</button>
+              </div>
+          </form>
+      </dialog>
+
       <dialog class="asset-dialog" id="summary-link-dialog">
           <form method="dialog" id="summary-link-form">
               <div>
@@ -1485,6 +1551,7 @@
           <button class="code-menu-item" type="button" data-rich-action="add-code">&lt;/&gt; Code block</button>
           <button class="code-menu-item" type="button" data-rich-action="paste-code">Paste as code</button>
           <button type="button" data-rich-action="add-image">Add image</button>
+          <button type="button" data-rich-action="add-video">Add video or animation</button>
           <button type="button" data-rich-action="add-table">Add table</button>
           <button type="button" data-rich-action="add-formula">Add mathematical formula</button>
           <button type="button" data-rich-action="add-link">Add link</button>
@@ -1573,6 +1640,7 @@
           <button type="button" data-rich-toolbar-action="align-right" title="Align right">Right</button>
           <button type="button" data-rich-toolbar-action="add-link" title="Add link">Link</button>
           <button type="button" data-rich-toolbar-action="add-image" title="Add image">Image</button>
+          <button type="button" data-rich-toolbar-action="add-video" title="Add video or animation">Video</button>
           <button type="button" data-rich-toolbar-action="add-table" title="Add table">Table</button>
           <button type="button" data-rich-toolbar-action="add-formula" title="Add formula">Formula</button>
           <button type="button" data-rich-toolbar-action="add-code" title="Add code block">Code</button>
@@ -1581,7 +1649,7 @@
           <button type="button" data-rich-toolbar-action="image-wrap-right" title="Wrap text on left">Wrap left</button>
           <button type="button" data-rich-toolbar-action="crop-image" title="Crop selected image">Crop</button>
       </div>
-      <script src="electronics-search.js?v=0.2.87"></script>
-      <script src="template-preview.js?v=0.2.87"></script>
+      <script src="electronics-search.js?v=0.2.88"></script>
+      <script src="template-preview.js?v=0.2.88"></script>
   </body>
 </html>
