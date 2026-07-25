@@ -1921,20 +1921,13 @@
 }
 
 .rich-block-typing-rail::before {
-  position: absolute;
-  left: 8px;
-  right: 8px;
-  top: 5px;
-  height: 2px;
-  border-radius: 999px;
+  display: none;
   content: "";
-  background: #1f6ed4;
-  box-shadow: 0 0 0 4px rgba(31, 110, 212, 0.12);
 }
 
 .rich-block:hover > .rich-block-typing-rail,
 .rich-block-typing-rail:focus-visible {
-  opacity: 1;
+  opacity: 0;
 }
 
 .rich-download-badge {
@@ -4511,14 +4504,14 @@ body[data-builder-theme="dark"] .rich-table {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 5px;
   width: 100%;
-  min-height: 36px;
-  padding: 4px 8px;
-  border: 1px solid var(--line);
+  min-height: 34px;
+  padding: 3px 8px;
+  border: 1px solid #bfd9e8;
   border-radius: 0;
-  background: #f7fcff;
-  box-shadow: 0 10px 22px rgba(23, 32, 42, 0.12);
+  background: linear-gradient(180deg, #ffffff 0%, #eef8fd 100%);
+  box-shadow: 0 8px 18px rgba(23, 32, 42, 0.12);
   overflow: visible;
 }
 
@@ -4530,14 +4523,14 @@ body[data-builder-theme="dark"] .rich-table {
 .rich-editor-toolbar select,
 .rich-editor-toolbar input[type="color"] {
   flex: 0 0 auto;
-  min-height: 26px;
+  min-height: 24px;
   padding: 0 8px;
-  border: 1px solid var(--line);
-  border-radius: 5px;
+  border: 1px solid #b8d8e8;
+  border-radius: 4px;
   color: var(--ink);
   background: #ffffff;
   font: inherit;
-  font-size: 0.76rem;
+  font-size: 0.72rem;
   font-weight: 850;
 }
 
@@ -4549,7 +4542,9 @@ body[data-builder-theme="dark"] .rich-table {
 }
 
 .rich-editor-toolbar .rich-toolbar-close {
-  margin-right: 6px;
+  order: 99;
+  margin-left: auto;
+  margin-right: 0;
   color: #b91c1c;
   border-color: #fecaca;
 }
@@ -4575,14 +4570,14 @@ body[data-builder-theme="dark"] .rich-table {
   left: 0;
   z-index: 99991;
   display: none;
-  min-width: 178px;
+  min-width: 190px;
   max-height: 320px;
-  padding: 6px;
+  padding: 5px;
   overflow-y: auto;
-  border: 1px solid var(--line);
-  border-radius: 7px;
+  border: 1px solid #b8d8e8;
+  border-radius: 5px;
   background: #ffffff;
-  box-shadow: 0 14px 32px rgba(23, 32, 42, 0.18);
+  box-shadow: 0 12px 26px rgba(23, 32, 42, 0.16);
 }
 
 .rich-toolbar-group:hover .rich-toolbar-menu,
@@ -4595,11 +4590,13 @@ body[data-builder-theme="dark"] .rich-table {
 .rich-toolbar-menu button,
 .rich-toolbar-menu label {
   width: 100%;
+  min-height: 24px;
 }
 
 .rich-toolbar-menu button {
   justify-content: flex-start;
   text-align: left;
+  font-size: 0.72rem;
 }
 
 .rich-toolbar-menu label {
@@ -4656,6 +4653,15 @@ body[data-builder-theme="dark"] .rich-table {
 .table-draw-grid button.selected {
   border-color: #1f6ed4;
   background: #bfeaff;
+}
+
+.table-draw-grid button.hovered {
+  border-color: #0ea5e9;
+  background: #dff6ff;
+}
+
+.table-draw-grid button.selected.hovered {
+  background: #98ddff;
 }
 
 @media (max-width: 760px) {

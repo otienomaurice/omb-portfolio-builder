@@ -112,6 +112,7 @@ function createAppMenu(origin) {
         { type: "separator" },
         { label: "Save Draft", accelerator: "CmdOrCtrl+S", click: () => dispatchBuilderMenuAction({ type: "save-draft" }) },
         { label: "Apply to Site", accelerator: "CmdOrCtrl+Shift+S", click: () => dispatchBuilderMenuAction({ type: "apply-site" }) },
+        { label: "Print Portfolio", accelerator: "CmdOrCtrl+P", click: () => dispatchBuilderMenuAction({ type: "print-portfolio" }) },
         { type: "separator" },
         { role: "quit", label: "Exit" }
       ]

@@ -469,8 +469,7 @@ async function openCompilePowerShellTerminal(payload = {}) {
     ? path.join(process.env.SystemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
     : "";
   const powerShellExe = systemPowerShell && await pathExists(systemPowerShell) ? systemPowerShell : "powershell.exe";
-  const launchCommand = `start "" "${powerShellExe}" -NoLogo -NoExit -ExecutionPolicy Bypass -File "${launchScript}"`;
-  const child = spawn(process.env.ComSpec || "cmd.exe", ["/d", "/s", "/c", launchCommand], {
+  const child = spawn(powerShellExe, ["-NoLogo", "-NoExit", "-ExecutionPolicy", "Bypass", "-File", launchScript], {
     cwd: cwdAbsolute,
     detached: true,
     env,
@@ -522,7 +521,11 @@ async function terminalStartDirectory(payload = {}) {
   const projectFolder = safeSegment(payload.projectId, "project");
   const requestedAbsolute = String(payload.cwdAbsolute || "").trim();
   const cwdRelative = safeCodeDirectoryPath(payload.cwd || "");
-  if (requestedAbsolute && path.isAbsolute(requestedAbsolute) && await pathExists(requestedAbsolute)) {
+  const usableAbsolute = requestedAbsolute
+    && path.isAbsolute(requestedAbsolute)
+    && !/^\\\\?$/.test(requestedAbsolute)
+    && !/^\/\/?$/.test(requestedAbsolute);
+  if (usableAbsolute && await pathExists(requestedAbsolute)) {
     return requestedAbsolute;
   }
   const cwd = cwdRelative
