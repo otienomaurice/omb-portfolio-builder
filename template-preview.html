@@ -11,7 +11,7 @@
     <link rel="shortcut icon" href="assets/favicon.ico" />
     <link rel="apple-touch-icon" sizes="180x180" href="assets/apple-touch-icon.png" />
     <link rel="stylesheet" href="styles.css" />
-    <link rel="stylesheet" href="template-preview.css?v=0.2.89" />
+    <link rel="stylesheet" href="template-preview.css?v=0.2.90" />
   </head>
   <body class="template-preview-page">
       <header class="template-header">
@@ -1385,14 +1385,14 @@
               <div class="table-size-fields">
                   <label>
                       <span>Columns</span>
-                      <input id="summary-table-columns" type="number" min="1" max="12" value="3" />
+                      <input id="summary-table-columns" type="number" min="1" max="12" value="1" />
                   </label>
                   <label>
                       <span>Rows</span>
-                      <input id="summary-table-rows" type="number" min="1" max="30" value="3" />
+                      <input id="summary-table-rows" type="number" min="1" max="30" value="1" />
                   </label>
               </div>
-              <p class="asset-hint" id="summary-table-size-label">3 columns by 3 rows</p>
+              <p class="asset-hint" id="summary-table-size-label">1 column by 1 row</p>
               <div class="dialog-actions">
                   <button class="button primary" type="submit">Insert table</button>
                   <button class="project-window-close" id="summary-table-cancel" type="button" aria-label="Close table dialog">&times;</button>
@@ -1629,6 +1629,12 @@
           <button type="button" data-rich-action="align-left">Align left</button>
           <button type="button" data-rich-action="align-center">Align center</button>
           <button type="button" data-rich-action="align-right">Align right</button>
+          <button type="button" data-rich-action="table-row-above">Insert row above</button>
+          <button type="button" data-rich-action="table-row-below">Insert row below</button>
+          <button type="button" data-rich-action="table-column-left">Insert column left</button>
+          <button type="button" data-rich-action="table-column-right">Insert column right</button>
+          <button type="button" data-rich-action="table-delete-row">Delete row</button>
+          <button type="button" data-rich-action="table-delete-column">Delete column</button>
           <button type="button" data-rich-action="edit-block">Edit selected block</button>
           <button class="danger-menu-item" type="button" data-rich-action="delete-block">Delete selected block</button>
       </div>
@@ -1711,6 +1717,17 @@
                   <button type="button" data-rich-toolbar-action="crop-image" title="Crop selected image">Crop</button>
               </div>
           </div>
+          <div class="rich-toolbar-group" data-rich-toolbar-group data-rich-table-tools>
+              <button type="button" class="rich-toolbar-menu-button" data-rich-toolbar-menu-button>Table</button>
+              <div class="rich-toolbar-menu">
+                  <button type="button" data-rich-toolbar-action="table-row-above">Row above</button>
+                  <button type="button" data-rich-toolbar-action="table-row-below">Row below</button>
+                  <button type="button" data-rich-toolbar-action="table-column-left">Column left</button>
+                  <button type="button" data-rich-toolbar-action="table-column-right">Column right</button>
+                  <button type="button" data-rich-toolbar-action="table-delete-row">Delete row</button>
+                  <button type="button" data-rich-toolbar-action="table-delete-column">Delete column</button>
+              </div>
+          </div>
           <div class="rich-toolbar-group" data-rich-toolbar-group>
               <button type="button" class="rich-toolbar-menu-button" data-rich-toolbar-menu-button>Block</button>
               <div class="rich-toolbar-menu">
@@ -1728,7 +1745,7 @@
               </div>
           </div>
       </div>
-      <script src="electronics-search.js?v=0.2.89"></script>
-      <script src="template-preview.js?v=0.2.89"></script>
+      <script src="electronics-search.js?v=0.2.90"></script>
+      <script src="template-preview.js?v=0.2.90"></script>
   </body>
 </html>
