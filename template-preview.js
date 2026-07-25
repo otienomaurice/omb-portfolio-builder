@@ -9914,7 +9914,6 @@ function renderLiveDiagnostics(workspace = {}) {
 
 function renderCompileMessages(workspace) {
   const messages = Array.isArray(workspace?.messages) ? workspace.messages : [];
-  const live = renderLiveDiagnostics(workspace);
   const history = messages.length
     ? messages.map((message) => `
     <div class="compile-message compile-message-${escapeHtml(message.level || "info")}">
@@ -9923,13 +9922,13 @@ function renderCompileMessages(workspace) {
     </div>
   `).join("")
     : `<p class="compile-message-empty">No messages yet.</p>`;
-  return `${live}${history}`;
+  return history;
 }
 
 function normalizeCompilePanel(panel = "console", file = activeCompileFile(selectedProject())) {
   const value = String(panel || "console").toLowerCase();
   if (value === "scope" && !isHdlLanguage(file?.language)) return "console";
-  return ["console", "messages", "terminal", "scope"].includes(value) ? value : "console";
+  return ["console", "messages", "terminal", "scope", "syntax"].includes(value) ? value : "console";
 }
 
 function activeCompilePanel(project, file = activeCompileFile(project)) {
@@ -10045,6 +10044,7 @@ function updateCompileTerminalPanel(project, file = activeCompileFile(project)) 
 function refreshCompileOutputPanels(project, file = activeCompileFile(project)) {
   updateCompileTerminalPanel(project, file);
   updateCompileMessagesPanel(project);
+  updateCompileSyntaxPanel(project);
   updateCompileSystemTerminalPanel(project);
 }
 
@@ -10053,6 +10053,18 @@ function updateCompileMessagesPanel(project) {
   const log = sectionContent.querySelector("[data-compile-messages]");
   if (!log) return;
   log.innerHTML = renderCompileMessages(workspace);
+}
+
+function updateCompileSyntaxPanel(project) {
+  const workspace = ensureCompileCode(project);
+  const panel = sectionContent.querySelector("[data-compile-syntax]");
+  const tab = sectionContent.querySelector("[data-compile-open-panel='syntax']");
+  if (tab) {
+    const count = Array.isArray(workspace.liveDiagnostics?.diagnostics) ? workspace.liveDiagnostics.diagnostics.length : 0;
+    tab.textContent = count ? `Syntax (${count})` : "Syntax";
+  }
+  if (!panel) return;
+  panel.innerHTML = renderLiveDiagnostics(workspace);
 }
 
 function updateCompileSystemTerminalPanel(project) {
@@ -10851,17 +10863,37 @@ function renderCompileMessagesPanel(workspace = {}) {
   `;
 }
 
+function renderCompileSyntaxPanel(workspace = {}) {
+  const live = renderLiveDiagnostics(workspace);
+  return `
+    <section class="compile-syntax-panel" data-compile-output-panel="syntax" aria-label="Live syntax diagnostics">
+      <div class="compile-terminal-heading">
+        <span class="compile-terminal-title">Live syntax</span>
+      </div>
+      <div class="compile-syntax-log" data-compile-syntax>
+        ${live || `
+          <section class="compile-live-diagnostics is-clean" aria-label="Live syntax diagnostics">
+            <strong>Live syntax check</strong>
+            <span>Open or type in a source file to start background syntax checks.</span>
+          </section>
+        `}
+      </div>
+    </section>
+  `;
+}
+
 function compilePanelTabs(project, file = activeCompileFile(project)) {
   const workspace = ensureCompileCode(project);
   const activePanel = activeCompilePanel(project, file);
   const dockUnlocked = Boolean(workspace.outputDockUnlocked);
   const liveDiagnosticCount = Array.isArray(workspace.liveDiagnostics?.diagnostics) ? workspace.liveDiagnostics.diagnostics.length : 0;
-  const messageCount = (Array.isArray(workspace.messages) ? workspace.messages.length : 0) + liveDiagnosticCount;
+  const messageCount = Array.isArray(workspace.messages) ? workspace.messages.length : 0;
   const tabs = [
     { id: "console", label: "Console" },
     { id: "messages", label: messageCount ? `Messages (${messageCount})` : "Messages" },
     { id: "terminal", label: "Terminal" },
-    ...(isHdlLanguage(file?.language) ? [{ id: "scope", label: "Scope" }] : [])
+    ...(isHdlLanguage(file?.language) ? [{ id: "scope", label: "Scope" }] : []),
+    { id: "syntax", label: liveDiagnosticCount ? `Syntax (${liveDiagnosticCount})` : "Syntax" }
   ];
   return `
     <div
@@ -10997,12 +11029,174 @@ function renderCompileFileDetailsWindow(project, file = activeCompileFile(projec
   `;
 }
 
+function hdlSourceWithoutComments(code = "") {
+  return String(code || "")
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/(^|[^:])\/\/.*$/gm, "$1");
+}
+
+function hdlSynthesisGraphFromFiles(files = []) {
+  const moduleBodies = new Map();
+  const moduleNames = new Set();
+  files.filter((file) => isHdlLanguage(file.language)).forEach((file) => {
+    const source = hdlSourceWithoutComments(file.code || "");
+    for (const match of source.matchAll(/\bmodule\s+([A-Za-z_$][\w$]*)\b([\s\S]*?)\bendmodule\b/g)) {
+      moduleNames.add(match[1]);
+      moduleBodies.set(match[1], { body: match[2] || "", fileName: file.fileName || file.title || "source" });
+    }
+  });
+  const instantiated = new Set();
+  const edges = [];
+  const instancePattern = /^\s*([A-Za-z_$][\w$]*)\s*(?:#\s*\([\s\S]*?\)\s*)?([A-Za-z_$][\w$]*)\s*\(/gm;
+  moduleBodies.forEach((entry, parent) => {
+    for (const match of entry.body.matchAll(instancePattern)) {
+      const child = match[1];
+      const instance = match[2];
+      if (!moduleNames.has(child) || child === parent) continue;
+      instantiated.add(child);
+      edges.push({ from: parent, to: child, instance });
+    }
+  });
+  const nodes = [...moduleNames].map((id) => ({
+    id,
+    fileName: moduleBodies.get(id)?.fileName || ""
+  }));
+  const topModule = nodes.find((node) => !instantiated.has(node.id))?.id || nodes[0]?.id || "";
+  return {
+    nodes,
+    edges,
+    topModule,
+    generatedAt: new Date().toISOString()
+  };
+}
+
+function activeSynthesisDiagram(project, file = activeCompileFile(project)) {
+  const workspace = ensureCompileCode(project);
+  const files = Array.isArray(workspace.files) ? workspace.files : [];
+  const designFiles = files.filter((item) => isHdlLanguage(item.language) && item.role !== "testbench");
+  const fallbackFiles = designFiles.length ? designFiles : (files.length ? files : (file ? [file] : []));
+  const fallbackGraph = hdlSynthesisGraphFromFiles(fallbackFiles);
+  const synthesis = file?.lastResult?.synthesis || workspace.synthesis || {};
+  return {
+    graph: synthesis.graph || fallbackGraph,
+    tool: synthesis.tool || "Source parser",
+    available: synthesis.available !== false,
+    terminal: synthesis.terminal || "",
+    outputPath: synthesis.outputPath || "",
+    synthesizedAt: synthesis.synthesizedAt || synthesis.generatedAt || ""
+  };
+}
+
+function renderSynthesisDiagramSvg(graph = {}) {
+  const nodes = Array.isArray(graph.nodes) && graph.nodes.length
+    ? graph.nodes
+    : [{ id: "No HDL modules found", fileName: "" }];
+  const topModule = graph.topModule || nodes[0]?.id || "";
+  const ordered = [
+    ...nodes.filter((node) => node.id === topModule),
+    ...nodes.filter((node) => node.id !== topModule)
+  ];
+  const width = Math.max(720, ordered.length * 170 + 80);
+  const height = ordered.length > 1 ? 250 : 160;
+  const nodeWidth = 140;
+  const nodeHeight = 54;
+  const positions = new Map();
+  ordered.forEach((node, index) => {
+    const isTop = node.id === topModule;
+    const x = ordered.length === 1 ? (width - nodeWidth) / 2 : 40 + index * 170;
+    const y = isTop ? 32 : 140;
+    positions.set(node.id, { x, y });
+  });
+  const edges = Array.isArray(graph.edges) ? graph.edges : [];
+  return `
+    <svg class="compile-synthesis-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="HDL synthesis module diagram">
+      <defs>
+        <marker id="synthesis-arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+          <path d="M0,0 L0,6 L9,3 z"></path>
+        </marker>
+      </defs>
+      ${edges.map((edge) => {
+        const from = positions.get(edge.from);
+        const to = positions.get(edge.to);
+        if (!from || !to) return "";
+        const x1 = from.x + nodeWidth / 2;
+        const y1 = from.y + nodeHeight;
+        const x2 = to.x + nodeWidth / 2;
+        const y2 = to.y;
+        const midY = y1 + Math.max(20, (y2 - y1) / 2);
+        return `
+          <path class="compile-synthesis-edge" d="M${x1},${y1} C${x1},${midY} ${x2},${midY} ${x2},${y2}" marker-end="url(#synthesis-arrow)"></path>
+          <text class="compile-synthesis-instance" x="${(x1 + x2) / 2}" y="${midY - 4}">${escapeHtml(edge.instance || "")}</text>
+        `;
+      }).join("")}
+      ${ordered.map((node) => {
+        const position = positions.get(node.id) || { x: 0, y: 0 };
+        const isTop = node.id === topModule;
+        return `
+          <g class="compile-synthesis-node${isTop ? " is-top" : ""}">
+            <rect x="${position.x}" y="${position.y}" width="${nodeWidth}" height="${nodeHeight}" rx="7"></rect>
+            <text x="${position.x + 12}" y="${position.y + 24}">${escapeHtml(node.id)}</text>
+            <text class="compile-synthesis-file" x="${position.x + 12}" y="${position.y + 42}">${escapeHtml(node.fileName || (isTop ? "top module" : "module"))}</text>
+          </g>
+        `;
+      }).join("")}
+    </svg>
+  `;
+}
+
+function renderCompileSynthesisDiagramWindow(project, file = activeCompileFile(project)) {
+  const workspace = ensureCompileCode(project);
+  if (!workspace.synthesisDiagramWindowOpen || !isHdlLanguage(file?.language)) return "";
+  const synthesis = activeSynthesisDiagram(project, file);
+  const graph = synthesis.graph || {};
+  return `
+    <section class="compile-synthesis-diagram-window" aria-label="Synthesis diagram">
+      <div class="compile-synthesis-diagram-heading">
+        <div>
+          <strong>Synthesis diagram</strong>
+          <span>${escapeHtml(graph.topModule ? `Top: ${graph.topModule}` : file?.fileName || "HDL source")}</span>
+        </div>
+        <button class="compile-mini-window-close" type="button" data-compile-toggle-synthesis-diagram aria-label="Close synthesis diagram">&times;</button>
+      </div>
+      <div class="compile-synthesis-diagram-body">
+        <div class="compile-synthesis-meta">
+          <span>${escapeHtml(synthesis.tool || "Source parser")}</span>
+          ${synthesis.outputPath ? `<span>${escapeHtml(synthesis.outputPath)}</span>` : ""}
+          ${synthesis.available === false ? `<span>Yosys not available; showing source graph.</span>` : ""}
+        </div>
+        ${renderSynthesisDiagramSvg(graph)}
+      </div>
+    </section>
+  `;
+}
+
+function showCompileSynthesisDiagram(project, file = activeCompileFile(project)) {
+  if (!project || !isHdlLanguage(file?.language)) {
+    setStatus("Synthesis diagrams are available for Verilog and SystemVerilog files.");
+    return;
+  }
+  const workspace = ensureCompileCode(project);
+  const designFiles = (workspace.files || []).filter((item) => isHdlLanguage(item.language) && item.role !== "testbench");
+  const fallbackFiles = designFiles.length ? designFiles : (workspace.files || []);
+  workspace.synthesisDiagramWindowOpen = true;
+  workspace.synthesis = workspace.synthesis || {
+    graph: hdlSynthesisGraphFromFiles(fallbackFiles),
+    tool: "Source parser",
+    available: false,
+    generatedAt: new Date().toISOString()
+  };
+  setStatus("Synthesis diagram opened.");
+  scheduleAutosave(900);
+  renderSectionContent(project);
+}
+
 function renderCompileActiveOutputPanel(project, file = activeCompileFile(project)) {
   const workspace = ensureCompileCode(project);
   const activePanel = activeCompilePanel(project, file);
   if (activePanel === "messages") return renderCompileMessagesPanel(workspace);
   if (activePanel === "terminal") return renderCompileSystemTerminal(workspace, project);
   if (activePanel === "scope") return renderCompileScopePanel(project, file);
+  if (activePanel === "syntax") return renderCompileSyntaxPanel(workspace);
   return renderCompileConsolePanel(project, file);
 }
 
@@ -11057,6 +11251,7 @@ function renderCompileIdeMenuBar(project, file = activeCompileFile(project)) {
         { label: "Messages", action: "view-messages" },
         { label: "Terminal", action: "view-terminal" },
         { label: "Scope", action: "view-scope", disabled: !hdlFile },
+        { label: "Live syntax", action: "view-syntax" },
         { separator: true },
         { label: "Preferences", action: "preferences" },
         { separator: true },
@@ -11079,6 +11274,7 @@ function renderCompileIdeMenuBar(project, file = activeCompileFile(project)) {
       items: [
         { label: "Compile", action: "compile", disabled: !hasFile },
         { label: "Build project", action: "build", disabled: !hasFile },
+        { label: "Synthesize", action: "synthesize", disabled: !hasFile || !hdlFile },
         { label: "Run", action: "run", disabled: !hasFile || hdlFile },
         { label: "Simulate", action: "simulate", disabled: !hasFile || !hdlFile }
       ]
@@ -11088,6 +11284,7 @@ function renderCompileIdeMenuBar(project, file = activeCompileFile(project)) {
       items: [
         { label: "Show output", action: "show-output", disabled: !hasFile },
         { label: "Show scope", action: "show-scope", disabled: !hasFile || !hdlFile },
+        { label: "View synthesis diagram", action: "view-synthesis-diagram", disabled: !hasFile || !hdlFile },
         { label: "Open terminal", action: "view-terminal" },
         { label: "Open messages", action: "view-messages" }
       ]
@@ -11237,7 +11434,7 @@ function renderCompileCodeSection(project) {
             <button type="button" data-compile-compile>Compile</button>
             <button type="button" data-compile-build>Build project</button>
             ${isHdlLanguage(activeFile.language)
-              ? `<button type="button" data-compile-simulate>Simulate</button>`
+              ? `<button type="button" data-compile-synthesize title="Run HDL synthesis. Right-click to view the synthesis diagram.">Synthesize</button><button type="button" data-compile-simulate>Simulate</button>`
               : `<button type="button" data-compile-run>Run</button>`}
             <button class="compile-output-button" type="button" data-compile-show-output title="Open the terminal output for this source"><span class="compile-command-icon" aria-hidden="true">&gt;_</span><span>Show output</span></button>
             ${isHdlLanguage(activeFile.language) ? `<button class="compile-output-button" type="button" data-compile-show-scope title="Open the HDL waveform scope"><span class="compile-command-icon" aria-hidden="true">~</span><span>Show scope</span></button>` : ""}
@@ -11262,6 +11459,7 @@ function renderCompileCodeSection(project) {
       ${compileIdeStatusBar(project, activeFile)}
       ${renderCompileStdinWindow(project, activeFile)}
       ${renderCompileFileDetailsWindow(project, activeFile)}
+      ${renderCompileSynthesisDiagramWindow(project, activeFile)}
     </div>
   `;
 }
@@ -12437,7 +12635,7 @@ function clearLiveDiagnosticsForFile(project, file) {
   liveDiagnosticTimers.delete(key);
   if (workspace.liveDiagnostics?.fileId === file.id) {
     workspace.liveDiagnostics = null;
-    updateCompileMessagesPanel(project);
+    updateCompileSyntaxPanel(project);
   }
 }
 
@@ -12461,7 +12659,7 @@ function scheduleLiveCompileDiagnostics(project, file, delayMs = 950) {
     diagnostics: Array.isArray(workspace.liveDiagnostics?.diagnostics) ? workspace.liveDiagnostics.diagnostics : [],
     checkedAt: workspace.liveDiagnostics?.checkedAt || ""
   };
-  updateCompileMessagesPanel(project);
+  updateCompileSyntaxPanel(project);
 
   const timer = setTimeout(async () => {
     try {
@@ -12488,7 +12686,7 @@ function scheduleLiveCompileDiagnostics(project, file, delayMs = 950) {
         terminal: result.terminal || body.error || "",
         checkedAt: result.checkedAt || new Date().toISOString()
       };
-      updateCompileMessagesPanel(project);
+      updateCompileSyntaxPanel(project);
       if (diagnostics.length) {
         const first = diagnostics[0];
         setStatus(`Live syntax check found ${diagnostics.length} issue${diagnostics.length === 1 ? "" : "s"} in ${file.fileName}: ${compileDiagnosticLocationLabel(first)}.`);
@@ -12514,7 +12712,7 @@ function scheduleLiveCompileDiagnostics(project, file, delayMs = 950) {
         terminal: error.message || "Live syntax check failed.",
         checkedAt: new Date().toISOString()
       };
-      updateCompileMessagesPanel(project);
+      updateCompileSyntaxPanel(project);
     } finally {
       if (liveDiagnosticTimers.get(key) === timer) liveDiagnosticTimers.delete(key);
     }
@@ -12896,7 +13094,15 @@ async function compileActiveFile(project, file, options = {}) {
   syncActiveCompileEditorToFile(project);
   const workspace = ensureCompileCode(project);
   const action = options.action || (isHdlLanguage(file.language) ? "simulate" : "run");
-  const actionLabel = action === "compile" ? "Compile" : action === "build" ? "Build project" : action === "simulate" ? "Simulate" : "Run";
+  const actionLabel = action === "compile"
+    ? "Compile"
+    : action === "build"
+      ? "Build project"
+      : action === "synthesize"
+        ? "Synthesize"
+        : action === "simulate"
+          ? "Simulate"
+          : "Run";
   workspace.activePanel = "console";
   file.lastResult = {
     ok: null,
@@ -12932,10 +13138,14 @@ async function compileActiveFile(project, file, options = {}) {
       terminal: compileResult.terminal || result.error || "No compiler output was returned.",
       diagnostics: Array.isArray(compileResult.diagnostics) ? compileResult.diagnostics : [],
       waveform: compileResult.waveform || null,
+      synthesis: compileResult.synthesis || null,
       finishedAt: new Date().toISOString()
     };
     file.waveform = compileResult.waveform || null;
     ensureCompileCode(project).waveform = compileResult.waveform || null;
+    if (compileResult.synthesis) {
+      ensureCompileCode(project).synthesis = compileResult.synthesis;
+    }
     if (compileResult.saved) {
       file.savedPath = compileResult.saved.sourcePath || file.savedPath;
       file.savedAt = compileResult.saved.savedAt || file.savedAt;
@@ -12959,6 +13169,10 @@ async function compileActiveFile(project, file, options = {}) {
     addCompileMessage(project, result.ok ? `${actionLabel} succeeded for ${file.fileName}.` : `${actionLabel} completed with errors for ${file.fileName}.`, result.ok ? "success" : "error");
     if (compileResult.waveform?.signals?.length) {
       addCompileMessage(project, `Scope updated with ${compileResult.waveform.signals.length} signal${compileResult.waveform.signals.length === 1 ? "" : "s"} from ${compileResult.waveform.source || "waveform.vcd"}.`, "success");
+    }
+    if (compileResult.synthesis?.graph) {
+      const graph = compileResult.synthesis.graph;
+      addCompileMessage(project, `Synthesis diagram updated for ${graph.topModule || file.fileName}. Right-click Synthesize to view it.`, result.ok ? "success" : "warning");
     }
     if (/HDL debug tools:/i.test(file.lastResult.terminal || "")) {
       addCompileMessage(project, "HDL debug tool availability was checked. Details are in Console output.", "info");
@@ -13198,6 +13412,7 @@ async function runCompileIdeAction(project, action = "", options = {}) {
   if (action === "beautify") return beautifyCompileFile(project, file);
   if (action === "compile") return compileActiveFile(project, file, { action: "compile" });
   if (action === "build") return compileActiveFile(project, file, { action: "build", forceRebuild: true });
+  if (action === "synthesize") return compileActiveFile(project, file, { action: "synthesize", forceRebuild: true });
   if (action === "run") return compileActiveFile(project, file, { action: "run" });
   if (action === "simulate") return compileActiveFile(project, file, { action: "simulate" });
   if (action === "install-tools") return installCompileTools(project, file);
@@ -13209,6 +13424,10 @@ async function runCompileIdeAction(project, action = "", options = {}) {
   if (action === "show-scope") {
     showCompileScope(project, file);
     if (isHdlLanguage(file?.language)) addCompileMessage(project, `Displayed HDL scope for ${file?.fileName || "the active source"}.`, "info");
+    return;
+  }
+  if (action === "view-synthesis-diagram") {
+    showCompileSynthesisDiagram(project, file);
     return;
   }
   if (action === "copy-output") {
@@ -16276,6 +16495,17 @@ sectionContent.addEventListener("click", async (event) => {
     await compileActiveFile(project, compileFile, { action: "simulate" });
     return;
   }
+  if (hasDataset("compileSynthesize")) {
+    await compileActiveFile(project, compileFile, { action: "synthesize", forceRebuild: true });
+    return;
+  }
+  if (hasDataset("compileToggleSynthesisDiagram")) {
+    compileWorkspace.synthesisDiagramWindowOpen = !compileWorkspace.synthesisDiagramWindowOpen;
+    setStatus(compileWorkspace.synthesisDiagramWindowOpen ? "Synthesis diagram opened." : "Synthesis diagram closed.");
+    scheduleAutosave();
+    renderSectionContent(project);
+    return;
+  }
   if (hasDataset("compileShowOutput")) {
     showCompileOutput(project, compileFile);
     addCompileMessage(project, `Displayed terminal output for ${compileFile?.fileName || "the active source"}.`, "info");
@@ -16548,6 +16778,17 @@ function currentScopeSignalContextSettings(project, signalKey = "") {
 }
 
 sectionContent.addEventListener("contextmenu", (event) => {
+  const synthesizeButton = event.target.closest("[data-compile-synthesize]");
+  if (synthesizeButton) {
+    const project = selectedProject();
+    const file = project ? activeCompileFile(project) : null;
+    event.preventDefault();
+    hideCompileTreeContextMenus();
+    hideScopeSignalContextMenu();
+    showCompileSynthesisDiagram(project, file);
+    return;
+  }
+
   const scopeRow = event.target.closest("[data-scope-signal-key]");
   const scopeSvg = event.target.closest(".compile-scope-svg");
   if (scopeRow || scopeSvg) {

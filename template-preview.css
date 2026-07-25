@@ -3072,6 +3072,143 @@ body.rich-image-dragging * {
   color: #2563eb;
 }
 
+.compile-syntax-panel {
+  overflow: hidden;
+  border: 1px solid var(--compile-line, var(--line));
+  border-radius: 8px;
+  background: var(--compile-panel, #ffffff);
+  color: var(--compile-text, var(--ink));
+}
+
+.compile-syntax-log {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  min-height: 0;
+  max-height: 330px;
+  overflow: auto;
+  padding: 12px 14px;
+}
+
+.compile-synthesis-diagram-window {
+  position: absolute;
+  z-index: 36;
+  top: 58px;
+  right: 22px;
+  display: grid;
+  grid-template-rows: auto minmax(260px, 1fr);
+  width: min(760px, calc(100% - var(--compile-sidebar-width, 340px) - 70px));
+  min-width: min(420px, calc(100% - 24px));
+  min-height: 360px;
+  max-width: calc(100% - 24px);
+  max-height: min(72vh, 720px);
+  resize: both;
+  overflow: hidden;
+  border: 1px solid var(--compile-line, #333842);
+  border-radius: 7px;
+  color: var(--compile-text, #f3f4f6);
+  background: var(--compile-panel, #252526);
+  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.32);
+}
+
+.compile-synthesis-diagram-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 34px;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--compile-line, #333842);
+  background: var(--compile-surface, #2d2d30);
+}
+
+.compile-synthesis-diagram-heading div {
+  display: grid;
+  min-width: 0;
+}
+
+.compile-synthesis-diagram-heading strong,
+.compile-synthesis-diagram-heading span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compile-synthesis-diagram-heading span {
+  color: var(--compile-muted, #cbd5e1);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.compile-synthesis-diagram-body {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  min-height: 0;
+  overflow: auto;
+  padding: 12px;
+  background: var(--compile-editor, #111827);
+}
+
+.compile-synthesis-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.compile-synthesis-meta span {
+  border: 1px solid var(--compile-line, #334155);
+  border-radius: 999px;
+  padding: 4px 8px;
+  color: var(--compile-text, #e5edf6);
+  background: var(--compile-surface, #1f2937);
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.compile-synthesis-svg {
+  width: max(100%, 720px);
+  min-height: 260px;
+  border: 1px solid var(--compile-line, #334155);
+  background: var(--compile-editor, #0f172a);
+}
+
+.compile-synthesis-svg marker path {
+  fill: var(--compile-accent, #38bdf8);
+}
+
+.compile-synthesis-edge {
+  fill: none;
+  stroke: var(--compile-accent, #38bdf8);
+  stroke-width: 2;
+}
+
+.compile-synthesis-instance {
+  fill: var(--compile-value, #facc15);
+  font: 700 11px Consolas, "Courier New", monospace;
+}
+
+.compile-synthesis-node rect {
+  fill: var(--compile-panel, #1f2937);
+  stroke: var(--compile-line, #334155);
+  stroke-width: 1.5;
+}
+
+.compile-synthesis-node.is-top rect {
+  fill: color-mix(in srgb, var(--compile-active, #1f6ed4) 70%, var(--compile-panel, #1f2937));
+  stroke: var(--compile-accent, #38bdf8);
+}
+
+.compile-synthesis-node text {
+  fill: var(--compile-text, #e5edf6);
+  font: 800 13px Arial, sans-serif;
+}
+
+.compile-synthesis-node .compile-synthesis-file {
+  fill: var(--compile-muted, #9ca3af);
+  font: 700 10px Consolas, "Courier New", monospace;
+}
+
 .compile-code-empty {
   padding: 18px;
 }
@@ -12200,6 +12337,7 @@ body[data-builder-theme="dark"] .project-dialog .builder-subsection-details summ
 .project-dialog.is-compile-code-active .compile-output-dock > section,
 .project-dialog.is-compile-code-active .compile-terminal-panel,
 .project-dialog.is-compile-code-active .compile-messages-panel,
+.project-dialog.is-compile-code-active .compile-syntax-panel,
 .project-dialog.is-compile-code-active .compile-system-terminal-panel,
 .project-dialog.is-compile-code-active .compile-scope-panel {
   display: grid !important;
@@ -12216,6 +12354,7 @@ body[data-builder-theme="dark"] .project-dialog .builder-subsection-details summ
 
 .project-dialog.is-compile-code-active .compile-terminal,
 .project-dialog.is-compile-code-active .compile-messages-log,
+.project-dialog.is-compile-code-active .compile-syntax-log,
 .project-dialog.is-compile-code-active .compile-terminal-screen,
 .project-dialog.is-compile-code-active .compile-scope-scroll {
   min-height: 0 !important;

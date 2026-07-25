@@ -101,7 +101,7 @@ const compileLanguageProfiles = {
     defaultFile: "design.v",
     extensions: [".v"],
     label: "Verilog",
-    optionalTools: ["verilator", "gtkwave"],
+    optionalTools: ["verilator", "gtkwave", "yosys"],
     primaryTools: ["iverilog", "vvp"],
     winget: ["Icarus.Verilog"]
   },
@@ -109,7 +109,7 @@ const compileLanguageProfiles = {
     defaultFile: "design.sv",
     extensions: [".sv", ".svh"],
     label: "SystemVerilog",
-    optionalTools: ["verilator", "gtkwave"],
+    optionalTools: ["verilator", "gtkwave", "yosys"],
     primaryTools: ["iverilog", "vvp"],
     winget: ["Icarus.Verilog"]
   },
@@ -210,6 +210,15 @@ const compileToolCandidates = {
     "C:\\msys64\\usr\\bin\\gtkwave.exe",
     "C:\\Program Files\\GTKWave\\bin\\gtkwave.exe",
     process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, "Programs", "GTKWave", "bin", "gtkwave.exe") : ""
+  ],
+  yosys: [
+    "yosys",
+    "C:\\oss-cad-suite\\bin\\yosys.exe",
+    "C:\\msys64\\mingw64\\bin\\yosys.exe",
+    "C:\\msys64\\usr\\bin\\yosys.exe",
+    "C:\\Program Files\\Yosys\\bin\\yosys.exe",
+    process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, "Programs", "OSS CAD Suite", "bin", "yosys.exe") : "",
+    process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, "Programs", "Yosys", "bin", "yosys.exe") : ""
   ],
   ltspice: [
     process.env.LTSPICE_EXE,
@@ -1024,7 +1033,7 @@ async function findTool(toolName) {
 }
 
 async function compileToolPathEnvironment() {
-  const toolNames = ["gcc", "g++", "javac", "java", "iverilog", "vvp", "ltspice"];
+  const toolNames = ["gcc", "g++", "javac", "java", "iverilog", "vvp", "yosys", "ltspice"];
   const folders = [];
   for (const toolName of toolNames) {
     const toolPath = await findTool(toolName);
@@ -1444,6 +1453,46 @@ function hdlModuleNames(code = "") {
   return [...String(code || "").matchAll(/\bmodule\s+([A-Za-z_$][\w$]*)/g)].map((match) => match[1]);
 }
 
+function hdlSourceWithoutComments(code = "") {
+  return String(code || "")
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/(^|[^:])\/\/.*$/gm, "$1");
+}
+
+function hdlSynthesisGraph(files = []) {
+  const moduleBodies = new Map();
+  const moduleNames = new Set();
+  files.forEach((file) => {
+    const source = hdlSourceWithoutComments(file.code || "");
+    for (const match of source.matchAll(/\bmodule\s+([A-Za-z_$][\w$]*)\b([\s\S]*?)\bendmodule\b/g)) {
+      moduleNames.add(match[1]);
+      moduleBodies.set(match[1], { body: match[2] || "", fileName: file.fileName || file.relativePath || "source" });
+    }
+  });
+  const instantiated = new Set();
+  const edges = [];
+  const instancePattern = /^\s*([A-Za-z_$][\w$]*)\s*(?:#\s*\([\s\S]*?\)\s*)?([A-Za-z_$][\w$]*)\s*\(/gm;
+  moduleBodies.forEach((entry, parent) => {
+    for (const match of entry.body.matchAll(instancePattern)) {
+      const child = match[1];
+      const instance = match[2];
+      if (!moduleNames.has(child) || child === parent) continue;
+      instantiated.add(child);
+      edges.push({ from: parent, to: child, instance });
+    }
+  });
+  const nodes = [...moduleNames].map((id) => ({
+    id,
+    fileName: moduleBodies.get(id)?.fileName || ""
+  }));
+  const topModule = nodes.find((node) => !instantiated.has(node.id))?.id || nodes[0]?.id || "";
+  return { nodes, edges, topModule };
+}
+
+function yosysScriptQuote(filePath = "") {
+  return `"${String(filePath || "").replace(/\\/g, "/").replace(/"/g, "\\\"")}"`;
+}
+
 function hdlHasWaveDump(code = "") {
   const source = String(code || "");
   return /\$dumpfile\s*\(/.test(source) && /\$dumpvars\s*\(/.test(source);
@@ -1510,6 +1559,7 @@ function hdlFilesFromPayload(payload = {}, activeFileName = "", activeLanguage =
 
 function compileActionFromPayload(value = "", language = "") {
   const clean = String(value || "").trim().toLowerCase().replace(/[_\s-]+/g, "-");
+  if (clean === "synthesize") return isHdlLanguage(language) ? "synthesize" : "compile";
   if (["compile", "build", "run", "simulate"].includes(clean)) return clean;
   return isHdlLanguage(language) ? "simulate" : "run";
 }
@@ -1517,6 +1567,7 @@ function compileActionFromPayload(value = "", language = "") {
 function compileActionLabel(action = "run", language = "") {
   if (action === "compile") return "Compile";
   if (action === "build") return "Build project";
+  if (action === "synthesize") return "Synthesize";
   if (action === "simulate") return "Simulate";
   return isHdlLanguage(language) ? "Simulate" : "Run";
 }
@@ -2062,11 +2113,91 @@ async function compileAndRunCode(payload = {}) {
       ok = true;
     }
   } else if (language === "verilog" || language === "systemverilog") {
+    const hdlFiles = hdlFilesFromPayload(payload, saved.fileName, language);
+    const synthesisFiles = hdlFiles.filter((file) => file.role !== "testbench");
+    const synthesisSet = synthesisFiles.length ? synthesisFiles : hdlFiles;
+    const synthesisGraph = hdlSynthesisGraph(synthesisSet);
+    if (action === "synthesize") {
+      const yosys = await findTool("yosys");
+      const yosysVersion = yosys ? await toolVersionLine(yosys) : "";
+      terminal.push(`${profile.label} synthesis set: ${synthesisSet.length} design HDL file${synthesisSet.length === 1 ? "" : "s"}`);
+      if (synthesisGraph.topModule) terminal.push(`Inferred synthesis top: ${synthesisGraph.topModule}`);
+      if (yosysVersion) terminal.push(`Synthesis tool: ${yosysVersion}`);
+      if (!yosys) {
+        terminal.push("Yosys was not found. Install OSS CAD Suite or add yosys.exe to PATH to run real synthesis. The builder still generated a source-level module diagram.");
+        return {
+          ok: false,
+          language,
+          saved,
+          synthesis: {
+            available: false,
+            tool: "Yosys",
+            graph: synthesisGraph,
+            terminal: terminal.join("\n\n").trim(),
+            synthesizedAt: new Date().toISOString()
+          },
+          terminal: terminal.join("\n\n").trim() || "Yosys was not found."
+        };
+      }
+      const synthKey = compileCacheKey({
+        language,
+        mode: "hdl-synthesis",
+        files: synthesisSet.map((file) => ({
+          fileName: file.fileName,
+          language: file.language,
+          role: file.role,
+          code: file.code
+        })),
+        tool: yosys,
+        toolVersion: yosysVersion,
+        topModule: synthesisGraph.topModule
+      });
+      const synthDir = compileCacheDirectory(payload.projectId, language, synthKey);
+      await rm(synthDir, { recursive: true, force: true });
+      await mkdir(synthDir, { recursive: true });
+      const sourceFiles = await writeHdlSimulationSources(synthesisSet, synthDir);
+      const synthesisJson = path.join(synthDir, "synthesis.json");
+      const scriptPath = path.join(synthDir, "synthesis.ys");
+      const sourceLines = sourceFiles.map((file) => `read_verilog -sv ${yosysScriptQuote(file.sourcePath)}`);
+      const script = [
+        "# Generated by OMB Portfolio Builder Compile Code.",
+        ...sourceLines,
+        synthesisGraph.topModule ? `synth -top ${synthesisGraph.topModule}` : "synth",
+        "stat",
+        `write_json ${yosysScriptQuote(synthesisJson)}`
+      ].join("\n");
+      await writeFile(scriptPath, `${script}\n`, "utf8");
+      const synth = await runProcess(yosys, ["-s", scriptPath], { cwd: synthDir, timeoutMs: 60000 });
+      const replacements = [
+        { from: scriptPath, to: "synthesis.ys" },
+        { from: synthesisJson, to: "synthesis.json" },
+        ...sourceFiles.map((file) => ({ from: file.sourcePath, to: file.uniqueName }))
+      ];
+      terminal.push(terminalLine(
+        `${path.basename(yosys)} -s synthesis.ys`,
+        processTerminalTextWithPaths(synth, replacements)
+      ));
+      terminal.push(synth.ok ? `Synthesis JSON written: ${synthesisJson}` : "Synthesis did not complete. Check the Yosys diagnostics above.");
+      return {
+        ok: synth.ok,
+        language,
+        saved,
+        synthesis: {
+          available: true,
+          tool: "Yosys",
+          graph: synthesisGraph,
+          outputPath: synthesisJson,
+          terminal: terminal.join("\n\n").trim(),
+          synthesizedAt: new Date().toISOString()
+        },
+        terminal: terminal.join("\n\n").trim() || "No synthesis output was returned."
+      };
+    }
+
     const { found, missingTools } = await missing(["iverilog", "vvp"]);
     if (missingTools.length) {
       return { ok: false, language, saved, terminal: `${profile.label} simulator tools missing: ${missingTools.join(", ")}. Install Icarus Verilog and add iverilog/vvp to PATH.` };
     }
-    const hdlFiles = hdlFilesFromPayload(payload, saved.fileName, language);
     const hdlDiagnostics = hdlTimingAndVerificationDiagnostics(hdlFiles);
     const testbenchFiles = hdlFiles.filter((file) => file.role === "testbench");
     if (action === "simulate" && !testbenchFiles.length) {
