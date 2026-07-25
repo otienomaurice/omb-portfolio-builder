@@ -606,6 +606,7 @@ let currentPublishTarget = null;
 let summaryEditorProjectId = "";
 let activeSummaryEditor = null;
 let activeSummaryBlock = null;
+let activeRichTableCell = null;
 let activePlainTextControl = null;
 let activePlainTextSelection = null;
 let activeCompileEditorControl = null;
@@ -3738,6 +3739,42 @@ function tableRowsFromBlock(block) {
   );
 }
 
+function tableCellFromTarget(target) {
+  return target?.closest?.("[data-rich-table-cell]") || null;
+}
+
+function rememberRichTableCell(cell) {
+  activeRichTableCell = cell?.isConnected ? cell : null;
+  const block = activeRichTableCell?.closest?.(".rich-table-block");
+  if (block) selectRichBlock(block);
+  return activeRichTableCell;
+}
+
+function selectedRichTableBlock(editor) {
+  if (activeRichTableCell && editor?.contains(activeRichTableCell)) {
+    return activeRichTableCell.closest(".rich-table-block");
+  }
+  const block = selectedRichBlock(editor);
+  return block?.dataset?.type === "table" ? block : null;
+}
+
+function richTableCellCoordinates(cell) {
+  const row = cell?.closest?.("tr");
+  const table = cell?.closest?.("table");
+  if (!row || !table) return { rowIndex: 0, columnIndex: 0 };
+  return {
+    rowIndex: Math.max(0, [...table.querySelectorAll("tr")].indexOf(row)),
+    columnIndex: Math.max(0, [...row.querySelectorAll("td, th")].indexOf(cell))
+  };
+}
+
+function normalizedRowsFromEditableTable(block) {
+  const rows = tableRowsFromBlock(block);
+  const rowCount = Math.max(1, rows.length || Number(block?.dataset?.rowCount) || 1);
+  const columnCount = Math.max(1, ...rows.map((row) => row.length), Number(block?.dataset?.columnCount) || 1);
+  return normalizeRichTableRows(rows, rowCount, columnCount);
+}
+
 function richTablePlainText(block = {}) {
   return normalizeRichTableRows(block.rows, block.rows?.length || 1, block.rows?.[0]?.length || 1)
     .map((row) => row.map((cell) => {
@@ -6311,7 +6348,7 @@ function createRichVideoBlock(blockData = {}) {
 function createRichTableBlock(blockData = {}) {
   const block = document.createElement("figure");
   const align = ["left", "center", "right"].includes(blockData.align) ? blockData.align : "left";
-  const rows = normalizeRichTableRows(blockData.rows, blockData.rowCount || 3, blockData.columnCount || 3);
+  const rows = normalizeRichTableRows(blockData.rows, blockData.rowCount || 1, blockData.columnCount || 1);
   block.className = `rich-block rich-table-block justify-${align}`;
   block.dataset.type = "table";
   block.dataset.align = align;
@@ -6321,7 +6358,7 @@ function createRichTableBlock(blockData = {}) {
   block.draggable = true;
   block.title = "Drag table to move it. Edit cells directly.";
   block.innerHTML = `
-    ${richBlockActions("table", { movable: true, typingRails: true })}
+    ${richBlockActions("table", { controls: false, typingRails: true })}
     <div class="rich-table-edit-wrap">
       <table class="rich-table">
         <tbody>${renderRichTableRows(rows)}</tbody>
@@ -6431,14 +6468,14 @@ function refreshRichVideoBlock(block, blockData = {}) {
 
 function refreshRichTableBlock(block, blockData = {}) {
   const align = ["left", "center", "right"].includes(blockData.align || block.dataset.align) ? blockData.align || block.dataset.align : "left";
-  const rows = normalizeRichTableRows(blockData.rows || tableRowsFromBlock(block), blockData.rowCount || block.dataset.rowCount || 3, blockData.columnCount || block.dataset.columnCount || 3);
+  const rows = normalizeRichTableRows(blockData.rows || tableRowsFromBlock(block), blockData.rowCount || block.dataset.rowCount || 1, blockData.columnCount || block.dataset.columnCount || 1);
   block.dataset.align = align;
   block.dataset.rowCount = String(rows.length);
   block.dataset.columnCount = String(rows[0]?.length || 1);
   block.classList.remove("justify-left", "justify-center", "justify-right");
   block.classList.add(`justify-${align}`);
   block.innerHTML = `
-    ${richBlockActions("table", { movable: true, typingRails: true })}
+    ${richBlockActions("table", { controls: false, typingRails: true })}
     <div class="rich-table-edit-wrap">
       <table class="rich-table">
         <tbody>${renderRichTableRows(rows)}</tbody>
@@ -7934,14 +7971,21 @@ async function openSummaryLinkDialog(editor) {
 }
 
 function updateSummaryTableSizeLabel() {
-  const columns = Math.min(12, Math.max(1, Number(summaryTableColumns?.value) || 3));
-  const rows = Math.min(30, Math.max(1, Number(summaryTableRows?.value) || 3));
+  const columns = Math.min(12, Math.max(1, Number(summaryTableColumns?.value) || 1));
+  const rows = Math.min(30, Math.max(1, Number(summaryTableRows?.value) || 1));
   if (summaryTableColumns) summaryTableColumns.value = String(columns);
   if (summaryTableRows) summaryTableRows.value = String(rows);
   if (summaryTableSizeLabel) summaryTableSizeLabel.textContent = `${columns} column${columns === 1 ? "" : "s"} by ${rows} row${rows === 1 ? "" : "s"}`;
   summaryTableDrawGrid?.querySelectorAll("button").forEach((button) => {
     const active = Number(button.dataset.columns) <= columns && Number(button.dataset.rows) <= rows;
     button.classList.toggle("selected", active);
+  });
+}
+
+function updateSummaryTableHover(columns = 0, rows = 0) {
+  summaryTableDrawGrid?.querySelectorAll("button").forEach((button) => {
+    const active = Number(button.dataset.columns) <= columns && Number(button.dataset.rows) <= rows;
+    button.classList.toggle("hovered", active);
   });
 }
 
@@ -7957,13 +8001,13 @@ function renderSummaryTableDrawGrid() {
 
 async function openSummaryTableDialog() {
   if (!summaryTableDialog) return null;
-  if (summaryTableColumns) summaryTableColumns.value = "3";
-  if (summaryTableRows) summaryTableRows.value = "3";
+  if (summaryTableColumns) summaryTableColumns.value = "1";
+  if (summaryTableRows) summaryTableRows.value = "1";
   renderSummaryTableDrawGrid();
   const saved = await dialogValue(summaryTableDialog);
   if (!saved) return null;
-  const columnCount = Math.min(12, Math.max(1, Number(summaryTableColumns?.value) || 3));
-  const rowCount = Math.min(30, Math.max(1, Number(summaryTableRows?.value) || 3));
+  const columnCount = Math.min(12, Math.max(1, Number(summaryTableColumns?.value) || 1));
+  const rowCount = Math.min(30, Math.max(1, Number(summaryTableRows?.value) || 1));
   return {
     align: "left",
     columnCount,
@@ -7971,6 +8015,72 @@ async function openSummaryTableDialog() {
     rows: normalizeRichTableRows([], rowCount, columnCount),
     type: "table"
   };
+}
+
+function updateSelectedRichTable(editor, action = "") {
+  const block = selectedRichTableBlock(editor);
+  if (!block) {
+    setStatus("Select a table cell first, then choose a table command.");
+    return;
+  }
+  const currentCell = activeRichTableCell && block.contains(activeRichTableCell)
+    ? activeRichTableCell
+    : block.querySelector("[data-rich-table-cell]");
+  const coordinates = richTableCellCoordinates(currentCell);
+  let rows = normalizedRowsFromEditableTable(block);
+  let focusRow = coordinates.rowIndex;
+  let focusColumn = coordinates.columnIndex;
+  const baseColumnCount = Math.max(1, rows[0]?.length || Number(block.dataset.columnCount) || 1);
+  const makeRow = () => Array.from({ length: baseColumnCount }, () => "");
+
+  if (action === "table-row-above") {
+    rows.splice(coordinates.rowIndex, 0, makeRow());
+  } else if (action === "table-row-below") {
+    rows.splice(coordinates.rowIndex + 1, 0, makeRow());
+    focusRow = coordinates.rowIndex + 1;
+  } else if (action === "table-column-left") {
+    rows = rows.map((row) => {
+      const next = [...row];
+      next.splice(coordinates.columnIndex, 0, "");
+      return next;
+    });
+  } else if (action === "table-column-right") {
+    rows = rows.map((row) => {
+      const next = [...row];
+      next.splice(coordinates.columnIndex + 1, 0, "");
+      return next;
+    });
+    focusColumn = coordinates.columnIndex + 1;
+  } else if (action === "table-delete-row") {
+    rows.splice(coordinates.rowIndex, 1);
+    if (!rows.length) rows = [makeRow()];
+    focusRow = Math.min(focusRow, rows.length - 1);
+  } else if (action === "table-delete-column") {
+    rows = rows.map((row) => {
+      const next = [...row];
+      next.splice(coordinates.columnIndex, 1);
+      return next.length ? next : [""];
+    });
+    focusColumn = Math.min(focusColumn, rows[0].length - 1);
+  } else {
+    return;
+  }
+
+  refreshRichTableBlock(block, {
+    align: block.dataset.align || "left",
+    rowCount: rows.length,
+    columnCount: rows[0]?.length || 1,
+    rows,
+    type: "table"
+  });
+  const nextRow = block.querySelectorAll("tr")[focusRow];
+  const nextCell = nextRow?.querySelectorAll("[data-rich-table-cell]")[focusColumn] || block.querySelector("[data-rich-table-cell]");
+  if (nextCell) {
+    rememberRichTableCell(nextCell);
+    nextCell.focus({ preventScroll: true });
+  }
+  saveRichEditorToProject(editor);
+  setStatus("Table updated locally.");
 }
 
 function applySelectedRichImageLayout(editor, updates = {}) {
@@ -8010,6 +8120,14 @@ function configureSummaryContextMenu(mode = "rich", options = {}) {
   ]);
   const compileActions = new Set(["copy-text", "paste-text", "cut-text", "select-all-text"]);
   const selectionActions = new Set(["copy-text"]);
+  const tableActions = new Set([
+    "table-row-above",
+    "table-row-below",
+    "table-column-left",
+    "table-column-right",
+    "table-delete-row",
+    "table-delete-column"
+  ]);
   summaryContextMenu.querySelectorAll("[data-rich-action]").forEach((button) => {
     const action = button.dataset.richAction;
     button.hidden = mode === "selection"
@@ -8032,6 +8150,14 @@ function configureSummaryContextMenu(mode = "rich", options = {}) {
     const selectedType = activeSummaryBlock?.dataset?.type || "";
     summaryContextMenu.querySelectorAll("[data-rich-action^='caption-'], [data-rich-action^='image-wrap-'], [data-rich-action='crop-image']").forEach((button) => {
       button.hidden = textOnly || selectedType !== "image";
+    });
+    const hasSelectedTableCell = Boolean(activeRichTableCell && activeSummaryBlock?.contains?.(activeRichTableCell));
+    summaryContextMenu.querySelectorAll("[data-rich-action]").forEach((button) => {
+      if (tableActions.has(button.dataset.richAction)) button.hidden = textOnly || selectedType !== "table" || !hasSelectedTableCell;
+    });
+  } else {
+    summaryContextMenu.querySelectorAll("[data-rich-action]").forEach((button) => {
+      if (tableActions.has(button.dataset.richAction)) button.hidden = true;
     });
   }
 }
@@ -8152,6 +8278,10 @@ async function handlePlainTextAction(action) {
 async function handleRichAction(action, editor) {
   if (!editor) return;
   activeSummaryEditor = editor;
+  if (/^table-/.test(action)) {
+    updateSelectedRichTable(editor, action);
+    return;
+  }
   if (action === "toggle-bold") {
     applyRichInlineCommand(editor, "bold");
   }
@@ -8328,18 +8458,26 @@ function configureRichEditorToolbar(editor) {
   if (!richEditorToolbar) return;
   const textOnly = editor?.dataset?.richTextOnly === "true";
   const selectedType = activeSummaryBlock && editor?.contains(activeSummaryBlock) ? activeSummaryBlock.dataset.type : "";
+  const tableActionPattern = /^table-/;
   richEditorToolbar.querySelectorAll("[data-rich-toolbar-action]").forEach((button) => {
     const action = button.dataset.richToolbarAction || "";
-    const mediaAction = /^(add-image|add-video|add-table|add-formula|add-code|image-wrap-|crop-image)/.test(action);
+    const mediaAction = /^(add-image|add-video|add-table|add-formula|add-code|image-wrap-|crop-image|table-)/.test(action);
     const imageOnly = /^(image-wrap-|crop-image)/.test(action);
+    const tableOnly = tableActionPattern.test(action);
     const blockOnly = /^(edit-block|delete-block)$/.test(action);
-    button.hidden = (textOnly && mediaAction) || (imageOnly && selectedType !== "image") || (blockOnly && (!selectedType || selectedType === "paragraph"));
+    button.hidden = (textOnly && mediaAction)
+      || (imageOnly && selectedType !== "image")
+      || (tableOnly && selectedType !== "table")
+      || (blockOnly && (!selectedType || selectedType === "paragraph"));
   });
   richEditorToolbar.querySelectorAll("[data-rich-image-tools]").forEach((group) => {
     group.hidden = selectedType !== "image";
   });
+  richEditorToolbar.querySelectorAll("[data-rich-table-tools]").forEach((group) => {
+    group.hidden = selectedType !== "table";
+  });
   richEditorToolbar.querySelectorAll("[data-rich-toolbar-group]").forEach((group) => {
-    if (group.matches("[data-rich-image-tools]")) return;
+    if (group.matches("[data-rich-image-tools], [data-rich-table-tools]")) return;
     const actions = [...group.querySelectorAll("[data-rich-toolbar-action]")];
     group.hidden = actions.length > 0 && actions.every((button) => button.hidden);
   });
@@ -8390,6 +8528,18 @@ function showRichEditorToolbar(editor) {
     richToolbarEditor = editor;
   }
   if (richToolbarDismissed) return;
+  activeSummaryEditor = editor;
+  configureRichEditorToolbar(editor);
+  const host = editor.closest("dialog") || document.body;
+  if (richEditorToolbar.parentElement !== host) host.append(richEditorToolbar);
+  richEditorToolbar.hidden = false;
+  positionRichEditorToolbar(editor);
+}
+
+function reopenRichEditorToolbar(editor) {
+  if (!editor) return;
+  richToolbarDismissed = false;
+  richToolbarEditor = editor;
   activeSummaryEditor = editor;
   configureRichEditorToolbar(editor);
   const host = editor.closest("dialog") || document.body;
@@ -12004,6 +12154,146 @@ function renderCompileMenuItems(items = []) {
   }).join("");
 }
 
+function printableSectionRich(section = {}) {
+  return richHasContent(section.richDescription) ? section.richDescription : section.rich;
+}
+
+function printablePortfolioProjectSection(section = {}, depth = 0) {
+  const children = (section.items || section.children || []).filter((item) =>
+    item?.title || item?.description || richHasContent(printableSectionRich(item)) || item?.url || (item?.items || item?.children || []).length
+  );
+  const headingTag = depth > 0 ? "h4" : "h3";
+  const sectionRich = printableSectionRich(section);
+  const rich = richHasContent(sectionRich) ? renderRichContent(sectionRich, section.description || "") : "";
+  const description = !rich && section.description ? `<p>${renderMultilineInlineText(section.description)}</p>` : "";
+  const link = section.url ? `<p><a href="${escapeHtml(normalizeLinkTarget(section.url, { assumeWeb: true }))}">${escapeHtml(section.title || section.url)}</a></p>` : "";
+  return `
+    <section class="print-project-section depth-${depth}">
+      <${headingTag}>${escapeHtml(section.title || section.label || "Section")}</${headingTag}>
+      ${rich || description}
+      ${link}
+      ${children.length ? `<div class="print-section-children">${children.map((item) => printablePortfolioProjectSection(item, depth + 1)).join("")}</div>` : ""}
+    </section>
+  `;
+}
+
+function printablePortfolioProjectHasContent(project = {}) {
+  return Boolean(
+    project?.title ||
+    project?.summary ||
+    richHasContent(project?.summaryRich) ||
+    (project?.portfolioView?.sections || []).some(previewSectionHasRenderableContent)
+  );
+}
+
+function buildPrintablePortfolioHtml() {
+  const profile = normalizeProfile(catalog.profile || savedPortfolioCatalog.profile || {});
+  const globals = parsedPortfolioGlobals();
+  const siteContent = globals.siteContent || normalizeSiteContent(catalog.siteContent || {});
+  const projects = (catalog.projects || [])
+    .map((project) => parseProjectForPortfolio(project))
+    .filter(printablePortfolioProjectHasContent);
+  const categories = catalog.categories || [];
+  const baseHref = `${window.location.origin}/`;
+  const contact = [
+    profile.email ? `<a href="mailto:${escapeHtml(profile.email)}">${escapeHtml(profile.email)}</a>` : "",
+    profile.phone ? `<a href="tel:${escapeHtml(profile.phone)}">${escapeHtml(profile.phone)}</a>` : "",
+    profile.githubUrl ? `<a href="${escapeHtml(normalizeLinkTarget(profile.githubUrl, { assumeWeb: true }))}">GitHub</a>` : "",
+    profile.linkedinUrl ? `<a href="${escapeHtml(normalizeLinkTarget(profile.linkedinUrl, { assumeWeb: true }))}">LinkedIn</a>` : "",
+    profile.websiteUrl ? `<a href="${escapeHtml(normalizeLinkTarget(profile.websiteUrl, { assumeWeb: true }))}">Website</a>` : ""
+  ].filter(Boolean).join(" · ");
+  const categoryName = (id = "") => categories.find((category) => category.id === id)?.label || displayTitle(id || "Project", "Project");
+  const projectCards = projects.map((project) => {
+    const view = project.portfolioView || {};
+    const sections = (view.sections || []).filter(previewSectionHasRenderableContent);
+    return `
+      <article class="print-project">
+        <header>
+          <p>${escapeHtml(categoryName(project.category))}${view.status && view.showStatus !== false ? ` · ${escapeHtml(view.status)}` : ""}</p>
+          <h2>${escapeHtml(view.title || project.title || "Project")}</h2>
+        </header>
+        ${sections.map((section) => printablePortfolioProjectSection(section)).join("")}
+      </article>
+    `;
+  }).join("");
+  const personalSections = (catalog.siteSections || [])
+    .filter(siteSectionRenderable)
+    .map((section) => `
+      <section class="print-project-section">
+        <h3>${escapeHtml(section.title || "Portfolio Section")}</h3>
+        ${richHasContent(printableSectionRich(section)) ? renderRichContent(printableSectionRich(section), section.description || "") : section.description ? `<p>${renderMultilineInlineText(section.description)}</p>` : ""}
+      </section>
+    `).join("");
+
+  return `<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <base href="${baseHref}" />
+    <title>${escapeHtml(profile.displayName || "Portfolio")} print portfolio</title>
+    <style>
+      @page { margin: 0.55in; }
+      * { box-sizing: border-box; }
+      body { margin: 0; color: #17202a; background: #ffffff; font: 11pt/1.45 Arial, sans-serif; }
+      a { color: #0f5fb8; text-decoration: none; }
+      .print-shell { max-width: 8.4in; margin: 0 auto; }
+      .print-hero { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 20px; align-items: start; padding-bottom: 18px; border-bottom: 2px solid #1f6ed4; }
+      .print-hero h1 { margin: 0 0 6px; font-size: 27pt; line-height: 1.08; }
+      .print-hero p { margin: 4px 0; color: #334155; }
+      .print-avatar { width: 84px; height: 84px; object-fit: cover; border-radius: 8px; border: 1px solid #c9deea; }
+      .print-summary { margin: 14px 0 18px; padding: 11px 14px; border-left: 4px solid #1f6ed4; background: #f4fbff; }
+      .print-project { page-break-inside: avoid; margin: 0 0 18px; padding: 0 0 14px; border-bottom: 1px solid #d8e8f2; }
+      .print-project header p { margin: 0 0 3px; color: #0f7592; font-weight: 700; text-transform: uppercase; font-size: 8.5pt; letter-spacing: .02em; }
+      .print-project h2 { margin: 0 0 9px; font-size: 16pt; line-height: 1.15; }
+      .print-project-section { margin: 9px 0; }
+      .print-project-section h3 { margin: 0 0 5px; font-size: 12.5pt; color: #17202a; }
+      .print-project-section h4 { margin: 8px 0 4px; font-size: 10.5pt; color: #334155; }
+      .print-project-section p { margin: 0 0 7px; }
+      .rich-content p, .rich-paragraph { margin: 0 0 7px; }
+      .rich-image, .rich-video { margin: 8px 0; max-width: 100%; }
+      .rich-image img, .rich-video img, .rich-video video { max-width: 100%; height: auto; }
+      .rich-table { width: 100%; border-collapse: collapse; margin: 7px 0; }
+      .rich-table td, .rich-table th { border: 1px solid #b8d8e8; padding: 5px 7px; vertical-align: top; }
+      .rich-code { white-space: pre-wrap; padding: 8px; border: 1px solid #d8e8f2; background: #f8fbff; font: 8.5pt/1.35 Consolas, monospace; }
+      @media print { .print-project { break-inside: avoid; } }
+    </style>
+  </head>
+  <body>
+    <main class="print-shell">
+      <section class="print-hero">
+        <div>
+          <h1>${escapeHtml(profile.displayName || "Portfolio")}</h1>
+          <p><strong>${escapeHtml(siteContent.heroTitle || profile.portfolioLabel || "Engineering Portfolio")}</strong></p>
+          ${siteContent.heroCopy ? `<p>${renderMultilineInlineText(siteContent.heroCopy)}</p>` : ""}
+          ${contact ? `<p>${contact}</p>` : ""}
+        </div>
+        ${profile.profileImage ? `<img class="print-avatar" src="${escapeHtml(normalizeLinkTarget(profile.profileImage))}" alt="${escapeHtml(profile.displayName || "Profile photo")}">` : ""}
+      </section>
+      ${profile.contactIntro ? `<section class="print-summary">${renderMultilineInlineText(profile.contactIntro)}</section>` : ""}
+      ${personalSections}
+      ${projectCards || `<p>No saved project content is available to print yet.</p>`}
+    </main>
+    <script>
+      window.addEventListener("load", () => setTimeout(() => window.print(), 250));
+    </script>
+  </body>
+</html>`;
+}
+
+async function printPortfolioDocument() {
+  if (!(await commitActiveProjectEdits())) return;
+  const printWindow = window.open("", "_blank", "width=980,height=1100");
+  if (!printWindow) {
+    setStatus("The print window was blocked. Allow pop-ups for the builder, then choose File > Print portfolio again.");
+    return;
+  }
+  printWindow.document.open();
+  printWindow.document.write(buildPrintablePortfolioHtml());
+  printWindow.document.close();
+  setStatus("Print portfolio view opened. Choose Save as PDF in the print dialog if you want a PDF copy.");
+}
+
 function renderCompileIdeMenuBar(project, file = activeCompileFile(project)) {
   const hasFile = Boolean(file);
   const hdlFile = isHdlLanguage(file?.language);
@@ -12021,7 +12311,9 @@ function renderCompileIdeMenuBar(project, file = activeCompileFile(project)) {
         { separator: true },
         { label: "Save source", action: "save-source", shortcut: "Ctrl+S", disabled: !hasFile },
         { label: "Save source as...", action: "save-source-as", disabled: !hasFile },
-        { label: "Save project", action: "save-project" }
+        { label: "Save project", action: "save-project" },
+        { separator: true },
+        { label: "Print portfolio", action: "print-portfolio", shortcut: "Ctrl+P" }
       ]
     },
     {
@@ -12748,6 +13040,11 @@ async function saveCurrentBuilderContext() {
 async function handleGlobalKeyboardShortcuts(event) {
   const key = String(event.key || "").toLowerCase();
   const modifier = event.ctrlKey || event.metaKey;
+  if (key === "f1") {
+    event.preventDefault();
+    builderGuideOpen?.click();
+    return;
+  }
   if (!modifier || event.altKey) return;
   const target = event.target;
   const editableTarget = target?.closest?.("input, textarea, [contenteditable='true']");
@@ -12765,8 +13062,30 @@ async function handleGlobalKeyboardShortcuts(event) {
     return;
   }
 
+  if (key === "p") {
+    event.preventDefault();
+    await printPortfolioDocument();
+    return;
+  }
+
+  if (key === "n") {
+    event.preventDefault();
+    addProjectButton?.click();
+    return;
+  }
+
+  if (key === ",") {
+    event.preventDefault();
+    openPreferencesDialog();
+    return;
+  }
+
   if (key === "s") {
     event.preventDefault();
+    if (event.shiftKey) {
+      applyCatalogButton?.click();
+      return;
+    }
     const project = selectedProject();
     if (projectDialog?.open && activeSectionIsCompileCode(project) && project) {
       const file = activeCompileFile(project);
@@ -14155,6 +14474,7 @@ async function runCompileIdeAction(project, action = "", options = {}) {
   if (action === "project-health") return openProjectHealthReport();
   if (action === "project-preview") return openProjectPortfolioPreview();
   if (action === "portfolio-preview") return openPortfolioPreview();
+  if (action === "print-portfolio") return printPortfolioDocument();
   if (action === "builder-guide") return builderGuideOpen?.click();
   if (action === "preferences") return openPreferencesDialog();
   if (action === "check-updates") return checkForAppUpdates({ force: true, manual: true });
@@ -15695,7 +16015,10 @@ function handleRichEditorContextMenu(event) {
     } else {
       captureRichSelection(activeSummaryEditor);
     }
-    selectRichBlock(event.target.closest?.(".rich-block") || currentRichBlock(activeSummaryEditor));
+    const tableCell = tableCellFromTarget(event.target);
+    if (tableCell) rememberRichTableCell(tableCell);
+    else activeRichTableCell = null;
+    selectRichBlock(tableCell?.closest?.(".rich-block") || event.target.closest?.(".rich-block") || currentRichBlock(activeSummaryEditor));
     configureSummaryContextMenu("rich", { textOnly: activeSummaryEditor.dataset.richTextOnly === "true" });
     syncRichContextMenuControls(activeSummaryBlock);
 
@@ -16045,6 +16368,8 @@ sectionDescription?.addEventListener("keydown", handleRichEditorKeydown);
 function handleRichEditorFocus(event) {
   const editor = event.target.closest("[data-rich-editor]");
   if (!editor) return;
+  const tableCell = tableCellFromTarget(event.target);
+  if (tableCell) rememberRichTableCell(tableCell);
   document.execCommand("defaultParagraphSeparator", false, "p");
   captureRichSelection(editor);
   showRichEditorToolbar(editor);
@@ -16135,10 +16460,23 @@ document.addEventListener("pointerdown", (event) => {
   if (!event.target.closest("button, input, select, textarea, [contenteditable='false']")) {
     editor.focus({ preventScroll: true });
   }
+  const tableCell = tableCellFromTarget(event.target);
+  if (tableCell) rememberRichTableCell(tableCell);
+  else if (!event.target.closest(".rich-table-block")) activeRichTableCell = null;
   activeSummaryEditor = editor;
   showRichEditorToolbar(editor);
   selectionGestureActive = true;
   selectionGestureProducedRange = false;
+}, true);
+
+document.addEventListener("dblclick", (event) => {
+  const editor = event.target.closest?.("[data-rich-editor]");
+  if (!editor) return;
+  const tableCell = tableCellFromTarget(event.target);
+  if (tableCell) rememberRichTableCell(tableCell);
+  activeSummaryEditor = editor;
+  captureRichSelection(editor);
+  reopenRichEditorToolbar(editor);
 }, true);
 
 function finishTextSelectionGesture(event) {
@@ -16737,7 +17075,7 @@ summaryContextMenu.addEventListener("click", async (event) => {
     return;
   }
   await handleRichAction(action, activeSummaryEditor);
-  if (["add-image", "add-video", "add-formula", "add-link", "add-code", "paste-code", "copy-text", "paste-text", "cut-text", "select-all-text", "edit-block", "delete-block"].includes(action)) {
+  if (["add-image", "add-video", "add-formula", "add-link", "add-code", "paste-code", "copy-text", "paste-text", "cut-text", "select-all-text", "edit-block", "delete-block", "table-row-above", "table-row-below", "table-column-left", "table-column-right", "table-delete-row", "table-delete-column"].includes(action)) {
     hideSummaryContextMenu();
   }
 });
@@ -18505,16 +18843,16 @@ summaryTableRows?.addEventListener("input", updateSummaryTableSizeLabel);
 summaryTableDrawGrid?.addEventListener("pointerover", (event) => {
   const cell = event.target.closest("button[data-rows][data-columns]");
   if (!cell) return;
-  summaryTableColumns.value = cell.dataset.columns;
-  summaryTableRows.value = cell.dataset.rows;
-  updateSummaryTableSizeLabel();
+  updateSummaryTableHover(Number(cell.dataset.columns), Number(cell.dataset.rows));
 });
+summaryTableDrawGrid?.addEventListener("pointerleave", () => updateSummaryTableHover(0, 0));
 summaryTableDrawGrid?.addEventListener("click", (event) => {
   const cell = event.target.closest("button[data-rows][data-columns]");
   if (!cell) return;
   summaryTableColumns.value = cell.dataset.columns;
   summaryTableRows.value = cell.dataset.rows;
   updateSummaryTableSizeLabel();
+  updateSummaryTableHover(0, 0);
 });
 summaryFormulaCancel.addEventListener("click", () => {
   closeDialogElement(summaryFormulaDialog, "cancel");
@@ -18572,6 +18910,7 @@ window.addEventListener("builder-menu-action", (event) => {
   if (type === "save-draft") saveDraftButton?.click();
   if (type === "apply-site") applyCatalogButton?.click();
   if (type === "portfolio-preview") openPortfolioPreviewButton?.click();
+  if (type === "print-portfolio") printPortfolioDocument();
   if (type === "builder-guide") builderGuideOpen?.click();
   if (type === "check-updates") checkForAppUpdates({ force: true, manual: true });
   if (type === "preferences") openPreferencesDialog();

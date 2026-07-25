@@ -330,6 +330,7 @@ Use the workflow in [BRANCHING.md](BRANCHING.md):
 | `rich_media_editor_087` | Bumps the builder to `0.2.87`, adds a Word-style rich editor toolbar, improves image resize/wrap/crop/caption placement, adds table and link dialogs, routes Syntax to live diagnostics, opens real PowerShell for Compile Code Terminal, and carries rich code highlighting into website parsing. | `development` | `development` | Ready for development |
 | `video_animation_rendering_088` | Bumps the builder to `0.2.88`, adds builder-created video and animation rich blocks, supports local video/animation uploads plus YouTube, Vimeo, Google Drive, and direct media links, and renders those media blocks in project previews and the published website. | `development` | `development` | Ready for development |
 | `rich_toolbar_groups_089` | Bumps the builder to `0.2.89`, replaces the flat rich-editor toolbar with grouped top-window command menus, removes visible command buttons from image/video content, and adds automatic image wrap inference while dragging images across rich text fields. | `development` | `development` | Ready for development |
+| `table_toolbar_print_090` | Bumps the builder to `0.2.90`, fixes external PowerShell launch, adds table cell row/column editing, improves the rich text toolbar, adds portfolio printing, and keeps table/image command controls out of the content area. | `development` | `development` | Active |
 
 </details>
 
