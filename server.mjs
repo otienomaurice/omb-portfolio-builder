@@ -461,14 +461,16 @@ async function openCompilePowerShellTerminal(payload = {}) {
     `Write-Host ${powerShellQuoted("OMB Compile Code PowerShell")} -ForegroundColor Cyan`,
     `Write-Host ${powerShellQuoted(`Workspace: ${cwdAbsolute}`)} -ForegroundColor DarkCyan`
   ].join("; ");
-  const child = spawn("powershell.exe", [
-    "-NoLogo",
-    "-NoExit",
-    "-ExecutionPolicy",
-    "Bypass",
-    "-Command",
-    setupScript
-  ], {
+  const launchDir = path.join(os.tmpdir(), "omb-portfolio-builder-terminal");
+  await mkdir(launchDir, { recursive: true });
+  const launchScript = path.join(launchDir, `${projectFolder}-${Date.now()}.ps1`);
+  await writeFile(launchScript, setupScript, "utf8");
+  const systemPowerShell = process.env.SystemRoot
+    ? path.join(process.env.SystemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
+    : "";
+  const powerShellExe = systemPowerShell && await pathExists(systemPowerShell) ? systemPowerShell : "powershell.exe";
+  const launchCommand = `start "" "${powerShellExe}" -NoLogo -NoExit -ExecutionPolicy Bypass -File "${launchScript}"`;
+  const child = spawn(process.env.ComSpec || "cmd.exe", ["/d", "/s", "/c", launchCommand], {
     cwd: cwdAbsolute,
     detached: true,
     env,

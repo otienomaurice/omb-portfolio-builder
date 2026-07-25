@@ -194,11 +194,27 @@ const summaryImageFile = document.querySelector("#summary-image-file");
 const summaryImageUrl = document.querySelector("#summary-image-url");
 const summaryImageTitle = document.querySelector("#summary-image-title");
 const summaryImageCaption = document.querySelector("#summary-image-caption");
+const summaryImageCaptionPosition = document.querySelector("#summary-image-caption-position");
 const summaryImageAlign = document.querySelector("#summary-image-align");
+const summaryImageWrap = document.querySelector("#summary-image-wrap");
+const summaryImageWidth = document.querySelector("#summary-image-width");
 const summaryImageDisplay = document.querySelector("#summary-image-display");
 const summaryImageCrop = document.querySelector("#summary-image-crop");
 const summaryImageZoom = document.querySelector("#summary-image-zoom");
 const summaryImageCancel = document.querySelector("#summary-image-cancel");
+const summaryLinkDialog = document.querySelector("#summary-link-dialog");
+const summaryLinkForm = document.querySelector("#summary-link-form");
+const summaryLinkLabel = document.querySelector("#summary-link-label");
+const summaryLinkUrl = document.querySelector("#summary-link-url");
+const summaryLinkTarget = document.querySelector("#summary-link-target");
+const summaryLinkCancel = document.querySelector("#summary-link-cancel");
+const summaryTableDialog = document.querySelector("#summary-table-dialog");
+const summaryTableForm = document.querySelector("#summary-table-form");
+const summaryTableDrawGrid = document.querySelector("#summary-table-draw-grid");
+const summaryTableColumns = document.querySelector("#summary-table-columns");
+const summaryTableRows = document.querySelector("#summary-table-rows");
+const summaryTableSizeLabel = document.querySelector("#summary-table-size-label");
+const summaryTableCancel = document.querySelector("#summary-table-cancel");
 const summaryFormulaDialog = document.querySelector("#summary-formula-dialog");
 const summaryFormulaForm = document.querySelector("#summary-formula-form");
 const summaryFormulaInput = document.querySelector("#summary-formula-input");
@@ -225,6 +241,8 @@ const richFontSize = document.querySelector("#rich-font-size");
 const richColorInput = document.querySelector("#rich-color-input");
 const richContextColorSwatches = document.querySelector("#rich-context-color-swatches");
 const richBoldButton = document.querySelector("[data-rich-bold]");
+const richEditorToolbar = document.querySelector("#rich-editor-toolbar");
+const richToolbarClose = document.querySelector("#rich-toolbar-close");
 const textSelectionInspector = document.querySelector("#text-selection-inspector");
 const selectionTextPreview = document.querySelector("#selection-text-preview");
 const selectionFontInput = document.querySelector("#selection-font-input");
@@ -597,7 +615,10 @@ let selectionCopyMenu = null;
 let activeRichDragBlock = null;
 let activeImageCropDrag = null;
 let activeRichImageMoveDrag = null;
+let activeRichImageResizeDrag = null;
 let activeRichDropMarker = null;
+let richToolbarDismissed = false;
+let richToolbarEditor = null;
 let originalTitleDraft = "";
 let titleClickTimer = 0;
 let autosaveTimer = 0;
@@ -2212,7 +2233,7 @@ function ensureCompileCode(project) {
     height: normalizeCompileFloatingHeight(dockSize.height)
   };
   project.compileCode.outputDockHeight = normalizeCompileOutputHeight(project.compileCode.outputDockHeight);
-  project.compileCode.activePanel = ["console", "messages", "terminal", "scope"].includes(project.compileCode.activePanel)
+  project.compileCode.activePanel = ["console", "messages", "terminal", "scope", "syntax"].includes(project.compileCode.activePanel)
     ? project.compileCode.activePanel
     : "console";
   const appendDestinations = compileAppendDestinations(project);
@@ -3162,6 +3183,7 @@ function plainTextFromRich(rich, separator = "\n\n") {
       if (block.type === "formula") return block.formula || "";
       if (block.type === "code") return block.code || "";
       if (block.type === "image") return [block.title, block.caption].filter(Boolean).join(" ");
+      if (block.type === "table") return richTablePlainText(block);
       return "";
     })
     .filter(Boolean)
@@ -3545,6 +3567,23 @@ function normalizeCropPosition(value = 50) {
   return Number.isFinite(position) ? Math.min(100, Math.max(0, position)) : 50;
 }
 
+function normalizeRichImageWidth(value = 60) {
+  const width = Number(value);
+  return Number.isFinite(width) ? Math.min(100, Math.max(18, width)) : 60;
+}
+
+function normalizeRichImageWrap(value = "") {
+  return ["block", "inline", "left", "right"].includes(value) ? value : "block";
+}
+
+function normalizeRichCaptionPosition(value = "") {
+  return ["top", "bottom", "left", "right"].includes(value) ? value : "bottom";
+}
+
+function richImageFigureStyle(block = {}) {
+  return ` style="${escapeHtml(`--rich-image-width: ${normalizeRichImageWidth(block.width)}%`)}"`;
+}
+
 function richImageCropStyle(block = {}) {
   const aspect = normalizeCropAspect(block.cropAspect);
   const zoom = normalizeCropZoom(block.cropZoom);
@@ -3567,6 +3606,56 @@ function cleanRichImageTitle(block = {}) {
   return /^pasted image\b/i.test(title) ? "" : title;
 }
 
+function richImageCaptionHtml(block = {}) {
+  const title = cleanRichImageTitle(block);
+  if (!title && !block.caption) return "";
+  return `<figcaption>${title ? `<strong>${escapeHtml(title)}</strong>` : ""}${block.caption ? `<span>${escapeHtml(block.caption)}</span>` : ""}</figcaption>`;
+}
+
+function richImageResizeHandles() {
+  return `
+    <span class="rich-image-resize-handle rich-image-resize-e" data-rich-image-resize="e" aria-hidden="true"></span>
+    <span class="rich-image-resize-handle rich-image-resize-w" data-rich-image-resize="w" aria-hidden="true"></span>
+    <span class="rich-image-resize-handle rich-image-resize-se" data-rich-image-resize="se" aria-hidden="true"></span>
+    <span class="rich-image-resize-handle rich-image-resize-sw" data-rich-image-resize="sw" aria-hidden="true"></span>
+  `;
+}
+
+function normalizeRichTableRows(rows = [], rowCount = 3, columnCount = 3) {
+  const safeRows = Array.isArray(rows) ? rows : [];
+  const rowsNeeded = Math.min(30, Math.max(1, Number(rowCount) || safeRows.length || 3));
+  const columnsNeeded = Math.min(12, Math.max(1, Number(columnCount) || Math.max(...safeRows.map((row) => Array.isArray(row) ? row.length : 0), 3)));
+  return Array.from({ length: rowsNeeded }, (_, rowIndex) =>
+    Array.from({ length: columnsNeeded }, (_, columnIndex) =>
+      sanitizeRichInlineHtml(String(safeRows[rowIndex]?.[columnIndex] || ""))
+    )
+  );
+}
+
+function renderRichTableRows(rows = []) {
+  return rows.map((row) => `
+    <tr>
+      ${row.map((cell) => `<td contenteditable="true" data-rich-table-cell>${sanitizeRichInlineHtml(cell)}</td>`).join("")}
+    </tr>
+  `).join("");
+}
+
+function tableRowsFromBlock(block) {
+  return [...(block?.querySelectorAll?.("tr") || [])].map((row) =>
+    [...row.querySelectorAll("td, th")].map((cell) => sanitizeRichInlineHtml(cell.innerHTML || cell.textContent || ""))
+  );
+}
+
+function richTablePlainText(block = {}) {
+  return normalizeRichTableRows(block.rows, block.rows?.length || 1, block.rows?.[0]?.length || 1)
+    .map((row) => row.map((cell) => {
+      const template = document.createElement("template");
+      template.innerHTML = cell;
+      return template.content.textContent || "";
+    }).join("\t"))
+    .join("\n");
+}
+
 function renderRichContent(rich, fallbackText = "") {
   const blocks = rich?.blocks?.length ? rich.blocks : textBlocksFromPlainText(fallbackText);
   return `
@@ -3577,13 +3666,28 @@ function renderRichContent(rich, fallbackText = "") {
           if (block.display === "download") return richImageDownloadLink(block);
           const title = cleanRichImageTitle(block);
           const imageSrc = normalizeLinkTarget(block.url, { assumeWeb: true });
+          const wrap = normalizeRichImageWrap(block.wrap);
+          const captionPosition = normalizeRichCaptionPosition(block.captionPosition);
           return `
-            <figure class="rich-image justify-${align}">
+            <figure class="rich-image justify-${align} wrap-${wrap} caption-${captionPosition}"${richImageFigureStyle(block)}>
+              ${captionPosition === "top" || captionPosition === "left" ? richImageCaptionHtml(block) : ""}
               <span class="rich-image-viewport crop-${normalizeCropAspect(block.cropAspect) === "original" ? "original" : "active"}"${richImageCropStyle(block)}>
                 <img src="${escapeHtml(imageSrc)}" alt="${escapeHtml(title || "Overview image")}">
               </span>
-              ${(title || block.caption) ? `<figcaption>${title ? `<strong>${escapeHtml(title)}</strong>` : ""}${block.caption ? `<span>${escapeHtml(block.caption)}</span>` : ""}</figcaption>` : ""}
+              ${captionPosition === "bottom" || captionPosition === "right" ? richImageCaptionHtml(block) : ""}
             </figure>
+          `;
+        }
+        if (block.type === "table") {
+          const rows = normalizeRichTableRows(block.rows, block.rows?.length || block.rowCount || 3, block.rows?.[0]?.length || block.columnCount || 3);
+          return `
+            <div class="rich-table-wrap justify-${align}">
+              <table class="rich-table">
+                <tbody>
+                  ${rows.map((row) => `<tr>${row.map((cell) => `<td>${sanitizeRichInlineHtml(cell)}</td>`).join("")}</tr>`).join("")}
+                </tbody>
+              </table>
+            </div>
           `;
         }
         if (block.type === "formula") {
@@ -6018,30 +6122,61 @@ function createRichImageBlock(blockData) {
   const figure = document.createElement("figure");
   const align = blockData.align || "center";
   const title = cleanRichImageTitle(blockData);
-  figure.className = `rich-block rich-image-block justify-${align}`;
+  const wrap = normalizeRichImageWrap(blockData.wrap);
+  const captionPosition = normalizeRichCaptionPosition(blockData.captionPosition);
+  figure.className = `rich-block rich-image-block justify-${align} wrap-${wrap} caption-${captionPosition}`;
   figure.dataset.type = "image";
   figure.dataset.url = blockData.url || "";
   figure.dataset.title = blockData.title || "";
   figure.dataset.caption = blockData.caption || "";
+  figure.dataset.captionPosition = captionPosition;
   figure.dataset.align = align;
+  figure.dataset.wrap = wrap;
+  figure.dataset.width = String(normalizeRichImageWidth(blockData.width));
   figure.dataset.display = blockData.display === "download" ? "download" : "show";
   figure.dataset.source = blockData.source || "local";
   figure.dataset.cropAspect = normalizeCropAspect(blockData.cropAspect);
   figure.dataset.cropZoom = String(normalizeCropZoom(blockData.cropZoom));
   figure.dataset.cropX = String(normalizeCropPosition(blockData.cropX));
   figure.dataset.cropY = String(normalizeCropPosition(blockData.cropY));
+  figure.style.setProperty("--rich-image-width", `${normalizeRichImageWidth(blockData.width)}%`);
   figure.contentEditable = "false";
   figure.draggable = true;
-  figure.title = "Drag image to move it between text.";
+  figure.title = "Drag image to move it between text. Drag an edge to resize.";
   figure.innerHTML = `
     ${richBlockActions("overview image", { movable: true, typingRails: true })}
     ${figure.dataset.display === "download" ? `<span class="rich-download-badge">Download only</span>` : ""}
+    ${captionPosition === "top" || captionPosition === "left" ? richImageCaptionHtml(blockData) : ""}
     <span class="rich-image-viewport crop-${figure.dataset.cropAspect === "original" ? "original" : "active"}"${richImageCropStyle(blockData)}>
       <img src="${escapeHtml(normalizeLinkTarget(blockData.url, { assumeWeb: true }))}" alt="${escapeHtml(title || "Overview image")}" draggable="true" data-rich-image-drag="true">
     </span>
-    ${(title || blockData.caption) ? `<figcaption>${title ? `<strong>${escapeHtml(title)}</strong>` : ""}${blockData.caption ? `<span>${escapeHtml(blockData.caption)}</span>` : ""}</figcaption>` : ""}
+    ${captionPosition === "bottom" || captionPosition === "right" ? richImageCaptionHtml(blockData) : ""}
+    ${richImageResizeHandles()}
   `;
   return figure;
+}
+
+function createRichTableBlock(blockData = {}) {
+  const block = document.createElement("figure");
+  const align = ["left", "center", "right"].includes(blockData.align) ? blockData.align : "left";
+  const rows = normalizeRichTableRows(blockData.rows, blockData.rowCount || 3, blockData.columnCount || 3);
+  block.className = `rich-block rich-table-block justify-${align}`;
+  block.dataset.type = "table";
+  block.dataset.align = align;
+  block.dataset.rowCount = String(rows.length);
+  block.dataset.columnCount = String(rows[0]?.length || 1);
+  block.contentEditable = "false";
+  block.draggable = true;
+  block.title = "Drag table to move it. Edit cells directly.";
+  block.innerHTML = `
+    ${richBlockActions("table", { movable: true, typingRails: true })}
+    <div class="rich-table-edit-wrap">
+      <table class="rich-table">
+        <tbody>${renderRichTableRows(rows)}</tbody>
+      </table>
+    </div>
+  `;
+  return block;
 }
 
 function createRichFormulaBlock(blockData) {
@@ -6080,24 +6215,31 @@ function createRichCodeBlock(blockData = {}) {
 
 function refreshRichImageBlock(block, blockData) {
   const align = blockData.align || block.dataset.align || "center";
+  const wrap = normalizeRichImageWrap(blockData.wrap || block.dataset.wrap);
+  const captionPosition = normalizeRichCaptionPosition(blockData.captionPosition || block.dataset.captionPosition);
   block.dataset.url = blockData.url || block.dataset.url || "";
   block.dataset.title = blockData.title || "";
   block.dataset.caption = blockData.caption || "";
+  block.dataset.captionPosition = captionPosition;
   block.dataset.align = align;
+  block.dataset.wrap = wrap;
+  block.dataset.width = String(normalizeRichImageWidth(blockData.width || block.dataset.width));
   block.dataset.display = blockData.display === "download" ? "download" : "show";
   block.dataset.source = blockData.source || block.dataset.source || "local";
   block.dataset.cropAspect = normalizeCropAspect(blockData.cropAspect || block.dataset.cropAspect);
   block.dataset.cropZoom = String(normalizeCropZoom(blockData.cropZoom || block.dataset.cropZoom));
   block.dataset.cropX = String(normalizeCropPosition(blockData.cropX ?? block.dataset.cropX));
   block.dataset.cropY = String(normalizeCropPosition(blockData.cropY ?? block.dataset.cropY));
+  block.style.setProperty("--rich-image-width", `${normalizeRichImageWidth(block.dataset.width)}%`);
   block.draggable = true;
-  block.title = "Drag image to move it between text.";
-  block.classList.remove("justify-left", "justify-center", "justify-right");
-  block.classList.add(`justify-${align}`);
+  block.title = "Drag image to move it between text. Drag an edge to resize.";
+  block.classList.remove("justify-left", "justify-center", "justify-right", "wrap-block", "wrap-inline", "wrap-left", "wrap-right", "caption-top", "caption-bottom", "caption-left", "caption-right");
+  block.classList.add(`justify-${align}`, `wrap-${wrap}`, `caption-${captionPosition}`);
   const title = cleanRichImageTitle({ title: block.dataset.title });
   block.innerHTML = `
     ${richBlockActions("overview image", { movable: true, typingRails: true })}
     ${block.dataset.display === "download" ? `<span class="rich-download-badge">Download only</span>` : ""}
+    ${captionPosition === "top" || captionPosition === "left" ? richImageCaptionHtml(block.dataset) : ""}
     <span class="rich-image-viewport crop-${block.dataset.cropAspect === "original" ? "original" : "active"}"${richImageCropStyle({
       cropAspect: block.dataset.cropAspect,
       cropZoom: block.dataset.cropZoom,
@@ -6106,7 +6248,26 @@ function refreshRichImageBlock(block, blockData) {
     })}>
       <img src="${escapeHtml(normalizeLinkTarget(block.dataset.url, { assumeWeb: true }))}" alt="${escapeHtml(title || "Overview image")}" draggable="true" data-rich-image-drag="true">
     </span>
-    ${(title || block.dataset.caption) ? `<figcaption>${title ? `<strong>${escapeHtml(title)}</strong>` : ""}${block.dataset.caption ? `<span>${escapeHtml(block.dataset.caption)}</span>` : ""}</figcaption>` : ""}
+    ${captionPosition === "bottom" || captionPosition === "right" ? richImageCaptionHtml(block.dataset) : ""}
+    ${richImageResizeHandles()}
+  `;
+}
+
+function refreshRichTableBlock(block, blockData = {}) {
+  const align = ["left", "center", "right"].includes(blockData.align || block.dataset.align) ? blockData.align || block.dataset.align : "left";
+  const rows = normalizeRichTableRows(blockData.rows || tableRowsFromBlock(block), blockData.rowCount || block.dataset.rowCount || 3, blockData.columnCount || block.dataset.columnCount || 3);
+  block.dataset.align = align;
+  block.dataset.rowCount = String(rows.length);
+  block.dataset.columnCount = String(rows[0]?.length || 1);
+  block.classList.remove("justify-left", "justify-center", "justify-right");
+  block.classList.add(`justify-${align}`);
+  block.innerHTML = `
+    ${richBlockActions("table", { movable: true, typingRails: true })}
+    <div class="rich-table-edit-wrap">
+      <table class="rich-table">
+        <tbody>${renderRichTableRows(rows)}</tbody>
+      </table>
+    </div>
   `;
 }
 
@@ -6142,6 +6303,7 @@ function createRichBlockElement(block) {
     if (block.type === "image") return createRichImageBlock(block);
     if (block.type === "formula") return createRichFormulaBlock(block);
     if (block.type === "code") return createRichCodeBlock(block);
+    if (block.type === "table") return createRichTableBlock(block);
 
     return createRichTextBlock(
         block.text || "",
@@ -6690,6 +6852,7 @@ function selectRichBlock(block) {
     block.classList.add("selected");
     const editor = block.closest("[data-rich-editor]");
     if (editor) editor.dataset.activeRichBlockIndex = String([...editor.children].indexOf(block));
+    if (editor && richToolbarEditor === editor && !richEditorToolbar?.hidden) configureRichEditorToolbar(editor);
   }
 }
 
@@ -6947,6 +7110,7 @@ function extractRichSummary(editor) {
       return {
         align,
         caption: element.dataset.caption || "",
+        captionPosition: normalizeRichCaptionPosition(element.dataset.captionPosition),
         cropAspect: normalizeCropAspect(element.dataset.cropAspect),
         cropX: normalizeCropPosition(element.dataset.cropX),
         cropY: normalizeCropPosition(element.dataset.cropY),
@@ -6955,7 +7119,20 @@ function extractRichSummary(editor) {
         source: element.dataset.source || "local",
         title: element.dataset.title || "",
         type: "image",
-        url: element.dataset.url || ""
+        url: element.dataset.url || "",
+        width: normalizeRichImageWidth(element.dataset.width),
+        wrap: normalizeRichImageWrap(element.dataset.wrap)
+      };
+    }
+    if (element.dataset.type === "table") {
+      const rows = tableRowsFromBlock(element);
+      if (!rows.length) return null;
+      return {
+        align,
+        columnCount: rows[0]?.length || 1,
+        rowCount: rows.length,
+        rows,
+        type: "table"
       };
     }
     if (element.dataset.type === "formula") {
@@ -7027,6 +7204,7 @@ async function uploadSummaryImageFile(file, options = {}) {
   return {
     align: options.align || "center",
     caption: options.caption || "",
+    captionPosition: normalizeRichCaptionPosition(options.captionPosition),
     cropAspect: normalizeCropAspect(options.cropAspect),
     cropX: normalizeCropPosition(options.cropX),
     cropY: normalizeCropPosition(options.cropY),
@@ -7035,7 +7213,9 @@ async function uploadSummaryImageFile(file, options = {}) {
     source: "local",
     title: displayTitle || "",
     type: "image",
-    url: result.url
+    url: result.url,
+    width: normalizeRichImageWidth(options.width),
+    wrap: normalizeRichImageWrap(options.wrap)
   };
 }
 
@@ -7056,7 +7236,10 @@ async function openSummaryImageDialog(existingBlock = null, options = {}) {
   summaryImageUrl.value = existingBlock?.dataset.source && existingBlock.dataset.source !== "local" ? existingBlock.dataset.url || "" : "";
   summaryImageTitle.value = existingBlock?.dataset.title || "";
   summaryImageCaption.value = existingBlock?.dataset.caption || "";
+  summaryImageCaptionPosition.value = normalizeRichCaptionPosition(existingBlock?.dataset.captionPosition);
   summaryImageAlign.value = existingBlock?.dataset.align || "center";
+  summaryImageWrap.value = normalizeRichImageWrap(existingBlock?.dataset.wrap);
+  summaryImageWidth.value = String(normalizeRichImageWidth(existingBlock?.dataset.width));
   summaryImageDisplay.value = existingBlock?.dataset.display || "show";
   summaryImageCrop.value = normalizeCropAspect(existingBlock?.dataset.cropAspect);
   summaryImageZoom.value = String(normalizeCropZoom(existingBlock?.dataset.cropZoom));
@@ -7082,6 +7265,7 @@ async function openSummaryImageDialog(existingBlock = null, options = {}) {
     return {
       align: summaryImageAlign.value,
       caption: summaryImageCaption.value.trim(),
+      captionPosition: summaryImageCaptionPosition.value,
       cropAspect: summaryImageCrop.value,
       cropX: normalizeCropPosition(existingBlock?.dataset.cropX),
       cropY: normalizeCropPosition(existingBlock?.dataset.cropY),
@@ -7090,7 +7274,9 @@ async function openSummaryImageDialog(existingBlock = null, options = {}) {
       source,
       title: summaryImageTitle.value.trim() || displayNameFromUrl(nextUrl, source === "drive" ? "Google Drive image" : "Web image"),
       type: "image",
-      url: nextUrl
+      url: nextUrl,
+      width: normalizeRichImageWidth(summaryImageWidth.value),
+      wrap: normalizeRichImageWrap(summaryImageWrap.value)
     };
   }
 
@@ -7102,6 +7288,7 @@ async function openSummaryImageDialog(existingBlock = null, options = {}) {
     return {
       align: summaryImageAlign.value,
       caption: summaryImageCaption.value.trim(),
+      captionPosition: summaryImageCaptionPosition.value,
       cropAspect: summaryImageCrop.value,
       cropX: normalizeCropPosition(existingBlock.dataset.cropX),
       cropY: normalizeCropPosition(existingBlock.dataset.cropY),
@@ -7110,19 +7297,24 @@ async function openSummaryImageDialog(existingBlock = null, options = {}) {
       source: existingBlock.dataset.source || "local",
       title: summaryImageTitle.value.trim() || existingBlock.dataset.title || "",
       type: "image",
-      url: existingBlock.dataset.url || ""
+      url: existingBlock.dataset.url || "",
+      width: normalizeRichImageWidth(summaryImageWidth.value),
+      wrap: normalizeRichImageWrap(summaryImageWrap.value)
     };
   }
   return uploadSummaryImageFile(file, {
     align: summaryImageAlign.value,
     caption: summaryImageCaption.value.trim(),
-      cropAspect: summaryImageCrop.value,
-      cropX: 50,
-      cropY: 50,
-      cropZoom: normalizeCropZoom(summaryImageZoom.value),
-      display: summaryImageDisplay.value === "download" ? "download" : "show",
-      folder: options.folder || "summary",
-      projectId: options.projectId || "",
+    captionPosition: summaryImageCaptionPosition.value,
+    cropAspect: summaryImageCrop.value,
+    cropX: 50,
+    cropY: 50,
+    cropZoom: normalizeCropZoom(summaryImageZoom.value),
+    display: summaryImageDisplay.value === "download" ? "download" : "show",
+    folder: options.folder || "summary",
+    projectId: options.projectId || "",
+    width: normalizeRichImageWidth(summaryImageWidth.value),
+    wrap: normalizeRichImageWrap(summaryImageWrap.value),
     title: summaryImageTitle.value.trim() || file.name
   });
 }
@@ -7402,6 +7594,93 @@ async function openSummaryCodeDialog(existingBlock = null, options = {}) {
   return { code, language, pasteMode, type: "code" };
 }
 
+async function openSummaryLinkDialog(editor) {
+  if (!editor || !summaryLinkDialog) return null;
+  restoreRichSelection(editor);
+  const selectedText = window.getSelection()?.toString()?.trim() || "";
+  summaryLinkLabel.value = selectedText;
+  summaryLinkUrl.value = /^(https?:\/\/|www\.|mailto:|tel:|#)/i.test(selectedText) ? selectedText : "";
+  summaryLinkTarget.value = "blank";
+  const saved = await dialogValue(summaryLinkDialog);
+  if (!saved) return null;
+  const target = normalizeLinkTarget(String(summaryLinkUrl.value || "").trim(), { assumeWeb: true });
+  if (!target || !/^(https?:|mailto:|tel:|#|\/)/i.test(target)) {
+    setStatus("Paste a valid website, email, phone, or page link before adding it.");
+    return null;
+  }
+  const label = String(summaryLinkLabel.value || "").trim() || selectedText || displayNameFromUrl(target, target);
+  return {
+    label,
+    target,
+    newTab: summaryLinkTarget.value !== "same"
+  };
+}
+
+function updateSummaryTableSizeLabel() {
+  const columns = Math.min(12, Math.max(1, Number(summaryTableColumns?.value) || 3));
+  const rows = Math.min(30, Math.max(1, Number(summaryTableRows?.value) || 3));
+  if (summaryTableColumns) summaryTableColumns.value = String(columns);
+  if (summaryTableRows) summaryTableRows.value = String(rows);
+  if (summaryTableSizeLabel) summaryTableSizeLabel.textContent = `${columns} column${columns === 1 ? "" : "s"} by ${rows} row${rows === 1 ? "" : "s"}`;
+  summaryTableDrawGrid?.querySelectorAll("button").forEach((button) => {
+    const active = Number(button.dataset.columns) <= columns && Number(button.dataset.rows) <= rows;
+    button.classList.toggle("selected", active);
+  });
+}
+
+function renderSummaryTableDrawGrid() {
+  if (!summaryTableDrawGrid) return;
+  summaryTableDrawGrid.innerHTML = Array.from({ length: 8 }, (_, rowIndex) =>
+    Array.from({ length: 10 }, (_, columnIndex) =>
+      `<button type="button" data-rows="${rowIndex + 1}" data-columns="${columnIndex + 1}" aria-label="${columnIndex + 1} by ${rowIndex + 1} table"></button>`
+    ).join("")
+  ).join("");
+  updateSummaryTableSizeLabel();
+}
+
+async function openSummaryTableDialog() {
+  if (!summaryTableDialog) return null;
+  if (summaryTableColumns) summaryTableColumns.value = "3";
+  if (summaryTableRows) summaryTableRows.value = "3";
+  renderSummaryTableDrawGrid();
+  const saved = await dialogValue(summaryTableDialog);
+  if (!saved) return null;
+  const columnCount = Math.min(12, Math.max(1, Number(summaryTableColumns?.value) || 3));
+  const rowCount = Math.min(30, Math.max(1, Number(summaryTableRows?.value) || 3));
+  return {
+    align: "left",
+    columnCount,
+    rowCount,
+    rows: normalizeRichTableRows([], rowCount, columnCount),
+    type: "table"
+  };
+}
+
+function applySelectedRichImageLayout(editor, updates = {}) {
+  const block = selectedRichBlock(editor);
+  if (!block || block.dataset.type !== "image") {
+    setStatus("Select an image first, then choose the image layout command.");
+    return;
+  }
+  refreshRichImageBlock(block, {
+    align: updates.align || block.dataset.align,
+    caption: block.dataset.caption,
+    captionPosition: updates.captionPosition || block.dataset.captionPosition,
+    cropAspect: block.dataset.cropAspect,
+    cropX: block.dataset.cropX,
+    cropY: block.dataset.cropY,
+    cropZoom: block.dataset.cropZoom,
+    display: block.dataset.display,
+    source: block.dataset.source,
+    title: block.dataset.title,
+    type: "image",
+    url: block.dataset.url,
+    width: updates.width || block.dataset.width,
+    wrap: updates.wrap || block.dataset.wrap
+  });
+  saveRichEditorToProject(editor);
+}
+
 function configureSummaryContextMenu(mode = "rich", options = {}) {
   const plainActions = new Set([
     "copy-text",
@@ -7430,8 +7709,12 @@ function configureSummaryContextMenu(mode = "rich", options = {}) {
   if (richContextColorSwatches) richContextColorSwatches.hidden = true;
   if (mode === "rich") {
     const textOnly = Boolean(options.textOnly);
-    summaryContextMenu.querySelectorAll("[data-rich-action='add-image'], [data-rich-action='add-formula'], [data-rich-action='add-code'], [data-rich-action='paste-code']").forEach((button) => {
+    summaryContextMenu.querySelectorAll("[data-rich-action='add-image'], [data-rich-action='add-table'], [data-rich-action='add-formula'], [data-rich-action='add-code'], [data-rich-action='paste-code']").forEach((button) => {
       button.hidden = textOnly;
+    });
+    const selectedType = activeSummaryBlock?.dataset?.type || "";
+    summaryContextMenu.querySelectorAll("[data-rich-action^='caption-'], [data-rich-action^='image-wrap-'], [data-rich-action='crop-image']").forEach((button) => {
+      button.hidden = textOnly || selectedType !== "image";
     });
   }
 }
@@ -7564,6 +7847,51 @@ async function handleRichAction(action, editor) {
   if (action === "align-left") updateCurrentTextBlock(editor, { align: "left" });
   if (action === "align-center") updateCurrentTextBlock(editor, { align: "center" });
     if (action === "align-right") updateCurrentTextBlock(editor, { align: "right" });
+    if (action === "image-wrap-inline") {
+        applySelectedRichImageLayout(editor, { wrap: "inline" });
+        return;
+    }
+    if (action === "image-wrap-left") {
+        applySelectedRichImageLayout(editor, { wrap: "left", align: "left" });
+        return;
+    }
+    if (action === "image-wrap-right") {
+        applySelectedRichImageLayout(editor, { wrap: "right", align: "right" });
+        return;
+    }
+    if (action === "image-wrap-block") {
+        applySelectedRichImageLayout(editor, { wrap: "block" });
+        return;
+    }
+    if (action === "caption-top") {
+        applySelectedRichImageLayout(editor, { captionPosition: "top" });
+        return;
+    }
+    if (action === "caption-bottom") {
+        applySelectedRichImageLayout(editor, { captionPosition: "bottom" });
+        return;
+    }
+    if (action === "caption-left") {
+        applySelectedRichImageLayout(editor, { captionPosition: "left" });
+        return;
+    }
+    if (action === "caption-right") {
+        applySelectedRichImageLayout(editor, { captionPosition: "right" });
+        return;
+    }
+    if (action === "crop-image") {
+        const block = selectedRichBlock(editor);
+        if (!block || block.dataset.type !== "image") {
+            setStatus("Select an image first, then choose Crop image.");
+            return;
+        }
+        const updated = await openSummaryImageDialog(block);
+        if (updated) {
+            refreshRichImageBlock(block, updated);
+            saveRichEditorToProject(editor);
+        }
+        return;
+    }
     if (action === "copy-text") {
         restoreRichSelection(editor);
         const selectedText = window.getSelection()?.toString() || "";
@@ -7629,6 +7957,13 @@ async function handleRichAction(action, editor) {
   if (action === "add-link") {
     await addLinkToRichEditor(editor);
   }
+  if (action === "add-table") {
+    const tableBlock = await openSummaryTableDialog();
+    if (tableBlock) {
+      insertRichBlockAfterCursor(editor, createRichTableBlock(tableBlock));
+      saveRichEditorToProject(editor);
+    }
+  }
   if (action === "add-code") {
     const selectedText = window.getSelection()?.toString() || "";
     const codeBlock = await openSummaryCodeDialog(null, { code: selectedText, pasteMode: "source" });
@@ -7660,6 +7995,38 @@ function hideSummaryContextMenu() {
   activeCompileSelectionRange = null;
   activeStaticSelectionText = "";
   if (richContextColorSwatches) richContextColorSwatches.hidden = true;
+}
+
+function configureRichEditorToolbar(editor) {
+  if (!richEditorToolbar) return;
+  const textOnly = editor?.dataset?.richTextOnly === "true";
+  const selectedType = activeSummaryBlock && editor?.contains(activeSummaryBlock) ? activeSummaryBlock.dataset.type : "";
+  richEditorToolbar.querySelectorAll("[data-rich-toolbar-action]").forEach((button) => {
+    const action = button.dataset.richToolbarAction || "";
+    const mediaAction = /^(add-image|add-table|add-formula|add-code|image-wrap-|crop-image)/.test(action);
+    const imageOnly = /^(image-wrap-|crop-image)/.test(action);
+    button.hidden = (textOnly && mediaAction) || (imageOnly && selectedType !== "image");
+  });
+}
+
+function showRichEditorToolbar(editor) {
+  if (!richEditorToolbar || !editor) return;
+  if (richToolbarEditor !== editor) {
+    richToolbarDismissed = false;
+    richToolbarEditor = editor;
+  }
+  if (richToolbarDismissed) return;
+  activeSummaryEditor = editor;
+  configureRichEditorToolbar(editor);
+  const host = editor.closest("dialog") || document.body;
+  if (richEditorToolbar.parentElement !== host) host.append(richEditorToolbar);
+  richEditorToolbar.hidden = false;
+}
+
+function hideRichEditorToolbar(options = {}) {
+  if (!richEditorToolbar) return;
+  richEditorToolbar.hidden = true;
+  if (options.dismiss) richToolbarDismissed = true;
 }
 
 function positionCompactContextMenu(menu, event, host = document.body, options = {}) {
@@ -7704,6 +8071,12 @@ async function editSelectedRichBlock(editor) {
     if (updated) refreshRichCodeBlock(block, updated);
     return;
   }
+  if (block.dataset.type === "table") {
+    const firstCell = block.querySelector("[data-rich-table-cell]");
+    firstCell?.focus();
+    setStatus("Table selected. Type directly inside a cell to edit it.");
+    return;
+  }
   if (block.dataset.type === "paragraph") {
     focusTextBlock(block);
     setStatus("Text block selected. Type directly in the block to edit it.");
@@ -7741,7 +8114,9 @@ function deleteSelectedRichBlock(editor) {
       ? "this formula"
       : block.dataset.type === "code"
         ? "this code block"
-        : "this text block";
+        : block.dataset.type === "table"
+          ? "this table"
+          : "this text block";
   openDeleteConfirm({
     title: "Delete overview block",
     message: `Are you sure you want to delete ${label}?`,
@@ -9334,6 +9709,22 @@ function pendingEditorIsAddingUnderCustomPath(sectionId, path = []) {
   return (pendingEditor.parentPath || "") === customViewPathValue(path);
 }
 
+function renderOverviewRowActions(section, path = [], options = {}) {
+  const isRoot = options.root === true;
+  const pathValue = customViewPathValue(path);
+  const editButton = isRoot
+    ? `<button type="button" data-open-editor="custom-section" data-section-id="${escapeHtml(section.id)}">Edit</button>`
+    : `<button type="button" data-open-editor="custom" data-mode="edit" data-section-id="${escapeHtml(section.id)}" data-node-path="${escapeHtml(pathValue)}">Edit</button>`;
+  return `
+    <span class="builder-overview-summary-actions" aria-label="Overview actions">
+      <button type="button" data-add-node-subsection="${escapeHtml(section.id)}" data-node-path="${escapeHtml(pathValue)}">Add subsection</button>
+      <button type="button" data-upload-node="${escapeHtml(section.id)}" data-node-path="${escapeHtml(pathValue)}">Add file or image</button>
+      ${editButton}
+      <button class="danger-icon" type="button" data-clear-node-overview="${escapeHtml(section.id)}" data-node-path="${escapeHtml(pathValue)}">Delete overview</button>
+    </span>
+  `;
+}
+
 function renderCustomNodeOverview(section, node, path = [], options = {}) {
   const isRoot = options.root === true;
   const description = isRoot ? section.description || "" : node?.description || "";
@@ -9342,7 +9733,10 @@ function renderCustomNodeOverview(section, node, path = [], options = {}) {
 
   return `
     <details class="builder-subsection-details builder-overview-details" open>
-      <summary><span>Overview</span></summary>
+      <summary>
+        <span>Overview</span>
+        ${renderOverviewRowActions(section, path, { root: isRoot })}
+      </summary>
       <div class="builder-subsection-content">
         ${isEditing
           ? renderPendingEditor()
@@ -10116,11 +10510,8 @@ function renderCompileSystemTerminal(workspace = {}, project = selectedProject()
         </span>
       </div>
       <div class="compile-external-terminal-body">
-        <p>Terminal commands run in a real Windows PowerShell window.</p>
-        <label>
-          <span>Working directory</span>
-          <input type="text" value="${escapeHtml(cwd)}" readonly />
-        </label>
+        <p>Windows PowerShell opens as a separate application at this project workspace.</p>
+        <p class="compile-terminal-path">${escapeHtml(cwd)}</p>
         ${openedAt ? `<p class="compile-external-terminal-status">Last opened: ${escapeHtml(openedAt)}</p>` : ""}
       </div>
     </section>
@@ -10806,10 +11197,13 @@ function richBlocksForCompileAppend(project, destination) {
 }
 
 function codeBlockForCompileFile(file) {
+  const language = normalizeCodeLanguage(file?.language || detectCodeLanguage(file?.code || "", file?.fileName || ""));
+  const formattedCode = beautifyCodeClient(normalizeCodeText(file?.code || "", "source"), language);
   return {
-    code: normalizeCodeText(file?.code || "", "source"),
-    language: normalizeCodeLanguage(file?.language || detectCodeLanguage(file?.code || "", file?.fileName || "")),
+    code: formattedCode,
+    language,
     pasteMode: "source",
+    title: file?.fileName || file?.title || "",
     type: "code"
   };
 }
@@ -14902,7 +15296,6 @@ function handleRichEditorContextMenu(event) {
     activePlainTextControl = null;
     activePlainTextSelection = null;
     activeSummaryEditor = nextEditor;
-    configureSummaryContextMenu("rich", { textOnly: activeSummaryEditor.dataset.richTextOnly === "true" });
     const liveRange = selectionRangeInsideEditor(activeSummaryEditor);
     const savedRange = activeTextSelectionRange && !activeTextSelectionRange.collapsed
       ? activeTextSelectionRange.cloneRange()
@@ -14920,6 +15313,7 @@ function handleRichEditorContextMenu(event) {
       captureRichSelection(activeSummaryEditor);
     }
     selectRichBlock(event.target.closest?.(".rich-block") || currentRichBlock(activeSummaryEditor));
+    configureSummaryContextMenu("rich", { textOnly: activeSummaryEditor.dataset.richTextOnly === "true" });
     syncRichContextMenuControls(activeSummaryBlock);
 
     const menuHost = activeSummaryEditor.closest("dialog") || document.body;
@@ -15064,10 +15458,13 @@ async function handleRichEditorPaste(event) {
 
         const imageBlock = await uploadSummaryImageFile(imageItem.getAsFile(), {
             align: "center",
+            captionPosition: "bottom",
             display: "show",
             folder: editor.dataset.richFolder || "summary",
             projectId: editor.dataset.richProjectId || "",
-            title: ""
+            title: "",
+            width: 60,
+            wrap: "block"
         });
 
         if (imageBlock) {
@@ -15159,25 +15556,15 @@ function insertHtmlIntoRichEditor(editor, pastedHtml) {
 
 async function addLinkToRichEditor(editor) {
     if (!editor) return;
-    restoreRichSelection(editor);
-    const selectedText = window.getSelection()?.toString()?.trim() || "";
-    const suggestedUrl = /^(https?:\/\/|www\.|mailto:|tel:)/i.test(selectedText) ? selectedText : "";
-    const rawUrl = window.prompt("Paste the link URL, email, phone number, or page anchor.", suggestedUrl);
-    if (rawUrl === null) return;
-    const target = normalizeLinkTarget(String(rawUrl || "").trim(), { assumeWeb: true });
-    if (!target) {
-      setStatus("Paste a valid link before adding it.");
-      return;
-    }
-    const fallbackLabel = selectedText || displayNameFromUrl(target, target);
-    const rawLabel = window.prompt("Text to display for this link.", fallbackLabel);
-    if (rawLabel === null) return;
-    const label = String(rawLabel || "").trim() || fallbackLabel || target;
+    const linkData = await openSummaryLinkDialog(editor);
+    if (!linkData) return;
     const anchor = document.createElement("a");
-    anchor.href = target;
-    anchor.target = "_blank";
-    anchor.rel = "noreferrer";
-    anchor.textContent = label;
+    anchor.href = linkData.target;
+    if (linkData.newTab) {
+      anchor.target = "_blank";
+      anchor.rel = "noreferrer";
+    }
+    anchor.textContent = linkData.label;
     const fragment = document.createDocumentFragment();
     fragment.append(anchor);
     insertFragmentIntoRichEditor(editor, fragment);
@@ -15277,6 +15664,7 @@ function handleRichEditorFocus(event) {
   if (!editor) return;
   document.execCommand("defaultParagraphSeparator", false, "p");
   captureRichSelection(editor);
+  showRichEditorToolbar(editor);
 }
 
 function handleRichEditorInput(event) {
@@ -15331,7 +15719,7 @@ document.addEventListener("selectionchange", () => {
 });
 
 document.addEventListener("pointerdown", (event) => {
-  if (event.target.closest("#text-selection-inspector, #summary-context-menu")) return;
+  if (event.target.closest("#text-selection-inspector, #summary-context-menu, #rich-editor-toolbar")) return;
 
   const editor = event.button === 2
     ? richEditorFromContextEvent(event)
@@ -15538,10 +15926,11 @@ function handleRichCaretClick(event) {
 function handleRichDragStart(event) {
   const handle = event.target.closest("[data-rich-drag-handle]");
   const imageBlock = event.target.closest(".rich-image-block");
-  const isControl = event.target.closest("button, input, select, textarea, a, .rich-block-actions, [data-rich-caret]");
-  const block = handle?.closest(".rich-block") || (!isControl ? imageBlock : null);
+  const tableBlock = event.target.closest(".rich-table-block");
+  const isControl = event.target.closest("button, input, select, textarea, a, .rich-block-actions, [data-rich-caret], [data-rich-image-resize], [data-rich-table-cell]");
+  const block = handle?.closest(".rich-block") || (!isControl ? imageBlock || tableBlock : null);
   if (!block) {
-    if (imageBlock) event.preventDefault();
+    if (imageBlock || tableBlock) event.preventDefault();
     return;
   }
   activeRichDragBlock = block;
@@ -15686,7 +16075,48 @@ function handleRichDrop(event) {
 }
 
 function imageMoveDragControl(target) {
-  return target.closest("button, input, select, textarea, a, .rich-block-actions, [data-rich-caret]");
+  return target.closest("button, input, select, textarea, a, .rich-block-actions, [data-rich-caret], [data-rich-image-resize], [data-rich-table-cell]");
+}
+
+function beginRichImageResizeDrag(event) {
+  const handle = event.target.closest("[data-rich-image-resize]");
+  if (!handle || event.button !== 0) return;
+  const block = handle.closest(".rich-image-block");
+  const editor = block?.closest("[data-rich-editor]");
+  if (!block || !editor) return;
+  const editorRect = editor.getBoundingClientRect();
+  activeRichImageResizeDrag = {
+    block,
+    direction: handle.dataset.richImageResize || "e",
+    editor,
+    editorWidth: Math.max(1, editorRect.width),
+    pointerId: event.pointerId,
+    startWidth: normalizeRichImageWidth(block.dataset.width),
+    startX: event.clientX
+  };
+  block.setPointerCapture?.(event.pointerId);
+  selectRichBlock(block);
+  event.preventDefault();
+  event.stopPropagation();
+}
+
+function moveRichImageResizeDrag(event) {
+  if (!activeRichImageResizeDrag) return;
+  const drag = activeRichImageResizeDrag;
+  const directionMultiplier = drag.direction.includes("w") ? -1 : 1;
+  const delta = ((event.clientX - drag.startX) / drag.editorWidth) * 100 * directionMultiplier;
+  const nextWidth = normalizeRichImageWidth(drag.startWidth + delta);
+  drag.block.dataset.width = String(nextWidth);
+  drag.block.style.setProperty("--rich-image-width", `${nextWidth}%`);
+  if (summaryImageWidth && drag.block.matches(".selected")) summaryImageWidth.value = String(Math.round(nextWidth));
+  event.preventDefault();
+}
+
+function endRichImageResizeDrag() {
+  if (!activeRichImageResizeDrag) return;
+  activeRichImageResizeDrag.block.releasePointerCapture?.(activeRichImageResizeDrag.pointerId);
+  saveRichEditorToProject(activeRichImageResizeDrag.editor);
+  activeRichImageResizeDrag = null;
 }
 
 function beginRichImageMoveDrag(event) {
@@ -15782,15 +16212,32 @@ function endImageCropDrag() {
     hideRichDropMarker();
     activeRichDragBlock = null;
   });
+  root.addEventListener("pointerdown", beginRichImageResizeDrag);
   root.addEventListener("pointerdown", beginRichImageMoveDrag);
   root.addEventListener("pointerdown", beginImageCropDrag);
 });
 document.addEventListener("pointermove", moveImageCropDrag);
 document.addEventListener("pointermove", moveRichImageMoveDrag);
+document.addEventListener("pointermove", moveRichImageResizeDrag);
 document.addEventListener("pointerup", endImageCropDrag);
 document.addEventListener("pointerup", endRichImageMoveDrag);
+document.addEventListener("pointerup", endRichImageResizeDrag);
 document.addEventListener("pointercancel", endImageCropDrag);
 document.addEventListener("pointercancel", endRichImageMoveDrag);
+document.addEventListener("pointercancel", endRichImageResizeDrag);
+
+richToolbarClose?.addEventListener("click", () => hideRichEditorToolbar({ dismiss: true }));
+richEditorToolbar?.addEventListener("pointerdown", () => {
+  if (!activePlainTextControl) rememberRichFormattingSelection(activeSummaryEditor);
+}, true);
+richEditorToolbar?.addEventListener("click", async (event) => {
+  const actionButton = event.target.closest("[data-rich-toolbar-action]");
+  if (!actionButton) return;
+  const editor = activeSummaryEditor || richToolbarEditor;
+  if (!editor) return;
+  await handleRichAction(actionButton.dataset.richToolbarAction, editor);
+  showRichEditorToolbar(editor);
+});
 
 summaryContextMenu.addEventListener("click", async (event) => {
   const colorButton = event.target.closest("[data-rich-color-value]");
@@ -16280,6 +16727,25 @@ function deleteProjectNodeByPath(project, sectionId, path = []) {
   });
 }
 
+function clearProjectNodeOverview(project, sectionId, path = []) {
+  const section = (project.sections || []).find((item) => item.id === sectionId);
+  const target = path.length ? findBuilderNode(section, path) : section;
+  if (!section || !target) return;
+  const title = path.length ? builderNodeTitle(target) : section.title || "section";
+  openDeleteConfirm({
+    title: "Delete overview",
+    message: `Are you sure you want to delete the overview for "${title}"? Files and child subsections will stay in place.`,
+    onConfirm: () => {
+      target.description = "";
+      target.richDescription = null;
+      if (path.length) target.summary = "";
+      scheduleAutosave();
+      setStatus("Overview deleted locally. Click Save project to rebuild the project preview.");
+      renderAll();
+    }
+  });
+}
+
 sectionContent.addEventListener("contextmenu", (event) => {
   if (event.target.closest(".compile-code-sidebar")) return;
   const subsectionRow = event.target.closest("[data-builder-subsection-path]");
@@ -16461,6 +16927,8 @@ sectionContent.addEventListener("click", async (event) => {
     event.preventDefault();
     setCompileSelectedFileIds(workspace, [button.dataset.compileSelect]);
     openCompileFileView(workspace, button.dataset.compileSelect);
+    const openedFile = activeCompileFile(project);
+    if (openedFile) scheduleLiveCompileDiagnostics(project, openedFile, 250);
     renderSectionContent(project);
     return;
   }
@@ -16677,6 +17145,10 @@ sectionContent.addEventListener("click", async (event) => {
   }
   if (button.dataset.deleteNode !== undefined) {
     deleteProjectNodeByPath(project, button.dataset.deleteNode, nodePathFromString(button.dataset.nodePath || ""));
+    return;
+  }
+  if (button.dataset.clearNodeOverview !== undefined) {
+    clearProjectNodeOverview(project, button.dataset.clearNodeOverview, nodePathFromString(button.dataset.nodePath || ""));
     return;
   }
   if (button.dataset.clearDesignSummary) {
@@ -17540,6 +18012,36 @@ summaryImageFile?.addEventListener("change", () => {
 summaryImageForm.addEventListener("submit", (event) => {
   event.preventDefault();
   closeDialogElement(summaryImageDialog, "save");
+});
+summaryLinkCancel?.addEventListener("click", () => {
+  closeDialogElement(summaryLinkDialog, "cancel");
+});
+summaryLinkForm?.addEventListener("submit", (event) => {
+  event.preventDefault();
+  closeDialogElement(summaryLinkDialog, "save");
+});
+summaryTableCancel?.addEventListener("click", () => {
+  closeDialogElement(summaryTableDialog, "cancel");
+});
+summaryTableForm?.addEventListener("submit", (event) => {
+  event.preventDefault();
+  closeDialogElement(summaryTableDialog, "save");
+});
+summaryTableColumns?.addEventListener("input", updateSummaryTableSizeLabel);
+summaryTableRows?.addEventListener("input", updateSummaryTableSizeLabel);
+summaryTableDrawGrid?.addEventListener("pointerover", (event) => {
+  const cell = event.target.closest("button[data-rows][data-columns]");
+  if (!cell) return;
+  summaryTableColumns.value = cell.dataset.columns;
+  summaryTableRows.value = cell.dataset.rows;
+  updateSummaryTableSizeLabel();
+});
+summaryTableDrawGrid?.addEventListener("click", (event) => {
+  const cell = event.target.closest("button[data-rows][data-columns]");
+  if (!cell) return;
+  summaryTableColumns.value = cell.dataset.columns;
+  summaryTableRows.value = cell.dataset.rows;
+  updateSummaryTableSizeLabel();
 });
 summaryFormulaCancel.addEventListener("click", () => {
   closeDialogElement(summaryFormulaDialog, "cancel");

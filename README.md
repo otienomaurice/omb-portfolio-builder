@@ -103,9 +103,11 @@ Project section chips stay in the top navigation band. **Add section** appears a
 
 ## Text Editing
 
-Project and portfolio-area overview editors support rich text editing with selection-level formatting, links, images, formulas, syntax-highlighted code blocks, hard line breaks, copy, paste, cut, and select all.
+Project and portfolio-area overview editors support rich text editing with selection-level formatting, links, images, formulas, tables, syntax-highlighted code blocks, hard line breaks, copy, paste, cut, and select all. When a rich field is active, a full-width editor toolbar appears with common document commands for formatting, alignment, links, images, tables, formulas, code blocks, image wrapping, and crop editing. The toolbar can be closed when it is not needed, and the same commands remain available from the shared right-click menu.
 
 Front-page, profile, contact, fun facts, and project overview fields use the same selection-level text behavior: highlight the exact words to edit, then use the right-click menu to copy, paste, cut, select all, add a link in rich fields, change font family, change font size, change text color, bold, italic, or underline where that field supports formatting. Static text such as titles, guide text, labels, and headings can also be copied by highlighting it and right-clicking the selection. Identity and contact fields are text-only, so image, formula, and code-block insertion is intentionally disabled there while copy, paste, cut, select all, and text formatting still work.
+
+Images inserted into rich fields can be resized from their edges, dragged to a new cursor position, cropped from the right-click menu, given captions, and wrapped as block, inline, left, or right media. This allows text and other images to sit beside an image when that layout saves space. Tables can be inserted from the toolbar or right-click menu by drawing a grid size or typing row and column counts. Links use a dedicated dialog for label, URL, and target behavior; saved links render as website links in project previews and published portfolios instead of being treated as downloadable files.
 
 Code support is available from the rich editor right-click menu. Use **Code block** or **Paste as code** for C, C++, SystemVerilog, LTspice, Java, JavaScript, Python, and HTML. Code blocks store the selected language, preserve source spacing when requested, highlight common language keywords, and render as code in project previews and published portfolios.
 
@@ -325,6 +327,7 @@ Use the workflow in [BRANCHING.md](BRANCHING.md):
 | `nested_subsection_pipeline_084` | Bumps the builder to `0.2.84`, unifies section and subsection rendering into one nested workspace pipeline, keeps created subsections visible with overview, files, child creation, upload, edit, and delete controls, and adds Add link to the shared rich-editor right-click menu. | `development` | `development` | Active |
 | `hdl_synthesis_live_syntax_085` | Bumps the builder to `0.2.85`, separates live syntax diagnostics into their own Compile Code Syntax panel, adds HDL Synthesize controls, detects Yosys/OSS CAD Suite, and adds a right-click synthesis diagram viewer for Verilog/SystemVerilog module graphs. | `development` | `development` | Merged into `development` |
 | `synthesis_diagram_tools_086` | Bumps the builder to `0.2.86`, installs/detects user-local OSS CAD Suite synthesis tools, writes Yosys netlist JSON and DOT artifacts, renders synthesized netlist diagrams, and adds zoom controls to the synthesis diagram viewer. | `development` | `development` | Active |
+| `rich_media_editor_087` | Bumps the builder to `0.2.87`, adds a Word-style rich editor toolbar, improves image resize/wrap/crop/caption placement, adds table and link dialogs, routes Syntax to live diagnostics, opens real PowerShell for Compile Code Terminal, and carries rich code highlighting into website parsing. | `development` | `development` | Ready for development |
 
 </details>
 
