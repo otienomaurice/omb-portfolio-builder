@@ -3122,6 +3122,37 @@ body.rich-image-dragging * {
   background: var(--compile-surface, #2d2d30);
 }
 
+.compile-synthesis-zoom-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.compile-synthesis-zoom-controls button,
+.compile-synthesis-zoom-controls span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 30px;
+  height: 24px;
+  border: 1px solid var(--compile-line, #334155);
+  border-radius: 5px;
+  color: var(--compile-text, #e5edf6);
+  background: var(--compile-panel, #1f2937);
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.compile-synthesis-zoom-controls button {
+  cursor: pointer;
+}
+
+.compile-synthesis-zoom-controls button:hover {
+  color: var(--compile-editor, #0f172a);
+  background: var(--compile-accent, #38bdf8);
+}
+
 .compile-synthesis-diagram-heading div {
   display: grid;
   min-width: 0;
@@ -3142,10 +3173,11 @@ body.rich-image-dragging * {
 
 .compile-synthesis-diagram-body {
   display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
   align-content: start;
   gap: 10px;
   min-height: 0;
-  overflow: auto;
+  overflow: hidden;
   padding: 12px;
   background: var(--compile-editor, #111827);
 }
@@ -3166,11 +3198,30 @@ body.rich-image-dragging * {
   font-weight: 800;
 }
 
+.compile-synthesis-canvas {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  border: 1px solid var(--compile-line, #334155);
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--compile-line, #334155) 32%, transparent) 1px, transparent 1px),
+    linear-gradient(color-mix(in srgb, var(--compile-line, #334155) 32%, transparent) 1px, transparent 1px),
+    var(--compile-editor, #0f172a);
+  background-size: 24px 24px;
+}
+
+.compile-synthesis-zoom-stage {
+  display: inline-block;
+  min-width: 100%;
+  min-height: 100%;
+  zoom: var(--synthesis-zoom, 1);
+}
+
 .compile-synthesis-svg {
+  display: block;
   width: max(100%, 720px);
   min-height: 260px;
-  border: 1px solid var(--compile-line, #334155);
-  background: var(--compile-editor, #0f172a);
+  background: transparent;
 }
 
 .compile-synthesis-svg marker path {
@@ -3192,6 +3243,10 @@ body.rich-image-dragging * {
   fill: var(--compile-panel, #1f2937);
   stroke: var(--compile-line, #334155);
   stroke-width: 1.5;
+}
+
+.compile-synthesis-node text {
+  pointer-events: none;
 }
 
 .compile-synthesis-node.is-top rect {
@@ -4786,6 +4841,29 @@ body[data-builder-theme="dark"] .summary-context-menu button:hover {
   justify-content: flex-end;
   gap: 8px;
   min-width: 0;
+}
+
+.builder-subsection-summary-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  min-width: 0;
+  max-width: min(62vw, 620px);
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+}
+
+.builder-subsection-summary-actions button {
+  flex: 0 0 auto;
+  height: var(--builder-control-height, 30px);
+  min-height: var(--builder-control-height, 30px);
+  max-height: var(--builder-control-height, 30px);
+  padding: 0 10px;
+  font-size: 0.76rem;
+  line-height: 1;
+  white-space: nowrap;
 }
 
 .builder-subsection-summary-delete {
@@ -10916,6 +10994,7 @@ body[data-compile-theme] .compile-scope-svg {
   .summary-save-actions button,
   .project-fields button,
   .builder-explorer-actions button,
+  .builder-subsection-summary-actions button,
   .section-bar button
 ):not(.project-window-close):not(.dialog-minimize-button):not(.dialog-maximize-button):not(.dialog-hide-button):not(.window-nav-button) {
   display: inline-flex !important;
