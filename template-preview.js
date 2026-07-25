@@ -6235,11 +6235,11 @@ function richBlockActions(label = "block", options = {}) {
       <button class="rich-block-typing-rail rich-block-typing-before" type="button" data-rich-caret="before" aria-label="Type before ${escapeHtml(label)}"></button>
       <button class="rich-block-typing-rail rich-block-typing-after" type="button" data-rich-caret="after" aria-label="Type after ${escapeHtml(label)}"></button>
     ` : ""}
-    <div class="rich-block-actions">
+    ${options.controls === false ? "" : `<div class="rich-block-actions">
       ${options.movable ? `<button class="rich-drag-handle" type="button" draggable="true" data-rich-drag-handle aria-label="Move ${escapeHtml(label)}">Move</button>` : ""}
       <button type="button" data-rich-block-action="edit" aria-label="Edit ${escapeHtml(label)}">Edit</button>
       <button class="danger-icon" type="button" data-rich-block-action="delete" aria-label="Delete ${escapeHtml(label)}">Delete</button>
-    </div>
+    </div>`}
   `;
 }
 
@@ -6269,7 +6269,7 @@ function createRichImageBlock(blockData) {
   figure.draggable = true;
   figure.title = "Drag image to move it between text. Drag an edge to resize.";
   figure.innerHTML = `
-    ${richBlockActions("overview image", { movable: true, typingRails: true })}
+    ${richBlockActions("overview image", { controls: false, typingRails: true })}
     ${figure.dataset.display === "download" ? `<span class="rich-download-badge">Download only</span>` : ""}
     ${captionPosition === "top" || captionPosition === "left" ? richImageCaptionHtml(blockData) : ""}
     <span class="rich-image-viewport crop-${figure.dataset.cropAspect === "original" ? "original" : "active"}"${richImageCropStyle(blockData)}>
@@ -6299,7 +6299,7 @@ function createRichVideoBlock(blockData = {}) {
   figure.draggable = true;
   figure.title = "Drag video or animation to move it. Drag an edge to resize.";
   figure.innerHTML = `
-    ${richBlockActions("video or animation", { movable: true, typingRails: true })}
+    ${richBlockActions("video or animation", { controls: false, typingRails: true })}
     ${figure.dataset.display === "download" ? `<span class="rich-download-badge">Download only</span>` : ""}
     <div class="rich-video-frame">${renderRichVideoEmbed(figure.dataset)}</div>
     ${richVideoCaptionHtml(figure.dataset)}
@@ -6389,7 +6389,7 @@ function refreshRichImageBlock(block, blockData) {
   block.classList.add(`justify-${align}`, `wrap-${wrap}`, `caption-${captionPosition}`);
   const title = cleanRichImageTitle({ title: block.dataset.title });
   block.innerHTML = `
-    ${richBlockActions("overview image", { movable: true, typingRails: true })}
+    ${richBlockActions("overview image", { controls: false, typingRails: true })}
     ${block.dataset.display === "download" ? `<span class="rich-download-badge">Download only</span>` : ""}
     ${captionPosition === "top" || captionPosition === "left" ? richImageCaptionHtml(block.dataset) : ""}
     <span class="rich-image-viewport crop-${block.dataset.cropAspect === "original" ? "original" : "active"}"${richImageCropStyle({
@@ -6421,7 +6421,7 @@ function refreshRichVideoBlock(block, blockData = {}) {
   block.classList.remove("justify-left", "justify-center", "justify-right");
   block.classList.add(`justify-${align}`);
   block.innerHTML = `
-    ${richBlockActions("video or animation", { movable: true, typingRails: true })}
+    ${richBlockActions("video or animation", { controls: false, typingRails: true })}
     ${block.dataset.display === "download" ? `<span class="rich-download-badge">Download only</span>` : ""}
     <div class="rich-video-frame">${renderRichVideoEmbed(block.dataset)}</div>
     ${richVideoCaptionHtml(block.dataset)}
@@ -8332,8 +8332,55 @@ function configureRichEditorToolbar(editor) {
     const action = button.dataset.richToolbarAction || "";
     const mediaAction = /^(add-image|add-video|add-table|add-formula|add-code|image-wrap-|crop-image)/.test(action);
     const imageOnly = /^(image-wrap-|crop-image)/.test(action);
-    button.hidden = (textOnly && mediaAction) || (imageOnly && selectedType !== "image");
+    const blockOnly = /^(edit-block|delete-block)$/.test(action);
+    button.hidden = (textOnly && mediaAction) || (imageOnly && selectedType !== "image") || (blockOnly && (!selectedType || selectedType === "paragraph"));
   });
+  richEditorToolbar.querySelectorAll("[data-rich-image-tools]").forEach((group) => {
+    group.hidden = selectedType !== "image";
+  });
+  richEditorToolbar.querySelectorAll("[data-rich-toolbar-group]").forEach((group) => {
+    if (group.matches("[data-rich-image-tools]")) return;
+    const actions = [...group.querySelectorAll("[data-rich-toolbar-action]")];
+    group.hidden = actions.length > 0 && actions.every((button) => button.hidden);
+  });
+  syncRichToolbarControls(activeSummaryBlock);
+  positionRichEditorToolbar(editor);
+}
+
+function closeRichToolbarMenus(except = null) {
+  richEditorToolbar?.querySelectorAll("[data-rich-toolbar-group].is-open").forEach((group) => {
+    if (group !== except) group.classList.remove("is-open");
+  });
+}
+
+function syncRichToolbarControls(block) {
+  const toolbar = richEditorToolbar;
+  if (!toolbar || !block) return;
+  const paragraph = block.dataset.type === "paragraph" ? block : currentRichBlock(block.closest("[data-rich-editor]"));
+  const computed = paragraph ? getComputedStyle(paragraph) : null;
+  const family = displayRichFontName(paragraph?.dataset.fontFamily || computed?.fontFamily || "Arial") || "Arial";
+  const size = String(Math.round(parseFloat(paragraph?.dataset.fontPx || computed?.fontSize) || 16));
+  const color = rgbColorToHex(paragraph?.dataset.color || computed?.color || "#17202a");
+  toolbar.querySelectorAll("[data-rich-toolbar-font-select]").forEach((select) => {
+    select.value = [...select.options].some((option) => option.value === family || option.textContent === family) ? family : "Arial";
+  });
+  toolbar.querySelectorAll("[data-rich-toolbar-font-size]").forEach((select) => {
+    select.value = [...select.options].some((option) => option.value === size || option.textContent === size) ? size : "16";
+  });
+  toolbar.querySelectorAll("[data-rich-toolbar-color-input]").forEach((input) => {
+    if (/^#[0-9a-f]{6}$/i.test(color)) input.value = color;
+  });
+}
+
+function positionRichEditorToolbar(editor) {
+  if (!richEditorToolbar || richEditorToolbar.hidden || !editor) return;
+  const host = editor.closest("dialog") || document.body;
+  const rect = host === document.body
+    ? { left: 0, top: 0, width: window.innerWidth }
+    : host.getBoundingClientRect();
+  richEditorToolbar.style.left = `${Math.max(0, rect.left)}px`;
+  richEditorToolbar.style.top = `${Math.max(0, rect.top)}px`;
+  richEditorToolbar.style.width = `${Math.max(320, Math.min(window.innerWidth, rect.width || window.innerWidth))}px`;
 }
 
 function showRichEditorToolbar(editor) {
@@ -8348,11 +8395,13 @@ function showRichEditorToolbar(editor) {
   const host = editor.closest("dialog") || document.body;
   if (richEditorToolbar.parentElement !== host) host.append(richEditorToolbar);
   richEditorToolbar.hidden = false;
+  positionRichEditorToolbar(editor);
 }
 
 function hideRichEditorToolbar(options = {}) {
   if (!richEditorToolbar) return;
   richEditorToolbar.hidden = true;
+  closeRichToolbarMenus();
   if (options.dismiss) richToolbarDismissed = true;
 }
 
@@ -16054,6 +16103,7 @@ document.addEventListener("selectionchange", () => {
 
 document.addEventListener("pointerdown", (event) => {
   if (event.target.closest("#text-selection-inspector, #summary-context-menu, #rich-editor-toolbar")) return;
+  closeRichToolbarMenus();
 
   const editor = event.button === 2
     ? richEditorFromContextEvent(event)
@@ -16086,6 +16136,7 @@ document.addEventListener("pointerdown", (event) => {
     editor.focus({ preventScroll: true });
   }
   activeSummaryEditor = editor;
+  showRichEditorToolbar(editor);
   selectionGestureActive = true;
   selectionGestureProducedRange = false;
 }, true);
@@ -16122,7 +16173,11 @@ document.addEventListener("pointercancel", () => {
   selectionGestureActive = false;
 }, true);
 document.addEventListener("scroll", refreshPersistentSelectionHighlight, true);
-window.addEventListener("resize", refreshPersistentSelectionHighlight);
+document.addEventListener("scroll", () => positionRichEditorToolbar(activeSummaryEditor || richToolbarEditor), true);
+window.addEventListener("resize", () => {
+  refreshPersistentSelectionHighlight();
+  positionRichEditorToolbar(activeSummaryEditor || richToolbarEditor);
+});
 document.addEventListener("mouseup", finishTextSelectionGesture);
 document.addEventListener("keyup", (event) => {
   if (event.target.closest?.("#text-selection-inspector")) {
@@ -16376,6 +16431,35 @@ function updateRichDropMarker(editor, movingBlock, x, y, eventTarget = null) {
   marker.style.height = "3px";
 }
 
+function inferredRichImageLayoutFromPoint(editor, block, x) {
+  if (!editor || !block?.matches?.(".rich-image-block")) return null;
+  const rect = editor.getBoundingClientRect();
+  if (!rect.width) return null;
+  const ratio = Math.min(1, Math.max(0, (x - rect.left) / rect.width));
+  const imageWidth = normalizeRichImageWidth(block.dataset.width);
+  if (imageWidth >= 82) return { align: "center", wrap: "block" };
+  if (ratio <= 0.34) return { align: "left", wrap: "left" };
+  if (ratio >= 0.66) return { align: "right", wrap: "right" };
+  if (ratio >= 0.42 && ratio <= 0.58 && imageWidth <= 48) return { align: "left", wrap: "inline" };
+  return { align: "center", wrap: "block" };
+}
+
+function applyRichImageLayoutClass(block, updates = {}) {
+  if (!block?.matches?.(".rich-image-block")) return;
+  const wrap = normalizeRichImageWrap(updates.wrap || block.dataset.wrap);
+  const align = ["left", "center", "right"].includes(updates.align) ? updates.align : block.dataset.align || "center";
+  block.dataset.wrap = wrap;
+  block.dataset.align = align;
+  block.classList.remove("justify-left", "justify-center", "justify-right", "wrap-block", "wrap-inline", "wrap-left", "wrap-right");
+  block.classList.add(`justify-${align}`, `wrap-${wrap}`);
+}
+
+function applyAutomaticRichImageWrapping(editor, block, x) {
+  const layout = inferredRichImageLayoutFromPoint(editor, block, x);
+  if (!layout) return;
+  applyRichImageLayoutClass(block, layout);
+}
+
 function moveRichBlockToPoint(editor, movingBlock, x, y, eventTarget = null, options = {}) {
   if (!editor || !movingBlock) return;
   const { dropRange, target } = richDropLocation(editor, movingBlock, x, y, eventTarget);
@@ -16393,6 +16477,7 @@ function moveRichBlockToPoint(editor, movingBlock, x, y, eventTarget = null, opt
     target.after(movingBlock);
   }
 
+  applyAutomaticRichImageWrapping(editor, movingBlock, x);
   cleanupEmptyRichTextBlocks(editor);
   if (options.focusAfter !== false) focusAdjacentRichBlockText(movingBlock, "after");
   if (options.commit !== false) saveRichEditorToProject(editor);
@@ -16487,6 +16572,7 @@ function moveRichImageMoveDrag(event) {
     drag.block.classList.add("is-dragging");
     document.body.classList.add("rich-image-dragging");
   }
+  applyAutomaticRichImageWrapping(drag.editor, drag.block, event.clientX);
   updateRichDropMarker(drag.editor, drag.block, event.clientX, event.clientY, event.target);
   event.preventDefault();
 }
@@ -16569,11 +16655,44 @@ richEditorToolbar?.addEventListener("pointerdown", () => {
   if (!activePlainTextControl) rememberRichFormattingSelection(activeSummaryEditor);
 }, true);
 richEditorToolbar?.addEventListener("click", async (event) => {
+  const menuButton = event.target.closest("[data-rich-toolbar-menu-button]");
+  if (menuButton) {
+    const group = menuButton.closest("[data-rich-toolbar-group]");
+    const willOpen = !group.classList.contains("is-open");
+    closeRichToolbarMenus(group);
+    group.classList.toggle("is-open", willOpen);
+    return;
+  }
   const actionButton = event.target.closest("[data-rich-toolbar-action]");
   if (!actionButton) return;
   const editor = activeSummaryEditor || richToolbarEditor;
   if (!editor) return;
   await handleRichAction(actionButton.dataset.richToolbarAction, editor);
+  closeRichToolbarMenus();
+  showRichEditorToolbar(editor);
+});
+
+richEditorToolbar?.addEventListener("change", (event) => {
+  const editor = activeSummaryEditor || richToolbarEditor;
+  if (!editor) return;
+  rememberRichFormattingSelection(editor);
+  if (event.target.matches("[data-rich-toolbar-font-select]")) {
+    applyRichInlineCommand(editor, "fontName", event.target.value);
+  }
+  if (event.target.matches("[data-rich-toolbar-font-size]")) {
+    applyRichInlineCommand(editor, "fontSize", event.target.value);
+  }
+  if (event.target.matches("[data-rich-toolbar-color-input]")) {
+    applyRichInlineCommand(editor, "foreColor", event.target.value);
+  }
+  showRichEditorToolbar(editor);
+});
+
+richEditorToolbar?.addEventListener("input", (event) => {
+  const editor = activeSummaryEditor || richToolbarEditor;
+  if (!editor || !event.target.matches("[data-rich-toolbar-color-input]")) return;
+  rememberRichFormattingSelection(editor);
+  applyRichInlineCommand(editor, "foreColor", event.target.value);
   showRichEditorToolbar(editor);
 });
 
