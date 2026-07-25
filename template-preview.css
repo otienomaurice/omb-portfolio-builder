@@ -1985,6 +1985,7 @@
 }
 
 .rich-image-block,
+.rich-video-block,
 .rich-formula-block {
   margin: 14px 0;
 }
@@ -2136,6 +2137,56 @@ body.rich-image-dragging * {
   font-size: 0.9rem;
   line-height: 1.55;
   tab-size: 2;
+}
+
+.rich-video,
+.rich-video-block {
+  display: grid;
+  gap: 8px;
+  width: min(100%, var(--rich-video-width, 76%));
+  max-width: min(100%, var(--responsive-media-max, 860px));
+  margin: 14px 0;
+  clear: both;
+}
+
+.rich-video-frame {
+  position: relative;
+  display: grid;
+  min-height: 180px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #0f172a;
+  color: #e5edf6;
+}
+
+.rich-video-frame iframe,
+.rich-video-frame video,
+.rich-video-frame img {
+  display: block;
+  width: 100%;
+  max-width: none;
+  border: 0;
+}
+
+.rich-video-frame iframe {
+  aspect-ratio: 16 / 9;
+  min-height: 240px;
+}
+
+.rich-video-frame > .resource-link {
+  align-self: center;
+  justify-self: center;
+  margin: 18px;
+  color: #bfdbfe;
+}
+
+.rich-video figcaption,
+.rich-video-block figcaption {
+  display: grid;
+  gap: 3px;
+  color: var(--muted);
+  font-size: 0.84rem;
 }
 
 .code-token-keyword { color: #7dd3fc; font-weight: 800; }
@@ -7024,13 +7075,37 @@ body.full-window-open {
   margin: 0;
 }
 
-.portfolio-media-grid img {
+.portfolio-media-grid img,
+.portfolio-media-grid video,
+.portfolio-media-grid iframe,
+.portfolio-media-grid .media-grid-frame {
   width: 100%;
   aspect-ratio: 4 / 3;
   object-fit: cover;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #fafdff;
+}
+
+.portfolio-media-grid .media-grid-frame {
+  display: grid;
+  overflow: hidden;
+  background: #0f172a;
+}
+
+.portfolio-media-grid .media-grid-frame iframe,
+.portfolio-media-grid .media-grid-frame video,
+.portfolio-media-grid .media-grid-frame img {
+  display: block;
+  width: 100%;
+  min-height: 220px;
+  border: 0;
+}
+
+.portfolio-media-grid .media-grid-frame video,
+.portfolio-media-grid .media-grid-frame img {
+  height: 100%;
+  object-fit: contain;
 }
 
 .portfolio-media-grid figcaption {

@@ -202,6 +202,18 @@ const summaryImageDisplay = document.querySelector("#summary-image-display");
 const summaryImageCrop = document.querySelector("#summary-image-crop");
 const summaryImageZoom = document.querySelector("#summary-image-zoom");
 const summaryImageCancel = document.querySelector("#summary-image-cancel");
+const summaryVideoDialog = document.querySelector("#summary-video-dialog");
+const summaryVideoForm = document.querySelector("#summary-video-form");
+const summaryVideoSource = document.querySelector("#summary-video-source");
+const summaryVideoFile = document.querySelector("#summary-video-file");
+const summaryVideoUrl = document.querySelector("#summary-video-url");
+const summaryVideoTitle = document.querySelector("#summary-video-title");
+const summaryVideoCaption = document.querySelector("#summary-video-caption");
+const summaryVideoAlign = document.querySelector("#summary-video-align");
+const summaryVideoWidth = document.querySelector("#summary-video-width");
+const summaryVideoPlayback = document.querySelector("#summary-video-playback");
+const summaryVideoDisplay = document.querySelector("#summary-video-display");
+const summaryVideoCancel = document.querySelector("#summary-video-cancel");
 const summaryLinkDialog = document.querySelector("#summary-link-dialog");
 const summaryLinkForm = document.querySelector("#summary-link-form");
 const summaryLinkLabel = document.querySelector("#summary-link-label");
@@ -3183,6 +3195,7 @@ function plainTextFromRich(rich, separator = "\n\n") {
       if (block.type === "formula") return block.formula || "";
       if (block.type === "code") return block.code || "";
       if (block.type === "image") return [block.title, block.caption].filter(Boolean).join(" ");
+      if (block.type === "video") return [block.title, block.caption, block.url].filter(Boolean).join(" ");
       if (block.type === "table") return richTablePlainText(block);
       return "";
     })
@@ -3601,6 +3614,85 @@ function richImageDownloadLink(block = {}) {
   return `<p class="rich-download-only"><a class="resource-link" href="${escapeHtml(target)}"${linkAttributes(target, block)}${downloadAttribute(target, block)}>${label}</a></p>`;
 }
 
+function normalizeRichMediaWidth(value = 76) {
+  const width = Number(value);
+  return Number.isFinite(width) ? Math.min(100, Math.max(24, width)) : 76;
+}
+
+function normalizeRichVideoPlayback(value = "") {
+  return ["controls", "loop-muted", "autoplay-loop-muted"].includes(value) ? value : "controls";
+}
+
+function richVideoFigureStyle(block = {}) {
+  return ` style="${escapeHtml(`--rich-video-width: ${normalizeRichMediaWidth(block.width)}%`)}"`;
+}
+
+function richVideoCaptionHtml(block = {}) {
+  const title = String(block.title || "").trim();
+  const caption = String(block.caption || "").trim();
+  if (!title && !caption) return "";
+  return `<figcaption>${title ? `<strong>${escapeHtml(title)}</strong>` : ""}${caption ? `<span>${escapeHtml(caption)}</span>` : ""}</figcaption>`;
+}
+
+function videoEmbedInfo(value = "") {
+  const target = normalizeLinkTarget(value, { assumeWeb: true });
+  if (/^data:video\//i.test(target) || /\.(mp4|webm|ogg|ogv|m4v|mov)([?#].*)?$/i.test(target)) {
+    return { kind: "video-file", src: target };
+  }
+  if (/^data:image\//i.test(target) || /\.(gif|apng|webp|svg)([?#].*)?$/i.test(target)) {
+    return { kind: "animation-file", src: target };
+  }
+  try {
+    const parsed = new URL(target);
+    const host = parsed.hostname.replace(/^www\./, "").toLowerCase();
+    if (host === "youtu.be") {
+      const id = parsed.pathname.split("/").filter(Boolean)[0] || "";
+      if (id) return { kind: "iframe", src: `https://www.youtube-nocookie.com/embed/${encodeURIComponent(id)}` };
+    }
+    if (host.endsWith("youtube.com")) {
+      const id = parsed.searchParams.get("v") || parsed.pathname.split("/").filter(Boolean).pop() || "";
+      if (id) return { kind: "iframe", src: `https://www.youtube-nocookie.com/embed/${encodeURIComponent(id)}` };
+    }
+    if (host.endsWith("vimeo.com")) {
+      const id = parsed.pathname.split("/").filter(Boolean).find((part) => /^\d+$/.test(part)) || "";
+      if (id) return { kind: "iframe", src: `https://player.vimeo.com/video/${encodeURIComponent(id)}` };
+    }
+    if (/drive\.google\.com$/i.test(host)) {
+      const fileId = parsed.pathname.match(/\/file\/d\/([^/]+)/)?.[1] || parsed.searchParams.get("id") || "";
+      if (fileId) return { kind: "iframe", src: `https://drive.google.com/file/d/${encodeURIComponent(fileId)}/preview` };
+    }
+  } catch {
+    // Fall through to an external link when the value is not a parseable URL.
+  }
+  return { kind: "link", src: target };
+}
+
+function richVideoDownloadLink(block = {}) {
+  const label = escapeHtml(block.title || block.caption || "Video or animation");
+  const target = normalizeLinkTarget(block.url || "#", { assumeWeb: true });
+  return `<p class="rich-download-only"><a class="resource-link" href="${escapeHtml(target)}"${linkAttributes(target, block)}${downloadAttribute(target, block)}>${label}</a></p>`;
+}
+
+function renderRichVideoEmbed(block = {}) {
+  const url = normalizeLinkTarget(block.url || "", { assumeWeb: true });
+  const embed = videoEmbedInfo(url);
+  const playback = normalizeRichVideoPlayback(block.playback);
+  if (embed.kind === "video-file") {
+    const loop = playback.includes("loop") ? " loop" : "";
+    const muted = playback.includes("muted") ? " muted" : "";
+    const autoplay = playback.includes("autoplay") ? " autoplay" : "";
+    const controls = playback === "controls" ? " controls" : " controls";
+    return `<video${controls}${loop}${muted}${autoplay} playsinline preload="metadata" src="${escapeHtml(embed.src)}"></video>`;
+  }
+  if (embed.kind === "animation-file") {
+    return `<img src="${escapeHtml(embed.src)}" alt="${escapeHtml(block.title || block.caption || "Animation")}">`;
+  }
+  if (embed.kind === "iframe") {
+    return `<iframe src="${escapeHtml(embed.src)}" title="${escapeHtml(block.title || "Embedded video")}" loading="lazy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>`;
+  }
+  return `<a class="resource-link" href="${escapeHtml(embed.src)}"${linkAttributes(embed.src, block)}>Open video link</a>`;
+}
+
 function cleanRichImageTitle(block = {}) {
   const title = String(block.title || "").trim();
   return /^pasted image\b/i.test(title) ? "" : title;
@@ -3675,6 +3767,15 @@ function renderRichContent(rich, fallbackText = "") {
                 <img src="${escapeHtml(imageSrc)}" alt="${escapeHtml(title || "Overview image")}">
               </span>
               ${captionPosition === "bottom" || captionPosition === "right" ? richImageCaptionHtml(block) : ""}
+            </figure>
+          `;
+        }
+        if (block.type === "video") {
+          if (block.display === "download") return richVideoDownloadLink(block);
+          return `
+            <figure class="rich-video justify-${align}"${richVideoFigureStyle(block)}>
+              <div class="rich-video-frame">${renderRichVideoEmbed(block)}</div>
+              ${richVideoCaptionHtml(block)}
             </figure>
           `;
         }
@@ -4058,6 +4159,7 @@ function parsedSubsection(title, description = "", items = [], rich = null) {
 function richHasContent(rich) {
   return Boolean(rich?.blocks?.some((block) =>
     block.type === "image" && block.url ||
+    block.type === "video" && block.url ||
     block.type === "formula" && block.formula ||
     block.type === "code" && block.code ||
     block.text ||
@@ -5061,27 +5163,51 @@ function detailBlock(title, className, content) {
 }
 
 function mediaGrid(items) {
-  if (!items || !items.length) return `<p class="evidence-empty">No project images have been added yet.</p>`;
+  if (!items || !items.length) return `<p class="evidence-empty">No project media has been added yet.</p>`;
 
   return `
     <div class="media-grid">
       ${items.map((item) => `
         <figure>
-          ${item.status === "planned" ? `
-            <div class="media-placeholder">${item.title}</div>
-          ` : `
-            <a href="${escapeHtml(normalizeLinkTarget(item.url, { assumeWeb: isWebsiteLinkItem(item, item.url) }))}"${linkAttributes(item.url, item)}>
-              <img src="${escapeHtml(normalizeLinkTarget(item.url, { assumeWeb: isWebsiteLinkItem(item, item.url) }))}" alt="${escapeHtml(item.title)}">
-            </a>
-          `}
+          ${mediaGridPreview(item)}
           <figcaption>
-            <strong>${escapeHtml(item.title)}</strong>
-            <span>${escapeHtml(item.caption || "")}</span>
+            <strong>${escapeHtml(itemTitle(item))}</strong>
+            <span>${escapeHtml(itemDescription(item))}</span>
           </figcaption>
         </figure>
       `).join("")}
     </div>
   `;
+}
+
+function mediaGridPreview(item = {}) {
+  const rawUrl = itemUrl(item);
+  const target = normalizeLinkTarget(rawUrl, { assumeWeb: isWebsiteLinkItem(item, rawUrl) });
+  const title = itemTitle(item);
+  if (!target || item.status === "planned") {
+    return `<div class="media-placeholder">${escapeHtml(title)}</div>`;
+  }
+  const embed = videoEmbedInfo(target);
+  if (embed.kind !== "link") {
+    return `
+      <div class="media-grid-frame">
+        ${renderRichVideoEmbed({
+          caption: itemDescription(item),
+          playback: item.playback || "controls",
+          title,
+          url: target
+        })}
+      </div>
+    `;
+  }
+  if (isImageUrl(target)) {
+    return `
+      <a href="${escapeHtml(target)}"${linkAttributes(target, item)}>
+        <img src="${escapeHtml(target)}" alt="${escapeHtml(title)}">
+      </a>
+    `;
+  }
+  return `<div class="media-placeholder">${resourceLink({ ...item, url: target }, title)}</div>`;
 }
 
 function itemTitle(item) {
@@ -5090,7 +5216,7 @@ function itemTitle(item) {
 }
 
 function itemUrl(item) {
-  return item?.url || item?.artifact || "";
+  return item?.url || item?.artifact || item?.href || item?.file || item?.path || item?.src || "";
 }
 
 function itemDescription(item) {
@@ -5133,23 +5259,22 @@ function renderPortfolioResourceList(title, items, emptyMessage) {
 function renderPortfolioMedia(items) {
   return `
     <section class="portfolio-preview-section">
-      <h3>Images</h3>
+      <h3>Media</h3>
       ${(items || []).length ? `
         <div class="portfolio-media-grid">
           ${items.map((item) => {
-            const url = itemUrl(item);
             return `
               <figure>
-                ${isImageUrl(url) ? `<img src="${url}" alt="${itemTitle(item)}">` : `<div class="media-placeholder">${itemTitle(item)}</div>`}
+                ${mediaGridPreview(item)}
                 <figcaption>
-                  <strong>${itemTitle(item)}</strong>
-                  ${itemDescription(item) ? `<span>${itemDescription(item)}</span>` : ""}
+                  <strong>${escapeHtml(itemTitle(item))}</strong>
+                  ${itemDescription(item) ? `<span>${escapeHtml(itemDescription(item))}</span>` : ""}
                 </figcaption>
               </figure>
             `;
           }).join("")}
         </div>
-      ` : `<p class="evidence-empty">No images have been added yet.</p>`}
+      ` : `<p class="evidence-empty">No media has been added yet.</p>`}
     </section>
   `;
 }
@@ -6156,6 +6281,33 @@ function createRichImageBlock(blockData) {
   return figure;
 }
 
+function createRichVideoBlock(blockData = {}) {
+  const figure = document.createElement("figure");
+  const align = ["left", "center", "right"].includes(blockData.align) ? blockData.align : "center";
+  figure.className = `rich-block rich-video-block justify-${align}`;
+  figure.dataset.type = "video";
+  figure.dataset.url = normalizeLinkTarget(blockData.url || "", { assumeWeb: true });
+  figure.dataset.title = blockData.title || "";
+  figure.dataset.caption = blockData.caption || "";
+  figure.dataset.align = align;
+  figure.dataset.width = String(normalizeRichMediaWidth(blockData.width));
+  figure.dataset.display = blockData.display === "download" ? "download" : "show";
+  figure.dataset.source = blockData.source || "local";
+  figure.dataset.playback = normalizeRichVideoPlayback(blockData.playback);
+  figure.style.setProperty("--rich-video-width", `${normalizeRichMediaWidth(blockData.width)}%`);
+  figure.contentEditable = "false";
+  figure.draggable = true;
+  figure.title = "Drag video or animation to move it. Drag an edge to resize.";
+  figure.innerHTML = `
+    ${richBlockActions("video or animation", { movable: true, typingRails: true })}
+    ${figure.dataset.display === "download" ? `<span class="rich-download-badge">Download only</span>` : ""}
+    <div class="rich-video-frame">${renderRichVideoEmbed(figure.dataset)}</div>
+    ${richVideoCaptionHtml(figure.dataset)}
+    ${richImageResizeHandles()}
+  `;
+  return figure;
+}
+
 function createRichTableBlock(blockData = {}) {
   const block = document.createElement("figure");
   const align = ["left", "center", "right"].includes(blockData.align) ? blockData.align : "left";
@@ -6253,6 +6405,30 @@ function refreshRichImageBlock(block, blockData) {
   `;
 }
 
+function refreshRichVideoBlock(block, blockData = {}) {
+  const align = ["left", "center", "right"].includes(blockData.align) ? blockData.align : block.dataset.align || "center";
+  block.dataset.url = normalizeLinkTarget(blockData.url || block.dataset.url || "", { assumeWeb: true });
+  block.dataset.title = blockData.title || "";
+  block.dataset.caption = blockData.caption || "";
+  block.dataset.align = align;
+  block.dataset.width = String(normalizeRichMediaWidth(blockData.width || block.dataset.width));
+  block.dataset.display = blockData.display === "download" ? "download" : "show";
+  block.dataset.source = blockData.source || block.dataset.source || "local";
+  block.dataset.playback = normalizeRichVideoPlayback(blockData.playback || block.dataset.playback);
+  block.style.setProperty("--rich-video-width", `${normalizeRichMediaWidth(block.dataset.width)}%`);
+  block.draggable = true;
+  block.title = "Drag video or animation to move it. Drag an edge to resize.";
+  block.classList.remove("justify-left", "justify-center", "justify-right");
+  block.classList.add(`justify-${align}`);
+  block.innerHTML = `
+    ${richBlockActions("video or animation", { movable: true, typingRails: true })}
+    ${block.dataset.display === "download" ? `<span class="rich-download-badge">Download only</span>` : ""}
+    <div class="rich-video-frame">${renderRichVideoEmbed(block.dataset)}</div>
+    ${richVideoCaptionHtml(block.dataset)}
+    ${richImageResizeHandles()}
+  `;
+}
+
 function refreshRichTableBlock(block, blockData = {}) {
   const align = ["left", "center", "right"].includes(blockData.align || block.dataset.align) ? blockData.align || block.dataset.align : "left";
   const rows = normalizeRichTableRows(blockData.rows || tableRowsFromBlock(block), blockData.rowCount || block.dataset.rowCount || 3, blockData.columnCount || block.dataset.columnCount || 3);
@@ -6301,6 +6477,7 @@ function refreshRichCodeBlock(block, blockData = {}) {
 
 function createRichBlockElement(block) {
     if (block.type === "image") return createRichImageBlock(block);
+    if (block.type === "video") return createRichVideoBlock(block);
     if (block.type === "formula") return createRichFormulaBlock(block);
     if (block.type === "code") return createRichCodeBlock(block);
     if (block.type === "table") return createRichTableBlock(block);
@@ -7124,6 +7301,21 @@ function extractRichSummary(editor) {
         wrap: normalizeRichImageWrap(element.dataset.wrap)
       };
     }
+    if (element.dataset.type === "video") {
+      const url = normalizeLinkTarget(element.dataset.url || "", { assumeWeb: true });
+      if (!url) return null;
+      return {
+        align,
+        caption: element.dataset.caption || "",
+        display: element.dataset.display === "download" ? "download" : "show",
+        playback: normalizeRichVideoPlayback(element.dataset.playback),
+        source: element.dataset.source || "local",
+        title: element.dataset.title || "",
+        type: "video",
+        url,
+        width: normalizeRichMediaWidth(element.dataset.width)
+      };
+    }
     if (element.dataset.type === "table") {
       const rows = tableRowsFromBlock(element);
       if (!rows.length) return null;
@@ -7219,11 +7411,64 @@ async function uploadSummaryImageFile(file, options = {}) {
   };
 }
 
+function isSupportedRichVideoFile(fileName = "", mimeType = "") {
+  const extension = extensionFor(fileName).toLowerCase();
+  return mimeType.startsWith("video/") ||
+    ["image/gif", "image/apng", "image/webp", "image/svg+xml"].includes(mimeType) ||
+    [".mp4", ".webm", ".ogg", ".ogv", ".mov", ".m4v", ".gif", ".apng", ".webp", ".svg"].includes(extension);
+}
+
+async function uploadSummaryVideoFile(file, options = {}) {
+  const project = selectedProject();
+  const projectId = options.projectId || project?.id;
+  if (!projectId || !file) return null;
+  if (!isSupportedRichVideoFile(file.name, file.type || "")) {
+    setStatus("Choose a video file or animation file such as MP4, WebM, OGG, MOV, GIF, APNG, WebP, or SVG.");
+    return null;
+  }
+  const displayTitle = Object.prototype.hasOwnProperty.call(options, "title") ? options.title : file.name;
+  const fileName = withExtension(displayTitle || file.name, file.name);
+  const data = await readFileAsDataUrl(file);
+  const response = await fetch("/api/upload", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      projectId,
+      section: options.folder || "summary",
+      fileName,
+      data
+    })
+  });
+  const result = await response.json();
+  if (!response.ok) {
+    setStatus(result.error || "Video upload failed.");
+    return null;
+  }
+  return {
+    align: options.align || "center",
+    caption: options.caption || "",
+    display: options.display === "download" ? "download" : "show",
+    playback: normalizeRichVideoPlayback(options.playback),
+    source: "local",
+    title: options.title || file.name,
+    type: "video",
+    url: result.url,
+    width: normalizeRichMediaWidth(options.width)
+  };
+}
+
 function updateSummaryImageDialogVisibility() {
   const source = summaryImageSource?.value || "local";
   const isLocal = source === "local";
   document.querySelector(".summary-image-local-field").hidden = !isLocal;
   document.querySelector(".summary-image-url-field").hidden = isLocal;
+}
+
+function updateSummaryVideoDialogVisibility() {
+  const source = summaryVideoSource?.value || "local";
+  const isLocal = source === "local";
+  document.querySelector(".summary-video-local-field").hidden = !isLocal;
+  document.querySelector(".summary-video-url-field").hidden = isLocal;
 }
 
 async function openSummaryImageDialog(existingBlock = null, options = {}) {
@@ -7316,6 +7561,78 @@ async function openSummaryImageDialog(existingBlock = null, options = {}) {
     width: normalizeRichImageWidth(summaryImageWidth.value),
     wrap: normalizeRichImageWrap(summaryImageWrap.value),
     title: summaryImageTitle.value.trim() || file.name
+  });
+}
+
+async function openSummaryVideoDialog(existingBlock = null, options = {}) {
+  const heading = summaryVideoDialog?.querySelector("h2");
+  const submitButton = summaryVideoDialog?.querySelector("button[type='submit']");
+  if (!summaryVideoDialog) return null;
+  if (heading) heading.textContent = existingBlock ? "Edit video or animation" : "Add video or animation";
+  if (submitButton) submitButton.textContent = existingBlock ? "Save media" : "Add media";
+  summaryVideoSource.value = existingBlock?.dataset.source || "local";
+  summaryVideoFile.value = "";
+  summaryVideoUrl.value = existingBlock?.dataset.source && existingBlock.dataset.source !== "local" ? existingBlock.dataset.url || "" : "";
+  summaryVideoTitle.value = existingBlock?.dataset.title || "";
+  summaryVideoCaption.value = existingBlock?.dataset.caption || "";
+  summaryVideoAlign.value = existingBlock?.dataset.align || "center";
+  summaryVideoWidth.value = String(normalizeRichMediaWidth(existingBlock?.dataset.width));
+  summaryVideoPlayback.value = normalizeRichVideoPlayback(existingBlock?.dataset.playback);
+  summaryVideoDisplay.value = existingBlock?.dataset.display || "show";
+  updateSummaryVideoDialogVisibility();
+  const saved = await dialogValue(summaryVideoDialog);
+  if (!saved) return null;
+  const file = summaryVideoFile.files[0];
+  const source = summaryVideoSource.value || "local";
+  const url = normalizeLinkTarget(summaryVideoUrl.value.trim(), { assumeWeb: true });
+
+  if (source !== "local") {
+    const existingUrl = existingBlock?.dataset.url || "";
+    const nextUrl = url || existingUrl;
+    if (!nextUrl) {
+      setStatus("Paste a video, animation, YouTube, Vimeo, or Drive link first.");
+      return null;
+    }
+    return {
+      align: summaryVideoAlign.value,
+      caption: summaryVideoCaption.value.trim(),
+      display: summaryVideoDisplay.value === "download" ? "download" : "show",
+      playback: normalizeRichVideoPlayback(summaryVideoPlayback.value),
+      source,
+      title: summaryVideoTitle.value.trim() || displayNameFromUrl(nextUrl, source === "drive" ? "Google Drive video" : "Video link"),
+      type: "video",
+      url: nextUrl,
+      width: normalizeRichMediaWidth(summaryVideoWidth.value)
+    };
+  }
+
+  if (!file && !existingBlock) {
+    setStatus("Choose a video or animation first.");
+    return null;
+  }
+  if (!file && existingBlock) {
+    return {
+      align: summaryVideoAlign.value,
+      caption: summaryVideoCaption.value.trim(),
+      display: summaryVideoDisplay.value === "download" ? "download" : "show",
+      playback: normalizeRichVideoPlayback(summaryVideoPlayback.value),
+      source: existingBlock.dataset.source || "local",
+      title: summaryVideoTitle.value.trim() || existingBlock.dataset.title || "",
+      type: "video",
+      url: existingBlock.dataset.url || "",
+      width: normalizeRichMediaWidth(summaryVideoWidth.value)
+    };
+  }
+
+  return uploadSummaryVideoFile(file, {
+    align: summaryVideoAlign.value,
+    caption: summaryVideoCaption.value.trim(),
+    display: summaryVideoDisplay.value === "download" ? "download" : "show",
+    folder: options.folder || "summary",
+    playback: summaryVideoPlayback.value,
+    projectId: options.projectId || "",
+    title: summaryVideoTitle.value.trim() || file.name,
+    width: normalizeRichMediaWidth(summaryVideoWidth.value)
   });
 }
 
@@ -7709,7 +8026,7 @@ function configureSummaryContextMenu(mode = "rich", options = {}) {
   if (richContextColorSwatches) richContextColorSwatches.hidden = true;
   if (mode === "rich") {
     const textOnly = Boolean(options.textOnly);
-    summaryContextMenu.querySelectorAll("[data-rich-action='add-image'], [data-rich-action='add-table'], [data-rich-action='add-formula'], [data-rich-action='add-code'], [data-rich-action='paste-code']").forEach((button) => {
+    summaryContextMenu.querySelectorAll("[data-rich-action='add-image'], [data-rich-action='add-video'], [data-rich-action='add-table'], [data-rich-action='add-formula'], [data-rich-action='add-code'], [data-rich-action='paste-code']").forEach((button) => {
       button.hidden = textOnly;
     });
     const selectedType = activeSummaryBlock?.dataset?.type || "";
@@ -7947,6 +8264,16 @@ async function handleRichAction(action, editor) {
       saveRichEditorToProject(editor);
     }
   }
+  if (action === "add-video") {
+      const videoBlock = await openSummaryVideoDialog(null, {
+          folder: editor.dataset.richFolder || "summary",
+          projectId: editor.dataset.richProjectId || ""
+      });
+    if (videoBlock) {
+      insertRichBlockAfterCursor(editor, createRichVideoBlock(videoBlock));
+      saveRichEditorToProject(editor);
+    }
+  }
   if (action === "add-formula") {
     const formulaBlock = await openSummaryFormulaDialog();
     if (formulaBlock) {
@@ -8003,7 +8330,7 @@ function configureRichEditorToolbar(editor) {
   const selectedType = activeSummaryBlock && editor?.contains(activeSummaryBlock) ? activeSummaryBlock.dataset.type : "";
   richEditorToolbar.querySelectorAll("[data-rich-toolbar-action]").forEach((button) => {
     const action = button.dataset.richToolbarAction || "";
-    const mediaAction = /^(add-image|add-table|add-formula|add-code|image-wrap-|crop-image)/.test(action);
+    const mediaAction = /^(add-image|add-video|add-table|add-formula|add-code|image-wrap-|crop-image)/.test(action);
     const imageOnly = /^(image-wrap-|crop-image)/.test(action);
     button.hidden = (textOnly && mediaAction) || (imageOnly && selectedType !== "image");
   });
@@ -8061,6 +8388,11 @@ async function editSelectedRichBlock(editor) {
     if (updated) refreshRichImageBlock(block, updated);
     return;
   }
+  if (block.dataset.type === "video") {
+    const updated = await openSummaryVideoDialog(block);
+    if (updated) refreshRichVideoBlock(block, updated);
+    return;
+  }
   if (block.dataset.type === "formula") {
     const updated = await openSummaryFormulaDialog(block);
     if (updated) refreshRichFormulaBlock(block, updated);
@@ -8110,6 +8442,8 @@ function deleteSelectedRichBlock(editor) {
   if (!block) return;
   const label = block.dataset.type === "image"
     ? "this overview image"
+    : block.dataset.type === "video"
+      ? "this video or animation"
     : block.dataset.type === "formula"
       ? "this formula"
       : block.dataset.type === "code"
@@ -15926,11 +16260,12 @@ function handleRichCaretClick(event) {
 function handleRichDragStart(event) {
   const handle = event.target.closest("[data-rich-drag-handle]");
   const imageBlock = event.target.closest(".rich-image-block");
+  const videoBlock = event.target.closest(".rich-video-block");
   const tableBlock = event.target.closest(".rich-table-block");
   const isControl = event.target.closest("button, input, select, textarea, a, .rich-block-actions, [data-rich-caret], [data-rich-image-resize], [data-rich-table-cell]");
-  const block = handle?.closest(".rich-block") || (!isControl ? imageBlock || tableBlock : null);
+  const block = handle?.closest(".rich-block") || (!isControl ? imageBlock || videoBlock || tableBlock : null);
   if (!block) {
-    if (imageBlock || tableBlock) event.preventDefault();
+    if (imageBlock || videoBlock || tableBlock) event.preventDefault();
     return;
   }
   activeRichDragBlock = block;
@@ -16081,17 +16416,19 @@ function imageMoveDragControl(target) {
 function beginRichImageResizeDrag(event) {
   const handle = event.target.closest("[data-rich-image-resize]");
   if (!handle || event.button !== 0) return;
-  const block = handle.closest(".rich-image-block");
+  const block = handle.closest(".rich-image-block, .rich-video-block");
   const editor = block?.closest("[data-rich-editor]");
   if (!block || !editor) return;
   const editorRect = editor.getBoundingClientRect();
+  const video = block.matches(".rich-video-block");
   activeRichImageResizeDrag = {
     block,
     direction: handle.dataset.richImageResize || "e",
     editor,
     editorWidth: Math.max(1, editorRect.width),
     pointerId: event.pointerId,
-    startWidth: normalizeRichImageWidth(block.dataset.width),
+    startWidth: video ? normalizeRichMediaWidth(block.dataset.width) : normalizeRichImageWidth(block.dataset.width),
+    video,
     startX: event.clientX
   };
   block.setPointerCapture?.(event.pointerId);
@@ -16105,10 +16442,11 @@ function moveRichImageResizeDrag(event) {
   const drag = activeRichImageResizeDrag;
   const directionMultiplier = drag.direction.includes("w") ? -1 : 1;
   const delta = ((event.clientX - drag.startX) / drag.editorWidth) * 100 * directionMultiplier;
-  const nextWidth = normalizeRichImageWidth(drag.startWidth + delta);
+  const nextWidth = drag.video ? normalizeRichMediaWidth(drag.startWidth + delta) : normalizeRichImageWidth(drag.startWidth + delta);
   drag.block.dataset.width = String(nextWidth);
-  drag.block.style.setProperty("--rich-image-width", `${nextWidth}%`);
-  if (summaryImageWidth && drag.block.matches(".selected")) summaryImageWidth.value = String(Math.round(nextWidth));
+  drag.block.style.setProperty(drag.video ? "--rich-video-width" : "--rich-image-width", `${nextWidth}%`);
+  if (drag.video && summaryVideoWidth && drag.block.matches(".selected")) summaryVideoWidth.value = String(Math.round(nextWidth));
+  if (!drag.video && summaryImageWidth && drag.block.matches(".selected")) summaryImageWidth.value = String(Math.round(nextWidth));
   event.preventDefault();
 }
 
@@ -16280,7 +16618,7 @@ summaryContextMenu.addEventListener("click", async (event) => {
     return;
   }
   await handleRichAction(action, activeSummaryEditor);
-  if (["add-image", "add-formula", "add-link", "add-code", "paste-code", "copy-text", "paste-text", "cut-text", "select-all-text", "edit-block", "delete-block"].includes(action)) {
+  if (["add-image", "add-video", "add-formula", "add-link", "add-code", "paste-code", "copy-text", "paste-text", "cut-text", "select-all-text", "edit-block", "delete-block"].includes(action)) {
     hideSummaryContextMenu();
   }
 });
@@ -18012,6 +18350,22 @@ summaryImageFile?.addEventListener("change", () => {
 summaryImageForm.addEventListener("submit", (event) => {
   event.preventDefault();
   closeDialogElement(summaryImageDialog, "save");
+});
+summaryVideoCancel?.addEventListener("click", () => {
+  closeDialogElement(summaryVideoDialog, "cancel");
+});
+summaryVideoSource?.addEventListener("change", updateSummaryVideoDialogVisibility);
+summaryVideoUrl?.addEventListener("input", () => {
+  if (!summaryVideoTitle.value && summaryVideoUrl.value.trim()) {
+    summaryVideoTitle.value = displayNameFromUrl(summaryVideoUrl.value.trim(), "Video link");
+  }
+});
+summaryVideoFile?.addEventListener("change", () => {
+  if (!summaryVideoTitle.value && summaryVideoFile.files[0]) summaryVideoTitle.value = summaryVideoFile.files[0].name;
+});
+summaryVideoForm?.addEventListener("submit", (event) => {
+  event.preventDefault();
+  closeDialogElement(summaryVideoDialog, "save");
 });
 summaryLinkCancel?.addEventListener("click", () => {
   closeDialogElement(summaryLinkDialog, "cancel");
