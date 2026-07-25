@@ -467,7 +467,7 @@
                       <div>
                           <p>Rich text fields behave like document editors. Click where you want to type, highlight the exact words you want to edit, then apply formatting to that selection. Formatting should not change an entire paragraph unless the whole paragraph is selected.</p>
                           <p>The builder stores the text as structured content so the portfolio can render it cleanly later. That means the editor may standardize pasted formatting, but it should preserve intentional choices such as bold text, font size, color, links, hard line breaks, images, videos, animations, formulas, tables, and code blocks.</p>
-                          <p>When a rich field is active, the builder shows a compact editor toolbar at the top of the active window. Commands are grouped by Text, Align, Insert, Image, Block, and Clipboard; hover over a group or click it to open the related commands beneath it. The same commands remain available from right-click menus so mouse-first and keyboard-first editing both work.</p>
+                          <p>When a rich field is active, the builder shows a compact editor toolbar at the top of the active window. Commands are grouped by Text, Align, Insert, Image, Table, Block, and Clipboard; hover over a group or click it to open the related commands beneath it. Close the toolbar when you want the extra space; double-click inside the same rich field to bring it back. The same commands remain available from right-click menus so mouse-first and keyboard-first editing both work.</p>
                           <p>Front-page, profile, contact, fun facts, and project overview fields now use the same selection-level text behavior. Highlight the exact words you want to edit, then right-click the highlighted text to copy, paste, cut, change font, change size, change color, bold, italicize, or underline where that field supports formatting. Identity and contact fields remain text-only, so image, formula, and code block insertion is intentionally disabled there.</p>
                           <ol>
                               <li>Right-click highlighted text in any builder rich text field to copy, cut, paste, select all, add a link, change font, change size, change color, and apply bold, italic, or underline.</li>
@@ -475,13 +475,15 @@
                               <li>Static text such as guide text, titles, and labels can also be copied by highlighting it and right-clicking the selection.</li>
                               <li>Use Enter for a new paragraph. Pasted line breaks remain line breaks.</li>
                               <li>Typing and wrapping should not create fake new paragraphs; only hard enters and pasted line breaks do.</li>
-                              <li>Use Add table from the toolbar or right-click menu to draw a table size or type row and column counts before insertion.</li>
+                              <li>Use Add table from the toolbar or right-click menu to draw a table size or type row and column counts before insertion. Tables can start as small as 1 by 1.</li>
                               <li>Use Add link to enter the displayed label, destination URL, and whether the link opens in the same tab or a new tab.</li>
                               <li>Use Add video or animation for MP4, WebM, OGG, MOV, GIF, APNG, WebP, SVG animation files, YouTube links, Vimeo links, Google Drive previews, or direct media URLs.</li>
                               <li>Choose Show when the media should play or animate inside the portfolio. Choose Download only when the item is evidence that should be linked instead of embedded.</li>
                               <li>Click an image, then use the Image toolbar group or right-click menu for wrap, caption, crop, edit, and delete commands. Images no longer show command buttons inside the content area.</li>
                               <li>Drag an image toward the left or right side of the editor to wrap text around it automatically. Drop it near the middle to keep it on its own line unless it is small enough for inline placement.</li>
+                              <li>Click inside a table cell, then use the Table toolbar group or right-click menu to insert rows, insert columns, delete the current row, or delete the current column at the cursor location.</li>
                               <li>Use the Code block command or Paste as code for source snippets so they render differently from general text.</li>
+                              <li>Use Ctrl+S to save the current source or project context, Ctrl+P to open the printable portfolio view, Ctrl+N to start a new project, Ctrl+comma to open Preferences, and Ctrl+Shift+S to apply a saved draft to the publishing target.</li>
                               <li>Save project and Save all sections both pass front-page, profile, contact, fun facts, and project rich text into the parsed preview catalog before the website is generated.</li>
                           </ol>
                           <ul>
@@ -559,6 +561,19 @@
                               <li>Successful compile results are cached by source snapshot, toolchain, flags, and workspace files, so repeated compile/run cycles are faster when nothing important has changed.</li>
                           </ul>
                           <p>For HDL, add or mark a Testbench file before simulation. The testbench must call $dumpfile and $dumpvars so the scope has signal-over-time data. In the scope, use signal filter, time zoom, per-signal color, and per-signal radix controls to make debugging readable.</p>
+                      </div>
+                  </details>
+                  <details class="builder-guide-section" data-guide-section="print pdf export portfolio">
+                      <summary><span class="guide-card-title">Print Portfolio</span><span class="guide-card-summary">Create a clean PDF-style portfolio from saved builder content.</span></summary>
+                      <div>
+                          <p>Print portfolio is for creating a document-style copy of the portfolio. It is not a screenshot of the website. The builder reads the saved profile, front-page text, fun facts, public sections, parsed projects, rich text, images, tables, links, and code blocks, then opens a clean print view organized for normal portfolio reading.</p>
+                          <ol>
+                              <li>Use Save project or Save all sections before printing so the document uses the latest parsed content.</li>
+                              <li>Choose File, Print Portfolio from the application menu, or press Ctrl+P.</li>
+                              <li>When the print dialog opens, choose a printer or choose Save as PDF.</li>
+                              <li>If the print window is blocked, allow pop-ups for the builder and run Print Portfolio again.</li>
+                          </ol>
+                          <p>The website preview remains the source for recruiter-facing web behavior. Print portfolio is the source for a compact downloadable or shareable PDF-style document.</p>
                       </div>
                   </details>
                   <details class="builder-guide-section" data-guide-section="assets editor projects files images evidence">
