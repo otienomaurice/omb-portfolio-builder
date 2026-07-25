@@ -5950,9 +5950,9 @@ function renderSummaryBuilder(project) {
         </div>
         <div class="summary-builder-actions">
           ${isEditing
-            ? `<button class="button secondary" type="button" data-summary-cancel="true">Cancel overview</button>`
-            : `<button class="button primary" type="button" data-summary-create="true">${hasSummary ? "Edit overview" : "Create overview"}</button>`}
-          ${hasSummary && !isEditing ? `<button class="button danger-control" type="button" data-summary-delete="true">Delete overview</button>` : ""}
+            ? `<button class="button secondary" type="button" data-summary-cancel="true">Cancel</button>`
+            : `<button class="button primary" type="button" data-summary-create="true">${hasSummary ? "Edit" : "Create"}</button>`}
+          ${hasSummary && !isEditing ? `<button class="button danger-control" type="button" data-summary-delete="true">Delete</button>` : ""}
         </div>
       </div>
       ${isEditing ? `
@@ -8211,11 +8211,11 @@ function renderActiveSectionToolbar(project) {
   if (currentPath.length && !currentNode) return "";
   const pathValue = customViewPathValue(currentPath);
   const editButton = currentPath.length
-    ? `<button type="button" data-open-editor="custom" data-mode="edit" data-section-id="${escapeHtml(section.id)}" data-node-path="${escapeHtml(pathValue)}">Edit current</button>`
-    : `<button type="button" data-open-editor="custom-section" data-section-id="${escapeHtml(section.id)}">Edit section</button>`;
+    ? `<button type="button" data-open-editor="custom" data-mode="edit" data-section-id="${escapeHtml(section.id)}" data-node-path="${escapeHtml(pathValue)}">Edit</button>`
+    : `<button type="button" data-open-editor="custom-section" data-section-id="${escapeHtml(section.id)}">Edit</button>`;
   const deleteButton = currentPath.length
-    ? `<button class="danger-icon" type="button" data-delete-node="${escapeHtml(section.id)}" data-node-path="${escapeHtml(pathValue)}">Delete subsection</button>`
-    : `<button class="danger-icon" type="button" data-delete-section="${escapeHtml(section.id)}">Delete section</button>`;
+    ? `<button class="danger-icon" type="button" data-delete-node="${escapeHtml(section.id)}" data-node-path="${escapeHtml(pathValue)}">Delete</button>`
+    : `<button class="danger-icon" type="button" data-delete-section="${escapeHtml(section.id)}">Delete</button>`;
 
   return `
     <div class="project-section-toolbar" aria-label="Current section actions">
@@ -9334,25 +9334,6 @@ function pendingEditorIsAddingUnderCustomPath(sectionId, path = []) {
   return (pendingEditor.parentPath || "") === customViewPathValue(path);
 }
 
-function renderCustomNodeActionBar(section, path = [], options = {}) {
-  const pathValue = customViewPathValue(path);
-  const isRoot = options.root === true;
-  const editButton = isRoot
-    ? `<button type="button" data-open-editor="custom-section" data-section-id="${escapeHtml(section.id)}">Edit overview</button>`
-    : `<button type="button" data-open-editor="custom" data-mode="edit" data-section-id="${escapeHtml(section.id)}" data-node-path="${escapeHtml(pathValue)}">Edit overview</button>`;
-  const deleteButton = isRoot
-    ? `<button class="danger-icon" type="button" data-delete-section="${escapeHtml(section.id)}">Delete section</button>`
-    : `<button class="danger-icon" type="button" data-delete-node="${escapeHtml(section.id)}" data-node-path="${escapeHtml(pathValue)}">Delete subsection</button>`;
-  return `
-    <div class="builder-subsection-actions builder-node-toolbar-row" aria-label="${escapeHtml(isRoot ? "Section actions" : "Subsection actions")}">
-      <button class="button primary" type="button" data-add-node-subsection="${escapeHtml(section.id)}" data-node-path="${escapeHtml(pathValue)}">Add subsection</button>
-      <button class="button secondary" type="button" data-upload-node="${escapeHtml(section.id)}" data-node-path="${escapeHtml(pathValue)}">Add file or image</button>
-      ${editButton}
-      ${deleteButton}
-    </div>
-  `;
-}
-
 function renderCustomNodeOverview(section, node, path = [], options = {}) {
   const isRoot = options.root === true;
   const description = isRoot ? section.description || "" : node?.description || "";
@@ -9385,7 +9366,6 @@ function renderCustomNodeWorkspace(section, node, path = [], options = {}) {
 
   return `
     <div class="builder-node-workspace" data-builder-current-path="${escapeHtml(customViewPathValue(path))}">
-      ${renderCustomNodeActionBar(section, path, { root: isRoot })}
       ${renderCustomNodeOverview(section, node, path, { root: isRoot })}
       ${isAddingHere ? `<div class="builder-child-create-editor">${renderPendingEditor()}</div>` : ""}
       ${directFiles}
@@ -9409,7 +9389,12 @@ function renderCustomSubsectionAccordion(section, node, path = []) {
         <span>${escapeHtml(builderNodeTitle(node))}</span>
         <span class="builder-subsection-summary-meta">
           ${countText ? `<small>${escapeHtml(countText)}</small>` : ""}
-          <button class="danger-icon builder-subsection-summary-delete" type="button" data-delete-node="${escapeHtml(section.id)}" data-node-path="${escapeHtml(customViewPathValue(path))}">Delete</button>
+          <span class="builder-subsection-summary-actions" aria-label="Subsection actions">
+            <button type="button" data-add-node-subsection="${escapeHtml(section.id)}" data-node-path="${escapeHtml(customViewPathValue(path))}">Add subsection</button>
+            <button type="button" data-upload-node="${escapeHtml(section.id)}" data-node-path="${escapeHtml(customViewPathValue(path))}">Add file or image</button>
+            <button type="button" data-open-editor="custom" data-mode="edit" data-section-id="${escapeHtml(section.id)}" data-node-path="${escapeHtml(customViewPathValue(path))}">Edit</button>
+            <button class="danger-icon builder-subsection-summary-delete" type="button" data-delete-node="${escapeHtml(section.id)}" data-node-path="${escapeHtml(customViewPathValue(path))}">Delete</button>
+          </span>
         </span>
       </summary>
       <div class="builder-subsection-content">
@@ -11083,6 +11068,8 @@ function activeSynthesisDiagram(project, file = activeCompileFile(project)) {
     available: synthesis.available !== false,
     terminal: synthesis.terminal || "",
     outputPath: synthesis.outputPath || "",
+    netlistPath: synthesis.netlistPath || "",
+    dotPath: synthesis.dotPath || "",
     synthesizedAt: synthesis.synthesizedAt || synthesis.generatedAt || ""
   };
 }
@@ -11096,15 +11083,28 @@ function renderSynthesisDiagramSvg(graph = {}) {
     ...nodes.filter((node) => node.id === topModule),
     ...nodes.filter((node) => node.id !== topModule)
   ];
-  const width = Math.max(720, ordered.length * 170 + 80);
-  const height = ordered.length > 1 ? 250 : 160;
+  const isNetlist = graph.netlist === true;
+  const columns = isNetlist ? Math.min(5, Math.max(1, Math.ceil(Math.sqrt(Math.max(1, ordered.length - 1))))) : ordered.length;
+  const rows = isNetlist ? Math.ceil(Math.max(1, ordered.length - 1) / columns) : 1;
+  const width = isNetlist ? Math.max(920, columns * 190 + 90) : Math.max(720, ordered.length * 170 + 80);
+  const height = isNetlist ? Math.max(330, 140 + rows * 104) : (ordered.length > 1 ? 250 : 160);
   const nodeWidth = 140;
   const nodeHeight = 54;
   const positions = new Map();
   ordered.forEach((node, index) => {
     const isTop = node.id === topModule;
-    const x = ordered.length === 1 ? (width - nodeWidth) / 2 : 40 + index * 170;
-    const y = isTop ? 32 : 140;
+    let x = ordered.length === 1 ? (width - nodeWidth) / 2 : 40 + index * 170;
+    let y = isTop ? 32 : 140;
+    if (isNetlist) {
+      if (isTop) {
+        x = (width - nodeWidth) / 2;
+        y = 26;
+      } else {
+        const cellIndex = Math.max(0, index - 1);
+        x = 45 + (cellIndex % columns) * 190;
+        y = 132 + Math.floor(cellIndex / columns) * 104;
+      }
+    }
     positions.set(node.id, { x, y });
   });
   const edges = Array.isArray(graph.edges) ? graph.edges : [];
@@ -11135,8 +11135,8 @@ function renderSynthesisDiagramSvg(graph = {}) {
         return `
           <g class="compile-synthesis-node${isTop ? " is-top" : ""}">
             <rect x="${position.x}" y="${position.y}" width="${nodeWidth}" height="${nodeHeight}" rx="7"></rect>
-            <text x="${position.x + 12}" y="${position.y + 24}">${escapeHtml(node.id)}</text>
-            <text class="compile-synthesis-file" x="${position.x + 12}" y="${position.y + 42}">${escapeHtml(node.fileName || (isTop ? "top module" : "module"))}</text>
+            <text x="${position.x + 12}" y="${position.y + 24}">${escapeHtml(node.label || node.id)}</text>
+            <text class="compile-synthesis-file" x="${position.x + 12}" y="${position.y + 42}">${escapeHtml(node.type || node.fileName || node.kind || (isTop ? "top module" : "module"))}</text>
           </g>
         `;
       }).join("")}
@@ -11149,6 +11149,7 @@ function renderCompileSynthesisDiagramWindow(project, file = activeCompileFile(p
   if (!workspace.synthesisDiagramWindowOpen || !isHdlLanguage(file?.language)) return "";
   const synthesis = activeSynthesisDiagram(project, file);
   const graph = synthesis.graph || {};
+  const zoom = Math.max(0.25, Math.min(3, Number(workspace.synthesisDiagramZoom || 1) || 1));
   return `
     <section class="compile-synthesis-diagram-window" aria-label="Synthesis diagram">
       <div class="compile-synthesis-diagram-heading">
@@ -11156,15 +11157,28 @@ function renderCompileSynthesisDiagramWindow(project, file = activeCompileFile(p
           <strong>Synthesis diagram</strong>
           <span>${escapeHtml(graph.topModule ? `Top: ${graph.topModule}` : file?.fileName || "HDL source")}</span>
         </div>
+        <div class="compile-synthesis-zoom-controls" aria-label="Synthesis diagram zoom controls">
+          <button type="button" data-compile-synthesis-zoom="out" title="Zoom out">-</button>
+          <span>${Math.round(zoom * 100)}%</span>
+          <button type="button" data-compile-synthesis-zoom="in" title="Zoom in">+</button>
+          <button type="button" data-compile-synthesis-zoom="reset" title="Reset zoom">100%</button>
+        </div>
         <button class="compile-mini-window-close" type="button" data-compile-toggle-synthesis-diagram aria-label="Close synthesis diagram">&times;</button>
       </div>
       <div class="compile-synthesis-diagram-body">
         <div class="compile-synthesis-meta">
           <span>${escapeHtml(synthesis.tool || "Source parser")}</span>
-          ${synthesis.outputPath ? `<span>${escapeHtml(synthesis.outputPath)}</span>` : ""}
+          ${synthesis.netlistPath || synthesis.outputPath ? `<span>Netlist: ${escapeHtml(synthesis.netlistPath || synthesis.outputPath)}</span>` : ""}
+          ${synthesis.dotPath ? `<span>DOT: ${escapeHtml(synthesis.dotPath)}</span>` : ""}
+          ${graph.netlist ? `<span>${escapeHtml(`${graph.cellCount || 0} synthesized cells`)}</span>` : ""}
+          ${graph.truncated ? `<span>Large netlist preview truncated</span>` : ""}
           ${synthesis.available === false ? `<span>Yosys not available; showing source graph.</span>` : ""}
         </div>
-        ${renderSynthesisDiagramSvg(graph)}
+        <div class="compile-synthesis-canvas" style="--synthesis-zoom: ${zoom};">
+          <div class="compile-synthesis-zoom-stage">
+            ${renderSynthesisDiagramSvg(graph)}
+          </div>
+        </div>
       </div>
     </section>
   `;
@@ -11179,6 +11193,7 @@ function showCompileSynthesisDiagram(project, file = activeCompileFile(project))
   const designFiles = (workspace.files || []).filter((item) => isHdlLanguage(item.language) && item.role !== "testbench");
   const fallbackFiles = designFiles.length ? designFiles : (workspace.files || []);
   workspace.synthesisDiagramWindowOpen = true;
+  workspace.synthesisDiagramZoom = Math.max(0.25, Math.min(3, Number(workspace.synthesisDiagramZoom || 1) || 1));
   workspace.synthesis = workspace.synthesis || {
     graph: hdlSynthesisGraphFromFiles(fallbackFiles),
     tool: "Source parser",
@@ -13144,7 +13159,12 @@ async function compileActiveFile(project, file, options = {}) {
     file.waveform = compileResult.waveform || null;
     ensureCompileCode(project).waveform = compileResult.waveform || null;
     if (compileResult.synthesis) {
-      ensureCompileCode(project).synthesis = compileResult.synthesis;
+      const synthWorkspace = ensureCompileCode(project);
+      synthWorkspace.synthesis = compileResult.synthesis;
+      if (action === "synthesize") {
+        synthWorkspace.synthesisDiagramWindowOpen = true;
+        synthWorkspace.synthesisDiagramZoom = Math.max(0.25, Math.min(3, Number(synthWorkspace.synthesisDiagramZoom || 1) || 1));
+      }
     }
     if (compileResult.saved) {
       file.savedPath = compileResult.saved.sourcePath || file.savedPath;
@@ -16497,6 +16517,20 @@ sectionContent.addEventListener("click", async (event) => {
   }
   if (hasDataset("compileSynthesize")) {
     await compileActiveFile(project, compileFile, { action: "synthesize", forceRebuild: true });
+    return;
+  }
+  const synthesisZoomButton = event.target.closest("[data-compile-synthesis-zoom]");
+  if (synthesisZoomButton) {
+    const action = synthesisZoomButton.dataset.compileSynthesisZoom;
+    const currentZoom = Math.max(0.25, Math.min(3, Number(compileWorkspace.synthesisDiagramZoom || 1) || 1));
+    compileWorkspace.synthesisDiagramZoom = action === "in"
+      ? Math.min(3, currentZoom + 0.25)
+      : action === "out"
+        ? Math.max(0.25, currentZoom - 0.25)
+        : 1;
+    setStatus(`Synthesis diagram zoom ${Math.round(compileWorkspace.synthesisDiagramZoom * 100)}%.`);
+    scheduleAutosave(600);
+    renderSectionContent(project);
     return;
   }
   if (hasDataset("compileToggleSynthesisDiagram")) {

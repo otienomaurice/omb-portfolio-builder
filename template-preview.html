@@ -11,7 +11,7 @@
     <link rel="shortcut icon" href="assets/favicon.ico" />
     <link rel="apple-touch-icon" sizes="180x180" href="assets/apple-touch-icon.png" />
     <link rel="stylesheet" href="styles.css" />
-    <link rel="stylesheet" href="template-preview.css?v=0.2.85" />
+    <link rel="stylesheet" href="template-preview.css?v=0.2.86" />
   </head>
   <body class="template-preview-page">
       <header class="template-header">
@@ -531,7 +531,8 @@
                               <li>Use Build project when the language needs several files from the project workspace.</li>
                               <li>Use Run to execute supported languages after a successful build.</li>
                               <li>Use Input beside the output tabs to open a separate moveable Program input window for stdin before running code.</li>
-                              <li>Use Synthesize for Verilog or SystemVerilog to run the HDL synthesis path when Yosys is available. Right-click Synthesize to view the synthesis diagram; if Yosys is missing, the diagram still shows the source-level module/instance graph.</li>
+                              <li>Use Synthesize for Verilog or SystemVerilog to run the HDL synthesis path with Yosys from OSS CAD Suite. If the suite is missing, use Tools, Install compiler tools while an HDL file is active; the builder installs the user-local OSS CAD Suite package and refreshes tool detection.</li>
+                              <li>After synthesis, the builder saves the Yosys netlist JSON and a DOT diagram artifact, then opens a zoomable synthesis diagram window. Use the plus, minus, and reset zoom controls to inspect the synthesized cells and module relationships without leaving the builder.</li>
                               <li>Use Simulate for Verilog or SystemVerilog when a testbench is present.</li>
                               <li>Use Append code to project to place the active source into a selected project section or nested subsection as a formatted code block.</li>
                           </ol>
@@ -1472,7 +1473,7 @@
           <button type="button" data-rich-action="edit-block">Edit selected block</button>
           <button class="danger-menu-item" type="button" data-rich-action="delete-block">Delete selected block</button>
       </div>
-      <script src="electronics-search.js?v=0.2.85"></script>
-      <script src="template-preview.js?v=0.2.85"></script>
+      <script src="electronics-search.js?v=0.2.86"></script>
+      <script src="template-preview.js?v=0.2.86"></script>
   </body>
 </html>
