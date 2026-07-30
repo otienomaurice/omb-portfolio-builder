@@ -337,6 +337,8 @@ let activeCompileSidebarResize = null;
 let activeCompileScrollElement = null;
 let activeCompileStdinDrag = null;
 let activeCompileFileDetailsDrag = null;
+let activeCompileSynthesisDrag = null;
+let activeCompileSynthesisResize = null;
 let activeScopeCursorDrag = null;
 const liveDiagnosticTimers = new Map();
 const liveDiagnosticSequences = new Map();
@@ -2266,6 +2268,13 @@ function ensureCompileCode(project) {
     ? project.compileCode.synthesisExplorerView
     : "tree";
   project.compileCode.synthesisSourceDetails = String(project.compileCode.synthesisSourceDetails || "");
+  const synthesisBounds = project.compileCode.synthesisWindowBounds || {};
+  project.compileCode.synthesisWindowBounds = {
+    x: Number.isFinite(Number(synthesisBounds.x)) ? Math.max(0, Math.round(Number(synthesisBounds.x))) : null,
+    y: Number.isFinite(Number(synthesisBounds.y)) ? Math.max(0, Math.round(Number(synthesisBounds.y))) : null,
+    width: Number.isFinite(Number(synthesisBounds.width)) ? Math.max(520, Math.round(Number(synthesisBounds.width))) : null,
+    height: Number.isFinite(Number(synthesisBounds.height)) ? Math.max(360, Math.round(Number(synthesisBounds.height))) : null
+  };
   const appendDestinations = compileAppendDestinations(project);
   if (!project.compileCode.appendTargetId || !appendDestinations.some((destination) => destination.id === project.compileCode.appendTargetId)) {
     project.compileCode.appendTargetId = appendDestinations[0]?.id || "";
@@ -2971,9 +2980,45 @@ function normalizeCompileFloatingHeight(value) {
   return Math.max(180, Math.min(780, Math.round(numeric)));
 }
 
+function compileWorkspaceRect() {
+  const element = sectionContent?.querySelector?.("[data-compile-workspace]");
+  const rect = element?.getBoundingClientRect?.();
+  if (rect && rect.width && rect.height) return rect;
+  return {
+    left: 0,
+    top: 0,
+    width: Math.max(760, window.innerWidth || 1200),
+    height: Math.max(560, (window.innerHeight || 820) - 80)
+  };
+}
+
+function normalizeSynthesisWindowBounds(value = {}) {
+  const rect = compileWorkspaceRect();
+  const margin = 8;
+  const maxWidth = Math.max(520, rect.width - margin * 2);
+  const maxHeight = Math.max(360, rect.height - margin * 2);
+  const defaultTop = Math.min(34, Math.max(margin, rect.height - 420));
+  const width = Math.min(maxWidth, Math.max(520, Number(value.width) || maxWidth));
+  const height = Math.min(maxHeight, Math.max(360, Number(value.height) || Math.max(420, maxHeight - defaultTop)));
+  const x = Math.min(Math.max(Number(value.x) || margin, margin), Math.max(margin, rect.width - width - margin));
+  const y = Math.min(Math.max(Number(value.y) || defaultTop, margin), Math.max(margin, rect.height - height - margin));
+  return {
+    x: Math.round(x),
+    y: Math.round(y),
+    width: Math.round(width),
+    height: Math.round(height)
+  };
+}
+
 function compileOutputResizeHandles(unlocked = false) {
   const edges = unlocked ? ["n", "e", "s", "w", "ne", "nw", "se", "sw"] : ["n", "s"];
   return edges.map((edge) => `<div class="compile-output-resize-handle resize-${edge}" data-compile-output-resize="${edge}" title="Drag to resize output panel"></div>`).join("");
+}
+
+function compileSynthesisResizeHandles() {
+  return ["n", "e", "s", "w", "ne", "nw", "se", "sw"]
+    .map((edge) => `<div class="compile-synthesis-resize-handle resize-${edge}" data-compile-synthesis-resize="${edge}" title="Drag to resize synthesis window"></div>`)
+    .join("");
 }
 
 function normalizeCompileSidebarWidth(value) {
@@ -12979,14 +13024,17 @@ function renderCompileSynthesisDiagramWindow(project, file = activeCompileFile(p
   const graph = synthesis.graph || {};
   const zoom = Math.max(0.25, Math.min(3, Number(workspace.synthesisDiagramZoom || 1) || 1));
   const filter = String(workspace.synthesisDiagramFilter || "");
+  const bounds = normalizeSynthesisWindowBounds(workspace.synthesisWindowBounds || {});
+  workspace.synthesisWindowBounds = bounds;
   const sourceFiles = (workspace.files || []).filter((item) => isHdlLanguage(item.language) && item.role !== "testbench");
   const sourceGraph = hdlSynthesisGraphFromFiles(sourceFiles.length ? sourceFiles : (workspace.files || []).filter((item) => isHdlLanguage(item.language)));
   const moduleOptions = (Array.isArray(sourceGraph.nodes) ? sourceGraph.nodes : [])
     .filter((node) => node?.id)
     .slice(0, 80);
   return `
-    <section class="compile-synthesis-diagram-window" aria-label="Synthesis diagram">
-      <div class="compile-synthesis-diagram-heading">
+    <section class="compile-synthesis-diagram-window" aria-label="Synthesis diagram" style="left:${bounds.x}px; top:${bounds.y}px; width:${bounds.width}px; height:${bounds.height}px;">
+      ${compileSynthesisResizeHandles()}
+      <div class="compile-synthesis-diagram-heading" data-compile-synthesis-drag title="Drag to move synthesis window">
         <div>
           <strong>Synthesized design schematic</strong>
           <span>${escapeHtml(graph.topModule ? `Top: ${graph.topModule}` : file?.fileName || "HDL source")} - inputs left, outputs right, arrows show net direction</span>
@@ -19296,6 +19344,47 @@ sectionContent.addEventListener("pointerdown", (event) => {
     return;
   }
 
+  const synthesisResizeHandle = event.target.closest("[data-compile-synthesis-resize]");
+  const synthesisResizeWindow = synthesisResizeHandle?.closest(".compile-synthesis-diagram-window");
+  if (synthesisResizeWindow && event.button === 0) {
+    const project = selectedProject();
+    if (!project) return;
+    const workspace = ensureCompileCode(project);
+    const bounds = normalizeSynthesisWindowBounds(workspace.synthesisWindowBounds || {});
+    activeCompileSynthesisResize = {
+      direction: synthesisResizeHandle.dataset.compileSynthesisResize || "se",
+      pointerId: event.pointerId,
+      pointerTarget: synthesisResizeHandle,
+      startBounds: bounds,
+      startX: event.clientX,
+      startY: event.clientY
+    };
+    synthesisResizeHandle.setPointerCapture?.(event.pointerId);
+    synthesisResizeWindow.classList.add("is-resizing");
+    event.preventDefault();
+    return;
+  }
+
+  const synthesisDragHandle = event.target.closest("[data-compile-synthesis-drag]");
+  const synthesisWindow = synthesisDragHandle?.closest(".compile-synthesis-diagram-window");
+  if (synthesisWindow && event.button === 0) {
+    if (event.target.closest("button, a, input, select, textarea, label")) return;
+    const workspaceRect = compileWorkspaceRect();
+    const rect = synthesisWindow.getBoundingClientRect();
+    activeCompileSynthesisDrag = {
+      offsetX: event.clientX - rect.left,
+      offsetY: event.clientY - rect.top,
+      pointerId: event.pointerId,
+      pointerTarget: synthesisDragHandle,
+      workspaceLeft: workspaceRect.left,
+      workspaceTop: workspaceRect.top
+    };
+    synthesisDragHandle.setPointerCapture?.(event.pointerId);
+    synthesisWindow.classList.add("is-dragging");
+    event.preventDefault();
+    return;
+  }
+
   if (!dock || event.button !== 0) return;
   if (event.target.closest("button, a, input, select, textarea, [contenteditable='true']")) return;
   const rect = dock.getBoundingClientRect();
@@ -19436,6 +19525,67 @@ document.addEventListener("pointermove", (event) => {
     return;
   }
 
+  if (activeCompileSynthesisResize) {
+    const project = selectedProject();
+    if (!project) return;
+    const workspace = ensureCompileCode(project);
+    const panel = sectionContent.querySelector(".compile-synthesis-diagram-window");
+    if (!panel) return;
+    const rect = compileWorkspaceRect();
+    const margin = 8;
+    const minWidth = Math.min(520, Math.max(320, rect.width - margin * 2));
+    const minHeight = Math.min(360, Math.max(240, rect.height - margin * 2));
+    const direction = activeCompileSynthesisResize.direction || "se";
+    const start = activeCompileSynthesisResize.startBounds;
+    const dx = event.clientX - activeCompileSynthesisResize.startX;
+    const dy = event.clientY - activeCompileSynthesisResize.startY;
+    const startRight = start.x + start.width;
+    const startBottom = start.y + start.height;
+    let x = start.x;
+    let y = start.y;
+    let width = start.width;
+    let height = start.height;
+    if (direction.includes("e")) width = Math.max(minWidth, Math.min(start.width + dx, rect.width - x - margin));
+    if (direction.includes("s")) height = Math.max(minHeight, Math.min(start.height + dy, rect.height - y - margin));
+    if (direction.includes("w")) {
+      x = Math.max(margin, Math.min(start.x + dx, startRight - minWidth));
+      width = startRight - x;
+    }
+    if (direction.includes("n")) {
+      y = Math.max(margin, Math.min(start.y + dy, startBottom - minHeight));
+      height = startBottom - y;
+    }
+    const bounds = normalizeSynthesisWindowBounds({ x, y, width, height });
+    workspace.synthesisWindowBounds = bounds;
+    panel.style.left = `${bounds.x}px`;
+    panel.style.top = `${bounds.y}px`;
+    panel.style.width = `${bounds.width}px`;
+    panel.style.height = `${bounds.height}px`;
+    event.preventDefault();
+    return;
+  }
+
+  if (activeCompileSynthesisDrag) {
+    const project = selectedProject();
+    if (!project) return;
+    const workspace = ensureCompileCode(project);
+    const panel = sectionContent.querySelector(".compile-synthesis-diagram-window");
+    if (!panel) return;
+    const current = normalizeSynthesisWindowBounds(workspace.synthesisWindowBounds || {});
+    const bounds = normalizeSynthesisWindowBounds({
+      ...current,
+      x: event.clientX - activeCompileSynthesisDrag.workspaceLeft - activeCompileSynthesisDrag.offsetX,
+      y: event.clientY - activeCompileSynthesisDrag.workspaceTop - activeCompileSynthesisDrag.offsetY
+    });
+    workspace.synthesisWindowBounds = bounds;
+    panel.style.left = `${bounds.x}px`;
+    panel.style.top = `${bounds.y}px`;
+    panel.style.width = `${bounds.width}px`;
+    panel.style.height = `${bounds.height}px`;
+    event.preventDefault();
+    return;
+  }
+
   if (!activeOutputDockDrag) return;
   const project = selectedProject();
   if (!project) return;
@@ -19492,6 +19642,18 @@ function endCompileFloatingWindowDrag() {
     sectionContent.querySelector("[data-compile-file-details-drag]")?.releasePointerCapture?.(activeCompileFileDetailsDrag.pointerId);
     sectionContent.querySelector(".compile-file-details-window")?.classList.remove("is-dragging");
     activeCompileFileDetailsDrag = null;
+    scheduleAutosave(900);
+  }
+  if (activeCompileSynthesisResize) {
+    activeCompileSynthesisResize.pointerTarget?.releasePointerCapture?.(activeCompileSynthesisResize.pointerId);
+    sectionContent.querySelector(".compile-synthesis-diagram-window")?.classList.remove("is-resizing");
+    activeCompileSynthesisResize = null;
+    scheduleAutosave(900);
+  }
+  if (activeCompileSynthesisDrag) {
+    activeCompileSynthesisDrag.pointerTarget?.releasePointerCapture?.(activeCompileSynthesisDrag.pointerId);
+    sectionContent.querySelector(".compile-synthesis-diagram-window")?.classList.remove("is-dragging");
+    activeCompileSynthesisDrag = null;
     scheduleAutosave(900);
   }
 }
