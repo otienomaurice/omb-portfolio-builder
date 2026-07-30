@@ -3527,12 +3527,10 @@ body.rich-image-dragging * {
 .compile-synthesis-diagram-window {
   position: absolute;
   z-index: 36;
-  inset: 0;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
-  width: auto;
-  min-width: 0;
-  min-height: 0;
+  min-width: 520px;
+  min-height: 360px;
   max-width: none;
   max-height: none;
   resize: none;
@@ -3549,10 +3547,93 @@ body.rich-image-dragging * {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  min-height: 34px;
-  padding: 7px 10px;
+  min-height: 30px;
+  padding: 4px 8px;
   border-bottom: 1px solid var(--compile-line, #333842);
   background: var(--compile-surface, #2d2d30);
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+}
+
+.compile-synthesis-diagram-window.is-dragging .compile-synthesis-diagram-heading {
+  cursor: grabbing;
+}
+
+.compile-synthesis-diagram-window.is-dragging,
+.compile-synthesis-diagram-window.is-resizing {
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.42), 0 0 0 1px var(--compile-accent, #38bdf8);
+}
+
+.compile-synthesis-resize-handle {
+  position: absolute;
+  z-index: 4;
+  background: transparent;
+  touch-action: none;
+}
+
+.compile-synthesis-resize-handle.resize-n,
+.compile-synthesis-resize-handle.resize-s {
+  left: 8px;
+  right: 8px;
+  height: 7px;
+  cursor: ns-resize;
+}
+
+.compile-synthesis-resize-handle.resize-n {
+  top: -3px;
+}
+
+.compile-synthesis-resize-handle.resize-s {
+  bottom: -3px;
+}
+
+.compile-synthesis-resize-handle.resize-e,
+.compile-synthesis-resize-handle.resize-w {
+  top: 8px;
+  bottom: 8px;
+  width: 7px;
+  cursor: ew-resize;
+}
+
+.compile-synthesis-resize-handle.resize-e {
+  right: -3px;
+}
+
+.compile-synthesis-resize-handle.resize-w {
+  left: -3px;
+}
+
+.compile-synthesis-resize-handle.resize-ne,
+.compile-synthesis-resize-handle.resize-nw,
+.compile-synthesis-resize-handle.resize-se,
+.compile-synthesis-resize-handle.resize-sw {
+  width: 13px;
+  height: 13px;
+}
+
+.compile-synthesis-resize-handle.resize-ne {
+  top: -4px;
+  right: -4px;
+  cursor: nesw-resize;
+}
+
+.compile-synthesis-resize-handle.resize-nw {
+  top: -4px;
+  left: -4px;
+  cursor: nwse-resize;
+}
+
+.compile-synthesis-resize-handle.resize-se {
+  right: -4px;
+  bottom: -4px;
+  cursor: nwse-resize;
+}
+
+.compile-synthesis-resize-handle.resize-sw {
+  left: -4px;
+  bottom: -4px;
+  cursor: nesw-resize;
 }
 
 .compile-synthesis-zoom-controls {
@@ -3567,13 +3648,13 @@ body.rich-image-dragging * {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 30px;
-  height: 24px;
+  min-width: 24px;
+  height: 22px;
   border: 1px solid var(--compile-line, #334155);
-  border-radius: 5px;
+  border-radius: 4px;
   color: var(--compile-text, #e5edf6);
   background: var(--compile-panel, #1f2937);
-  font-size: 0.72rem;
+  font-size: 0.66rem;
   font-weight: 900;
 }
 
@@ -3584,6 +3665,17 @@ body.rich-image-dragging * {
 .compile-synthesis-zoom-controls button:hover {
   color: var(--compile-editor, #0f172a);
   background: var(--compile-accent, #38bdf8);
+}
+
+.compile-synthesis-diagram-window .compile-mini-window-close {
+  width: 22px;
+  min-width: 22px;
+  height: 22px;
+  min-height: 22px;
+  padding: 0;
+  border-radius: 4px;
+  font-size: 0.82rem;
+  line-height: 1;
 }
 
 .compile-synthesis-diagram-heading div {
@@ -3600,7 +3692,7 @@ body.rich-image-dragging * {
 
 .compile-synthesis-diagram-heading span {
   color: var(--compile-muted, #cbd5e1);
-  font-size: 0.72rem;
+  font-size: 0.68rem;
   font-weight: 700;
 }
 
@@ -3638,19 +3730,20 @@ body.rich-image-dragging * {
 .compile-synthesis-view-buttons {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 4px;
-  padding: 8px;
+  gap: 3px;
+  padding: 6px;
   border-bottom: 1px solid var(--compile-line, #334155);
 }
 
 .compile-synthesis-view-buttons button {
   min-width: 0;
-  height: 28px;
+  height: 23px;
+  min-height: 23px;
   border: 1px solid var(--compile-line, #334155);
-  border-radius: 5px;
+  border-radius: 4px;
   color: var(--compile-text, #e5edf6);
   background: var(--compile-surface, #1f2937);
-  font-size: 0.68rem;
+  font-size: 0.62rem;
   font-weight: 900;
   cursor: pointer;
 }
@@ -3812,14 +3905,14 @@ body.rich-image-dragging * {
 
 .compile-synthesis-toolbar input,
 .compile-synthesis-toolbar select {
-  height: 30px;
-  min-height: 30px;
-  padding: 0 10px;
+  height: 25px;
+  min-height: 25px;
+  padding: 0 8px;
   border: 1px solid var(--compile-line, #334155);
-  border-radius: 5px;
+  border-radius: 4px;
   color: var(--compile-text, #e5edf6);
   background: var(--compile-panel, #1f2937);
-  font: 0.78rem/1.2 Consolas, "Courier New", monospace;
+  font: 0.7rem/1.2 Consolas, "Courier New", monospace;
 }
 
 .compile-synthesis-top-select {
@@ -3828,14 +3921,14 @@ body.rich-image-dragging * {
 }
 
 .compile-synthesis-toolbar button {
-  height: 30px;
-  min-height: 30px;
-  padding: 0 10px;
+  height: 25px;
+  min-height: 25px;
+  padding: 0 8px;
   border: 1px solid var(--compile-line, #334155);
-  border-radius: 5px;
+  border-radius: 4px;
   color: var(--compile-text, #e5edf6);
   background: var(--compile-panel, #1f2937);
-  font-size: 0.72rem;
+  font-size: 0.66rem;
   font-weight: 900;
   cursor: pointer;
 }
@@ -3985,6 +4078,7 @@ body.rich-image-dragging * {
 }
 
 .compile-code-workspace {
+  position: relative;
   gap: 0;
   min-height: 680px;
   overflow: hidden;
