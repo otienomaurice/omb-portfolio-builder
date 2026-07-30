@@ -3527,19 +3527,18 @@ body.rich-image-dragging * {
 .compile-synthesis-diagram-window {
   position: absolute;
   z-index: 36;
-  top: 58px;
-  right: 22px;
+  inset: 0;
   display: grid;
-  grid-template-rows: auto minmax(260px, 1fr);
-  width: min(760px, calc(100% - var(--compile-sidebar-width, 340px) - 70px));
-  min-width: min(420px, calc(100% - 24px));
-  min-height: 360px;
-  max-width: calc(100% - 24px);
-  max-height: min(72vh, 720px);
-  resize: both;
+  grid-template-rows: auto minmax(0, 1fr);
+  width: auto;
+  min-width: 0;
+  min-height: 0;
+  max-width: none;
+  max-height: none;
+  resize: none;
   overflow: hidden;
   border: 1px solid var(--compile-line, #333842);
-  border-radius: 7px;
+  border-radius: 0;
   color: var(--compile-text, #f3f4f6);
   background: var(--compile-panel, #252526);
   box-shadow: 0 18px 42px rgba(0, 0, 0, 0.32);
@@ -3607,13 +3606,191 @@ body.rich-image-dragging * {
 
 .compile-synthesis-diagram-body {
   display: grid;
-  grid-template-rows: auto auto auto minmax(0, 1fr);
-  align-content: start;
-  gap: 10px;
+  grid-template-columns: minmax(250px, 320px) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  gap: 0;
   min-height: 0;
   overflow: hidden;
-  padding: 12px;
   background: var(--compile-editor, #111827);
+}
+
+.compile-synthesis-main {
+  display: grid;
+  grid-template-rows: auto auto auto minmax(0, 1fr);
+  align-content: start;
+  gap: 8px;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  padding: 10px;
+}
+
+.compile-synthesis-explorer {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border-right: 1px solid var(--compile-line, #334155);
+  background: color-mix(in srgb, var(--compile-panel, #1f2937) 88%, #000);
+}
+
+.compile-synthesis-view-buttons {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+  padding: 8px;
+  border-bottom: 1px solid var(--compile-line, #334155);
+}
+
+.compile-synthesis-view-buttons button {
+  min-width: 0;
+  height: 28px;
+  border: 1px solid var(--compile-line, #334155);
+  border-radius: 5px;
+  color: var(--compile-text, #e5edf6);
+  background: var(--compile-surface, #1f2937);
+  font-size: 0.68rem;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.compile-synthesis-view-buttons button:hover,
+.compile-synthesis-view-buttons button[aria-pressed="true"] {
+  color: var(--compile-editor, #0f172a);
+  background: var(--compile-accent, #38bdf8);
+}
+
+.compile-synthesis-view-body {
+  min-height: 0;
+  overflow: auto;
+  padding: 8px;
+}
+
+.compile-synthesis-tree details {
+  margin-bottom: 8px;
+}
+
+.compile-synthesis-tree summary {
+  cursor: pointer;
+  color: var(--compile-text, #e5edf6);
+  font-size: 0.76rem;
+  font-weight: 900;
+}
+
+.compile-synthesis-list {
+  display: grid;
+  gap: 2px;
+  margin-top: 5px;
+}
+
+.compile-synthesis-list button {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 5px 8px;
+  width: 100%;
+  min-height: 31px;
+  padding: 5px 7px;
+  border: 0;
+  color: var(--compile-text, #e5edf6);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.compile-synthesis-list button:hover {
+  color: var(--compile-editor, #0f172a);
+  background: var(--compile-accent, #38bdf8);
+}
+
+.compile-synthesis-list span,
+.compile-synthesis-list small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compile-synthesis-list span {
+  font-size: 0.76rem;
+  font-weight: 850;
+}
+
+.compile-synthesis-list small {
+  grid-column: 1 / -1;
+  color: var(--compile-muted, #cbd5e1);
+  font-size: 0.66rem;
+  font-weight: 700;
+}
+
+.compile-synthesis-list button:hover small {
+  color: color-mix(in srgb, var(--compile-editor, #0f172a) 80%, #fff);
+}
+
+.compile-synthesis-list em {
+  justify-self: end;
+  border: 1px solid color-mix(in srgb, var(--compile-line, #334155) 80%, transparent);
+  border-radius: 999px;
+  padding: 2px 6px;
+  color: var(--compile-value, #facc15);
+  font-size: 0.62rem;
+  font-style: normal;
+  font-weight: 900;
+}
+
+.compile-synthesis-empty,
+.compile-synthesis-help {
+  margin: 0;
+  color: var(--compile-muted, #cbd5e1);
+  font-size: 0.74rem;
+  line-height: 1.45;
+}
+
+.compile-synthesis-source-details,
+.compile-synthesis-timing {
+  margin-top: 10px;
+  border: 1px solid var(--compile-line, #334155);
+  border-radius: 6px;
+  padding: 9px;
+  background: color-mix(in srgb, var(--compile-surface, #1f2937) 88%, #000);
+}
+
+.compile-synthesis-source-details h4,
+.compile-synthesis-timing strong {
+  display: block;
+  margin: 0 0 8px;
+  color: var(--compile-text, #e5edf6);
+  font-size: 0.82rem;
+}
+
+.compile-synthesis-source-details p,
+.compile-synthesis-timing p,
+.compile-synthesis-timing li {
+  margin: 0 0 6px;
+  color: var(--compile-muted, #cbd5e1);
+  font-size: 0.72rem;
+  line-height: 1.35;
+}
+
+.compile-synthesis-source-details p {
+  display: grid;
+  gap: 2px;
+}
+
+.compile-synthesis-source-details span {
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.compile-synthesis-source-details strong {
+  overflow-wrap: anywhere;
+  color: var(--compile-text, #e5edf6);
+  font-size: 0.74rem;
+}
+
+.compile-synthesis-timing ul {
+  margin: 8px 0 0;
+  padding-left: 18px;
 }
 
 .compile-synthesis-toolbar {
@@ -3717,8 +3894,8 @@ body.rich-image-dragging * {
 
 .compile-synthesis-svg {
   display: block;
-  width: max(100%, 720px);
-  min-height: 260px;
+  width: max(100%, 1100px);
+  min-height: 560px;
   background: transparent;
 }
 
@@ -3757,6 +3934,20 @@ body.rich-image-dragging * {
   fill: var(--compile-panel, #1f2937);
   stroke: var(--compile-line, #334155);
   stroke-width: 1.5;
+}
+
+.compile-synthesis-port rect {
+  fill: color-mix(in srgb, var(--compile-string, #86efac) 16%, var(--compile-panel, #1f2937));
+  stroke: var(--compile-string, #86efac);
+}
+
+.compile-synthesis-output rect {
+  fill: color-mix(in srgb, var(--compile-value, #facc15) 14%, var(--compile-panel, #1f2937));
+  stroke: var(--compile-value, #facc15);
+}
+
+.compile-synthesis-primitive rect {
+  fill: color-mix(in srgb, var(--compile-keyword, #60a5fa) 15%, var(--compile-panel, #1f2937));
 }
 
 .compile-synthesis-node text {
