@@ -2260,6 +2260,8 @@ function ensureCompileCode(project) {
   project.compileCode.activePanel = ["console", "messages", "terminal", "scope", "syntax"].includes(project.compileCode.activePanel)
     ? project.compileCode.activePanel
     : "console";
+  project.compileCode.synthesisTopModule = String(project.compileCode.synthesisTopModule || "").replace(/[^\w$]/g, "");
+  project.compileCode.synthesisDiagramFilter = String(project.compileCode.synthesisDiagramFilter || "");
   const appendDestinations = compileAppendDestinations(project);
   if (!project.compileCode.appendTargetId || !appendDestinations.some((destination) => destination.id === project.compileCode.appendTargetId)) {
     project.compileCode.appendTargetId = appendDestinations[0]?.id || "";
@@ -5204,7 +5206,7 @@ function renderBuilderFileVisualViewer() {
   ].filter(Boolean).join(" ");
   const media = isPdf
     ? `<iframe class="builder-file-pdf-frame" title="${escapeHtml(title)}" src="${escapeHtml(target)}"></iframe>`
-    : `<img class="builder-file-image-preview" src="${escapeHtml(target)}" alt="${escapeHtml(title)}">`;
+    : `<img class="builder-file-image-preview" src="${escapeHtml(target)}" alt="${escapeHtml(title)}" loading="lazy" decoding="async">`;
   if (!builderFileViewContent) return;
   builderFileViewContent.innerHTML = `
     ${builderViewerToolbar(type)}
@@ -5379,6 +5381,13 @@ function schematicSourceMap(text = "", title = "") {
   const height = Math.max(180, maxY - minY + 80);
   const tx = (x) => x - minX + 40;
   const ty = (y) => y - minY + 40;
+  const wireLimit = 900;
+  const symbolLimit = 360;
+  const labelLimit = 360;
+  const shownWires = wires.slice(0, wireLimit);
+  const shownSymbols = symbols.slice(0, symbolLimit);
+  const shownLabels = labels.slice(0, labelLimit);
+  const capped = wires.length > shownWires.length || symbols.length > shownSymbols.length || labels.length > shownLabels.length;
   const inventoryItems = [
     ...symbols.map((symbol) => ({ type: "symbol", value: symbol.name })),
     ...labels.map((label) => ({ type: "net", value: label.label }))
@@ -5389,7 +5398,7 @@ function schematicSourceMap(text = "", title = "") {
     <div class="builder-schematic-map" aria-label="Generated schematic map">
       <div class="builder-schematic-map-heading">
         <strong>${escapeHtml(title || "Schematic map")}</strong>
-        <span>${wires.length} wires &middot; ${symbols.length} symbols &middot; ${labels.length} labels</span>
+        <span>${wires.length} wires &middot; ${symbols.length} symbols &middot; ${labels.length} labels${capped ? " &middot; preview capped" : ""}</span>
       </div>
       <div class="builder-schematic-map-tools">
         <label>
@@ -5409,14 +5418,14 @@ function schematicSourceMap(text = "", title = "") {
       </div>
       <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(title || "Generated schematic map")}">
         <rect class="schematic-map-bg" x="0" y="0" width="${width}" height="${height}" rx="10"></rect>
-        ${wires.map((wire) => `<line class="schematic-map-wire" x1="${tx(wire.start.x)}" y1="${ty(wire.start.y)}" x2="${tx(wire.end.x)}" y2="${ty(wire.end.y)}"></line>`).join("")}
-        ${symbols.map((symbol) => `
+        ${shownWires.map((wire) => `<line class="schematic-map-wire" x1="${tx(wire.start.x)}" y1="${ty(wire.start.y)}" x2="${tx(wire.end.x)}" y2="${ty(wire.end.y)}"></line>`).join("")}
+        ${shownSymbols.map((symbol) => `
           <g class="schematic-map-symbol" data-schematic-search="${escapeHtml(symbol.name)}" transform="translate(${tx(symbol.x)} ${ty(symbol.y)})">
             <rect x="-18" y="-12" width="36" height="24" rx="4"></rect>
             <text x="0" y="4">${escapeHtml(symbol.name)}</text>
           </g>
         `).join("")}
-        ${labels.map((label) => `
+        ${shownLabels.map((label) => `
           <g class="schematic-map-label" data-schematic-search="${escapeHtml(label.label)}" transform="translate(${tx(label.x)} ${ty(label.y)})">
             <circle r="3"></circle>
             <text x="8" y="4">${escapeHtml(label.label)}</text>
@@ -12126,7 +12135,65 @@ function renderCompileMessagesPanel(workspace = {}) {
   `;
 }
 
-function renderCompileSyntaxPanel(workspace = {}) {
+function compileSourceOutline(file = {}) {
+  const language = normalizeCodeLanguage(file.language);
+  const source = String(file.code || "").replace(/\r\n?/g, "\n");
+  const items = [];
+  const pushMatch = (kind, name, line) => {
+    if (!name) return;
+    items.push({
+      kind,
+      name: String(name).slice(0, 100),
+      line
+    });
+  };
+  if (isHdlLanguage(language)) {
+    source.split("\n").forEach((line, index) => {
+      const moduleMatch = line.match(/^\s*module\s+([A-Za-z_$][\w$]*)/);
+      if (moduleMatch) pushMatch("module", moduleMatch[1], index + 1);
+      const instanceMatch = line.match(/^\s*([A-Za-z_$][\w$]*)\s*(?:#\s*\(|[A-Za-z_$][\w$]*\s*\()/);
+      if (instanceMatch && !/^(module|if|for|case|always|assign|initial|function|task)\b/i.test(instanceMatch[1])) {
+        pushMatch("instance", line.trim().replace(/\s+/g, " ").slice(0, 80), index + 1);
+      }
+    });
+  } else if (["c", "cpp", "java", "javascript", "python"].includes(language)) {
+    source.split("\n").forEach((line, index) => {
+      const trimmed = line.trim();
+      const classMatch = trimmed.match(/^(?:export\s+)?(?:public\s+|private\s+|protected\s+|static\s+|final\s+|abstract\s+)*class\s+([A-Za-z_$][\w$]*)/);
+      if (classMatch) pushMatch("class", classMatch[1], index + 1);
+      const pyMatch = language === "python" ? trimmed.match(/^def\s+([A-Za-z_]\w*)\s*\(/) : null;
+      if (pyMatch) pushMatch("function", pyMatch[1], index + 1);
+      const jsMatch = language === "javascript" ? trimmed.match(/^(?:async\s+)?function\s+([A-Za-z_$][\w$]*)\s*\(|^(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?\(/) : null;
+      if (jsMatch) pushMatch("function", jsMatch[1] || jsMatch[2], index + 1);
+      const cMatch = ["c", "cpp", "java"].includes(language)
+        ? trimmed.match(/^(?:[\w:*&<>\[\]]+\s+)+([A-Za-z_$][\w$]*)\s*\([^;]*\)\s*(?:const\s*)?\{?$/)
+        : null;
+      if (cMatch && !["if", "for", "while", "switch", "catch"].includes(cMatch[1])) pushMatch("function", cMatch[1], index + 1);
+    });
+  }
+  return items.slice(0, 80);
+}
+
+function renderCompileSourceOutline(file = {}) {
+  const items = compileSourceOutline(file);
+  if (!items.length) return "";
+  return `
+    <section class="compile-source-outline" aria-label="Source outline">
+      <strong>Source outline</strong>
+      <div>
+        ${items.map((item) => `
+          <button type="button" data-compile-outline-line="${item.line}">
+            <span>${escapeHtml(item.kind)}</span>
+            ${escapeHtml(item.name)}
+            <small>line ${item.line}</small>
+          </button>
+        `).join("")}
+      </div>
+    </section>
+  `;
+}
+
+function renderCompileSyntaxPanel(workspace = {}, file = null) {
   const live = renderLiveDiagnostics(workspace);
   return `
     <section class="compile-syntax-panel" data-compile-output-panel="syntax" aria-label="Live syntax diagnostics">
@@ -12134,6 +12201,7 @@ function renderCompileSyntaxPanel(workspace = {}) {
         <span class="compile-terminal-title">Live syntax</span>
       </div>
       <div class="compile-syntax-log" data-compile-syntax>
+        ${file ? renderCompileSourceOutline(file) : ""}
         ${live || `
           <section class="compile-live-diagnostics is-clean" aria-label="Live syntax diagnostics">
             <strong>Live syntax check</strong>
@@ -12340,10 +12408,16 @@ function activeSynthesisDiagram(project, file = activeCompileFile(project)) {
   const fallbackFiles = designFiles.length ? designFiles : (files.length ? files : (file ? [file] : []));
   const fallbackGraph = hdlSynthesisGraphFromFiles(fallbackFiles);
   const synthesis = file?.lastResult?.synthesis || workspace.synthesis || {};
+  const graph = synthesis.graph || fallbackGraph;
+  const selectedTop = workspace.synthesisTopModule && Array.isArray(graph.nodes) && graph.nodes.some((node) => node.id === workspace.synthesisTopModule)
+    ? workspace.synthesisTopModule
+    : graph.topModule;
   return {
-    graph: synthesis.graph || fallbackGraph,
+    graph: { ...graph, topModule: selectedTop },
     tool: synthesis.tool || "Source parser",
     available: synthesis.available !== false,
+    cacheHit: Boolean(synthesis.cacheHit),
+    summary: synthesis.summary || synthesis.graph?.summary || fallbackGraph.summary || {},
     terminal: synthesis.terminal || "",
     outputPath: synthesis.outputPath || "",
     netlistPath: synthesis.netlistPath || "",
@@ -12352,11 +12426,65 @@ function activeSynthesisDiagram(project, file = activeCompileFile(project)) {
   };
 }
 
-function renderSynthesisDiagramSvg(graph = {}) {
+function synthesisNodeHaystack(node = "") {
+  return [
+    node.id,
+    node.label,
+    node.type,
+    node.kind,
+    node.fileName
+  ].map((part) => String(part || "").toLowerCase()).join(" ");
+}
+
+function synthesisEdgeHaystack(edge = "") {
+  return [
+    edge.from,
+    edge.to,
+    edge.instance,
+    edge.type
+  ].map((part) => String(part || "").toLowerCase()).join(" ");
+}
+
+function renderSynthesisSummaryChips(synthesis = {}, graph = {}) {
+  const summary = synthesis.summary || graph.summary || {};
+  const cellTypes = Array.isArray(summary.cellTypes) ? summary.cellTypes.slice(0, 8) : [];
+  const chips = [
+    synthesis.cacheHit ? "Cache hit" : "",
+    synthesis.tool || "",
+    graph.netlist ? "Yosys netlist" : "Source graph",
+    summary.moduleCount !== undefined ? `${summary.moduleCount} modules` : "",
+    summary.cellCount !== undefined ? `${summary.cellCount} cells` : "",
+    summary.netCount !== undefined ? `${summary.netCount} nets` : "",
+    summary.portCount !== undefined ? `${summary.portCount} ports` : "",
+    graph.truncated ? "Preview truncated" : ""
+  ].filter(Boolean);
+  return `
+    <div class="compile-synthesis-meta">
+      ${chips.map((chip) => `<span>${escapeHtml(chip)}</span>`).join("")}
+      ${cellTypes.map((item) => `<span>${escapeHtml(item.type)}: ${Number(item.count) || 0}</span>`).join("")}
+    </div>
+  `;
+}
+
+function renderSynthesisDiagramSvg(graph = {}, filter = "") {
   const nodes = Array.isArray(graph.nodes) && graph.nodes.length
     ? graph.nodes
     : [{ id: "No HDL modules found", fileName: "" }];
   const topModule = graph.topModule || nodes[0]?.id || "";
+  const normalizedFilter = String(filter || "").trim().toLowerCase();
+  const matchedNodeIds = new Set();
+  const connectedMatchIds = new Set();
+  if (normalizedFilter) {
+    nodes.forEach((node) => {
+      if (synthesisNodeHaystack(node).includes(normalizedFilter)) matchedNodeIds.add(node.id);
+    });
+    (Array.isArray(graph.edges) ? graph.edges : []).forEach((edge) => {
+      if (synthesisEdgeHaystack(edge).includes(normalizedFilter) || matchedNodeIds.has(edge.from) || matchedNodeIds.has(edge.to)) {
+        connectedMatchIds.add(edge.from);
+        connectedMatchIds.add(edge.to);
+      }
+    });
+  }
   const ordered = [
     ...nodes.filter((node) => node.id === topModule),
     ...nodes.filter((node) => node.id !== topModule)
@@ -12397,21 +12525,25 @@ function renderSynthesisDiagramSvg(graph = {}) {
         const from = positions.get(edge.from);
         const to = positions.get(edge.to);
         if (!from || !to) return "";
+        const edgeMatches = Boolean(normalizedFilter && (synthesisEdgeHaystack(edge).includes(normalizedFilter) || connectedMatchIds.has(edge.from) || connectedMatchIds.has(edge.to)));
+        const edgeMuted = Boolean(normalizedFilter && !edgeMatches);
         const x1 = from.x + nodeWidth / 2;
         const y1 = from.y + nodeHeight;
         const x2 = to.x + nodeWidth / 2;
         const y2 = to.y;
         const midY = y1 + Math.max(20, (y2 - y1) / 2);
         return `
-          <path class="compile-synthesis-edge" d="M${x1},${y1} C${x1},${midY} ${x2},${midY} ${x2},${y2}" marker-end="url(#synthesis-arrow)"></path>
-          <text class="compile-synthesis-instance" x="${(x1 + x2) / 2}" y="${midY - 4}">${escapeHtml(edge.instance || "")}</text>
+          <path class="compile-synthesis-edge${edgeMatches ? " is-match" : ""}${edgeMuted ? " is-muted" : ""}" d="M${x1},${y1} C${x1},${midY} ${x2},${midY} ${x2},${y2}" marker-end="url(#synthesis-arrow)"></path>
+          <text class="compile-synthesis-instance${edgeMatches ? " is-match" : ""}${edgeMuted ? " is-muted" : ""}" x="${(x1 + x2) / 2}" y="${midY - 4}">${escapeHtml(edge.instance || "")}</text>
         `;
       }).join("")}
       ${ordered.map((node) => {
         const position = positions.get(node.id) || { x: 0, y: 0 };
         const isTop = node.id === topModule;
+        const nodeMatches = Boolean(normalizedFilter && (matchedNodeIds.has(node.id) || connectedMatchIds.has(node.id)));
+        const nodeMuted = Boolean(normalizedFilter && !nodeMatches);
         return `
-          <g class="compile-synthesis-node${isTop ? " is-top" : ""}">
+          <g class="compile-synthesis-node${isTop ? " is-top" : ""}${nodeMatches ? " is-match" : ""}${nodeMuted ? " is-muted" : ""}">
             <rect x="${position.x}" y="${position.y}" width="${nodeWidth}" height="${nodeHeight}" rx="7"></rect>
             <text x="${position.x + 12}" y="${position.y + 24}">${escapeHtml(node.label || node.id)}</text>
             <text class="compile-synthesis-file" x="${position.x + 12}" y="${position.y + 42}">${escapeHtml(node.type || node.fileName || node.kind || (isTop ? "top module" : "module"))}</text>
@@ -12428,6 +12560,12 @@ function renderCompileSynthesisDiagramWindow(project, file = activeCompileFile(p
   const synthesis = activeSynthesisDiagram(project, file);
   const graph = synthesis.graph || {};
   const zoom = Math.max(0.25, Math.min(3, Number(workspace.synthesisDiagramZoom || 1) || 1));
+  const filter = String(workspace.synthesisDiagramFilter || "");
+  const sourceFiles = (workspace.files || []).filter((item) => isHdlLanguage(item.language) && item.role !== "testbench");
+  const sourceGraph = hdlSynthesisGraphFromFiles(sourceFiles.length ? sourceFiles : (workspace.files || []).filter((item) => isHdlLanguage(item.language)));
+  const moduleOptions = (Array.isArray(sourceGraph.nodes) ? sourceGraph.nodes : [])
+    .filter((node) => node?.id)
+    .slice(0, 80);
   return `
     <section class="compile-synthesis-diagram-window" aria-label="Synthesis diagram">
       <div class="compile-synthesis-diagram-heading">
@@ -12444,17 +12582,26 @@ function renderCompileSynthesisDiagramWindow(project, file = activeCompileFile(p
         <button class="compile-mini-window-close" type="button" data-compile-toggle-synthesis-diagram aria-label="Close synthesis diagram">&times;</button>
       </div>
       <div class="compile-synthesis-diagram-body">
-        <div class="compile-synthesis-meta">
-          <span>${escapeHtml(synthesis.tool || "Source parser")}</span>
-          ${synthesis.netlistPath || synthesis.outputPath ? `<span>Netlist: ${escapeHtml(synthesis.netlistPath || synthesis.outputPath)}</span>` : ""}
-          ${synthesis.dotPath ? `<span>DOT: ${escapeHtml(synthesis.dotPath)}</span>` : ""}
-          ${graph.netlist ? `<span>${escapeHtml(`${graph.cellCount || 0} synthesized cells`)}</span>` : ""}
-          ${graph.truncated ? `<span>Large netlist preview truncated</span>` : ""}
-          ${synthesis.available === false ? `<span>Yosys not available; showing source graph.</span>` : ""}
+        <div class="compile-synthesis-toolbar">
+          <label>
+            <span>Find module, cell, net, or instance</span>
+            <input type="search" data-compile-synthesis-filter value="${escapeHtml(filter)}" placeholder="counter, mux, $dff, uut...">
+          </label>
+          <label class="compile-synthesis-top-select">
+            <span>Top module</span>
+            <select data-compile-synthesis-top>
+              <option value="">Auto detect</option>
+              ${moduleOptions.map((node) => `<option value="${escapeHtml(node.id)}"${workspace.synthesisTopModule === node.id ? " selected" : ""}>${escapeHtml(node.label || node.id)}</option>`).join("")}
+            </select>
+          </label>
+          ${synthesis.netlistPath || synthesis.outputPath ? `<button type="button" data-copy-text="${escapeHtml(synthesis.netlistPath || synthesis.outputPath)}">Copy netlist path</button>` : ""}
+          ${synthesis.dotPath ? `<button type="button" data-copy-text="${escapeHtml(synthesis.dotPath)}">Copy DOT path</button>` : ""}
         </div>
+        ${renderSynthesisSummaryChips(synthesis, graph)}
+        ${synthesis.available === false ? `<p class="compile-synthesis-warning">Yosys is not available, so this is a source-level module graph. Install OSS CAD Suite from Tools to produce a synthesized netlist.</p>` : ""}
         <div class="compile-synthesis-canvas" style="--synthesis-zoom: ${zoom};">
           <div class="compile-synthesis-zoom-stage">
-            ${renderSynthesisDiagramSvg(graph)}
+            ${renderSynthesisDiagramSvg(graph, filter)}
           </div>
         </div>
       </div>
@@ -12489,7 +12636,7 @@ function renderCompileActiveOutputPanel(project, file = activeCompileFile(projec
   if (activePanel === "messages") return renderCompileMessagesPanel(workspace);
   if (activePanel === "terminal") return renderCompileSystemTerminal(workspace, project);
   if (activePanel === "scope") return renderCompileScopePanel(project, file);
-  if (activePanel === "syntax") return renderCompileSyntaxPanel(workspace);
+  if (activePanel === "syntax") return renderCompileSyntaxPanel(workspace, file);
   return renderCompileConsolePanel(project, file);
 }
 
@@ -12869,7 +13016,7 @@ function renderCompileCodeSection(project) {
             <button type="button" data-compile-compile>Compile</button>
             <button type="button" data-compile-build>Build project</button>
             ${isHdlLanguage(activeFile.language)
-              ? `<button type="button" data-compile-synthesize title="Run HDL synthesis. Right-click to view the synthesis diagram.">Synthesize</button><button type="button" data-compile-simulate>Simulate</button>`
+              ? `<button type="button" data-compile-synthesize title="Run HDL synthesis. Reuses cache when unchanged; Shift-click forces rebuild. Right-click to view the synthesis diagram.">Synthesize</button><button type="button" data-compile-simulate>Simulate</button>`
               : `<button type="button" data-compile-run>Run</button>`}
             <button class="compile-output-button" type="button" data-compile-show-output title="Open the terminal output for this source"><span class="compile-command-icon" aria-hidden="true">&gt;_</span><span>Show output</span></button>
             ${isHdlLanguage(activeFile.language) ? `<button class="compile-output-button" type="button" data-compile-show-scope title="Open the HDL waveform scope"><span class="compile-command-icon" aria-hidden="true">~</span><span>Show scope</span></button>` : ""}
@@ -13756,6 +13903,13 @@ function closeCompileFileView(project, fileId = "") {
   renderSectionContent(project);
 }
 
+function updateVisibleSynthesisDiagram(project, file = activeCompileFile(project)) {
+  const workspace = ensureCompileCode(project);
+  const stage = sectionContent.querySelector(".compile-synthesis-zoom-stage");
+  if (!stage || !isHdlLanguage(file?.language)) return;
+  stage.innerHTML = renderSynthesisDiagramSvg(activeSynthesisDiagram(project, file).graph || {}, workspace.synthesisDiagramFilter || "");
+}
+
 function addCompileSourceFile(project, file = null, options = {}) {
   const workspace = ensureCompileCode(project);
   const language = normalizeCodeLanguage(options.language || file?.language || "javascript");
@@ -14076,7 +14230,8 @@ function compilePayload(project, file, options = {}) {
     })),
     action: options.action || "",
     forceRebuild: options.forceRebuild === true,
-    hdlSimulationTimeoutMs: workspace.hdlSimulationTimeoutMs || 30000
+    hdlSimulationTimeoutMs: workspace.hdlSimulationTimeoutMs || 30000,
+    synthesisTopModule: workspace.synthesisTopModule || ""
   };
 }
 
@@ -14639,7 +14794,7 @@ async function compileActiveFile(project, file, options = {}) {
     }
     if (compileResult.synthesis?.graph) {
       const graph = compileResult.synthesis.graph;
-      addCompileMessage(project, `Synthesis diagram updated for ${graph.topModule || file.fileName}. Right-click Synthesize to view it.`, result.ok ? "success" : "warning");
+      addCompileMessage(project, `${compileResult.synthesis.cacheHit ? "Cached synthesis diagram loaded" : "Synthesis diagram updated"} for ${graph.topModule || file.fileName}. Right-click Synthesize to view it.`, result.ok ? "success" : "warning");
     }
     if (/HDL debug tools:/i.test(file.lastResult.terminal || "")) {
       addCompileMessage(project, "HDL debug tool availability was checked. Details are in Console output.", "info");
@@ -14880,7 +15035,7 @@ async function runCompileIdeAction(project, action = "", options = {}) {
   if (action === "beautify") return beautifyCompileFile(project, file);
   if (action === "compile") return compileActiveFile(project, file, { action: "compile" });
   if (action === "build") return compileActiveFile(project, file, { action: "build", forceRebuild: true });
-  if (action === "synthesize") return compileActiveFile(project, file, { action: "synthesize", forceRebuild: true });
+  if (action === "synthesize") return compileActiveFile(project, file, { action: "synthesize" });
   if (action === "run") return compileActiveFile(project, file, { action: "run" });
   if (action === "simulate") return compileActiveFile(project, file, { action: "simulate" });
   if (action === "install-tools") return installCompileTools(project, file);
@@ -17993,6 +18148,21 @@ sectionContent.addEventListener("click", async (event) => {
   if (!button || !project) return;
 
   const hasDataset = (key) => Object.prototype.hasOwnProperty.call(button.dataset, key);
+  if (button.dataset.copyText !== undefined) {
+    const text = button.dataset.copyText || "";
+    if (text) {
+      await navigator.clipboard.writeText(text);
+      setStatus("Path copied to the clipboard.");
+    }
+    return;
+  }
+  if (button.dataset.compileOutlineLine) {
+    const line = Number(button.dataset.compileOutlineLine) || 1;
+    const editor = sectionContent.querySelector("[data-compile-active-editor]");
+    editor?.focus();
+    setStatus(`Source outline selected line ${line}.`);
+    return;
+  }
   if (button.dataset.compileMenuAction) {
     const menuContext = compileTreeContextFromMenu(button.closest("[data-compile-tree-context-menu]")) || activeCompileTreeContext;
     hideCompileTreeContextMenus({ clearContext: false });
@@ -18170,7 +18340,7 @@ sectionContent.addEventListener("click", async (event) => {
     return;
   }
   if (hasDataset("compileSynthesize")) {
-    await compileActiveFile(project, compileFile, { action: "synthesize", forceRebuild: true });
+    await compileActiveFile(project, compileFile, { action: "synthesize", forceRebuild: event.shiftKey });
     return;
   }
   const synthesisZoomButton = event.target.closest("[data-compile-synthesis-zoom]");
@@ -18933,6 +19103,16 @@ sectionContent.addEventListener("change", (event) => {
     renderSectionContent(project);
     return;
   }
+  if (event.target.dataset.compileSynthesisTop !== undefined) {
+    const workspace = ensureCompileCode(project);
+    workspace.synthesisTopModule = String(event.target.value || "").replace(/[^\w$]/g, "");
+    addCompileMessage(project, workspace.synthesisTopModule
+      ? `Synthesis top set to ${workspace.synthesisTopModule}. Run Synthesize to rebuild the netlist from that top.`
+      : "Synthesis top reset to auto detect.", "info");
+    scheduleAutosave(900);
+    renderSectionContent(project);
+    return;
+  }
   if (event.target.dataset.compileAppendTarget !== undefined) {
     const workspace = ensureCompileCode(project);
     workspace.appendTargetId = event.target.value;
@@ -18945,6 +19125,14 @@ sectionContent.addEventListener("change", (event) => {
 sectionContent.addEventListener("input", (event) => {
   const project = selectedProject();
   if (!project) return;
+
+  if (event.target.dataset.compileSynthesisFilter !== undefined) {
+    const { workspace, file } = activeCompileWorkspaceAndFile(project);
+    workspace.synthesisDiagramFilter = String(event.target.value || "").slice(0, 120);
+    updateVisibleSynthesisDiagram(project, file);
+    scheduleAutosave(900);
+    return;
+  }
 
   const compileFieldTarget = event.target.closest?.("[data-compile-field]") || (event.target.dataset?.compileField ? event.target : null);
   if (compileFieldTarget?.dataset?.compileField) {

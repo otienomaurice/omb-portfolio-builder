@@ -338,6 +338,7 @@ Use the workflow in [BRANCHING.md](BRANCHING.md):
 | `guide_print_docs_091` | Updates customer-facing README and in-app Builder Guide text for double-click toolbar reopening, table row/column editing, keyboard shortcuts, Print Portfolio, and the real PowerShell terminal launcher. | `development` | `development` | Active |
 | `ui_polish_092` | Bumps the builder to `0.2.91`, improves project file viewing with a schematic-focused viewer, adds fit/zoom/contrast controls and lightweight schematic source maps for visual evidence, renders schematic-like rich images wider in previews and the public website, and tightens file-viewer UI labels. | `development` | `development` | Active |
 | `viewer_features_093` | Bumps the builder to `0.2.92`, adds Grid, Rotate, Copy path, Print, and keyboard shortcuts to the file viewer, and adds searchable schematic source inventories that highlight matching symbols, nets, and labels on generated schematic maps. | `development` | `development` | Active |
+| `code_synthesis_viewer_094` | Bumps the builder to `0.2.93`, improves HDL synthesis with cache reuse, selected top-module support, Yosys netlist summary chips, searchable synthesis diagrams, richer compiler diagnostics, source outlines in the Syntax panel, and capped/contained schematic source-map rendering for large circuit files. | `development` | `development` | Active |
 
 </details>
 

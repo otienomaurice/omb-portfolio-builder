@@ -876,6 +876,7 @@
 .builder-file-visual-stage {
   min-height: 0;
   overflow: auto;
+  contain: layout paint;
   background:
     linear-gradient(90deg, rgba(14, 116, 144, 0.08) 1px, transparent 1px),
     linear-gradient(0deg, rgba(14, 116, 144, 0.08) 1px, transparent 1px),
@@ -1006,6 +1007,9 @@
   border-radius: 8px;
   background: #ffffff;
   box-shadow: 0 10px 28px rgba(8, 48, 74, 0.08);
+  contain: layout paint;
+  content-visibility: auto;
+  contain-intrinsic-size: 420px;
 }
 
 .builder-schematic-map-heading {
@@ -3469,6 +3473,57 @@ body.rich-image-dragging * {
   padding: 12px 14px;
 }
 
+.compile-source-outline {
+  display: grid;
+  gap: 7px;
+  padding: 9px;
+  border: 1px solid var(--compile-line, #334155);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--compile-panel, #1f2937) 78%, transparent);
+}
+
+.compile-source-outline > strong {
+  color: var(--compile-text, #e5edf6);
+  font-size: 0.78rem;
+}
+
+.compile-source-outline > div {
+  display: grid;
+  gap: 3px;
+}
+
+.compile-source-outline button {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 24px;
+  padding: 2px 8px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--compile-text, #e5edf6);
+  background: transparent;
+  font: 0.74rem/1.2 Consolas, "Courier New", monospace;
+  text-align: left;
+  cursor: pointer;
+}
+
+.compile-source-outline button:hover {
+  border-color: var(--compile-line, #334155);
+  background: color-mix(in srgb, var(--compile-active, #1f6ed4) 32%, transparent);
+}
+
+.compile-source-outline span {
+  color: var(--compile-accent, #38bdf8);
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.compile-source-outline small {
+  color: var(--compile-muted, #cbd5e1);
+  font-weight: 800;
+}
+
 .compile-synthesis-diagram-window {
   position: absolute;
   z-index: 36;
@@ -3552,13 +3607,65 @@ body.rich-image-dragging * {
 
 .compile-synthesis-diagram-body {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: auto auto auto minmax(0, 1fr);
   align-content: start;
   gap: 10px;
   min-height: 0;
   overflow: hidden;
   padding: 12px;
   background: var(--compile-editor, #111827);
+}
+
+.compile-synthesis-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 8px;
+}
+
+.compile-synthesis-toolbar label {
+  display: grid;
+  gap: 4px;
+  min-width: min(360px, 100%);
+  flex: 1 1 300px;
+  color: var(--compile-muted, #cbd5e1);
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.compile-synthesis-toolbar input,
+.compile-synthesis-toolbar select {
+  height: 30px;
+  min-height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--compile-line, #334155);
+  border-radius: 5px;
+  color: var(--compile-text, #e5edf6);
+  background: var(--compile-panel, #1f2937);
+  font: 0.78rem/1.2 Consolas, "Courier New", monospace;
+}
+
+.compile-synthesis-top-select {
+  flex: 0 1 220px;
+  min-width: 180px;
+}
+
+.compile-synthesis-toolbar button {
+  height: 30px;
+  min-height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--compile-line, #334155);
+  border-radius: 5px;
+  color: var(--compile-text, #e5edf6);
+  background: var(--compile-panel, #1f2937);
+  font-size: 0.72rem;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.compile-synthesis-toolbar button:hover {
+  color: var(--compile-editor, #0f172a);
+  background: var(--compile-accent, #38bdf8);
 }
 
 .compile-synthesis-meta {
@@ -3577,10 +3684,22 @@ body.rich-image-dragging * {
   font-weight: 800;
 }
 
+.compile-synthesis-warning {
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--compile-value, #facc15) 55%, var(--compile-line, #334155));
+  border-radius: 6px;
+  color: var(--compile-text, #e5edf6);
+  background: color-mix(in srgb, var(--compile-value, #facc15) 12%, var(--compile-panel, #1f2937));
+  font-size: 0.78rem;
+  font-weight: 750;
+}
+
 .compile-synthesis-canvas {
   min-width: 0;
   min-height: 0;
   overflow: auto;
+  contain: layout paint;
   border: 1px solid var(--compile-line, #334155);
   background:
     linear-gradient(90deg, color-mix(in srgb, var(--compile-line, #334155) 32%, transparent) 1px, transparent 1px),
@@ -3613,9 +3732,25 @@ body.rich-image-dragging * {
   stroke-width: 2;
 }
 
+.compile-synthesis-edge.is-muted,
+.compile-synthesis-instance.is-muted,
+.compile-synthesis-node.is-muted {
+  opacity: 0.22;
+}
+
+.compile-synthesis-edge.is-match {
+  stroke: var(--compile-value, #facc15);
+  stroke-width: 3;
+}
+
 .compile-synthesis-instance {
   fill: var(--compile-value, #facc15);
   font: 700 11px Consolas, "Courier New", monospace;
+}
+
+.compile-synthesis-instance.is-match {
+  fill: var(--compile-string, #86efac);
+  font-weight: 900;
 }
 
 .compile-synthesis-node rect {
@@ -3631,6 +3766,12 @@ body.rich-image-dragging * {
 .compile-synthesis-node.is-top rect {
   fill: color-mix(in srgb, var(--compile-active, #1f6ed4) 70%, var(--compile-panel, #1f2937));
   stroke: var(--compile-accent, #38bdf8);
+}
+
+.compile-synthesis-node.is-match rect {
+  fill: color-mix(in srgb, var(--compile-value, #facc15) 28%, var(--compile-panel, #1f2937));
+  stroke: var(--compile-value, #facc15);
+  stroke-width: 2.3;
 }
 
 .compile-synthesis-node text {
