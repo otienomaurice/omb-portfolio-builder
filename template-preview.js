@@ -2262,6 +2262,10 @@ function ensureCompileCode(project) {
     : "console";
   project.compileCode.synthesisTopModule = String(project.compileCode.synthesisTopModule || "").replace(/[^\w$]/g, "");
   project.compileCode.synthesisDiagramFilter = String(project.compileCode.synthesisDiagramFilter || "");
+  project.compileCode.synthesisExplorerView = ["tree", "nets", "objects", "sources", "ip", "timing"].includes(project.compileCode.synthesisExplorerView)
+    ? project.compileCode.synthesisExplorerView
+    : "tree";
+  project.compileCode.synthesisSourceDetails = String(project.compileCode.synthesisSourceDetails || "");
   const appendDestinations = compileAppendDestinations(project);
   if (!project.compileCode.appendTargetId || !appendDestinations.some((destination) => destination.id === project.compileCode.appendTargetId)) {
     project.compileCode.appendTargetId = appendDestinations[0]?.id || "";
@@ -12366,10 +12370,210 @@ function hdlSourceWithoutComments(code = "") {
     .replace(/(^|[^:])\/\/.*$/gm, "$1");
 }
 
+function hdlModuleNames(code = "") {
+  return [...String(code || "").matchAll(/\bmodule\s+([A-Za-z_$][\w$]*)/g)].map((match) => match[1]);
+}
+
+const compileIpBlockLibrary = [
+  {
+    id: "clock-divider",
+    label: "Clock divider",
+    fileName: "ip/clock_divider.sv",
+    description: "Parameterized counter divider for creating slower enable ticks from a fast FPGA clock.",
+    code: `module clock_divider #(
+  parameter integer DIVISOR = 50000000
+) (
+  input  logic clk,
+  input  logic rst,
+  output logic tick
+);
+  localparam integer COUNT_WIDTH = $clog2(DIVISOR);
+  logic [COUNT_WIDTH-1:0] count;
+
+  always_ff @(posedge clk or posedge rst) begin
+    if (rst) begin
+      count <= '0;
+      tick <= 1'b0;
+    end else if (count == DIVISOR - 1) begin
+      count <= '0;
+      tick <= 1'b1;
+    end else begin
+      count <= count + 1'b1;
+      tick <= 1'b0;
+    end
+  end
+endmodule
+`
+  },
+  {
+    id: "edge-detector",
+    label: "Edge detector",
+    fileName: "ip/edge_detector.sv",
+    description: "Single-cycle rising and falling edge pulse generator for synchronized control signals.",
+    code: `module edge_detector (
+  input  logic clk,
+  input  logic rst,
+  input  logic signal_in,
+  output logic rising_edge,
+  output logic falling_edge
+);
+  logic signal_d;
+
+  always_ff @(posedge clk or posedge rst) begin
+    if (rst) signal_d <= 1'b0;
+    else signal_d <= signal_in;
+  end
+
+  assign rising_edge = signal_in & ~signal_d;
+  assign falling_edge = ~signal_in & signal_d;
+endmodule
+`
+  },
+  {
+    id: "two-flop-synchronizer",
+    label: "Two-flop synchronizer",
+    fileName: "ip/two_flop_synchronizer.sv",
+    description: "Metastability-reduction synchronizer for single-bit asynchronous inputs crossing into a clock domain.",
+    code: `module two_flop_synchronizer (
+  input  logic clk,
+  input  logic rst,
+  input  logic async_in,
+  output logic sync_out
+);
+  logic sync_1;
+
+  always_ff @(posedge clk or posedge rst) begin
+    if (rst) begin
+      sync_1 <= 1'b0;
+      sync_out <= 1'b0;
+    end else begin
+      sync_1 <= async_in;
+      sync_out <= sync_1;
+    end
+  end
+endmodule
+`
+  },
+  {
+    id: "pwm-core",
+    label: "PWM core",
+    fileName: "ip/pwm_core.sv",
+    description: "Parameterized PWM generator with duty input and terminal-count carrier.",
+    code: `module pwm_core #(
+  parameter integer WIDTH = 8
+) (
+  input  logic clk,
+  input  logic rst,
+  input  logic [WIDTH-1:0] duty,
+  output logic pwm
+);
+  logic [WIDTH-1:0] counter;
+
+  always_ff @(posedge clk or posedge rst) begin
+    if (rst) counter <= '0;
+    else counter <= counter + 1'b1;
+  end
+
+  assign pwm = counter < duty;
+endmodule
+`
+  },
+  {
+    id: "uart-tx",
+    label: "UART transmitter",
+    fileName: "ip/uart_tx.sv",
+    description: "Small UART transmit block with ready/busy handshaking and configurable baud divisor.",
+    code: `module uart_tx #(
+  parameter integer CLKS_PER_BIT = 434
+) (
+  input  logic clk,
+  input  logic rst,
+  input  logic start,
+  input  logic [7:0] data,
+  output logic tx,
+  output logic busy
+);
+  typedef enum logic [1:0] {IDLE, START, DATA, STOP} state_t;
+  state_t state;
+  logic [15:0] baud_count;
+  logic [2:0] bit_index;
+  logic [7:0] shifter;
+
+  always_ff @(posedge clk or posedge rst) begin
+    if (rst) begin
+      state <= IDLE;
+      tx <= 1'b1;
+      busy <= 1'b0;
+      baud_count <= '0;
+      bit_index <= '0;
+      shifter <= '0;
+    end else begin
+      case (state)
+        IDLE: begin
+          tx <= 1'b1;
+          busy <= 1'b0;
+          if (start) begin
+            busy <= 1'b1;
+            shifter <= data;
+            baud_count <= '0;
+            state <= START;
+          end
+        end
+        START: begin
+          tx <= 1'b0;
+          if (baud_count == CLKS_PER_BIT - 1) begin
+            baud_count <= '0;
+            bit_index <= '0;
+            state <= DATA;
+          end else baud_count <= baud_count + 1'b1;
+        end
+        DATA: begin
+          tx <= shifter[bit_index];
+          if (baud_count == CLKS_PER_BIT - 1) begin
+            baud_count <= '0;
+            if (bit_index == 3'd7) state <= STOP;
+            else bit_index <= bit_index + 1'b1;
+          end else baud_count <= baud_count + 1'b1;
+        end
+        STOP: begin
+          tx <= 1'b1;
+          if (baud_count == CLKS_PER_BIT - 1) state <= IDLE;
+          else baud_count <= baud_count + 1'b1;
+        end
+      endcase
+    end
+  end
+endmodule
+`
+  },
+  {
+    id: "axi-lite-register",
+    label: "AXI-lite register",
+    fileName: "ip/axi_lite_register_stub.sv",
+    description: "Starter AXI-lite style register shell for integrating control/status registers.",
+    code: `module axi_lite_register_stub #(
+  parameter integer WIDTH = 32
+) (
+  input  logic clk,
+  input  logic rst,
+  input  logic write_enable,
+  input  logic [WIDTH-1:0] write_data,
+  output logic [WIDTH-1:0] read_data
+);
+  always_ff @(posedge clk or posedge rst) begin
+    if (rst) read_data <= '0;
+    else if (write_enable) read_data <= write_data;
+  end
+endmodule
+`
+  }
+];
+
 function hdlSynthesisGraphFromFiles(files = []) {
   const moduleBodies = new Map();
   const moduleNames = new Set();
-  files.filter((file) => isHdlLanguage(file.language)).forEach((file) => {
+  const hdlFiles = files.filter((file) => isHdlLanguage(file.language));
+  hdlFiles.forEach((file) => {
     const source = hdlSourceWithoutComments(file.code || "");
     for (const match of source.matchAll(/\bmodule\s+([A-Za-z_$][\w$]*)\b([\s\S]*?)\bendmodule\b/g)) {
       moduleNames.add(match[1]);
@@ -12397,6 +12601,27 @@ function hdlSynthesisGraphFromFiles(files = []) {
     nodes,
     edges,
     topModule,
+    sources: hdlFiles.map((file) => ({
+      fileName: file.fileName || file.relativePath || "source",
+      relativePath: compileFilePath(file),
+      language: normalizeCodeLanguage(file.language),
+      role: file.role || "design",
+      type: file.fileType || file.type || file.role || "source",
+      moduleNames: hdlModuleNames(file.code || ""),
+      lines: String(file.code || "").split(/\r?\n/).length,
+      bytes: new Blob([String(file.code || "")]).size,
+      simulator: "Icarus Verilog / vvp",
+      synthesisTool: "Yosys"
+    })),
+    timing: {
+      status: "Source timing review",
+      notes: ["Run Synthesize with Yosys to create netlist-level timing structure and cell/register counts."]
+    },
+    summary: {
+      moduleCount: nodes.length,
+      instanceCount: edges.length,
+      designFileCount: hdlFiles.length
+    },
     generatedAt: new Date().toISOString()
   };
 }
@@ -12418,6 +12643,10 @@ function activeSynthesisDiagram(project, file = activeCompileFile(project)) {
     available: synthesis.available !== false,
     cacheHit: Boolean(synthesis.cacheHit),
     summary: synthesis.summary || synthesis.graph?.summary || fallbackGraph.summary || {},
+    sources: Array.isArray(synthesis.sources) && synthesis.sources.length ? synthesis.sources : (graph.sources || fallbackGraph.sources || []),
+    nets: Array.isArray(graph.nets) ? graph.nets : [],
+    objects: Array.isArray(graph.objects) ? graph.objects : [],
+    timing: synthesis.timing || graph.timing || fallbackGraph.timing || {},
     terminal: synthesis.terminal || "",
     outputPath: synthesis.outputPath || "",
     netlistPath: synthesis.netlistPath || "",
@@ -12432,7 +12661,9 @@ function synthesisNodeHaystack(node = "") {
     node.label,
     node.type,
     node.kind,
-    node.fileName
+    node.direction,
+    node.fileName,
+    node.source
   ].map((part) => String(part || "").toLowerCase()).join(" ");
 }
 
@@ -12441,7 +12672,11 @@ function synthesisEdgeHaystack(edge = "") {
     edge.from,
     edge.to,
     edge.instance,
-    edge.type
+    edge.type,
+    edge.net,
+    edge.fromPort,
+    edge.toPort,
+    edge.direction
   ].map((part) => String(part || "").toLowerCase()).join(" ");
 }
 
@@ -12466,6 +12701,161 @@ function renderSynthesisSummaryChips(synthesis = {}, graph = {}) {
   `;
 }
 
+function synthesisExplorerViews() {
+  return [
+    { id: "tree", label: "Tree" },
+    { id: "nets", label: "Nets" },
+    { id: "objects", label: "Objects" },
+    { id: "sources", label: "Sources" },
+    { id: "ip", label: "IP blocks" },
+    { id: "timing", label: "Timing" }
+  ];
+}
+
+function synthesisNodeDimensions(node = {}) {
+  const labelLength = String(node.label || node.id || "").length;
+  const typeLength = String(node.type || node.fileName || node.kind || "").length;
+  return {
+    width: Math.min(280, Math.max(118, Number(node.nodeWidth) || 96 + Math.max(labelLength, typeLength) * 6)),
+    height: Math.min(118, Math.max(46, Number(node.nodeHeight) || 54 + Math.min(5, Number(node.portCount) || 0) * 6))
+  };
+}
+
+function synthesisSourceKey(source = {}) {
+  return source.relativePath || source.fileName || source.path || "";
+}
+
+function renderSynthesisExplorerList(items = [], options = {}) {
+  if (!items.length) return `<p class="compile-synthesis-empty">${escapeHtml(options.empty || "No items available.")}</p>`;
+  return `
+    <div class="compile-synthesis-list">
+      ${items.map((item) => `
+        <button type="button" ${item.action || ""} title="${escapeHtml(item.title || item.primary || "")}">
+          <span>${escapeHtml(item.primary || "")}</span>
+          ${item.secondary ? `<small>${escapeHtml(item.secondary)}</small>` : ""}
+          ${item.badge ? `<em>${escapeHtml(item.badge)}</em>` : ""}
+        </button>
+      `).join("")}
+    </div>
+  `;
+}
+
+function renderSynthesisSourceDetails(synthesis = {}, selectedKey = "") {
+  const sources = Array.isArray(synthesis.sources) ? synthesis.sources : [];
+  const source = sources.find((item) => synthesisSourceKey(item) === selectedKey) || sources[0];
+  if (!source) return "";
+  const rows = [
+    ["File", source.fileName || source.relativePath || "source"],
+    ["Path", source.relativePath || source.fileName || ""],
+    ["Target language", codeLanguageLabel(source.language || "systemverilog")],
+    ["Role", source.role || "design"],
+    ["Type", source.type || source.role || "source"],
+    ["Simulator", source.simulator || "Icarus Verilog / vvp"],
+    ["Synthesis tool", source.synthesisTool || "Yosys"],
+    ["Modules", Array.isArray(source.moduleNames) && source.moduleNames.length ? source.moduleNames.join(", ") : "No modules detected"],
+    ["Lines", String(source.lines || 0)],
+    ["Bytes", String(source.bytes || 0)]
+  ];
+  return `
+    <section class="compile-synthesis-source-details">
+      <h4>Source details</h4>
+      ${rows.map(([label, value]) => `
+        <p>
+          <span>${escapeHtml(label)}</span>
+          <strong>${escapeHtml(value)}</strong>
+        </p>
+      `).join("")}
+    </section>
+  `;
+}
+
+function renderSynthesisExplorer(project, synthesis = {}, graph = {}) {
+  const workspace = ensureCompileCode(project);
+  const view = workspace.synthesisExplorerView || "tree";
+  const nodes = Array.isArray(graph.nodes) ? graph.nodes : [];
+  const ports = nodes.filter((node) => node.kind === "port");
+  const inputs = ports.filter((node) => node.direction === "input");
+  const outputs = ports.filter((node) => node.direction === "output");
+  const inouts = ports.filter((node) => node.direction === "inout");
+  const cells = nodes.filter((node) => node.kind !== "port" && node.kind !== "top");
+  const sources = Array.isArray(synthesis.sources) ? synthesis.sources : [];
+  const nets = Array.isArray(synthesis.nets) ? synthesis.nets : (Array.isArray(graph.nets) ? graph.nets : []);
+  const objects = Array.isArray(synthesis.objects) ? synthesis.objects : (Array.isArray(graph.objects) ? graph.objects : []);
+  const timing = synthesis.timing || graph.timing || {};
+  const viewButtons = synthesisExplorerViews().map((item) => `
+    <button type="button" data-synthesis-view="${escapeHtml(item.id)}" aria-pressed="${view === item.id ? "true" : "false"}">${escapeHtml(item.label)}</button>
+  `).join("");
+  let body = "";
+  if (view === "tree") {
+    body = `
+      <div class="compile-synthesis-tree">
+        <details open>
+          <summary>Inputs (${inputs.length})</summary>
+          ${renderSynthesisExplorerList(inputs.map((node) => ({ primary: node.label, secondary: node.type, badge: "input" })), { empty: "No input ports." })}
+        </details>
+        <details open>
+          <summary>Logic objects (${cells.length})</summary>
+          ${renderSynthesisExplorerList(cells.map((node) => ({ primary: node.label, secondary: node.type || node.kind, badge: `${node.portCount || 0} ports` })), { empty: "No synthesized cells." })}
+        </details>
+        <details open>
+          <summary>Outputs (${outputs.length})</summary>
+          ${renderSynthesisExplorerList(outputs.map((node) => ({ primary: node.label, secondary: node.type, badge: "output" })), { empty: "No output ports." })}
+        </details>
+        ${inouts.length ? `<details><summary>Bidirectional (${inouts.length})</summary>${renderSynthesisExplorerList(inouts.map((node) => ({ primary: node.label, secondary: node.type, badge: "inout" })))}</details>` : ""}
+      </div>
+    `;
+  } else if (view === "nets") {
+    body = renderSynthesisExplorerList(nets.slice(0, 160).map((net) => ({
+      primary: net.name,
+      secondary: `drivers: ${(net.drivers || []).join(", ") || "none"} | loads: ${(net.loads || []).join(", ") || "none"}`,
+      badge: `${net.width || 1} bit${Number(net.width) === 1 ? "" : "s"}`
+    })), { empty: "Run synthesis to inspect nets." });
+  } else if (view === "objects") {
+    body = renderSynthesisExplorerList(objects.slice(0, 180).map((object) => ({
+      primary: object.name,
+      secondary: [object.type, object.source].filter(Boolean).join(" - "),
+      badge: object.direction || object.kind || "object"
+    })), { empty: "Run synthesis to inspect objects." });
+  } else if (view === "sources") {
+    body = `
+      ${renderSynthesisExplorerList(sources.map((source) => ({
+        primary: source.fileName || source.relativePath,
+        secondary: `${codeLanguageLabel(source.language)} - ${source.role || "design"} - ${(source.moduleNames || []).join(", ") || "no module"}`,
+        badge: `${source.lines || 0} lines`,
+        action: `data-synthesis-source="${escapeHtml(synthesisSourceKey(source))}"`
+      })), { empty: "No HDL sources were collected." })}
+      ${renderSynthesisSourceDetails(synthesis, workspace.synthesisSourceDetails)}
+    `;
+  } else if (view === "ip") {
+    body = `
+      <p class="compile-synthesis-help">Add reusable HDL IP into this project workspace, then wire it into your design and synthesize again.</p>
+      ${renderSynthesisExplorerList(compileIpBlockLibrary.map((block) => ({
+        primary: block.label,
+        secondary: block.description,
+        badge: "SystemVerilog",
+        action: `data-compile-add-ip="${escapeHtml(block.id)}"`
+      })), { empty: "No IP blocks available." })}
+    `;
+  } else if (view === "timing") {
+    const notes = Array.isArray(timing.notes) ? timing.notes : [];
+    body = `
+      <div class="compile-synthesis-timing">
+        <strong>${escapeHtml(timing.status || "Timing analysis")}</strong>
+        <p>Registers: ${Number(timing.registerCount) || 0}</p>
+        <p>Combinational cells: ${Number(timing.combinationalCellCount) || 0}</p>
+        <p>Memory cells: ${Number(timing.memoryCount) || 0}</p>
+        ${notes.length ? `<ul>${notes.map((note) => `<li>${escapeHtml(note)}</li>`).join("")}</ul>` : `<p>Run synthesis to generate structural timing notes.</p>`}
+      </div>
+    `;
+  }
+  return `
+    <aside class="compile-synthesis-explorer" aria-label="Synthesis explorer">
+      <div class="compile-synthesis-view-buttons">${viewButtons}</div>
+      <div class="compile-synthesis-view-body">${body}</div>
+    </aside>
+  `;
+}
+
 function renderSynthesisDiagramSvg(graph = {}, filter = "") {
   const nodes = Array.isArray(graph.nodes) && graph.nodes.length
     ? graph.nodes
@@ -12485,35 +12875,76 @@ function renderSynthesisDiagramSvg(graph = {}, filter = "") {
       }
     });
   }
-  const ordered = [
-    ...nodes.filter((node) => node.id === topModule),
-    ...nodes.filter((node) => node.id !== topModule)
-  ];
   const isNetlist = graph.netlist === true;
-  const columns = isNetlist ? Math.min(5, Math.max(1, Math.ceil(Math.sqrt(Math.max(1, ordered.length - 1))))) : ordered.length;
-  const rows = isNetlist ? Math.ceil(Math.max(1, ordered.length - 1) / columns) : 1;
-  const width = isNetlist ? Math.max(920, columns * 190 + 90) : Math.max(720, ordered.length * 170 + 80);
-  const height = isNetlist ? Math.max(330, 140 + rows * 104) : (ordered.length > 1 ? 250 : 160);
-  const nodeWidth = 140;
-  const nodeHeight = 54;
+  const ordered = isNetlist
+    ? nodes
+    : [
+        ...nodes.filter((node) => node.id === topModule),
+        ...nodes.filter((node) => node.id !== topModule)
+      ];
+  const inputPorts = ordered.filter((node) => node.kind === "port" && node.direction === "input");
+  const outputPorts = ordered.filter((node) => node.kind === "port" && node.direction === "output");
+  const inoutPorts = ordered.filter((node) => node.kind === "port" && node.direction === "inout");
+  const cells = ordered.filter((node) => node.kind !== "port" && node.kind !== "top");
+  const topNodes = ordered.filter((node) => node.kind === "top" || node.id === `module:${topModule}` || node.id === topModule).slice(0, 1);
+  const cellColumns = isNetlist ? Math.min(6, Math.max(1, Math.ceil(Math.sqrt(Math.max(1, cells.length))))) : Math.max(1, ordered.length);
+  const cellRows = isNetlist ? Math.ceil(Math.max(1, cells.length) / cellColumns) : 1;
+  const maxRows = Math.max(inputPorts.length + inoutPorts.length, outputPorts.length, cellRows, 1);
+  const cellGapX = 252;
+  const width = isNetlist ? Math.max(1220, 260 + cellColumns * cellGapX + 300) : Math.max(820, ordered.length * 190 + 120);
+  const height = isNetlist ? Math.max(620, 150 + maxRows * 82) : (ordered.length > 1 ? 300 : 190);
   const positions = new Map();
-  ordered.forEach((node, index) => {
-    const isTop = node.id === topModule;
-    let x = ordered.length === 1 ? (width - nodeWidth) / 2 : 40 + index * 170;
-    let y = isTop ? 32 : 140;
-    if (isNetlist) {
-      if (isTop) {
-        x = (width - nodeWidth) / 2;
-        y = 26;
-      } else {
-        const cellIndex = Math.max(0, index - 1);
-        x = 45 + (cellIndex % columns) * 190;
-        y = 132 + Math.floor(cellIndex / columns) * 104;
-      }
-    }
-    positions.set(node.id, { x, y });
+  const placeVertical = (items, x, yStart, availableRows = maxRows) => {
+    const step = Math.max(72, Math.min(116, Math.floor((height - yStart - 52) / Math.max(1, availableRows))));
+    items.forEach((node, index) => {
+      positions.set(node.id, { x, y: yStart + index * step });
+    });
+  };
+  if (isNetlist) {
+    topNodes.forEach((node) => {
+      const size = synthesisNodeDimensions(node);
+      positions.set(node.id, { x: (width - size.width) / 2, y: 24 });
+    });
+    placeVertical([...inputPorts, ...inoutPorts], 36, 124);
+    placeVertical(outputPorts, width - 230, 124);
+    cells.forEach((node, index) => {
+      const column = index % cellColumns;
+      const row = Math.floor(index / cellColumns);
+      positions.set(node.id, { x: 280 + column * cellGapX, y: 124 + row * 94 });
+    });
+  } else {
+    ordered.forEach((node, index) => {
+      positions.set(node.id, { x: ordered.length === 1 ? (width - synthesisNodeDimensions(node).width) / 2 : 48 + index * 190, y: node.id === topModule ? 36 : 150 });
+    });
+  }
+  const connectionPoint = (node, position, targetPosition, side = "auto") => {
+    const size = synthesisNodeDimensions(node);
+    const targetX = targetPosition?.x ?? position.x;
+    const useRight = side === "right" || (side === "auto" && targetX >= position.x);
+    return {
+      x: useRight ? position.x + size.width : position.x,
+      y: position.y + size.height / 2
+    };
+  };
+  const nodeById = new Map(ordered.map((node) => [node.id, node]));
+  const edges = (Array.isArray(graph.edges) ? graph.edges : []).slice(0, 620);
+  const renderedEdges = edges.map((edge, index) => {
+    const from = positions.get(edge.from);
+    const to = positions.get(edge.to);
+    const fromNode = nodeById.get(edge.from);
+    const toNode = nodeById.get(edge.to);
+    if (!from || !to || !fromNode || !toNode) return "";
+    const edgeMatches = Boolean(normalizedFilter && (synthesisEdgeHaystack(edge).includes(normalizedFilter) || connectedMatchIds.has(edge.from) || connectedMatchIds.has(edge.to)));
+    const edgeMuted = Boolean(normalizedFilter && !edgeMatches);
+    const start = connectionPoint(fromNode, from, to, "auto");
+    const end = connectionPoint(toNode, to, from, "auto");
+    const midX = start.x + Math.max(40, (end.x - start.x) / 2);
+    const label = [edge.net || edge.instance || "", Number(edge.width) > 1 ? `[${edge.width}]` : ""].filter(Boolean).join(" ");
+    return `
+      <path class="compile-synthesis-edge${edgeMatches ? " is-match" : ""}${edgeMuted ? " is-muted" : ""}" d="M${start.x},${start.y} C${midX},${start.y} ${midX},${end.y} ${end.x},${end.y}" marker-end="url(#synthesis-arrow)"></path>
+      ${label && index < 180 ? `<text class="compile-synthesis-instance${edgeMatches ? " is-match" : ""}${edgeMuted ? " is-muted" : ""}" x="${midX + 4}" y="${(start.y + end.y) / 2 - 4}">${escapeHtml(label)}</text>` : ""}
+    `;
   });
-  const edges = Array.isArray(graph.edges) ? graph.edges : [];
   return `
     <svg class="compile-synthesis-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="HDL synthesis module diagram">
       <defs>
@@ -12521,32 +12952,19 @@ function renderSynthesisDiagramSvg(graph = {}, filter = "") {
           <path d="M0,0 L0,6 L9,3 z"></path>
         </marker>
       </defs>
-      ${edges.map((edge) => {
-        const from = positions.get(edge.from);
-        const to = positions.get(edge.to);
-        if (!from || !to) return "";
-        const edgeMatches = Boolean(normalizedFilter && (synthesisEdgeHaystack(edge).includes(normalizedFilter) || connectedMatchIds.has(edge.from) || connectedMatchIds.has(edge.to)));
-        const edgeMuted = Boolean(normalizedFilter && !edgeMatches);
-        const x1 = from.x + nodeWidth / 2;
-        const y1 = from.y + nodeHeight;
-        const x2 = to.x + nodeWidth / 2;
-        const y2 = to.y;
-        const midY = y1 + Math.max(20, (y2 - y1) / 2);
-        return `
-          <path class="compile-synthesis-edge${edgeMatches ? " is-match" : ""}${edgeMuted ? " is-muted" : ""}" d="M${x1},${y1} C${x1},${midY} ${x2},${midY} ${x2},${y2}" marker-end="url(#synthesis-arrow)"></path>
-          <text class="compile-synthesis-instance${edgeMatches ? " is-match" : ""}${edgeMuted ? " is-muted" : ""}" x="${(x1 + x2) / 2}" y="${midY - 4}">${escapeHtml(edge.instance || "")}</text>
-        `;
-      }).join("")}
+      ${renderedEdges.join("")}
       ${ordered.map((node) => {
         const position = positions.get(node.id) || { x: 0, y: 0 };
-        const isTop = node.id === topModule;
+        const size = synthesisNodeDimensions(node);
+        const isTop = node.id === topModule || node.id === `module:${topModule}` || node.kind === "top";
         const nodeMatches = Boolean(normalizedFilter && (matchedNodeIds.has(node.id) || connectedMatchIds.has(node.id)));
         const nodeMuted = Boolean(normalizedFilter && !nodeMatches);
         return `
-          <g class="compile-synthesis-node${isTop ? " is-top" : ""}${nodeMatches ? " is-match" : ""}${nodeMuted ? " is-muted" : ""}">
-            <rect x="${position.x}" y="${position.y}" width="${nodeWidth}" height="${nodeHeight}" rx="7"></rect>
-            <text x="${position.x + 12}" y="${position.y + 24}">${escapeHtml(node.label || node.id)}</text>
-            <text class="compile-synthesis-file" x="${position.x + 12}" y="${position.y + 42}">${escapeHtml(node.type || node.fileName || node.kind || (isTop ? "top module" : "module"))}</text>
+          <g class="compile-synthesis-node compile-synthesis-${escapeHtml(node.kind || "node")}${node.direction ? ` compile-synthesis-${escapeHtml(node.direction)}` : ""}${isTop ? " is-top" : ""}${nodeMatches ? " is-match" : ""}${nodeMuted ? " is-muted" : ""}">
+            <rect x="${position.x}" y="${position.y}" width="${size.width}" height="${size.height}" rx="7"></rect>
+            <text x="${position.x + 12}" y="${position.y + 22}">${escapeHtml(node.label || node.id)}</text>
+            <text class="compile-synthesis-file" x="${position.x + 12}" y="${position.y + 40}">${escapeHtml(node.type || node.fileName || node.kind || (isTop ? "top module" : "module"))}</text>
+            ${node.portCount ? `<text class="compile-synthesis-file" x="${position.x + 12}" y="${position.y + Math.min(size.height - 9, 58)}">${Number(node.portCount)} ports</text>` : ""}
           </g>
         `;
       }).join("")}
@@ -12570,8 +12988,8 @@ function renderCompileSynthesisDiagramWindow(project, file = activeCompileFile(p
     <section class="compile-synthesis-diagram-window" aria-label="Synthesis diagram">
       <div class="compile-synthesis-diagram-heading">
         <div>
-          <strong>Synthesis diagram</strong>
-          <span>${escapeHtml(graph.topModule ? `Top: ${graph.topModule}` : file?.fileName || "HDL source")}</span>
+          <strong>Synthesized design schematic</strong>
+          <span>${escapeHtml(graph.topModule ? `Top: ${graph.topModule}` : file?.fileName || "HDL source")} - inputs left, outputs right, arrows show net direction</span>
         </div>
         <div class="compile-synthesis-zoom-controls" aria-label="Synthesis diagram zoom controls">
           <button type="button" data-compile-synthesis-zoom="out" title="Zoom out">-</button>
@@ -12582,28 +13000,31 @@ function renderCompileSynthesisDiagramWindow(project, file = activeCompileFile(p
         <button class="compile-mini-window-close" type="button" data-compile-toggle-synthesis-diagram aria-label="Close synthesis diagram">&times;</button>
       </div>
       <div class="compile-synthesis-diagram-body">
-        <div class="compile-synthesis-toolbar">
-          <label>
-            <span>Find module, cell, net, or instance</span>
-            <input type="search" data-compile-synthesis-filter value="${escapeHtml(filter)}" placeholder="counter, mux, $dff, uut...">
-          </label>
-          <label class="compile-synthesis-top-select">
-            <span>Top module</span>
-            <select data-compile-synthesis-top>
-              <option value="">Auto detect</option>
-              ${moduleOptions.map((node) => `<option value="${escapeHtml(node.id)}"${workspace.synthesisTopModule === node.id ? " selected" : ""}>${escapeHtml(node.label || node.id)}</option>`).join("")}
-            </select>
-          </label>
-          ${synthesis.netlistPath || synthesis.outputPath ? `<button type="button" data-copy-text="${escapeHtml(synthesis.netlistPath || synthesis.outputPath)}">Copy netlist path</button>` : ""}
-          ${synthesis.dotPath ? `<button type="button" data-copy-text="${escapeHtml(synthesis.dotPath)}">Copy DOT path</button>` : ""}
-        </div>
-        ${renderSynthesisSummaryChips(synthesis, graph)}
-        ${synthesis.available === false ? `<p class="compile-synthesis-warning">Yosys is not available, so this is a source-level module graph. Install OSS CAD Suite from Tools to produce a synthesized netlist.</p>` : ""}
-        <div class="compile-synthesis-canvas" style="--synthesis-zoom: ${zoom};">
-          <div class="compile-synthesis-zoom-stage">
-            ${renderSynthesisDiagramSvg(graph, filter)}
+        ${renderSynthesisExplorer(project, synthesis, graph)}
+        <main class="compile-synthesis-main">
+          <div class="compile-synthesis-toolbar">
+            <label>
+              <span>Find module, cell, net, source, or instance</span>
+              <input type="search" data-compile-synthesis-filter value="${escapeHtml(filter)}" placeholder="counter, mux, $dff, uut, clk...">
+            </label>
+            <label class="compile-synthesis-top-select">
+              <span>Top module</span>
+              <select data-compile-synthesis-top>
+                <option value="">Auto detect</option>
+                ${moduleOptions.map((node) => `<option value="${escapeHtml(node.id)}"${workspace.synthesisTopModule === node.id ? " selected" : ""}>${escapeHtml(node.label || node.id)}</option>`).join("")}
+              </select>
+            </label>
+            ${synthesis.netlistPath || synthesis.outputPath ? `<button type="button" data-copy-text="${escapeHtml(synthesis.netlistPath || synthesis.outputPath)}">Copy netlist path</button>` : ""}
+            ${synthesis.dotPath ? `<button type="button" data-copy-text="${escapeHtml(synthesis.dotPath)}">Copy DOT path</button>` : ""}
           </div>
-        </div>
+          ${renderSynthesisSummaryChips(synthesis, graph)}
+          ${synthesis.available === false ? `<p class="compile-synthesis-warning">Yosys is not available, so this is a source-level module graph. Install OSS CAD Suite from Tools to produce a synthesized netlist.</p>` : ""}
+          <div class="compile-synthesis-canvas" style="--synthesis-zoom: ${zoom};">
+            <div class="compile-synthesis-zoom-stage">
+              ${renderSynthesisDiagramSvg(graph, filter)}
+            </div>
+          </div>
+        </main>
       </div>
     </section>
   `;
@@ -13973,6 +14394,33 @@ function addCompileUvmStyleTestbenchFile(project, options = {}) {
   openCompileFileView(workspace, file.id);
   setStatus("UVM-style SystemVerilog testbench created. Connect the DUT ports, then simulate.");
   addCompileMessage(project, "Created a UVM-style testbench skeleton with build/run phases, an immediate assertion, $dumpfile, and $dumpvars.", "info");
+  scheduleAutosave();
+  renderSectionContent(project);
+}
+
+function compileIpBlockById(id = "") {
+  return compileIpBlockLibrary.find((block) => block.id === id) || null;
+}
+
+function addCompileIpBlock(project, ipId = "") {
+  const block = compileIpBlockById(ipId);
+  if (!project || !block) {
+    setStatus("Select a valid IP block first.");
+    return;
+  }
+  const workspace = ensureCompileCode(project);
+  const file = newCompileFile("systemverilog", {
+    relativePath: uniqueCompileFilePath(workspace, block.fileName, "systemverilog"),
+    role: "design",
+    fileType: "design",
+    code: block.code
+  });
+  addCompileDirectoryPath(workspace, compileFileDirectory(file.relativePath));
+  workspace.files.push(file);
+  openCompileFileView(workspace, file.id);
+  workspace.synthesisExplorerView = "sources";
+  addCompileMessage(project, `Added IP block: ${block.label}. Wire it into your top module, then run Synthesize.`, "success");
+  setStatus(`${block.label} added to Compile Code.`);
   scheduleAutosave();
   renderSectionContent(project);
 }
@@ -18154,6 +18602,27 @@ sectionContent.addEventListener("click", async (event) => {
       await navigator.clipboard.writeText(text);
       setStatus("Path copied to the clipboard.");
     }
+    return;
+  }
+  if (button.dataset.synthesisView) {
+    const workspace = ensureCompileCode(project);
+    workspace.synthesisExplorerView = button.dataset.synthesisView;
+    setStatus(`Synthesis ${button.dataset.synthesisView} view opened.`);
+    scheduleAutosave(700);
+    renderSectionContent(project);
+    return;
+  }
+  if (button.dataset.synthesisSource !== undefined) {
+    const workspace = ensureCompileCode(project);
+    workspace.synthesisSourceDetails = button.dataset.synthesisSource || "";
+    workspace.synthesisExplorerView = "sources";
+    setStatus("Synthesis source details opened.");
+    scheduleAutosave(700);
+    renderSectionContent(project);
+    return;
+  }
+  if (button.dataset.compileAddIp) {
+    addCompileIpBlock(project, button.dataset.compileAddIp);
     return;
   }
   if (button.dataset.compileOutlineLine) {

@@ -1594,24 +1594,194 @@ async function hdlYosysNetlistGraph(jsonPath = "", fallbackGraph = {}) {
     }
     const ports = moduleData?.ports && typeof moduleData.ports === "object" ? moduleData.ports : {};
     const netnames = moduleData?.netnames && typeof moduleData.netnames === "object" ? moduleData.netnames : {};
-    const limit = 180;
+    const bitKey = (bit) => {
+      const value = String(bit);
+      return /^(0|1|x|z)$/i.test(value) ? `const:${value.toLowerCase()}` : `bit:${value}`;
+    };
+    const netRecords = [];
+    const bitToNet = new Map();
+    Object.entries(netnames).forEach(([name, net]) => {
+      const bits = Array.isArray(net?.bits) ? net.bits.map(bitKey) : [];
+      const record = {
+        id: `net:${name}`,
+        name,
+        width: Math.max(1, bits.length),
+        bits,
+        drivers: [],
+        loads: []
+      };
+      netRecords.push(record);
+      bits.forEach((key) => {
+        if (!bitToNet.has(key)) bitToNet.set(key, []);
+        bitToNet.get(key).push(record);
+      });
+    });
+    const netsForBits = (bits = []) => {
+      const found = [];
+      (Array.isArray(bits) ? bits : []).forEach((bit) => {
+        const records = bitToNet.get(bitKey(bit)) || [];
+        records.forEach((record) => {
+          if (!found.includes(record)) found.push(record);
+        });
+      });
+      return found.length ? found : [{
+        id: `net:${String(bits?.[0] ?? "constant")}`,
+        name: String(bits?.[0] ?? "constant"),
+        width: Math.max(1, Array.isArray(bits) ? bits.length : 1),
+        bits: Array.isArray(bits) ? bits.map(bitKey) : [],
+        drivers: [],
+        loads: [],
+        constant: true
+      }];
+    };
+    const portDirection = (value = "") => {
+      const direction = String(value || "").toLowerCase();
+      return ["input", "output", "inout"].includes(direction) ? direction : "inout";
+    };
+    const cellPortDirection = (cell = {}, portName = "") => {
+      const directions = cell?.port_directions && typeof cell.port_directions === "object" ? cell.port_directions : {};
+      const direct = portDirection(directions[portName]);
+      if (directions[portName]) return direct;
+      const clean = String(portName || "").toLowerCase();
+      if (/^(y|q|z|zn|o|out|dout|data_o|result|sum|carry|co)$/.test(clean)) return "output";
+      if (/^(clk|clock|rst|reset|ce|en|a|b|c|d|i|in|din|addr|sel|we|re)$/.test(clean)) return "input";
+      return "inout";
+    };
+    const limit = 220;
     const shownCells = cellEntries.slice(0, limit);
-    const nodes = [
-      { id: topModule, label: topModule, kind: "top", fileName: "synthesized top" },
-      ...shownCells.map(([instanceName, cell]) => ({
-        id: instanceName,
+    const portNodes = Object.entries(ports).map(([name, port]) => {
+      const direction = portDirection(port?.direction);
+      const width = Math.max(1, Array.isArray(port?.bits) ? port.bits.length : 1);
+      return {
+        id: `port:${name}`,
+        label: name,
+        kind: "port",
+        direction,
+        width,
+        fileName: "top-level port",
+        type: `${direction} ${width} bit${width === 1 ? "" : "s"}`,
+        nodeWidth: Math.min(210, Math.max(112, 86 + name.length * 5)),
+        nodeHeight: 42
+      };
+    });
+    const cellNodes = shownCells.map(([instanceName, cell]) => {
+      const type = String(cell?.type || "cell");
+      const portCount = Object.keys(cell?.connections || {}).length;
+      const width = Math.min(260, Math.max(130, 94 + portCount * 9, type.length * 7 + 30, instanceName.length * 6 + 24));
+      const height = Math.min(112, Math.max(56, 40 + Math.ceil(portCount / 3) * 12));
+      return {
+        id: `cell:${instanceName}`,
         label: instanceName,
-        kind: String(cell?.type || "cell").startsWith("$") ? "primitive" : "cell",
-        fileName: String(cell?.type || "cell"),
-        type: String(cell?.type || "cell")
-      }))
+        kind: type.startsWith("$") ? "primitive" : "cell",
+        fileName: String(cell?.attributes?.src || type),
+        source: String(cell?.attributes?.src || ""),
+        type,
+        portCount,
+        nodeWidth: width,
+        nodeHeight: height
+      };
+    });
+    const nodes = [
+      { id: `module:${topModule}`, label: topModule, kind: "top", fileName: "synthesized top", type: "top module", nodeWidth: 190, nodeHeight: 54 },
+      ...portNodes,
+      ...cellNodes
     ];
-    const edges = shownCells.map(([instanceName, cell]) => ({
-      from: topModule,
-      to: instanceName,
-      instance: String(cell?.type || "cell"),
-      ports: Object.keys(cell?.connections || {}).length
-    }));
+    const endpointByNet = new Map();
+    const addEndpoint = (netRecord, endpoint, role) => {
+      if (!netRecord?.name || !endpoint?.id) return;
+      if (!endpointByNet.has(netRecord.name)) endpointByNet.set(netRecord.name, { drivers: [], loads: [] });
+      const bucket = endpointByNet.get(netRecord.name);
+      const target = role === "driver" ? bucket.drivers : bucket.loads;
+      if (!target.some((item) => item.id === endpoint.id && item.port === endpoint.port)) target.push(endpoint);
+    };
+    Object.entries(ports).forEach(([name, port]) => {
+      const direction = portDirection(port?.direction);
+      const endpoint = { id: `port:${name}`, kind: "port", name, port: name, direction };
+      netsForBits(port?.bits || []).forEach((netRecord) => {
+        if (direction === "input") addEndpoint(netRecord, endpoint, "driver");
+        else if (direction === "output") addEndpoint(netRecord, endpoint, "load");
+        else {
+          addEndpoint(netRecord, endpoint, "driver");
+          addEndpoint(netRecord, endpoint, "load");
+        }
+      });
+    });
+    shownCells.forEach(([instanceName, cell]) => {
+      const nodeId = `cell:${instanceName}`;
+      Object.entries(cell?.connections || {}).forEach(([portName, bits]) => {
+        const direction = cellPortDirection(cell, portName);
+        const endpoint = {
+          id: nodeId,
+          kind: "cell",
+          name: instanceName,
+          type: String(cell?.type || "cell"),
+          port: portName,
+          direction
+        };
+        netsForBits(bits || []).forEach((netRecord) => {
+          if (direction === "output") addEndpoint(netRecord, endpoint, "driver");
+          else if (direction === "input") addEndpoint(netRecord, endpoint, "load");
+          else {
+            addEndpoint(netRecord, endpoint, "driver");
+            addEndpoint(netRecord, endpoint, "load");
+          }
+        });
+      });
+    });
+    const nodeIds = new Set(nodes.map((node) => node.id));
+    const edges = [];
+    endpointByNet.forEach((bucket, netName) => {
+      const drivers = bucket.drivers.filter((item) => nodeIds.has(item.id));
+      const loads = bucket.loads.filter((item) => nodeIds.has(item.id));
+      const width = netRecords.find((net) => net.name === netName)?.width || 1;
+      drivers.slice(0, 8).forEach((driver) => {
+        loads.slice(0, 12).forEach((load) => {
+          if (driver.id === load.id && driver.port === load.port) return;
+          edges.push({
+            from: driver.id,
+            to: load.id,
+            instance: netName,
+            net: netName,
+            width,
+            fromPort: driver.port,
+            toPort: load.port,
+            direction: `${driver.direction || "out"} to ${load.direction || "in"}`
+          });
+        });
+      });
+    });
+    const objects = [
+      ...portNodes.map((node) => ({ kind: "port", name: node.label, direction: node.direction, width: node.width, type: node.type })),
+      ...cellNodes.map((node) => ({ kind: node.kind, name: node.label, type: node.type, ports: node.portCount, source: node.source }))
+    ];
+    const netSummaries = netRecords
+      .map((net) => {
+        const bucket = endpointByNet.get(net.name) || { drivers: [], loads: [] };
+        return {
+          name: net.name,
+          width: net.width,
+          drivers: bucket.drivers.map((item) => `${item.name || item.id}.${item.port}`).slice(0, 8),
+          loads: bucket.loads.map((item) => `${item.name || item.id}.${item.port}`).slice(0, 12)
+        };
+      })
+      .sort((left, right) => right.width - left.width || left.name.localeCompare(right.name));
+    const registerCount = Object.entries(cellTypes)
+      .filter(([type]) => /\$dff|\$adff|\$sdff|dff|flop|register/i.test(type))
+      .reduce((sum, [, count]) => sum + count, 0);
+    const memoryCount = Object.entries(cellTypes)
+      .filter(([type]) => /\$mem|ram|rom|memory/i.test(type))
+      .reduce((sum, [, count]) => sum + count, 0);
+    const timing = {
+      status: "Structural timing estimate",
+      registerCount,
+      memoryCount,
+      combinationalCellCount: Math.max(0, cellEntries.length - registerCount - memoryCount),
+      notes: [
+        "Full FPGA timing closure still requires the target device, clock constraints, generated clocks, IO delays, and the vendor implementation tool.",
+        registerCount ? `${registerCount} register-like cell${registerCount === 1 ? "" : "s"} were detected, so sequential paths can be isolated during later timing analysis.` : "No register-like cells were detected in this synthesized netlist.",
+        memoryCount ? `${memoryCount} memory-like cell${memoryCount === 1 ? "" : "s"} were detected and should be reviewed against the target FPGA memory resources.` : "No memory-like cells were detected in the visible netlist."
+      ]
+    };
     return {
       nodes,
       edges,
@@ -1620,12 +1790,19 @@ async function hdlYosysNetlistGraph(jsonPath = "", fallbackGraph = {}) {
       truncated: cellEntries.length > shownCells.length,
       cellCount: cellEntries.length,
       moduleCount: entries.length,
+      ports: portNodes,
+      nets: netSummaries.slice(0, 300),
+      objects: objects.slice(0, 420),
+      timing,
       summary: {
         moduleCount: entries.length,
         cellCount: cellEntries.length,
         shownCellCount: shownCells.length,
         portCount: Object.keys(ports).length,
         netCount: Object.keys(netnames).length,
+        edgeCount: edges.length,
+        registerCount,
+        memoryCount,
         cellTypes: Object.entries(cellTypes)
           .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
           .slice(0, 20)
@@ -1651,7 +1828,7 @@ function hdlGraphToDot(graph = {}) {
   for (const node of Array.isArray(graph.nodes) ? graph.nodes : []) {
     const attrs = [
       `label="${label(node.label || node.id)}\\n${label(node.type || node.fileName || node.kind || "")}"`,
-      node.id === graph.topModule ? "fillcolor=\"#bfdbfe\"" : ""
+      node.id === graph.topModule || node.id === `module:${graph.topModule}` || node.kind === "top" ? "fillcolor=\"#bfdbfe\"" : ""
     ].filter(Boolean).join(", ");
     lines.push(`  ${safeId(node.id)} [${attrs}];`);
   }
@@ -2294,9 +2471,29 @@ async function compileAndRunCode(payload = {}) {
     const selectedTopModule = requestedTopModule && inferredSynthesisGraph.nodes?.some((node) => node.id === requestedTopModule)
       ? requestedTopModule
       : inferredSynthesisGraph.topModule;
+    const synthesisSources = synthesisSet.map((file) => ({
+      fileName: file.fileName || file.relativePath || "source",
+      relativePath: file.relativePath || file.fileName || "",
+      language: normalizeCodeLanguage(file.language || language),
+      role: file.role || "design",
+      type: file.fileType || file.type || file.role || "source",
+      moduleNames: hdlModuleNames(file.code || ""),
+      lines: String(file.code || "").split(/\r?\n/).length,
+      bytes: Buffer.byteLength(String(file.code || ""), "utf8"),
+      simulator: "Icarus Verilog / vvp",
+      synthesisTool: "Yosys"
+    }));
+    const sourceTiming = hdlTimingAndVerificationDiagnostics(synthesisSet);
     const synthesisGraph = {
       ...inferredSynthesisGraph,
-      topModule: selectedTopModule
+      topModule: selectedTopModule,
+      sources: synthesisSources,
+      timing: {
+        status: "Source timing review",
+        notes: sourceTiming.length ? sourceTiming : [
+          "No obvious source-level timing warnings were detected. Run synthesis with Yosys and target constraints for deeper timing work."
+        ]
+      }
     };
     if (action === "synthesize") {
       const yosys = await findTool("yosys");
@@ -2316,6 +2513,8 @@ async function compileAndRunCode(payload = {}) {
             available: false,
             tool: "Yosys",
             graph: synthesisGraph,
+            sources: synthesisSources,
+            timing: synthesisGraph.timing,
             terminal: terminal.join("\n\n").trim(),
             synthesizedAt: new Date().toISOString()
           },
@@ -2391,6 +2590,8 @@ async function compileAndRunCode(payload = {}) {
           cacheHit: cached,
           tool: "Yosys",
           graph: renderedGraph,
+          sources: renderedGraph.sources || synthesisSources,
+          timing: renderedGraph.timing || synthesisGraph.timing,
           outputPath: synthesisJson,
           netlistPath: synthesisJson,
           dotPath: synthesisDot,
