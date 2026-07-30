@@ -1275,6 +1275,20 @@ function extractCodeDiagnostics(rawText = "", language = "", options = {}) {
         language: normalizedLanguage,
         fallbackFile
       });
+      continue;
+    }
+
+    match = lineText.match(/^(ERROR|Warning|Warning:)\s*:\s+.*?(?:in\s+line\s+)?(.+?\.(?:v|sv|vh|svh)):(\d+)(?::(\d+))?:\s*(.+)$/i);
+    if (match) {
+      addCodeDiagnostic(diagnostics, {
+        file: match[2],
+        line: match[3],
+        column: match[4] || diagnosticColumnFromCaret(lines, index),
+        severity: /warning/i.test(match[1]) ? "warning" : "error",
+        message: match[5],
+        language: normalizedLanguage,
+        fallbackFile
+      });
     }
   }
 
@@ -1548,7 +1562,16 @@ function hdlSynthesisGraph(files = []) {
     fileName: moduleBodies.get(id)?.fileName || ""
   }));
   const topModule = nodes.find((node) => !instantiated.has(node.id))?.id || nodes[0]?.id || "";
-  return { nodes, edges, topModule };
+  return {
+    nodes,
+    edges,
+    topModule,
+    summary: {
+      moduleCount: nodes.length,
+      instanceCount: edges.length,
+      designFileCount: files.length
+    }
+  };
 }
 
 async function hdlYosysNetlistGraph(jsonPath = "", fallbackGraph = {}) {
@@ -1564,7 +1587,14 @@ async function hdlYosysNetlistGraph(jsonPath = "", fallbackGraph = {}) {
     const [topModule, moduleData] = topEntry;
     const cells = moduleData?.cells && typeof moduleData.cells === "object" ? moduleData.cells : {};
     const cellEntries = Object.entries(cells);
-    const limit = 140;
+    const cellTypes = {};
+    for (const [, cell] of cellEntries) {
+      const type = String(cell?.type || "cell");
+      cellTypes[type] = (cellTypes[type] || 0) + 1;
+    }
+    const ports = moduleData?.ports && typeof moduleData.ports === "object" ? moduleData.ports : {};
+    const netnames = moduleData?.netnames && typeof moduleData.netnames === "object" ? moduleData.netnames : {};
+    const limit = 180;
     const shownCells = cellEntries.slice(0, limit);
     const nodes = [
       { id: topModule, label: topModule, kind: "top", fileName: "synthesized top" },
@@ -1590,6 +1620,17 @@ async function hdlYosysNetlistGraph(jsonPath = "", fallbackGraph = {}) {
       truncated: cellEntries.length > shownCells.length,
       cellCount: cellEntries.length,
       moduleCount: entries.length,
+      summary: {
+        moduleCount: entries.length,
+        cellCount: cellEntries.length,
+        shownCellCount: shownCells.length,
+        portCount: Object.keys(ports).length,
+        netCount: Object.keys(netnames).length,
+        cellTypes: Object.entries(cellTypes)
+          .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+          .slice(0, 20)
+          .map(([type, count]) => ({ type, count }))
+      },
       generatedAt: new Date().toISOString()
     };
   } catch {
@@ -2248,12 +2289,22 @@ async function compileAndRunCode(payload = {}) {
     const hdlFiles = hdlFilesFromPayload(payload, saved.fileName, language);
     const synthesisFiles = hdlFiles.filter((file) => file.role !== "testbench");
     const synthesisSet = synthesisFiles.length ? synthesisFiles : hdlFiles;
-    const synthesisGraph = hdlSynthesisGraph(synthesisSet);
+    const inferredSynthesisGraph = hdlSynthesisGraph(synthesisSet);
+    const requestedTopModule = String(payload.synthesisTopModule || "").trim().replace(/[^\w$]/g, "");
+    const selectedTopModule = requestedTopModule && inferredSynthesisGraph.nodes?.some((node) => node.id === requestedTopModule)
+      ? requestedTopModule
+      : inferredSynthesisGraph.topModule;
+    const synthesisGraph = {
+      ...inferredSynthesisGraph,
+      topModule: selectedTopModule
+    };
     if (action === "synthesize") {
       const yosys = await findTool("yosys");
       const yosysVersion = yosys ? await toolVersionLine(yosys) : "";
       terminal.push(`${profile.label} synthesis set: ${synthesisSet.length} design HDL file${synthesisSet.length === 1 ? "" : "s"}`);
-      if (synthesisGraph.topModule) terminal.push(`Inferred synthesis top: ${synthesisGraph.topModule}`);
+      if (synthesisGraph.topModule) {
+        terminal.push(`${requestedTopModule ? "Selected" : "Inferred"} synthesis top: ${synthesisGraph.topModule}`);
+      }
       if (yosysVersion) terminal.push(`Synthesis tool: ${yosysVersion}`);
       if (!yosys) {
         terminal.push("Yosys was not found. Install OSS CAD Suite or add yosys.exe to PATH to run real synthesis. The builder still generated a source-level module diagram.");
@@ -2285,49 +2336,65 @@ async function compileAndRunCode(payload = {}) {
         topModule: synthesisGraph.topModule
       });
       const synthDir = compileCacheDirectory(payload.projectId, language, synthKey);
-      await rm(synthDir, { recursive: true, force: true });
-      await mkdir(synthDir, { recursive: true });
-      const sourceFiles = await writeHdlSimulationSources(synthesisSet, synthDir);
       const synthesisJson = path.join(synthDir, "synthesis.json");
       const synthesisDot = path.join(synthDir, "synthesis.dot");
       const scriptPath = path.join(synthDir, "synthesis.ys");
-      const sourceLines = sourceFiles.map((file) => `read_verilog -sv ${yosysScriptQuote(file.sourcePath)}`);
-      const script = [
-        "# Generated by OMB Portfolio Builder Compile Code.",
-        ...sourceLines,
-        synthesisGraph.topModule ? `synth -top ${synthesisGraph.topModule}` : "synth",
-        "stat",
-        `write_json ${yosysScriptQuote(synthesisJson)}`
-      ].join("\n");
-      await writeFile(scriptPath, `${script}\n`, "utf8");
-      const synth = await runProcess(yosys, ["-s", scriptPath], { cwd: synthDir, timeoutMs: 60000 });
-      const renderedGraph = synth.ok
-        ? await hdlYosysNetlistGraph(synthesisJson, synthesisGraph)
-        : synthesisGraph;
-      await writeFile(synthesisDot, hdlGraphToDot(renderedGraph), "utf8");
-      const replacements = [
-        { from: scriptPath, to: "synthesis.ys" },
-        { from: synthesisJson, to: "synthesis.json" },
-        { from: synthesisDot, to: "synthesis.dot" },
-        ...sourceFiles.map((file) => ({ from: file.sourcePath, to: file.uniqueName }))
-      ];
-      terminal.push(terminalLine(
-        `${path.basename(yosys)} -s synthesis.ys`,
-        processTerminalTextWithPaths(synth, replacements)
-      ));
+      await mkdir(synthDir, { recursive: true });
+      const cached = !forceRebuild && await pathExists(synthesisJson) && await pathExists(synthesisDot);
+      let renderedGraph = synthesisGraph;
+      let synth = { ok: true, stdout: "", stderr: "", code: 0, elapsedMs: 0 };
+      if (cached) {
+        renderedGraph = await hdlYosysNetlistGraph(synthesisJson, synthesisGraph);
+        terminal.push(cachedBuildLine(`${profile.label} synthesis`, synthesisJson));
+        terminal.push(`Synthesis diagram DOT cache hit: ${synthesisDot}`);
+      } else {
+        await rm(synthDir, { recursive: true, force: true });
+        await mkdir(synthDir, { recursive: true });
+        const sourceFiles = await writeHdlSimulationSources(synthesisSet, synthDir);
+        const sourceLines = sourceFiles.map((file) => `read_verilog -sv ${yosysScriptQuote(file.sourcePath)}`);
+        const script = [
+          "# Generated by OMB Portfolio Builder Compile Code.",
+          ...sourceLines,
+          synthesisGraph.topModule ? `synth -top ${synthesisGraph.topModule}` : "synth",
+          "stat",
+          `write_json ${yosysScriptQuote(synthesisJson)}`
+        ].join("\n");
+        await writeFile(scriptPath, `${script}\n`, "utf8");
+        synth = await runProcess(yosys, ["-s", scriptPath], { cwd: synthDir, timeoutMs: 60000 });
+        renderedGraph = synth.ok
+          ? await hdlYosysNetlistGraph(synthesisJson, synthesisGraph)
+          : synthesisGraph;
+        await writeFile(synthesisDot, hdlGraphToDot(renderedGraph), "utf8");
+        const replacements = [
+          { from: scriptPath, to: "synthesis.ys" },
+          { from: synthesisJson, to: "synthesis.json" },
+          { from: synthesisDot, to: "synthesis.dot" },
+          ...sourceFiles.map((file) => ({ from: file.sourcePath, to: file.uniqueName }))
+        ];
+        terminal.push(terminalLine(
+          `${path.basename(yosys)} -s synthesis.ys`,
+          processTerminalTextWithPaths(synth, replacements)
+        ));
+      }
       terminal.push(synth.ok ? `Synthesis JSON written: ${synthesisJson}` : "Synthesis did not complete. Check the Yosys diagnostics above.");
       terminal.push(`Synthesis diagram DOT written: ${synthesisDot}`);
+      const summary = renderedGraph.summary || {};
+      if (summary.cellCount || summary.moduleCount || summary.netCount || summary.portCount) {
+        terminal.push(`Synthesis summary: ${summary.moduleCount || 0} module(s), ${summary.cellCount || 0} cell(s), ${summary.netCount || 0} net(s), ${summary.portCount || 0} port(s).`);
+      }
       return {
         ok: synth.ok,
         language,
         saved,
         synthesis: {
           available: true,
+          cacheHit: cached,
           tool: "Yosys",
           graph: renderedGraph,
           outputPath: synthesisJson,
           netlistPath: synthesisJson,
           dotPath: synthesisDot,
+          summary: renderedGraph.summary || {},
           terminal: terminal.join("\n\n").trim(),
           synthesizedAt: new Date().toISOString()
         },
