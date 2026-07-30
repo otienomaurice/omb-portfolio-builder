@@ -11,7 +11,7 @@
     <link rel="shortcut icon" href="assets/favicon.ico" />
     <link rel="apple-touch-icon" sizes="180x180" href="assets/apple-touch-icon.png" />
     <link rel="stylesheet" href="styles.css" />
-    <link rel="stylesheet" href="template-preview.css?v=0.2.90" />
+    <link rel="stylesheet" href="template-preview.css?v=0.2.92" />
   </head>
   <body class="template-preview-page">
       <header class="template-header">
@@ -587,6 +587,10 @@
                               <li>Drag an inserted image to move the same image; the editor should not duplicate it. Use the edge handles to resize it, then choose inline, left, right, or block wrapping so text and other images can sit around it naturally.</li>
                               <li>Right-click an image to crop it, change caption position, or switch its text wrapping without reopening the whole section.</li>
                               <li>Add PDFs under documents, lab reports, design notes, or references.</li>
+                              <li>Schematic PDFs, schematic images, SVG diagrams, KiCad schematics, KiCad PCB files, LTspice .asc files, SPICE decks, and netlists open in the enhanced schematic viewer when possible. Text-based schematic files also get a lightweight generated map above the source when wires, symbols, and labels can be inferred.</li>
+                              <li>Use Fit, Fit width, zoom, Grid, Rotate, and Contrast in the schematic viewer when a drawing is too small, too wide, sideways, or hard to read against the current builder theme.</li>
+                              <li>For text-based schematic files, use the schematic inventory search to find nets, labels, symbols, or components quickly. Matching items are highlighted on the generated map.</li>
+                              <li>Use Copy path or Print from the file viewer toolbar when you need to cite, share, or print a specific evidence file without leaving the builder.</li>
                               <li>Add simulation files under Simulation files and screenshots/plots under Results.</li>
                               <li>Add source repositories as links, not downloadable text files.</li>
                               <li>All local project evidence file types are accepted, including .sv, .v, .asc, .raw, .zip, PDFs, images, reports, and source files.</li>
@@ -597,7 +601,7 @@
                               <li>Rename files and images to meaningful names before saving when the default filename is not clear.</li>
                               <li>Add captions that explain what the image proves, not just what the image is.</li>
                           </ul>
-                          <p>Project evidence is saved under docs/project-folder/section-or-subsection/filename. For example, a SystemVerilog design file could be saved as docs/laser-link/design/filter.sv. The upload status shows the generated path after the file is saved. Use titles that explain the evidence: Oscilloscope capture, KiCad PCB layout, LTspice transient result, VCO test handout, measured ripple at load, and so on. Before publishing, click every visible image and file link in the preview so broken or private files do not reach the public site.</p>
+                          <p>Project evidence is saved under docs/project-folder/section-or-subsection/filename. For example, a SystemVerilog design file could be saved as docs/laser-link/design/filter.sv. The upload status shows the generated path after the file is saved. Use titles that explain the evidence: Oscilloscope capture, KiCad PCB layout, LTspice transient result, VCO test handout, measured ripple at load, and so on. Schematic-looking embedded images are displayed wider in previews and the public website so circuit details are not crushed into small media cards. Before publishing, click every visible image and file link in the preview so broken or private files do not reach the public site.</p>
                       </div>
                   </details>
                   <details class="builder-guide-section" data-guide-section="preview project portfolio parser">
@@ -933,7 +937,7 @@
               </div>
               <div class="project-preview-content builder-file-view-content" id="builder-file-view-content"></div>
               <div class="dialog-actions builder-file-view-actions">
-                  <a class="button secondary" id="builder-file-view-open" href="#" target="_blank" rel="noreferrer">Open file</a>
+                  <a class="button secondary" id="builder-file-view-open" href="#" target="_blank" rel="noreferrer">Open</a>
                   <a class="button primary" id="builder-file-view-download" href="#" download>Download</a>
               </div>
           </div>
@@ -1761,6 +1765,6 @@
           </div>
       </div>
       <script src="electronics-search.js?v=0.2.90"></script>
-      <script src="template-preview.js?v=0.2.90"></script>
+      <script src="template-preview.js?v=0.2.92"></script>
   </body>
 </html>

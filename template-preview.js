@@ -103,6 +103,17 @@ const builderFileViewContent = document.querySelector("#builder-file-view-conten
 const builderFileViewClose = document.querySelector("#builder-file-view-close");
 const builderFileViewOpen = document.querySelector("#builder-file-view-open");
 const builderFileViewDownload = document.querySelector("#builder-file-view-download");
+const builderFileViewerState = {
+  fit: "contain",
+  grid: true,
+  invert: false,
+  rotation: 0,
+  sourceText: "",
+  target: "",
+  title: "",
+  type: "",
+  zoom: 1
+};
 const openPortfolioPreviewButton = document.querySelector("#open-portfolio-preview");
 const saveAllSectionsButton = document.querySelector("#save-all-sections");
 const portfolioPreviewDialog = document.querySelector("#portfolio-preview-dialog");
@@ -3699,6 +3710,12 @@ function cleanRichImageTitle(block = {}) {
   return /^pasted image\b/i.test(title) ? "" : title;
 }
 
+function richImageIsSchematic(block = {}) {
+  const haystack = `${block.title || ""} ${block.caption || ""} ${block.url || ""}`.toLowerCase();
+  return /\.(sch|kicad_sch|kicad_pcb|asc|cir|net|spice|svg|dsn)(\?.*)?$/i.test(block.url || "") ||
+    /\b(schematic|circuit|pcb|layout|ltspice|kicad|netlist|diagram|op amp|vco|charger)\b/.test(haystack);
+}
+
 function richImageCaptionHtml(block = {}) {
   const title = cleanRichImageTitle(block);
   if (!title && !block.caption) return "";
@@ -3797,8 +3814,9 @@ function renderRichContent(rich, fallbackText = "") {
           const imageSrc = normalizeLinkTarget(block.url, { assumeWeb: true });
           const wrap = normalizeRichImageWrap(block.wrap);
           const captionPosition = normalizeRichCaptionPosition(block.captionPosition);
+          const schematicClass = richImageIsSchematic(block) ? " is-schematic-image" : "";
           return `
-            <figure class="rich-image justify-${align} wrap-${wrap} caption-${captionPosition}"${richImageFigureStyle(block)}>
+            <figure class="rich-image justify-${align} wrap-${wrap} caption-${captionPosition}${schematicClass}"${richImageFigureStyle(block)}>
               ${captionPosition === "top" || captionPosition === "left" ? richImageCaptionHtml(block) : ""}
               <span class="rich-image-viewport crop-${normalizeCropAspect(block.cropAspect) === "original" ? "original" : "active"}"${richImageCropStyle(block)}>
                 <img src="${escapeHtml(imageSrc)}" alt="${escapeHtml(title || "Overview image")}">
@@ -5091,10 +5109,31 @@ function isBuilderPdfFile(item = {}) {
   return extensionFromUrl(url) === ".pdf" || /pdf/i.test(item?.type || "");
 }
 
+function isBuilderImageFile(item = {}) {
+  return isImageUrl(builderFileUrl(item)) || /^image\//i.test(item?.type || "");
+}
+
+function isBuilderSchematicFile(item = {}) {
+  const url = builderFileUrl(item);
+  const extension = extensionFromUrl(url).toLowerCase();
+  const haystack = `${itemTitle(item)} ${url} ${item?.type || ""} ${item?.kind || ""} ${item?.meta || ""}`.toLowerCase();
+  return Boolean(
+    [".sch", ".kicad_sch", ".kicad_pcb", ".asc", ".cir", ".net", ".spice", ".ltspice", ".dsn"].includes(extension) ||
+    /\b(schematic|circuit|pcb|ltspice|kicad|netlist|layout|diagram)\b/.test(haystack)
+  );
+}
+
 function isBuilderTextFile(item = {}) {
   const url = builderFileUrl(item);
   const extension = extensionFromUrl(url);
-  return extension === ".txt" || /^text\/plain\b/i.test(item?.type || "");
+  return [".txt", ".md", ".csv", ".json", ".xml", ".log", ".c", ".h", ".cpp", ".hpp", ".py", ".js", ".mjs", ".ts", ".html", ".css", ".v", ".sv", ".vhdl", ".vhd", ".spice", ".cir", ".net", ".asc", ".sch", ".kicad_sch", ".kicad_pcb", ".dsn"].includes(extension) || /^text\//i.test(item?.type || "");
+}
+
+function builderFileViewerKind(item = {}) {
+  if (isBuilderPdfFile(item)) return "pdf";
+  if (isBuilderImageFile(item)) return isBuilderSchematicFile(item) ? "schematic-image" : "image";
+  if (isBuilderTextFile(item)) return isBuilderSchematicFile(item) ? "schematic-source" : "text";
+  return "download";
 }
 
 function downloadBuilderFile(item = {}) {
@@ -5114,6 +5153,322 @@ function downloadBuilderFile(item = {}) {
   return true;
 }
 
+function builderViewerModeLabel(kind = "") {
+  if (kind === "pdf") return "PDF schematic/document viewer";
+  if (kind === "schematic-image") return "Schematic image viewer";
+  if (kind === "schematic-source") return "Schematic source viewer";
+  if (kind === "image") return "Image viewer";
+  return "Text file viewer";
+}
+
+function builderViewerToolbar(kind = "") {
+  const isVisual = ["pdf", "image", "schematic-image"].includes(kind);
+  const canRotate = ["image", "schematic-image"].includes(kind);
+  if (!isVisual) {
+    return `
+      <div class="builder-file-view-toolbar" aria-label="File viewer controls">
+        <button type="button" data-builder-file-view="copy-link">Copy path</button>
+        <button type="button" data-builder-file-view="print">Print</button>
+      </div>
+    `;
+  }
+  return `
+    <div class="builder-file-view-toolbar" aria-label="File viewer controls">
+      <button type="button" data-builder-file-view="fit">Fit</button>
+      <button type="button" data-builder-file-view="width">Fit width</button>
+      <button type="button" data-builder-file-view="zoom-out">-</button>
+      <span>${Math.round(builderFileViewerState.zoom * 100)}%</span>
+      <button type="button" data-builder-file-view="zoom-in">+</button>
+      <button type="button" data-builder-file-view="reset">100%</button>
+      <button type="button" data-builder-file-view="grid" aria-pressed="${builderFileViewerState.grid ? "true" : "false"}">Grid</button>
+      ${canRotate ? `
+        <button type="button" data-builder-file-view="rotate-left">Rotate -90</button>
+        <button type="button" data-builder-file-view="rotate-right">Rotate +90</button>
+      ` : ""}
+      <button type="button" data-builder-file-view="invert" aria-pressed="${builderFileViewerState.invert ? "true" : "false"}">Contrast</button>
+      <button type="button" data-builder-file-view="copy-link">Copy path</button>
+      <button type="button" data-builder-file-view="print">Print</button>
+    </div>
+  `;
+}
+
+function renderBuilderFileVisualViewer() {
+  const { fit, grid, invert, rotation, target, title, type, zoom } = builderFileViewerState;
+  const isPdf = type === "pdf";
+  const visualClass = [
+    "builder-file-visual-stage",
+    `is-${fit}`,
+    grid ? "has-grid" : "no-grid",
+    invert ? "is-inverted" : "",
+    type === "schematic-image" || type === "pdf" ? "is-schematic" : ""
+  ].filter(Boolean).join(" ");
+  const media = isPdf
+    ? `<iframe class="builder-file-pdf-frame" title="${escapeHtml(title)}" src="${escapeHtml(target)}"></iframe>`
+    : `<img class="builder-file-image-preview" src="${escapeHtml(target)}" alt="${escapeHtml(title)}">`;
+  if (!builderFileViewContent) return;
+  builderFileViewContent.innerHTML = `
+    ${builderViewerToolbar(type)}
+    <div class="${visualClass}" style="--viewer-zoom: ${zoom}; --viewer-width: ${Math.round(zoom * 100)}%; --viewer-rotate: ${Number(rotation) || 0}deg;">
+      <div class="builder-file-visual-surface">
+        ${media}
+      </div>
+    </div>
+  `;
+}
+
+function copyBuilderFileViewerTarget() {
+  const value = builderFileViewerState.target || "";
+  if (!value) return;
+  const fallbackCopy = () => {
+    const textarea = document.createElement("textarea");
+    textarea.value = value;
+    textarea.setAttribute("readonly", "");
+    textarea.style.position = "fixed";
+    textarea.style.left = "-9999px";
+    document.body.append(textarea);
+    textarea.select();
+    document.execCommand("copy");
+    textarea.remove();
+  };
+  if (navigator.clipboard?.writeText) {
+    navigator.clipboard.writeText(value)
+      .then(() => setStatus("Copied file path."))
+      .catch(() => {
+        fallbackCopy();
+        setStatus("Copied file path.");
+      });
+    return;
+  }
+  fallbackCopy();
+  setStatus("Copied file path.");
+}
+
+function printBuilderFileViewer() {
+  const { rotation, sourceText, target, title, type, zoom } = builderFileViewerState;
+  if (!target && !sourceText) return;
+  const printWindow = window.open("", "_blank", "width=1100,height=850");
+  if (!printWindow) {
+    setStatus("The file viewer print window was blocked by the browser.");
+    return;
+  }
+  const body = type === "pdf"
+    ? `<iframe src="${escapeHtml(target)}" title="${escapeHtml(title)}"></iframe>`
+    : ["image", "schematic-image"].includes(type)
+      ? `<img src="${escapeHtml(target)}" alt="${escapeHtml(title)}" style="transform: rotate(${Number(rotation) || 0}deg) scale(${Number(zoom) || 1}); transform-origin: top left;">`
+      : `<pre>${escapeHtml(sourceText || "")}</pre>`;
+  printWindow.document.write(`
+    <!doctype html>
+    <html>
+      <head>
+        <title>${escapeHtml(title || "File preview")}</title>
+        <style>
+          body { margin: 0; padding: 18px; font-family: Arial, sans-serif; color: #0f172a; }
+          h1 { margin: 0 0 12px; font-size: 20px; }
+          iframe { width: 100%; height: calc(100vh - 72px); border: 0; }
+          img { display: block; max-width: 100%; height: auto; }
+          pre { white-space: pre-wrap; font: 12px/1.5 Consolas, "Courier New", monospace; }
+        </style>
+      </head>
+      <body>
+        <h1>${escapeHtml(title || "File preview")}</h1>
+        ${body}
+        <script>window.addEventListener("load", () => setTimeout(() => window.print(), 250));</script>
+      </body>
+    </html>
+  `);
+  printWindow.document.close();
+}
+
+function applyBuilderFileViewerAction(action = "") {
+  const visualTypes = ["pdf", "image", "schematic-image"];
+  const isVisual = visualTypes.includes(builderFileViewerState.type);
+  if (action === "copy-link") {
+    copyBuilderFileViewerTarget();
+    return;
+  }
+  if (action === "print") {
+    printBuilderFileViewer();
+    return;
+  }
+  if (!isVisual) return;
+  if (action === "fit") builderFileViewerState.fit = "contain";
+  if (action === "width") builderFileViewerState.fit = "width";
+  if (action === "zoom-in") builderFileViewerState.zoom = Math.min(4, Number(builderFileViewerState.zoom || 1) + 0.25);
+  if (action === "zoom-out") builderFileViewerState.zoom = Math.max(0.35, Number(builderFileViewerState.zoom || 1) - 0.25);
+  if (action === "reset") {
+    builderFileViewerState.zoom = 1;
+    builderFileViewerState.fit = "contain";
+    builderFileViewerState.rotation = 0;
+  }
+  if (action === "grid") builderFileViewerState.grid = !builderFileViewerState.grid;
+  if (action === "rotate-left" && builderFileViewerState.type !== "pdf") {
+    builderFileViewerState.rotation = (Number(builderFileViewerState.rotation || 0) - 90 + 360) % 360;
+  }
+  if (action === "rotate-right" && builderFileViewerState.type !== "pdf") {
+    builderFileViewerState.rotation = (Number(builderFileViewerState.rotation || 0) + 90) % 360;
+  }
+  if (action === "invert") builderFileViewerState.invert = !builderFileViewerState.invert;
+  renderBuilderFileVisualViewer();
+}
+
+function schematicSourcePoint(points, x, y) {
+  const point = { x: Number(x), y: Number(y) };
+  if (Number.isFinite(point.x) && Number.isFinite(point.y)) points.push(point);
+  return point;
+}
+
+function schematicSourceMap(text = "", title = "") {
+  const source = String(text || "");
+  const points = [];
+  const wires = [];
+  const labels = [];
+  const symbols = [];
+  const addWire = (x1, y1, x2, y2) => {
+    const start = schematicSourcePoint(points, x1, y1);
+    const end = schematicSourcePoint(points, x2, y2);
+    if (Number.isFinite(start.x) && Number.isFinite(end.x)) wires.push({ start, end });
+  };
+  const addLabel = (label, x, y) => {
+    const point = schematicSourcePoint(points, x, y);
+    if (Number.isFinite(point.x)) labels.push({ ...point, label: String(label || "").slice(0, 36) });
+  };
+  const addSymbol = (name, x, y) => {
+    const point = schematicSourcePoint(points, x, y);
+    if (Number.isFinite(point.x)) symbols.push({ ...point, name: String(name || "symbol").replace(/^.*:/, "").slice(0, 28) });
+  };
+
+  source.replace(/^WIRE\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)/gim, (_, x1, y1, x2, y2) => {
+    addWire(x1, y1, x2, y2);
+    return _;
+  });
+  source.replace(/^LINE\s+\S+\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)/gim, (_, x1, y1, x2, y2) => {
+    addWire(x1, y1, x2, y2);
+    return _;
+  });
+  source.replace(/^FLAG\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s+(.+)$/gim, (_, x, y, label) => {
+    addLabel(label.trim(), x, y);
+    return _;
+  });
+  source.replace(/^IOPIN\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s+(.+)$/gim, (_, x, y, label) => {
+    addLabel(label.trim(), x, y);
+    return _;
+  });
+  source.replace(/^SYMBOL\s+(\S+)\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)/gim, (_, name, x, y) => {
+    addSymbol(name, x, y);
+    return _;
+  });
+  source.replace(/\(wire\s+\(pts\s+\(xy\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\)\s+\(xy\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\)\s*\)\s*\)/gim, (_, x1, y1, x2, y2) => {
+    addWire(x1, y1, x2, y2);
+    return _;
+  });
+  source.replace(/\((?:label|global_label|hierarchical_label)\s+"?([^")]+)"?[\s\S]{0,120}?\(at\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)/gim, (_, label, x, y) => {
+    addLabel(label.trim(), x, y);
+    return _;
+  });
+  source.replace(/\(symbol\s+\(lib_id\s+"([^"]+)"\)[\s\S]{0,160}?\(at\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)/gim, (_, name, x, y) => {
+    addSymbol(name, x, y);
+    return _;
+  });
+
+  if (!points.length || (!wires.length && !symbols.length && !labels.length)) return "";
+  const minX = Math.min(...points.map((point) => point.x));
+  const maxX = Math.max(...points.map((point) => point.x));
+  const minY = Math.min(...points.map((point) => point.y));
+  const maxY = Math.max(...points.map((point) => point.y));
+  const width = Math.max(240, maxX - minX + 80);
+  const height = Math.max(180, maxY - minY + 80);
+  const tx = (x) => x - minX + 40;
+  const ty = (y) => y - minY + 40;
+  const inventoryItems = [
+    ...symbols.map((symbol) => ({ type: "symbol", value: symbol.name })),
+    ...labels.map((label) => ({ type: "net", value: label.label }))
+  ]
+    .filter((item) => item.value)
+    .slice(0, 120);
+  return `
+    <div class="builder-schematic-map" aria-label="Generated schematic map">
+      <div class="builder-schematic-map-heading">
+        <strong>${escapeHtml(title || "Schematic map")}</strong>
+        <span>${wires.length} wires &middot; ${symbols.length} symbols &middot; ${labels.length} labels</span>
+      </div>
+      <div class="builder-schematic-map-tools">
+        <label>
+          <span>Find net or symbol</span>
+          <input type="search" data-builder-file-source-filter placeholder="e.g. VCC, R1, opamp">
+        </label>
+        <div class="builder-schematic-inventory" aria-label="Schematic inventory">
+          ${inventoryItems.length
+            ? inventoryItems.map((item) => `
+              <button type="button" data-schematic-search="${escapeHtml(item.value)}" data-builder-file-source-filter-chip="${escapeHtml(item.value)}">
+                <small>${escapeHtml(item.type)}</small>
+                ${escapeHtml(item.value)}
+              </button>
+            `).join("")
+            : `<span>No labels or symbols were detected.</span>`}
+        </div>
+      </div>
+      <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(title || "Generated schematic map")}">
+        <rect class="schematic-map-bg" x="0" y="0" width="${width}" height="${height}" rx="10"></rect>
+        ${wires.map((wire) => `<line class="schematic-map-wire" x1="${tx(wire.start.x)}" y1="${ty(wire.start.y)}" x2="${tx(wire.end.x)}" y2="${ty(wire.end.y)}"></line>`).join("")}
+        ${symbols.map((symbol) => `
+          <g class="schematic-map-symbol" data-schematic-search="${escapeHtml(symbol.name)}" transform="translate(${tx(symbol.x)} ${ty(symbol.y)})">
+            <rect x="-18" y="-12" width="36" height="24" rx="4"></rect>
+            <text x="0" y="4">${escapeHtml(symbol.name)}</text>
+          </g>
+        `).join("")}
+        ${labels.map((label) => `
+          <g class="schematic-map-label" data-schematic-search="${escapeHtml(label.label)}" transform="translate(${tx(label.x)} ${ty(label.y)})">
+            <circle r="3"></circle>
+            <text x="8" y="4">${escapeHtml(label.label)}</text>
+          </g>
+        `).join("")}
+      </svg>
+    </div>
+  `;
+}
+
+function filterBuilderSchematicSourceMap(value = "") {
+  const root = builderFileViewContent?.querySelector(".builder-schematic-map");
+  if (!root) return;
+  const filter = String(value || "").trim().toLowerCase();
+  root.querySelectorAll("[data-schematic-search]").forEach((element) => {
+    const haystack = String(element.dataset.schematicSearch || "").toLowerCase();
+    const isMatch = Boolean(filter && haystack.includes(filter));
+    element.classList.toggle("is-filtered-match", isMatch);
+    element.classList.toggle("is-filtered-muted", Boolean(filter && !isMatch));
+  });
+}
+
+async function renderBuilderTextFileViewer(target, title, kind) {
+  if (!builderFileViewContent) return;
+  builderFileViewContent.innerHTML = `<div class="builder-file-loading">Loading ${kind === "schematic-source" ? "schematic source" : "text file"}...</div>`;
+  try {
+    const response = await fetch(target, { cache: "no-store" });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const text = await response.text();
+    builderFileViewerState.sourceText = text;
+    const schematicMap = kind === "schematic-source" ? schematicSourceMap(text, title) : "";
+    builderFileViewContent.innerHTML = `
+      ${builderViewerToolbar(kind)}
+      <div class="builder-file-source-shell ${kind === "schematic-source" ? "is-schematic-source" : ""}">
+        <div class="builder-file-source-title">
+          <span>${escapeHtml(title)}</span>
+          <small>${kind === "schematic-source" ? "Readable schematic/source representation" : "Read-only text preview"}</small>
+        </div>
+        ${schematicMap}
+        <textarea class="builder-file-text-editor" spellcheck="false" readonly>${escapeHtml(text)}</textarea>
+      </div>
+    `;
+  } catch (error) {
+    builderFileViewContent.innerHTML = `
+      <div class="builder-file-error">
+        <strong>Preview failed.</strong>
+        <p>${escapeHtml(error.message || "The file could not be loaded into the viewer.")}</p>
+      </div>
+    `;
+  }
+}
+
 async function openBuilderFileWindow(item = {}) {
   const rawUrl = builderFileUrl(item);
   const target = normalizeLinkTarget(rawUrl, { assumeWeb: isWebsiteLinkItem(item, rawUrl) });
@@ -5123,13 +5478,14 @@ async function openBuilderFileWindow(item = {}) {
   }
 
   const title = builderFileDisplayName(item);
-  if (!isBuilderPdfFile(item) && !isBuilderTextFile(item)) {
+  const viewerKind = builderFileViewerKind(item);
+  if (viewerKind === "download") {
     if (downloadBuilderFile(item)) setStatus(`Downloading ${title}.`);
     return;
   }
 
   if (builderFileViewTitle) builderFileViewTitle.textContent = title;
-  if (builderFileViewEyebrow) builderFileViewEyebrow.textContent = isBuilderPdfFile(item) ? "PDF viewer" : "Text file viewer";
+  if (builderFileViewEyebrow) builderFileViewEyebrow.textContent = builderViewerModeLabel(viewerKind);
   if (builderFileViewOpen) {
     builderFileViewOpen.href = target;
     builderFileViewOpen.hidden = false;
@@ -5140,27 +5496,22 @@ async function openBuilderFileWindow(item = {}) {
     builderFileViewDownload.hidden = false;
   }
 
-  if (isBuilderPdfFile(item)) {
-    builderFileViewContent.innerHTML = `
-      <iframe class="builder-file-pdf-frame" title="${escapeHtml(title)}" src="${escapeHtml(target)}"></iframe>
-    `;
+  Object.assign(builderFileViewerState, {
+    fit: "contain",
+    grid: viewerKind === "pdf" || isBuilderSchematicFile(item),
+    invert: false,
+    rotation: 0,
+    sourceText: "",
+    target,
+    title,
+    type: viewerKind,
+    zoom: 1
+  });
+
+  if (["pdf", "image", "schematic-image"].includes(viewerKind)) {
+    renderBuilderFileVisualViewer();
   } else {
-    builderFileViewContent.innerHTML = `<div class="builder-file-loading">Loading text file...</div>`;
-    try {
-      const response = await fetch(target, { cache: "no-store" });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const text = await response.text();
-      builderFileViewContent.innerHTML = `
-        <textarea class="builder-file-text-editor" spellcheck="false" readonly>${escapeHtml(text)}</textarea>
-      `;
-    } catch (error) {
-      builderFileViewContent.innerHTML = `
-        <div class="builder-file-error">
-          <strong>Text preview failed.</strong>
-          <p>${escapeHtml(error.message || "The file could not be loaded into the text viewer.")}</p>
-        </div>
-      `;
-    }
+    await renderBuilderTextFileViewer(target, title, viewerKind);
   }
 
   if (!builderFileViewDialog?.open) builderFileViewDialog.showModal();
@@ -15617,6 +15968,46 @@ projectMetaGrid?.addEventListener("change", (event) => {
 viewProjectPreviewButton.addEventListener("click", openProjectPortfolioPreview);
 projectPreviewClose.addEventListener("click", closeProjectPreviewWindow);
 builderFileViewClose?.addEventListener("click", () => closeDialogElement(builderFileViewDialog, "close"));
+builderFileViewContent?.addEventListener("click", (event) => {
+  const filterChip = event.target.closest("[data-builder-file-source-filter-chip]");
+  if (filterChip) {
+    const value = filterChip.dataset.builderFileSourceFilterChip || "";
+    const input = builderFileViewContent.querySelector("[data-builder-file-source-filter]");
+    if (input) input.value = value;
+    filterBuilderSchematicSourceMap(value);
+    return;
+  }
+
+  const button = event.target.closest("[data-builder-file-view]");
+  if (!button) return;
+  applyBuilderFileViewerAction(button.dataset.builderFileView);
+});
+builderFileViewContent?.addEventListener("input", (event) => {
+  const input = event.target.closest("[data-builder-file-source-filter]");
+  if (!input) return;
+  filterBuilderSchematicSourceMap(input.value);
+});
+builderFileViewDialog?.addEventListener("keydown", (event) => {
+  if (!builderFileViewDialog.open) return;
+  if (event.target?.closest?.("input, textarea, [contenteditable='true']") && !(event.ctrlKey && event.key.toLowerCase() === "p")) return;
+  const key = event.key.toLowerCase();
+  const shortcuts = {
+    "0": "reset",
+    "=": "zoom-in",
+    "+": "zoom-in",
+    "-": "zoom-out",
+    c: "invert",
+    f: "fit",
+    g: "grid",
+    p: event.ctrlKey ? "print" : "",
+    r: event.shiftKey ? "rotate-left" : "rotate-right",
+    w: "width"
+  };
+  const action = shortcuts[key];
+  if (!action) return;
+  event.preventDefault();
+  applyBuilderFileViewerAction(action);
+});
 projectPreviewDialog.addEventListener("close", () => {
   document.body.classList.remove("full-window-open");
 });
