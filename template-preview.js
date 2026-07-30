@@ -171,6 +171,7 @@ const workflowSavedProjects = document.querySelector("#workflow-saved-projects")
 const workflowVisibleSections = document.querySelector("#workflow-visible-sections");
 const quickOpenSelected = document.querySelector("#quick-open-selected");
 const quickPreviewSelected = document.querySelector("#quick-preview-selected");
+const builderAppMenuBar = document.querySelector("#builder-app-menu-bar");
 const portfolioPreviewFrame = document.querySelector("#portfolio-preview-frame");
 const filePicker = document.querySelector("#file-picker");
 const assetDialog = document.querySelector("#asset-dialog");
@@ -257,6 +258,7 @@ const preferenceTheme = document.querySelector("#preference-theme");
 const preferenceLightTheme = document.querySelector("#preference-light-theme");
 const preferenceDarkTheme = document.querySelector("#preference-dark-theme");
 const preferenceCompileTheme = document.querySelector("#preference-compile-theme");
+const preferenceCompileLineNumbers = document.querySelector("#preference-compile-line-numbers");
 const preferencesClose = document.querySelector("#preferences-close");
 const summaryContextMenu = document.querySelector("#summary-context-menu");
 const richFontSelect = document.querySelector("#rich-font-select");
@@ -327,7 +329,7 @@ const compileThemeIds = [
 ];
 const maxProjectViewTabs = 8;
 const maxDetachedProjectViewWindows = 8;
-const defaultBuilderPreferences = { theme: "light", lightTheme: "light-default", darkTheme: "dark-blue", compileTheme: "dark-vs", zoom: 1 };
+const defaultBuilderPreferences = { theme: "light", lightTheme: "light-default", darkTheme: "dark-blue", compileTheme: "dark-vs", compileLineNumbers: true, zoom: 1 };
 let builderPreferences = { ...defaultBuilderPreferences };
 let activeCompileTreeContext = null;
 let activeScopeSignalContext = null;
@@ -339,6 +341,7 @@ let activeCompileStdinDrag = null;
 let activeCompileFileDetailsDrag = null;
 let activeCompileSynthesisDrag = null;
 let activeCompileSynthesisResize = null;
+let activeCompileTreeMenuDrag = null;
 let activeScopeCursorDrag = null;
 const liveDiagnosticTimers = new Map();
 const liveDiagnosticSequences = new Map();
@@ -399,6 +402,12 @@ function compileFileTypeLabel(value = "source") {
   if (type === "include") return "Include file";
   if (type === "support") return "Support file";
   return "Program source";
+}
+
+function isCompileConstraintFile(file = {}) {
+  const extension = String(file.fileName || file.relativePath || "").split(".").pop()?.toLowerCase() || "";
+  return ["xdc", "sdc"].includes(extension) ||
+    (extension === "tcl" && /\b(create_clock|set_property|set_input_delay|set_output_delay|PACKAGE_PIN|IOSTANDARD)\b/i.test(file.code || file.fileName || ""));
 }
 
 const defaultFunFacts = [];
@@ -2219,6 +2228,7 @@ function ensureCompileCode(project) {
   project.compileCode.selectedFileIds = Array.isArray(project.compileCode.selectedFileIds)
     ? project.compileCode.selectedFileIds.filter((id) => fileIds.has(id))
     : [];
+  project.compileCode.treeScrollTop = Math.max(0, Number(project.compileCode.treeScrollTop) || 0);
   project.compileCode.stdinWindowOpen = Boolean(project.compileCode.stdinWindowOpen);
   const stdinPosition = project.compileCode.stdinWindowPosition || {};
   project.compileCode.stdinWindowPosition = {
@@ -2262,12 +2272,33 @@ function ensureCompileCode(project) {
   project.compileCode.activePanel = ["console", "messages", "terminal", "scope", "syntax"].includes(project.compileCode.activePanel)
     ? project.compileCode.activePanel
     : "console";
+  project.compileCode.synthesisFileMode = ["active", "selected", "all"].includes(project.compileCode.synthesisFileMode)
+    ? project.compileCode.synthesisFileMode
+    : "all";
+  const testbenchFileIds = new Set(project.compileCode.files
+    .filter((file) => isHdlLanguage(file.language) && file.role === "testbench")
+    .map((file) => file.id));
+  project.compileCode.simulationTopFileId = testbenchFileIds.has(project.compileCode.simulationTopFileId)
+    ? project.compileCode.simulationTopFileId
+    : [...testbenchFileIds][0] || "";
+  const constraintFileIds = new Set(project.compileCode.files
+    .filter(isCompileConstraintFile)
+    .map((file) => file.id));
+  project.compileCode.constraintFileIds = Array.isArray(project.compileCode.constraintFileIds)
+    ? project.compileCode.constraintFileIds.filter((id) => constraintFileIds.has(id))
+    : [];
   project.compileCode.synthesisTopModule = String(project.compileCode.synthesisTopModule || "").replace(/[^\w$]/g, "");
   project.compileCode.synthesisDiagramFilter = String(project.compileCode.synthesisDiagramFilter || "");
   project.compileCode.synthesisExplorerView = ["tree", "nets", "objects", "sources", "ip", "timing"].includes(project.compileCode.synthesisExplorerView)
     ? project.compileCode.synthesisExplorerView
     : "tree";
   project.compileCode.synthesisSourceDetails = String(project.compileCode.synthesisSourceDetails || "");
+  const synthesisExpandedNodes = project.compileCode.synthesisExpandedNodes && typeof project.compileCode.synthesisExpandedNodes === "object"
+    ? project.compileCode.synthesisExpandedNodes
+    : {};
+  project.compileCode.synthesisExpandedNodes = Object.fromEntries(Object.entries(synthesisExpandedNodes)
+    .map(([key, value]) => [String(key || ""), Math.max(0, Math.min(3, Math.round(Number(value) || 0)))])
+    .filter(([key, value]) => key && value > 0));
   const synthesisBounds = project.compileCode.synthesisWindowBounds || {};
   project.compileCode.synthesisWindowBounds = {
     x: Number.isFinite(Number(synthesisBounds.x)) ? Math.max(0, Math.round(Number(synthesisBounds.x))) : null,
@@ -2361,6 +2392,45 @@ function codeLanguageProfile(value = "") {
 
 function codeLanguageLabel(value = "") {
   return supportedCodeLanguages.find((language) => language.id === normalizeCodeLanguage(value))?.label || "Code";
+}
+
+function compileLanguagePromptHelp(allowAuto = false) {
+  const names = supportedCodeLanguages.map((language) => language.label).join(", ");
+  return `${allowAuto ? "Type auto or choose one language: " : "Choose one language: "}${names}.`;
+}
+
+function promptCompileFileMetadata(options = {}) {
+  const allowAuto = Boolean(options.allowAuto);
+  const defaultLanguage = options.defaultLanguage || "javascript";
+  const languageDefault = allowAuto ? "auto" : codeLanguageLabel(defaultLanguage);
+  const languageInput = window.prompt(compileLanguagePromptHelp(allowAuto), languageDefault);
+  if (languageInput === null) return null;
+  const autoLanguage = allowAuto && /^auto$/i.test(String(languageInput || "").trim());
+  const language = autoLanguage ? "auto" : normalizeCodeLanguage(languageInput || defaultLanguage);
+  const resolvedLanguage = autoLanguage ? normalizeCodeLanguage(options.fallbackLanguage || defaultLanguage) : language;
+  const hdl = isHdlLanguage(resolvedLanguage);
+  const typeHelp = hdl
+    ? "File type: design, testbench, include, or support."
+    : "File type: source, header, include, or support.";
+  const defaultType = options.defaultType || (hdl ? "design" : "source");
+  const typeInput = window.prompt(`${typeHelp}${allowAuto ? " Type auto to infer per imported file." : ""}`, defaultType);
+  if (typeInput === null) return null;
+  const autoType = allowAuto && /^auto$/i.test(String(typeInput || "").trim());
+  const fileType = autoType ? "auto" : normalizeCompileFileType(typeInput || defaultType, {
+    language: resolvedLanguage,
+    role: options.defaultRole || defaultType
+  });
+  const role = hdl && fileType !== "auto"
+    ? normalizeCompileFileRole(fileType, resolvedLanguage)
+    : normalizeCompileFileRole(options.defaultRole || defaultType, resolvedLanguage);
+  return {
+    autoLanguage,
+    autoType,
+    language,
+    resolvedLanguage,
+    role,
+    fileType
+  };
 }
 
 function sourceLooksCpp(source = "") {
@@ -2625,8 +2695,98 @@ const codeSyntaxSets = Object.fromEntries(Object.entries(codeSyntaxDefinitions).
   }
 ]));
 
+const defaultFpgaTarget = {
+  board: "Digilent Nexys A7-100T",
+  family: "AMD/Xilinx Artix-7",
+  part: "XC7A100T-1CSG324C",
+  synthesisFamily: "xc7",
+  constraintsHint: "Digilent Nexys A7-100T master XDC"
+};
+
 function codeTokenSpan(className, value = "") {
   return `<span class="${className}">${escapeCodeHtml(value)}</span>`;
+}
+
+function normalizeCompileDiagnosticSeverity(value = "") {
+  const severity = String(value || "").toLowerCase();
+  if (severity === "warning") return "warning";
+  if (severity === "note" || severity === "info") return "info";
+  return "error";
+}
+
+function compileDiagnosticFileMatches(file = {}, diagnostic = {}) {
+  if (!file || !diagnostic) return false;
+  const clean = (value = "") => String(value || "")
+    .replace(/\\/g, "/")
+    .replace(/^\.\//, "")
+    .trim()
+    .toLowerCase();
+  const diagnosticFile = clean(diagnostic.file || diagnostic.fileName || diagnostic.path || "");
+  if (!diagnosticFile || diagnosticFile === "source") return true;
+  const candidates = [
+    file.fileName,
+    file.relativePath,
+    compileFilePath(file)
+  ].map(clean).filter(Boolean);
+  const diagnosticName = diagnosticFile.split("/").pop();
+  return candidates.some((candidate) =>
+    candidate === diagnosticFile ||
+    candidate.endsWith(`/${diagnosticFile}`) ||
+    candidate.split("/").pop() === diagnosticName
+  );
+}
+
+function compileEditorDiagnosticsForFile(workspace = {}, file = {}) {
+  if (!workspace || !file) return [];
+  const live = workspace.liveDiagnostics || {};
+  const liveDiagnostics = live.fileId === file.id && Array.isArray(live.diagnostics) ? live.diagnostics : [];
+  const lastDiagnostics = Array.isArray(file.lastResult?.diagnostics) ? file.lastResult.diagnostics : [];
+  const seen = new Set();
+  return [...liveDiagnostics, ...lastDiagnostics]
+    .filter((diagnostic) => compileDiagnosticFileMatches(file, diagnostic))
+    .map((diagnostic) => {
+      const line = Number.parseInt(diagnostic.line, 10);
+      const column = Number.parseInt(diagnostic.character || diagnostic.column, 10);
+      return {
+        ...diagnostic,
+        line: Number.isFinite(line) && line > 0 ? line : null,
+        column: Number.isFinite(column) && column > 0 ? column : 1,
+        severity: normalizeCompileDiagnosticSeverity(diagnostic.severity),
+        message: String(diagnostic.message || "Compiler diagnostic").trim() || "Compiler diagnostic"
+      };
+    })
+    .filter((diagnostic) => diagnostic.line)
+    .filter((diagnostic) => {
+      const signature = [diagnostic.line, diagnostic.column, diagnostic.severity, diagnostic.message].join("|");
+      if (seen.has(signature)) return false;
+      seen.add(signature);
+      return true;
+    })
+    .sort((left, right) => {
+      const leftSeverity = left.severity === "error" ? 0 : left.severity === "warning" ? 1 : 2;
+      const rightSeverity = right.severity === "error" ? 0 : right.severity === "warning" ? 1 : 2;
+      return left.line - right.line || leftSeverity - rightSeverity || left.column - right.column;
+    });
+}
+
+function compileDiagnosticMarkerLength(line = "", diagnostic = {}) {
+  const column = Math.max(1, Number.parseInt(diagnostic.column || diagnostic.character, 10) || 1);
+  const remaining = Math.max(1, String(line || "").length - column + 1);
+  const nearby = String(line || "").slice(column - 1).match(/^[A-Za-z_$][\w$]*|^\S+/);
+  return Math.max(1, Math.min(48, nearby?.[0]?.length || Math.min(remaining, 12)));
+}
+
+function diagnosticForCodeLine(diagnostics = [], lineNumber = 1) {
+  return diagnostics.find((diagnostic) => diagnostic.line === lineNumber) || null;
+}
+
+function diagnosticWrappedCodeLine(line = "", highlightedLine = "", diagnostic = null) {
+  if (!diagnostic) return highlightedLine;
+  const severity = normalizeCompileDiagnosticSeverity(diagnostic.severity);
+  const column = Math.max(1, Number.parseInt(diagnostic.column || diagnostic.character, 10) || 1);
+  const marker = "~".repeat(compileDiagnosticMarkerLength(line, diagnostic));
+  const label = `${severity.toUpperCase()}: ${diagnostic.message || "Compiler diagnostic"}`;
+  return `<span class="compile-diagnostic-line compile-diagnostic-line-${severity}" data-diagnostic-message="${escapeHtml(label)}" data-diagnostic-marker="${escapeHtml(marker)}" title="${escapeHtml(label)}" style="--diagnostic-left:${Math.max(0, column - 1)}ch;">${highlightedLine || " "}</span>`;
 }
 
 function nextNonSpaceCharacter(line = "", index = 0) {
@@ -2861,14 +3021,23 @@ function highlightCodeLine(line = "", language = "javascript", state = {}) {
   return output;
 }
 
-function tokenizedCodeHtml(code = "", language = "javascript") {
+function tokenizedCodeHtml(code = "", language = "javascript", diagnostics = []) {
   const normalizedLanguage = normalizeCodeLanguage(language);
   const state = { blockComment: false, htmlComment: false };
   return String(code || "")
     .replace(/\r\n?/g, "\n")
     .split("\n")
-    .map((line) => highlightCodeLine(line, normalizedLanguage, state))
+    .map((line, index) => diagnosticWrappedCodeLine(
+      line,
+      highlightCodeLine(line, normalizedLanguage, state),
+      diagnosticForCodeLine(diagnostics, index + 1)
+    ))
     .join("\n");
+}
+
+function compileEditorLineNumbersHtml(code = "") {
+  const lineCount = Math.max(1, String(code || "").replace(/\r\n?/g, "\n").split("\n").length);
+  return Array.from({ length: lineCount }, (_, index) => `<span>${index + 1}</span>`).join("");
 }
 
 function renderRichCodeBlock(block = {}) {
@@ -2948,6 +3117,7 @@ function loadBuilderPreferences() {
       lightTheme: builderLightThemeIds.includes(stored.lightTheme) ? stored.lightTheme : defaultBuilderPreferences.lightTheme,
       darkTheme: builderDarkThemeIds.includes(stored.darkTheme) ? stored.darkTheme : defaultBuilderPreferences.darkTheme,
       compileTheme: compileThemeIds.includes(stored.compileTheme) ? stored.compileTheme : defaultBuilderPreferences.compileTheme,
+      compileLineNumbers: stored.compileLineNumbers !== false,
       zoom: normalizeBuilderZoom(stored.zoom)
     };
   } catch {
@@ -3032,11 +3202,13 @@ function applyBuilderPreferences() {
   const lightTheme = builderLightThemeIds.includes(builderPreferences.lightTheme) ? builderPreferences.lightTheme : defaultBuilderPreferences.lightTheme;
   const darkTheme = builderDarkThemeIds.includes(builderPreferences.darkTheme) ? builderPreferences.darkTheme : defaultBuilderPreferences.darkTheme;
   const compileTheme = compileThemeIds.includes(builderPreferences.compileTheme) ? builderPreferences.compileTheme : defaultBuilderPreferences.compileTheme;
+  const compileLineNumbers = builderPreferences.compileLineNumbers !== false;
   const zoom = normalizeBuilderZoom(builderPreferences.zoom);
   builderPreferences.zoom = zoom;
   builderPreferences.lightTheme = lightTheme;
   builderPreferences.darkTheme = darkTheme;
   builderPreferences.compileTheme = compileTheme;
+  builderPreferences.compileLineNumbers = compileLineNumbers;
   document.documentElement.dataset.builderTheme = theme;
   document.body.dataset.builderTheme = theme;
   document.documentElement.dataset.builderLightTheme = lightTheme;
@@ -3045,15 +3217,19 @@ function applyBuilderPreferences() {
   document.body.dataset.builderDarkTheme = darkTheme;
   document.documentElement.dataset.compileTheme = compileTheme;
   document.body.dataset.compileTheme = compileTheme;
+  document.documentElement.dataset.compileLineNumbers = compileLineNumbers ? "true" : "false";
+  document.body.dataset.compileLineNumbers = compileLineNumbers ? "true" : "false";
   document.documentElement.style.setProperty("--builder-app-zoom", String(zoom));
   document.body.style.zoom = String(zoom);
   document.querySelectorAll("[data-compile-workspace]").forEach((workspace) => {
     workspace.dataset.compileTheme = compileTheme;
+    workspace.dataset.compileLineNumbers = compileLineNumbers ? "true" : "false";
   });
   if (preferenceTheme) preferenceTheme.value = theme;
   if (preferenceLightTheme) preferenceLightTheme.value = lightTheme;
   if (preferenceDarkTheme) preferenceDarkTheme.value = darkTheme;
   if (preferenceCompileTheme) preferenceCompileTheme.value = compileTheme;
+  if (preferenceCompileLineNumbers) preferenceCompileLineNumbers.checked = compileLineNumbers;
   if (lightModeReturnButton) lightModeReturnButton.hidden = theme !== "dark";
 }
 
@@ -3088,12 +3264,588 @@ function setCompileTheme(theme = defaultBuilderPreferences.compileTheme) {
   setStatus(`Compile Code appearance set to ${builderPreferences.compileTheme.replace(/-/g, " ")}.`);
 }
 
+function setCompileLineNumbers(enabled = true) {
+  builderPreferences.compileLineNumbers = enabled !== false;
+  localStorage.setItem(preferenceStorageKey, JSON.stringify(builderPreferences));
+  applyBuilderPreferences();
+  setStatus(`Editor line numbers ${builderPreferences.compileLineNumbers ? "enabled" : "disabled"}.`);
+}
+
 function setBuilderZoom(value = 1, options = {}) {
   builderPreferences.zoom = normalizeBuilderZoom(value);
   localStorage.setItem(preferenceStorageKey, JSON.stringify(builderPreferences));
   applyBuilderPreferences();
   if (options.announce !== false) {
     setStatus(`Builder zoom set to ${Math.round(builderPreferences.zoom * 100)}%.`);
+  }
+}
+
+function selectedProjectIndex() {
+  if (!catalog.projects?.length) return -1;
+  const index = catalog.projects.findIndex((project) => project.id === selectedProjectId);
+  return index >= 0 ? index : 0;
+}
+
+function selectProjectByOffset(offset = 0) {
+  const projects = catalog.projects || [];
+  if (!projects.length) {
+    setStatus("Add a project before using project navigation.");
+    return null;
+  }
+  const index = selectedProjectIndex();
+  const nextIndex = (index + offset + projects.length) % projects.length;
+  const project = projects[nextIndex];
+  selectedProjectId = project.id;
+  if (project.category) expandedCategories.add(project.category);
+  setStatus(`Selected ${project.title || "Untitled project"}.`);
+  renderAll();
+  return project;
+}
+
+function currentProjectCategoryId() {
+  const project = selectedProject();
+  return project?.category || catalog.categories?.[0]?.id || "";
+}
+
+function requireSelectedProject() {
+  const project = selectedProject();
+  if (!project) {
+    setStatus("Add or select a project first.");
+    return null;
+  }
+  return project;
+}
+
+function openSelectedProjectSection(sectionId = "brief") {
+  const project = requireSelectedProject();
+  if (!project) return;
+  openProjectWindow(project.id, sectionId);
+}
+
+function setSelectedProjectStatus(status = "Draft") {
+  const project = requireSelectedProject();
+  if (!project) return;
+  project.status = normalizeProjectStatus(status);
+  setStatus(`Project status set to ${project.status}. Click Save project to rebuild the preview.`);
+  markDraftNeedsSave();
+  scheduleAutosave();
+  renderAll();
+}
+
+function setSelectedProjectStatusVisibility(visible = true) {
+  const project = requireSelectedProject();
+  if (!project) return;
+  project.showStatusOnPortfolio = visible !== false;
+  setStatus(project.showStatusOnPortfolio ? "Project status will show on the portfolio." : "Project status hidden from the portfolio.");
+  markDraftNeedsSave();
+  scheduleAutosave();
+  renderAll();
+}
+
+function setProjectSearchCommand(query = "") {
+  projectSearchQuery = query;
+  if (projectSearchInput) {
+    projectSearchInput.value = query;
+    projectSearchInput.focus();
+  }
+  renderTree();
+  setStatus(query ? `Project search set to "${query}".` : "Project search cleared.");
+}
+
+async function copySelectedProjectTitle() {
+  const project = requireSelectedProject();
+  if (!project) return;
+  try {
+    await navigator.clipboard.writeText(project.title || "");
+    setStatus("Selected project title copied.");
+  } catch {
+    setStatus("Project title could not be copied by this browser.");
+  }
+}
+
+function openBuilderGuideTopicCommand(topic = "all") {
+  builderGuideOpen?.click();
+  setTimeout(() => {
+    if (typeof setBuilderGuideTopic === "function") setBuilderGuideTopic(topic || "all");
+  }, 0);
+}
+
+async function openCompileCodeCommand(action = "view-syntax") {
+  const project = requireSelectedProject();
+  if (!project) return;
+  ensureCompileCode(project);
+  if (!projectDialog?.open || selectedProjectId !== project.id) {
+    openProjectWindow(project.id, "compile-code");
+  } else {
+    applyProjectWindowStateKey("compile-code");
+    renderAll();
+  }
+  await runCompileIdeAction(project, action);
+}
+
+function builderAppCommandGroups() {
+  const project = selectedProject();
+  const hasProject = Boolean(project);
+  const file = hasProject ? activeCompileFile(project) : null;
+  const hasFile = Boolean(file);
+  const hdlFile = hasFile && isHdlLanguage(file.language);
+  return [
+    {
+      label: "File",
+      items: [
+        { label: "Save draft", action: "save-draft" },
+        { label: "Save all sections", action: "save-all" },
+        { label: "Apply to site", action: "apply-site" },
+        { separator: true },
+        { label: "Portfolio preview", action: "portfolio-preview" },
+        { label: "Website tab", action: "open-website" },
+        { label: "Print portfolio", action: "print-portfolio", shortcut: "Ctrl+P" },
+        { separator: true },
+        { label: "Publishing target", action: "publishing-target" },
+        { label: "Check updates", action: "check-updates" }
+      ]
+    },
+    {
+      label: "Edit",
+      items: [
+        { heading: "Page content" },
+        { label: "Save front page text", action: "save-front-page" },
+        { label: "Save profile and contact", action: "save-profile" },
+        { label: "Save fun facts", action: "save-fun-facts" },
+        { label: "Clear fun facts", action: "clear-fun-facts" },
+        { separator: true },
+        { heading: "Selection" },
+        { label: "Copy selected project title", action: "copy-project-title", disabled: !hasProject },
+        { label: "Clear project search", action: "clear-search" },
+        { label: "Refresh builder view", action: "refresh-builder" }
+      ]
+    },
+    {
+      label: "View",
+      items: [
+        { heading: "Projects" },
+        { label: "Expand all categories", action: "expand-categories" },
+        { label: "Collapse all categories", action: "collapse-categories" },
+        { label: "Previous project", action: "previous-project", disabled: !hasProject },
+        { label: "Next project", action: "next-project", disabled: !hasProject },
+        { separator: true },
+        { heading: "Windows" },
+        { label: "Open selected project", action: "open-selected-project", disabled: !hasProject },
+        { label: "Selected project preview", action: "preview-selected-project", disabled: !hasProject },
+        { label: "Project details", action: "project-details", disabled: !hasProject },
+        { label: "Project health report", action: "project-health", disabled: !hasProject },
+        { label: "Portfolio preview", action: "portfolio-preview" },
+        { separator: true },
+        { heading: "Zoom" },
+        { label: "Zoom in", action: "zoom-in" },
+        { label: "Zoom out", action: "zoom-out" },
+        { label: "Reset zoom", action: "zoom-reset" }
+      ]
+    },
+    {
+      label: "Project",
+      items: [
+        { label: "Add new project", action: "new-project" },
+        { label: "Add category", action: "add-category" },
+        { label: "Edit current category", action: "edit-category", disabled: !currentProjectCategoryId() },
+        { separator: true },
+        { label: "Open overview", action: "open-overview", disabled: !hasProject },
+        { label: "Open Compile Code", action: "open-compile-code", disabled: !hasProject },
+        { label: "Add project section", action: "add-section", disabled: !hasProject },
+        { label: "Save selected project", action: "save-selected-project", disabled: !hasProject },
+        { label: "Clean empty sections", action: "clean-empty-project", disabled: !hasProject },
+        { separator: true },
+        { heading: "Status" },
+        { label: "Mark Draft", action: "status-draft", disabled: !hasProject },
+        { label: "Mark In progress", action: "status-progress", disabled: !hasProject },
+        { label: "Mark Completed", action: "status-completed", disabled: !hasProject },
+        { label: "Mark Archived", action: "status-archived", disabled: !hasProject },
+        { label: "Show status on portfolio", action: "status-show", disabled: !hasProject },
+        { label: "Hide status on portfolio", action: "status-hide", disabled: !hasProject },
+        { separator: true },
+        { label: "Delete selected project", action: "delete-selected-project", disabled: !hasProject, danger: true }
+      ]
+    },
+    {
+      label: "Code",
+      items: [
+        { heading: "Workspace" },
+        { label: "New source file", action: "code-new-file", disabled: !hasProject },
+        { label: "New folder", action: "code-new-folder", disabled: !hasProject },
+        { label: "Import files", action: "code-import-files", disabled: !hasProject },
+        { label: "Import directory", action: "code-import-directory", disabled: !hasProject },
+        { label: "Add testbench", action: "code-testbench", disabled: !hasProject },
+        { label: "Add UVM-style testbench", action: "code-uvm-testbench", disabled: !hasProject },
+        { separator: true },
+        { heading: "Editor" },
+        { label: "Save source", action: "code-save-source", disabled: !hasFile },
+        { label: "Save source as", action: "code-save-as", disabled: !hasFile },
+        { label: "Beautify source", action: "code-beautify", disabled: !hasFile },
+        { label: builderPreferences.compileLineNumbers !== false ? "Hide line numbers" : "Show line numbers", action: "code-toggle-lines", shortcut: "Ctrl+Alt+L" },
+        { label: "Append code to project", action: "code-append", disabled: !hasFile }
+      ]
+    },
+    {
+      label: "Build",
+      items: [
+        { label: "Compile active source", action: "code-compile", disabled: !hasFile },
+        { label: "Build project", action: "code-build", disabled: !hasFile },
+        { label: "Run active source", action: "code-run", disabled: !hasFile || hdlFile },
+        { separator: true },
+        { label: "Synthesize HDL", action: "code-synthesize", disabled: !hasFile || !hdlFile },
+        { label: "Simulate HDL", action: "code-simulate", disabled: !hasFile || !hdlFile },
+        { label: "Show scope", action: "code-scope", disabled: !hasFile || !hdlFile },
+        { separator: true },
+        { label: "Console output", action: "code-output", disabled: !hasFile },
+        { label: "Live syntax", action: "code-syntax", disabled: !hasProject },
+        { label: "Program input", action: "code-input", disabled: !hasFile },
+        { label: "Open PowerShell terminal", action: "code-terminal", disabled: !hasProject }
+      ]
+    },
+    {
+      label: "Tools",
+      items: [
+        { heading: "Builder tools" },
+        { label: "Preferences", action: "preferences", shortcut: "Ctrl+," },
+        { label: "Security report", action: "security-report" },
+        { label: "System readiness", action: "system-readiness" },
+        { separator: true },
+        { heading: "Compiler tools" },
+        { label: "Check active toolchain", action: "code-check-tools", disabled: !hasProject },
+        { label: "Install active toolchain", action: "code-install-tools", disabled: !hasFile },
+        { label: "View synthesis diagram", action: "code-synthesis-diagram", disabled: !hasFile || !hdlFile },
+        { separator: true },
+        { heading: "Profile assets" },
+        { label: "Profile photo manager", action: "asset-profile-photo" },
+        { label: "Background manager", action: "asset-background" },
+        { label: "Resume manager", action: "asset-resume" },
+        { label: "Brand icon manager", action: "asset-brand" }
+      ]
+    },
+    {
+      label: "Preferences",
+      wide: true,
+      items: [
+        { heading: "App theme" },
+        { label: "Light: Default editor", action: "theme-light-default" },
+        { label: "Light: Sky", action: "theme-light-sky" },
+        { label: "Light: Paper", action: "theme-light-paper" },
+        { label: "Light: Mint", action: "theme-light-mint" },
+        { label: "Light: Lavender", action: "theme-light-lavender" },
+        { label: "Light: Rose", action: "theme-light-rose" },
+        { label: "Light: Amber", action: "theme-light-amber" },
+        { label: "Light: Slate", action: "theme-light-slate" },
+        { separator: true },
+        { label: "Dark: Blue", action: "theme-dark-blue" },
+        { label: "Dark: Graphite", action: "theme-dark-graphite" },
+        { label: "Dark: Emerald", action: "theme-dark-emerald" },
+        { label: "Dark: Violet", action: "theme-dark-violet" },
+        { label: "Dark: Amber", action: "theme-dark-amber" },
+        { label: "Dark: Teal", action: "theme-dark-teal" },
+        { label: "Dark: Crimson", action: "theme-dark-crimson" },
+        { label: "Dark: Steel", action: "theme-dark-steel" },
+        { separator: true },
+        { heading: "Compile Code appearance" },
+        { label: "Compile: Visual Studio blue", action: "compile-theme-dark-vs" },
+        { label: "Compile: Navy scope lab", action: "compile-theme-dark-navy" },
+        { label: "Compile: Graphite ASIC", action: "compile-theme-dark-graphite" },
+        { label: "Compile: Emerald instrument", action: "compile-theme-dark-emerald" },
+        { label: "Compile: Violet mixed signal", action: "compile-theme-dark-violet" },
+        { label: "Compile: Cobalt", action: "compile-theme-dark-cobalt" },
+        { label: "Compile: Copper", action: "compile-theme-dark-copper" },
+        { label: "Compile: Crimson", action: "compile-theme-dark-crimson" },
+        { label: "Compile: Solarized", action: "compile-theme-dark-solarized" },
+        { label: "Compile: Light sky", action: "compile-theme-light-sky" },
+        { label: "Compile: Paper schematic", action: "compile-theme-light-paper" }
+      ]
+    },
+    {
+      label: "Help",
+      items: [
+        { label: "Builder guide", action: "guide-all", shortcut: "F1" },
+        { label: "Profile guide", action: "guide-profile" },
+        { label: "Projects guide", action: "guide-projects" },
+        { label: "Editor guide", action: "guide-editor" },
+        { label: "Files guide", action: "guide-assets" },
+        { label: "Publishing guide", action: "guide-publish" },
+        { label: "Updates guide", action: "guide-update" },
+        { label: "Keyboard shortcuts", action: "keyboard-help" },
+        { label: "About this builder", action: "about-builder" }
+      ]
+    }
+  ];
+}
+
+function renderBuilderAppMenuItems(items = []) {
+  return items.map((item) => {
+    if (item.separator) return `<span class="builder-app-menu-separator" role="separator"></span>`;
+    if (item.heading) return `<strong class="builder-app-menu-heading">${escapeHtml(item.heading)}</strong>`;
+    return `
+      <button
+        type="button"
+        data-builder-command="${escapeHtml(item.action || "")}"
+        ${item.disabled ? "disabled" : ""}
+        class="${item.danger ? "is-danger-command" : ""}"
+      >
+        <span>${escapeHtml(item.label || "")}</span>
+        ${item.shortcut ? `<small>${escapeHtml(item.shortcut)}</small>` : ""}
+      </button>
+    `;
+  }).join("");
+}
+
+function renderBuilderAppMenuBar() {
+  if (!builderAppMenuBar) return;
+  builderAppMenuBar.innerHTML = builderAppCommandGroups().map((group) => `
+    <div class="builder-app-menu ${group.wide ? "is-wide-menu" : ""}">
+      <button class="builder-app-menu-button" type="button" aria-haspopup="true">
+        ${escapeHtml(group.label)}
+      </button>
+      <div class="builder-app-dropdown" role="menu">
+        ${renderBuilderAppMenuItems(group.items)}
+      </div>
+    </div>
+  `).join("");
+}
+
+async function handleBuilderAppCommand(action = "") {
+  if (!action) return;
+  const project = selectedProject();
+  const compileActions = {
+    "code-new-file": "new-file",
+    "code-new-folder": "new-folder",
+    "code-import-files": "import-files",
+    "code-import-directory": "import-directory",
+    "code-testbench": "add-testbench",
+    "code-uvm-testbench": "add-uvm-testbench",
+    "code-save-source": "save-source",
+    "code-save-as": "save-source-as",
+    "code-beautify": "beautify",
+    "code-toggle-lines": "toggle-line-numbers",
+    "code-append": "append-code",
+    "code-compile": "compile",
+    "code-build": "build",
+    "code-run": "run",
+    "code-synthesize": "synthesize",
+    "code-simulate": "simulate",
+    "code-scope": "show-scope",
+    "code-output": "show-output",
+    "code-syntax": "view-syntax",
+    "code-input": "toggle-input",
+    "code-terminal": "view-terminal",
+    "code-check-tools": "check-tools",
+    "code-install-tools": "install-tools",
+    "code-synthesis-diagram": "view-synthesis-diagram"
+  };
+  if (compileActions[action]) {
+    await openCompileCodeCommand(compileActions[action]);
+    return;
+  }
+  if (action.startsWith("theme-light-")) {
+    setBuilderLightTheme(action.replace("theme-", ""));
+    setBuilderTheme("light");
+    renderBuilderAppMenuBar();
+    return;
+  }
+  if (action.startsWith("theme-dark-")) {
+    setBuilderDarkTheme(action.replace("theme-", ""));
+    setBuilderTheme("dark");
+    renderBuilderAppMenuBar();
+    return;
+  }
+  if (action.startsWith("compile-theme-")) {
+    setCompileTheme(action.replace("compile-theme-", ""));
+    if (project && activeSectionIsCompileCode(project)) renderSectionContent(project);
+    renderBuilderAppMenuBar();
+    return;
+  }
+  switch (action) {
+    case "save-draft":
+      await saveCatalog("/api/save-draft", "Draft saved");
+      break;
+    case "save-all":
+      await saveAllSections();
+      break;
+    case "apply-site":
+      applyCatalogButton?.click();
+      break;
+    case "portfolio-preview":
+      await openPortfolioPreview();
+      break;
+    case "open-website":
+      window.open("index.html#projects", "_blank", "noreferrer");
+      setStatus("Portfolio opened in a separate tab.");
+      break;
+    case "print-portfolio":
+      await printPortfolioDocument();
+      break;
+    case "publishing-target":
+      openPublishTargetDialog();
+      break;
+    case "check-updates":
+      await checkForAppUpdates({ force: true, manual: true });
+      break;
+    case "save-front-page":
+      saveSiteContentButton?.click();
+      break;
+    case "save-profile":
+      saveProfileContentButton?.click();
+      break;
+    case "save-fun-facts":
+      saveFunFactsButton?.click();
+      break;
+    case "clear-fun-facts":
+      clearFunFactsButton?.click();
+      break;
+    case "copy-project-title":
+      await copySelectedProjectTitle();
+      break;
+    case "clear-search":
+      setProjectSearchCommand("");
+      break;
+    case "refresh-builder":
+      renderAll();
+      setStatus("Builder view refreshed.");
+      break;
+    case "expand-categories":
+      expandedCategories = new Set((catalog.categories || []).map((category) => category.id));
+      renderTree();
+      setStatus("All project categories expanded.");
+      break;
+    case "collapse-categories":
+      expandedCategories = new Set();
+      renderTree();
+      setStatus("All project categories collapsed.");
+      break;
+    case "previous-project":
+      selectProjectByOffset(-1);
+      break;
+    case "next-project":
+      selectProjectByOffset(1);
+      break;
+    case "open-selected-project":
+      openSelectedProjectSection(activeSectionId || "brief");
+      break;
+    case "preview-selected-project":
+      if (project) openProjectPortfolioPreview();
+      break;
+    case "project-details":
+      openProjectMetaDetails();
+      break;
+    case "project-health":
+      openProjectHealthReport();
+      break;
+    case "zoom-in":
+      setBuilderZoom(normalizeBuilderZoom(builderPreferences.zoom) + 0.05);
+      break;
+    case "zoom-out":
+      setBuilderZoom(normalizeBuilderZoom(builderPreferences.zoom) - 0.05);
+      break;
+    case "zoom-reset":
+      setBuilderZoom(1);
+      break;
+    case "new-project":
+      addProjectButton?.click();
+      break;
+    case "add-category":
+      openCategoryDialog();
+      break;
+    case "edit-category":
+      openCategoryDialog(currentProjectCategoryId());
+      break;
+    case "open-overview":
+      openSelectedProjectSection("brief");
+      break;
+    case "open-compile-code":
+      openSelectedProjectSection("compile-code");
+      break;
+    case "add-section":
+      await addCustomSection();
+      break;
+    case "save-selected-project":
+      await saveSelectedProjectToPortfolio();
+      break;
+    case "clean-empty-project":
+      if (project) cleanEmptyBuilderChildren(project);
+      break;
+    case "status-draft":
+      setSelectedProjectStatus("Draft");
+      break;
+    case "status-progress":
+      setSelectedProjectStatus("In progress");
+      break;
+    case "status-completed":
+      setSelectedProjectStatus("Completed");
+      break;
+    case "status-archived":
+      setSelectedProjectStatus("Archived");
+      break;
+    case "status-show":
+      setSelectedProjectStatusVisibility(true);
+      break;
+    case "status-hide":
+      setSelectedProjectStatusVisibility(false);
+      break;
+    case "delete-selected-project":
+      if (project) requestProjectDelete(project.id);
+      break;
+    case "preferences":
+      openPreferencesDialog();
+      break;
+    case "security-report":
+      await openSecurityReport();
+      break;
+    case "system-readiness":
+      await loadSystemReadiness();
+      openPublishTargetDialog();
+      break;
+    case "asset-profile-photo":
+      openProfileAssetManager("profileImage");
+      break;
+    case "asset-background":
+      openProfileAssetManager("heroImage");
+      break;
+    case "asset-resume":
+      openProfileAssetManager("resumeUrl");
+      break;
+    case "asset-brand":
+      openProfileAssetManager("brandImage");
+      break;
+    case "guide-all":
+      openBuilderGuideTopicCommand("all");
+      break;
+    case "guide-profile":
+      openBuilderGuideTopicCommand("profile");
+      break;
+    case "guide-projects":
+      openBuilderGuideTopicCommand("projects");
+      break;
+    case "guide-editor":
+      openBuilderGuideTopicCommand("editor");
+      break;
+    case "guide-assets":
+      openBuilderGuideTopicCommand("assets");
+      break;
+    case "guide-publish":
+      openBuilderGuideTopicCommand("publish");
+      break;
+    case "guide-update":
+      openBuilderGuideTopicCommand("update");
+      break;
+    case "keyboard-help":
+      showBuilderError(
+        "Keyboard shortcuts",
+        "Common shortcuts: Ctrl+S saves the current builder context or active source file, Ctrl+Shift+S applies a saved draft to the publishing target, Ctrl+P opens print portfolio, Ctrl+N starts adding a project, Ctrl+, opens Preferences, Ctrl+Alt+L toggles Compile Code line numbers, Ctrl+mouse wheel zooms the builder, and F1 opens the guide."
+      );
+      break;
+    case "about-builder":
+      showBuilderError(
+        "OMB Portfolio Builder",
+        "OMB Portfolio Builder builds a local portfolio draft, parses saved projects into a recruiter-facing website preview, and publishes only after the saved draft and publishing target checks pass."
+      );
+      break;
+    default:
+      setStatus(`Command "${action}" is not wired yet.`);
   }
 }
 
@@ -3115,7 +3867,8 @@ function readPreferencesDialogDraft() {
   const compileTheme = compileThemeIds.includes(preferenceCompileTheme?.value)
     ? preferenceCompileTheme.value
     : defaultBuilderPreferences.compileTheme;
-  return { theme, lightTheme, darkTheme, compileTheme };
+  const compileLineNumbers = preferenceCompileLineNumbers ? preferenceCompileLineNumbers.checked : defaultBuilderPreferences.compileLineNumbers;
+  return { theme, lightTheme, darkTheme, compileTheme, compileLineNumbers };
 }
 
 function applyPreferenceDialogDraft(options = {}) {
@@ -3125,7 +3878,8 @@ function applyPreferenceDialogDraft(options = {}) {
     theme: draft.theme,
     lightTheme: draft.lightTheme,
     darkTheme: draft.darkTheme,
-    compileTheme: draft.compileTheme
+    compileTheme: draft.compileTheme,
+    compileLineNumbers: draft.compileLineNumbers
   };
   localStorage.setItem(preferenceStorageKey, JSON.stringify(builderPreferences));
   applyBuilderPreferences();
@@ -11351,6 +12105,24 @@ function renderCompileWorkspaceTree(workspace = {}, projectTitle = "Project work
   `;
 }
 
+function captureCompileTreeScroll(project = selectedProject()) {
+  const workspace = project ? ensureCompileCode(project) : null;
+  const tree = sectionContent.querySelector(".compile-code-workspace-tree");
+  if (!workspace || !tree) return;
+  workspace.treeScrollTop = Math.max(0, tree.scrollTop || 0);
+}
+
+function restoreCompileTreeScroll(project = selectedProject()) {
+  const workspace = project ? ensureCompileCode(project) : null;
+  if (!workspace) return;
+  const rememberedTop = Math.max(0, Number(workspace.treeScrollTop) || 0);
+  requestAnimationFrame(() => {
+    const tree = sectionContent.querySelector(".compile-code-workspace-tree");
+    if (!tree) return;
+    tree.scrollTop = Math.min(rememberedTop, Math.max(0, tree.scrollHeight - tree.clientHeight));
+  });
+}
+
 function updateCompileTerminalPanel(project, file = activeCompileFile(project)) {
   const workspace = ensureCompileCode(project);
   const terminal = file?.lastResult?.terminal || workspace?.terminal || compileTerminalStatus || "Compiler output will appear here after you save or run a source file.";
@@ -11384,6 +12156,7 @@ function updateCompileSyntaxPanel(project) {
     const count = Array.isArray(workspace.liveDiagnostics?.diagnostics) ? workspace.liveDiagnostics.diagnostics.length : 0;
     tab.textContent = count ? `Syntax (${count})` : "Syntax";
   }
+  updateCompilePreview(activeCompileFile(project));
   if (!panel) return;
   panel.innerHTML = renderLiveDiagnostics(workspace);
 }
@@ -12614,6 +13387,27 @@ endmodule
   }
 ];
 
+function hdlDeclaredPortsFromModuleBody(body = "") {
+  const ports = [];
+  const seen = new Set();
+  const cleaned = String(body || "");
+  for (const match of cleaned.matchAll(/\b(input|output|inout)\b\s+(?:wire|reg|logic|signed|unsigned|tri|bit\s+)*(?:\[[^\]]+\]\s*)?([^;()]+)/gi)) {
+    const direction = String(match[1] || "").toLowerCase();
+    String(match[2] || "")
+      .split(",")
+      .map((part) => part.replace(/=.*/, "").replace(/\[[^\]]+\]/g, "").trim())
+      .map((part) => part.split(/\s+/).pop())
+      .filter((name) => /^[A-Za-z_$][\w$]*$/.test(name || ""))
+      .forEach((name) => {
+        const key = `${direction}:${name}`;
+        if (seen.has(key)) return;
+        seen.add(key);
+        ports.push({ name, direction });
+      });
+  }
+  return ports.slice(0, 80);
+}
+
 function hdlSynthesisGraphFromFiles(files = []) {
   const moduleBodies = new Map();
   const moduleNames = new Set();
@@ -12639,13 +13433,19 @@ function hdlSynthesisGraphFromFiles(files = []) {
   });
   const nodes = [...moduleNames].map((id) => ({
     id,
-    fileName: moduleBodies.get(id)?.fileName || ""
+    label: id,
+    kind: "module",
+    type: "source module",
+    fileName: moduleBodies.get(id)?.fileName || "",
+    ports: hdlDeclaredPortsFromModuleBody(moduleBodies.get(id)?.body || ""),
+    portCount: hdlDeclaredPortsFromModuleBody(moduleBodies.get(id)?.body || "").length
   }));
   const topModule = nodes.find((node) => !instantiated.has(node.id))?.id || nodes[0]?.id || "";
   return {
     nodes,
     edges,
     topModule,
+    target: defaultFpgaTarget,
     sources: hdlFiles.map((file) => ({
       fileName: file.fileName || file.relativePath || "source",
       relativePath: compileFilePath(file),
@@ -12689,6 +13489,8 @@ function activeSynthesisDiagram(project, file = activeCompileFile(project)) {
     cacheHit: Boolean(synthesis.cacheHit),
     summary: synthesis.summary || synthesis.graph?.summary || fallbackGraph.summary || {},
     sources: Array.isArray(synthesis.sources) && synthesis.sources.length ? synthesis.sources : (graph.sources || fallbackGraph.sources || []),
+    constraints: Array.isArray(synthesis.constraints) ? synthesis.constraints : [],
+    target: synthesis.target || graph.target || fallbackGraph.target || defaultFpgaTarget,
     nets: Array.isArray(graph.nets) ? graph.nets : [],
     objects: Array.isArray(graph.objects) ? graph.objects : [],
     timing: synthesis.timing || graph.timing || fallbackGraph.timing || {},
@@ -12727,10 +13529,13 @@ function synthesisEdgeHaystack(edge = "") {
 
 function renderSynthesisSummaryChips(synthesis = {}, graph = {}) {
   const summary = synthesis.summary || graph.summary || {};
+  const target = synthesis.target || graph.target || defaultFpgaTarget;
   const cellTypes = Array.isArray(summary.cellTypes) ? summary.cellTypes.slice(0, 8) : [];
   const chips = [
     synthesis.cacheHit ? "Cache hit" : "",
     synthesis.tool || "",
+    target?.board || "",
+    target?.part || "",
     graph.netlist ? "Yosys netlist" : "Source graph",
     summary.moduleCount !== undefined ? `${summary.moduleCount} modules` : "",
     summary.cellCount !== undefined ? `${summary.cellCount} cells` : "",
@@ -12757,12 +13562,14 @@ function synthesisExplorerViews() {
   ];
 }
 
-function synthesisNodeDimensions(node = {}) {
+function synthesisNodeDimensions(node = {}, expansionLevel = 0, detailCount = 0) {
   const labelLength = String(node.label || node.id || "").length;
   const typeLength = String(node.type || node.fileName || node.kind || "").length;
+  const expansionWidth = expansionLevel ? 32 + expansionLevel * 24 : 0;
+  const expansionHeight = expansionLevel ? 26 + Math.min(10, detailCount) * 16 + (expansionLevel > 1 ? 24 : 0) : 0;
   return {
-    width: Math.min(280, Math.max(118, Number(node.nodeWidth) || 96 + Math.max(labelLength, typeLength) * 6)),
-    height: Math.min(118, Math.max(46, Number(node.nodeHeight) || 54 + Math.min(5, Number(node.portCount) || 0) * 6))
+    width: Math.min(420, Math.max(118, Number(node.nodeWidth) || 96 + Math.max(labelLength, typeLength) * 6) + expansionWidth),
+    height: Math.min(260, Math.max(46, Number(node.nodeHeight) || 54 + Math.min(5, Number(node.portCount) || 0) * 6) + expansionHeight)
   };
 }
 
@@ -12789,10 +13596,13 @@ function renderSynthesisSourceDetails(synthesis = {}, selectedKey = "") {
   const sources = Array.isArray(synthesis.sources) ? synthesis.sources : [];
   const source = sources.find((item) => synthesisSourceKey(item) === selectedKey) || sources[0];
   if (!source) return "";
+  const target = synthesis.target || defaultFpgaTarget;
   const rows = [
     ["File", source.fileName || source.relativePath || "source"],
     ["Path", source.relativePath || source.fileName || ""],
     ["Target language", codeLanguageLabel(source.language || "systemverilog")],
+    ["FPGA board", source.targetBoard || target.board || ""],
+    ["FPGA part", source.targetPart || target.part || ""],
     ["Role", source.role || "design"],
     ["Type", source.type || source.role || "source"],
     ["Simulator", source.simulator || "Icarus Verilog / vvp"],
@@ -12883,9 +13693,13 @@ function renderSynthesisExplorer(project, synthesis = {}, graph = {}) {
     `;
   } else if (view === "timing") {
     const notes = Array.isArray(timing.notes) ? timing.notes : [];
+    const target = synthesis.target || graph.target || defaultFpgaTarget;
+    const constraints = Array.isArray(synthesis.constraints) ? synthesis.constraints : [];
     body = `
       <div class="compile-synthesis-timing">
         <strong>${escapeHtml(timing.status || "Timing analysis")}</strong>
+        <p>Target: ${escapeHtml([target.board, target.part].filter(Boolean).join(" - ") || "Nexys A7-100T")}</p>
+        <p>Constraints: ${constraints.length ? escapeHtml(constraints.map((file) => file.fileName || file.relativePath).join(", ")) : escapeHtml(target.constraintsHint || "No constraint files selected")}</p>
         <p>Registers: ${Number(timing.registerCount) || 0}</p>
         <p>Combinational cells: ${Number(timing.combinationalCellCount) || 0}</p>
         <p>Memory cells: ${Number(timing.memoryCount) || 0}</p>
@@ -12901,11 +13715,130 @@ function renderSynthesisExplorer(project, synthesis = {}, graph = {}) {
   `;
 }
 
-function renderSynthesisDiagramSvg(graph = {}, filter = "") {
+function synthesisExpansionLevel(workspace = {}, nodeId = "") {
+  const expanded = workspace.synthesisExpandedNodes && typeof workspace.synthesisExpandedNodes === "object"
+    ? workspace.synthesisExpandedNodes
+    : {};
+  return Math.max(0, Math.min(3, Math.round(Number(expanded[String(nodeId || "")]) || 0)));
+}
+
+function synthesisShortText(value = "", limit = 58) {
+  const text = String(value || "").replace(/\s+/g, " ").trim();
+  if (text.length <= limit) return text;
+  return `${text.slice(0, Math.max(8, limit - 3))}...`;
+}
+
+function synthesisNodePorts(node = {}, graph = {}) {
+  const ports = [];
+  const seen = new Set();
+  const pushPort = (name = "", direction = "inout") => {
+    const cleanName = String(name || "").trim();
+    if (!cleanName) return;
+    const cleanDirection = ["input", "output", "inout"].includes(direction) ? direction : "inout";
+    const key = `${cleanDirection}:${cleanName}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    ports.push({ name: cleanName, direction: cleanDirection });
+  };
+  (Array.isArray(node.ports) ? node.ports : []).forEach((port) => {
+    if (typeof port === "string") pushPort(port, "inout");
+    else pushPort(port.name || port.label, port.direction || "inout");
+  });
+  (Array.isArray(graph.edges) ? graph.edges : []).forEach((edge) => {
+    if (edge.from === node.id) pushPort(edge.fromPort || edge.net || edge.instance, "output");
+    if (edge.to === node.id) pushPort(edge.toPort || edge.net || edge.instance, "input");
+  });
+  return ports.slice(0, 28);
+}
+
+function synthesisChildEntries(node = {}, graph = {}, nodesById = new Map()) {
+  const children = [];
+  const seen = new Set();
+  (Array.isArray(graph.edges) ? graph.edges : []).forEach((edge) => {
+    if (edge.from !== node.id) return;
+    const child = nodesById.get(edge.to);
+    const label = [edge.instance, child?.label || edge.to].filter(Boolean).join(": ");
+    if (!label || seen.has(label)) return;
+    seen.add(label);
+    children.push(label);
+  });
+  if ((node.kind === "top" || node.id === `module:${graph.topModule}`) && graph.netlist) {
+    (Array.isArray(graph.nodes) ? graph.nodes : [])
+      .filter((item) => item.kind !== "port" && item.kind !== "top")
+      .slice(0, 18)
+      .forEach((item) => {
+        const label = `${item.label || item.id} (${item.type || item.kind || "cell"})`;
+        if (!seen.has(label)) {
+          seen.add(label);
+          children.push(label);
+        }
+      });
+  }
+  return children.slice(0, 18);
+}
+
+function synthesisConnectedNetEntries(node = {}, graph = {}) {
+  const nets = [];
+  const seen = new Set();
+  (Array.isArray(graph.edges) ? graph.edges : []).forEach((edge) => {
+    if (edge.from !== node.id && edge.to !== node.id) return;
+    const label = [edge.net || edge.instance || `${edge.from}->${edge.to}`, Number(edge.width) > 1 ? `${edge.width}b` : ""].filter(Boolean).join(" ");
+    if (!label || seen.has(label)) return;
+    seen.add(label);
+    nets.push(label);
+  });
+  return nets.slice(0, 18);
+}
+
+function synthesisDetailCount(node = {}, graph = {}, level = 0, nodesById = new Map()) {
+  if (!level) return 0;
+  let count = Math.min(8, synthesisNodePorts(node, graph).length);
+  if (level > 1) count += Math.min(6, synthesisChildEntries(node, graph, nodesById).length);
+  if (level > 2) count += Math.min(6, synthesisConnectedNetEntries(node, graph).length);
+  return Math.max(1, count);
+}
+
+function synthesisOrthogonalPath(start, end, index = 0) {
+  const lane = ((index % 9) - 4) * 7;
+  const forward = end.x >= start.x;
+  const midX = forward
+    ? start.x + Math.max(38, (end.x - start.x) / 2) + lane
+    : Math.max(24, Math.min(start.x, end.x) - 46 - Math.abs(lane));
+  if (Math.abs(start.y - end.y) < 4) return `M${start.x},${start.y} L${end.x},${end.y}`;
+  return `M${start.x},${start.y} L${midX},${start.y} L${midX},${end.y} L${end.x},${end.y}`;
+}
+
+function renderSynthesisNodeDetail(node = {}, graph = {}, level = 0, nodesById = new Map(), position = { x: 0, y: 0 }, size = { width: 120, height: 54 }) {
+  if (!level) return "";
+  const lines = [];
+  const ports = synthesisNodePorts(node, graph);
+  if (ports.length) {
+    lines.push(`Ports: ${ports.slice(0, 6).map((port) => `${port.direction[0]}:${port.name}`).join(", ")}${ports.length > 6 ? " ..." : ""}`);
+  } else {
+    lines.push("Ports: inferred from connected nets");
+  }
+  if (level > 1) {
+    const children = synthesisChildEntries(node, graph, nodesById);
+    lines.push(children.length ? `Inside: ${children.slice(0, 4).join(", ")}${children.length > 4 ? " ..." : ""}` : "Inside: primitive or leaf block");
+  }
+  if (level > 2) {
+    const nets = synthesisConnectedNetEntries(node, graph);
+    lines.push(nets.length ? `Nets: ${nets.slice(0, 4).join(", ")}${nets.length > 4 ? " ..." : ""}` : "Nets: no named nets exposed");
+  }
+  return `
+    <text class="compile-synthesis-detail" x="${position.x + 12}" y="${position.y + 60}">
+      ${lines.slice(0, 8).map((line, index) => `<tspan x="${position.x + 12}" dy="${index ? 16 : 0}">${escapeHtml(synthesisShortText(line, Math.max(48, Math.floor(size.width / 6))))}</tspan>`).join("")}
+    </text>
+    <text class="compile-synthesis-expand-badge" x="${position.x + size.width - 42}" y="${position.y + 22}">L${level}</text>
+  `;
+}
+
+function renderSynthesisDiagramSvg(graph = {}, filter = "", options = {}) {
   const nodes = Array.isArray(graph.nodes) && graph.nodes.length
     ? graph.nodes
     : [{ id: "No HDL modules found", fileName: "" }];
   const topModule = graph.topModule || nodes[0]?.id || "";
+  const expandedNodes = options.expandedNodes && typeof options.expandedNodes === "object" ? options.expandedNodes : {};
   const normalizedFilter = String(filter || "").trim().toLowerCase();
   const matchedNodeIds = new Set();
   const connectedMatchIds = new Set();
@@ -12932,38 +13865,82 @@ function renderSynthesisDiagramSvg(graph = {}, filter = "") {
   const inoutPorts = ordered.filter((node) => node.kind === "port" && node.direction === "inout");
   const cells = ordered.filter((node) => node.kind !== "port" && node.kind !== "top");
   const topNodes = ordered.filter((node) => node.kind === "top" || node.id === `module:${topModule}` || node.id === topModule).slice(0, 1);
-  const cellColumns = isNetlist ? Math.min(6, Math.max(1, Math.ceil(Math.sqrt(Math.max(1, cells.length))))) : Math.max(1, ordered.length);
-  const cellRows = isNetlist ? Math.ceil(Math.max(1, cells.length) / cellColumns) : 1;
-  const maxRows = Math.max(inputPorts.length + inoutPorts.length, outputPorts.length, cellRows, 1);
-  const cellGapX = 252;
-  const width = isNetlist ? Math.max(1220, 260 + cellColumns * cellGapX + 300) : Math.max(820, ordered.length * 190 + 120);
-  const height = isNetlist ? Math.max(620, 150 + maxRows * 82) : (ordered.length > 1 ? 300 : 190);
+  const nodeById = new Map(ordered.map((node) => [node.id, node]));
+  const expansionLevel = (node) => Math.max(0, Math.min(3, Math.round(Number(expandedNodes[node.id]) || 0)));
+  const detailCount = (node) => synthesisDetailCount(node, graph, expansionLevel(node), nodeById);
+  const nodeSize = (node) => synthesisNodeDimensions(node, expansionLevel(node), detailCount(node));
   const positions = new Map();
-  const placeVertical = (items, x, yStart, availableRows = maxRows) => {
-    const step = Math.max(72, Math.min(116, Math.floor((height - yStart - 52) / Math.max(1, availableRows))));
+  let width = 1120;
+  let height = 620;
+  const placeVertical = (items, x, yStart, availableHeight = height - yStart - 40) => {
+    const step = Math.max(66, Math.min(124, Math.floor(availableHeight / Math.max(1, items.length))));
     items.forEach((node, index) => {
       positions.set(node.id, { x, y: yStart + index * step });
     });
   };
   if (isNetlist) {
+    const cellColumns = Math.min(4, Math.max(1, Math.ceil(Math.sqrt(Math.max(1, cells.length)))));
+    const cellRows = Math.ceil(Math.max(1, cells.length) / cellColumns);
+    const rowHeights = Array.from({ length: cellRows }, () => 106);
+    cells.forEach((node, index) => {
+      const row = Math.floor(index / cellColumns);
+      rowHeights[row] = Math.max(rowHeights[row], nodeSize(node).height + 26);
+    });
+    const rowY = [];
+    rowHeights.reduce((y, rowHeight, index) => {
+      rowY[index] = y;
+      return y + rowHeight;
+    }, 126);
+    const maxSidePorts = Math.max(inputPorts.length + inoutPorts.length, outputPorts.length, 1);
+    width = Math.max(1180, 570 + cellColumns * 260);
+    height = Math.max(620, 190 + Math.max(rowHeights.reduce((sum, rowHeight) => sum + rowHeight, 0), maxSidePorts * 66));
     topNodes.forEach((node) => {
-      const size = synthesisNodeDimensions(node);
+      const size = nodeSize(node);
       positions.set(node.id, { x: (width - size.width) / 2, y: 24 });
     });
-    placeVertical([...inputPorts, ...inoutPorts], 36, 124);
-    placeVertical(outputPorts, width - 230, 124);
+    placeVertical([...inputPorts, ...inoutPorts], 36, 126);
+    placeVertical(outputPorts, width - 230, 126);
     cells.forEach((node, index) => {
       const column = index % cellColumns;
       const row = Math.floor(index / cellColumns);
-      positions.set(node.id, { x: 280 + column * cellGapX, y: 124 + row * 94 });
+      const columnX = 292 + column * 260;
+      positions.set(node.id, { x: columnX, y: rowY[row] });
     });
   } else {
-    ordered.forEach((node, index) => {
-      positions.set(node.id, { x: ordered.length === 1 ? (width - synthesisNodeDimensions(node).width) / 2 : 48 + index * 190, y: node.id === topModule ? 36 : 150 });
+    const ranks = new Map();
+    const queue = [{ id: topModule, rank: 0 }];
+    while (queue.length) {
+      const current = queue.shift();
+      if (!current.id || ranks.has(current.id)) continue;
+      ranks.set(current.id, current.rank);
+      (Array.isArray(graph.edges) ? graph.edges : [])
+        .filter((edge) => edge.from === current.id)
+        .forEach((edge) => queue.push({ id: edge.to, rank: current.rank + 1 }));
+    }
+    ordered.forEach((node) => {
+      if (!ranks.has(node.id)) ranks.set(node.id, Math.max(1, ranks.size ? Math.max(...ranks.values()) + 1 : 0));
+    });
+    const rankGroups = [...ranks.entries()].reduce((groups, [id, rank]) => {
+      if (!groups.has(rank)) groups.set(rank, []);
+      const node = nodeById.get(id);
+      if (node) groups.get(rank).push(node);
+      return groups;
+    }, new Map());
+    const sortedRanks = [...rankGroups.keys()].sort((a, b) => a - b);
+    const largestRank = sortedRanks.reduce((max, rank) => Math.max(max, rankGroups.get(rank).length), 1);
+    width = Math.max(1020, 120 + sortedRanks.length * 285);
+    height = Math.max(620, 126 + largestRank * 128);
+    sortedRanks.forEach((rank, rankIndex) => {
+      const group = rankGroups.get(rank);
+      const x = 48 + rankIndex * 285;
+      const step = Math.max(116, Math.floor((height - 130) / Math.max(1, group.length)));
+      group.forEach((node, index) => {
+        positions.set(node.id, { x, y: 72 + index * step });
+      });
     });
   }
   const connectionPoint = (node, position, targetPosition, side = "auto") => {
-    const size = synthesisNodeDimensions(node);
+    const size = nodeSize(node);
     const targetX = targetPosition?.x ?? position.x;
     const useRight = side === "right" || (side === "auto" && targetX >= position.x);
     return {
@@ -12971,7 +13948,6 @@ function renderSynthesisDiagramSvg(graph = {}, filter = "") {
       y: position.y + size.height / 2
     };
   };
-  const nodeById = new Map(ordered.map((node) => [node.id, node]));
   const edges = (Array.isArray(graph.edges) ? graph.edges : []).slice(0, 620);
   const renderedEdges = edges.map((edge, index) => {
     const from = positions.get(edge.from);
@@ -12983,15 +13959,17 @@ function renderSynthesisDiagramSvg(graph = {}, filter = "") {
     const edgeMuted = Boolean(normalizedFilter && !edgeMatches);
     const start = connectionPoint(fromNode, from, to, "auto");
     const end = connectionPoint(toNode, to, from, "auto");
-    const midX = start.x + Math.max(40, (end.x - start.x) / 2);
+    const path = synthesisOrthogonalPath(start, end, index);
+    const labelX = start.x + Math.max(22, (end.x - start.x) / 2);
+    const labelY = start.y + (end.y - start.y) / 2 - 5 + ((index % 5) - 2) * 4;
     const label = [edge.net || edge.instance || "", Number(edge.width) > 1 ? `[${edge.width}]` : ""].filter(Boolean).join(" ");
     return `
-      <path class="compile-synthesis-edge${edgeMatches ? " is-match" : ""}${edgeMuted ? " is-muted" : ""}" d="M${start.x},${start.y} C${midX},${start.y} ${midX},${end.y} ${end.x},${end.y}" marker-end="url(#synthesis-arrow)"></path>
-      ${label && index < 180 ? `<text class="compile-synthesis-instance${edgeMatches ? " is-match" : ""}${edgeMuted ? " is-muted" : ""}" x="${midX + 4}" y="${(start.y + end.y) / 2 - 4}">${escapeHtml(label)}</text>` : ""}
+      <path class="compile-synthesis-edge${edgeMatches ? " is-match" : ""}${edgeMuted ? " is-muted" : ""}" d="${path}" marker-end="url(#synthesis-arrow)"></path>
+      ${label && index < 180 ? `<text class="compile-synthesis-instance${edgeMatches ? " is-match" : ""}${edgeMuted ? " is-muted" : ""}" x="${labelX + 4}" y="${labelY}">${escapeHtml(label)}</text>` : ""}
     `;
   });
   return `
-    <svg class="compile-synthesis-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="HDL synthesis module diagram">
+    <svg class="compile-synthesis-svg" style="width:${width}px; min-height:${height}px;" viewBox="0 0 ${width} ${height}" role="img" aria-label="HDL synthesis module diagram">
       <defs>
         <marker id="synthesis-arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
           <path d="M0,0 L0,6 L9,3 z"></path>
@@ -13000,16 +13978,18 @@ function renderSynthesisDiagramSvg(graph = {}, filter = "") {
       ${renderedEdges.join("")}
       ${ordered.map((node) => {
         const position = positions.get(node.id) || { x: 0, y: 0 };
-        const size = synthesisNodeDimensions(node);
+        const level = expansionLevel(node);
+        const size = nodeSize(node);
         const isTop = node.id === topModule || node.id === `module:${topModule}` || node.kind === "top";
         const nodeMatches = Boolean(normalizedFilter && (matchedNodeIds.has(node.id) || connectedMatchIds.has(node.id)));
         const nodeMuted = Boolean(normalizedFilter && !nodeMatches);
         return `
-          <g class="compile-synthesis-node compile-synthesis-${escapeHtml(node.kind || "node")}${node.direction ? ` compile-synthesis-${escapeHtml(node.direction)}` : ""}${isTop ? " is-top" : ""}${nodeMatches ? " is-match" : ""}${nodeMuted ? " is-muted" : ""}">
+          <g class="compile-synthesis-node compile-synthesis-${escapeHtml(node.kind || "node")}${node.direction ? ` compile-synthesis-${escapeHtml(node.direction)}` : ""}${isTop ? " is-top" : ""}${level ? " is-expanded" : ""}${nodeMatches ? " is-match" : ""}${nodeMuted ? " is-muted" : ""}" data-synthesis-node-id="${escapeHtml(node.id)}">
             <rect x="${position.x}" y="${position.y}" width="${size.width}" height="${size.height}" rx="7"></rect>
             <text x="${position.x + 12}" y="${position.y + 22}">${escapeHtml(node.label || node.id)}</text>
             <text class="compile-synthesis-file" x="${position.x + 12}" y="${position.y + 40}">${escapeHtml(node.type || node.fileName || node.kind || (isTop ? "top module" : "module"))}</text>
             ${node.portCount ? `<text class="compile-synthesis-file" x="${position.x + 12}" y="${position.y + Math.min(size.height - 9, 58)}">${Number(node.portCount)} ports</text>` : ""}
+            ${renderSynthesisNodeDetail(node, graph, level, nodeById, position, size)}
           </g>
         `;
       }).join("")}
@@ -13069,7 +14049,7 @@ function renderCompileSynthesisDiagramWindow(project, file = activeCompileFile(p
           ${synthesis.available === false ? `<p class="compile-synthesis-warning">Yosys is not available, so this is a source-level module graph. Install OSS CAD Suite from Tools to produce a synthesized netlist.</p>` : ""}
           <div class="compile-synthesis-canvas" style="--synthesis-zoom: ${zoom};">
             <div class="compile-synthesis-zoom-stage">
-              ${renderSynthesisDiagramSvg(graph, filter)}
+              ${renderSynthesisDiagramSvg(graph, filter, { expandedNodes: workspace.synthesisExpandedNodes })}
             </div>
           </div>
         </main>
@@ -13112,6 +14092,7 @@ function renderCompileActiveOutputPanel(project, file = activeCompileFile(projec
 function renderCompileMenuItems(items = []) {
   return items.map((item) => {
     if (item.separator) return `<span class="compile-ide-menu-separator" role="separator"></span>`;
+    if (item.heading) return `<strong class="compile-ide-menu-heading">${escapeHtml(item.heading)}</strong>`;
     return `
       <button type="button" data-compile-menu-action="${escapeHtml(item.action)}"${item.disabled ? " disabled" : ""}>
         <span>${escapeHtml(item.label)}</span>
@@ -13343,9 +14324,22 @@ function renderCompileIdeMenuBar(project, file = activeCompileFile(project)) {
     {
       label: "Tools",
       items: [
+        { heading: "Editor" },
+        { label: builderPreferences.compileLineNumbers !== false ? "Hide line numbers" : "Show line numbers", action: "toggle-line-numbers", shortcut: "Ctrl+Alt+L" },
+        { label: "Preferences", action: "preferences" },
+        { separator: true },
+        { heading: "Synthesis" },
         { label: "Check compilers", action: "check-tools" },
         { label: "Install active toolchain", action: "install-tools", disabled: !hasFile },
-        { label: "Preferences", action: "preferences" }
+        { label: "View synthesis diagram", action: "view-synthesis-diagram", disabled: !hasFile || !hdlFile },
+        { separator: true },
+        { heading: "Simulation" },
+        { label: "Simulate", action: "simulate", disabled: !hasFile || !hdlFile },
+        { label: "Show scope", action: "show-scope", disabled: !hasFile || !hdlFile },
+        { label: "Program input", action: "toggle-input", disabled: !hasFile },
+        { separator: true },
+        { heading: "Beautifier" },
+        { label: "Beautify active source", action: "beautify", disabled: !hasFile }
       ]
     },
     {
@@ -13388,6 +14382,7 @@ function renderCompileTreeContextMenu() {
   ];
   return `
     <div class="compile-tree-context-menu" data-compile-tree-context-menu hidden>
+      <div class="compile-tree-context-menu-title" data-compile-tree-menu-drag title="Drag this menu">Working tree</div>
       ${items.map((item) => item.separator
         ? `<span class="compile-ide-menu-separator" role="separator"></span>`
         : `<button type="button" data-compile-menu-action="${escapeHtml(item.action)}">${escapeHtml(item.label)}</button>`).join("")}
@@ -13429,6 +14424,45 @@ function renderCompileAppendChooser(project, workspace = {}) {
   `;
 }
 
+function renderHdlCompileMenus(project, file = activeCompileFile(project), workspace = ensureCompileCode(project)) {
+  if (!isHdlLanguage(file?.language)) return "";
+  const hdlFiles = (workspace.files || []).filter((item) => isHdlLanguage(item.language));
+  const testbenchFiles = hdlFiles.filter((item) => item.role === "testbench");
+  const constraintFiles = (workspace.files || []).filter(isCompileConstraintFile);
+  const selectedConstraintIds = new Set(Array.isArray(workspace.constraintFileIds) ? workspace.constraintFileIds : []);
+  return `
+    <section class="compile-hdl-menu-strip" aria-label="HDL build menus">
+      <label>
+        <span>Design</span>
+        <select data-compile-hdl-design-mode title="Choose which HDL design files Synthesize uses">
+          <option value="active"${workspace.synthesisFileMode === "active" ? " selected" : ""}>Active file only</option>
+          <option value="selected"${workspace.synthesisFileMode === "selected" ? " selected" : ""}>Selected design files</option>
+          <option value="all"${workspace.synthesisFileMode === "all" ? " selected" : ""}>All design files</option>
+        </select>
+      </label>
+      <label>
+        <span>Simulation</span>
+        <select data-compile-hdl-simulation-top title="Choose the testbench top used by Simulate">
+          <option value="">Auto testbench</option>
+          ${testbenchFiles.map((item) => `<option value="${escapeHtml(item.id)}"${workspace.simulationTopFileId === item.id ? " selected" : ""}>${escapeHtml(item.fileName)}</option>`).join("")}
+        </select>
+      </label>
+      <label>
+        <span>Constraints</span>
+        <select data-compile-hdl-constraints multiple size="${Math.min(3, Math.max(1, constraintFiles.length || 1))}" title="Choose XDC/SDC/TCL constraint files recorded with the Nexys A7-100T synthesis run">
+          ${constraintFiles.length
+            ? constraintFiles.map((item) => `<option value="${escapeHtml(item.id)}"${selectedConstraintIds.has(item.id) ? " selected" : ""}>${escapeHtml(item.fileName)}</option>`).join("")
+            : `<option value="" disabled>No constraint files</option>`}
+        </select>
+      </label>
+      <p title="${escapeHtml(defaultFpgaTarget.constraintsHint)}">
+        <strong>${escapeHtml(defaultFpgaTarget.board)}</strong>
+        <span>${escapeHtml(defaultFpgaTarget.part)}</span>
+      </p>
+    </section>
+  `;
+}
+
 function renderCompileCodeSection(project) {
   const workspace = ensureCompileCode(project);
   const activeFile = activeCompileFile(project);
@@ -13442,11 +14476,12 @@ function renderCompileCodeSection(project) {
   const compileTheme = compileThemeIds.includes(builderPreferences.compileTheme)
     ? builderPreferences.compileTheme
     : defaultBuilderPreferences.compileTheme;
+  const showLineNumbers = builderPreferences.compileLineNumbers !== false;
   const dockStyle = dockUnlocked
     ? ` style="left:${Math.max(8, Number(dockPosition.x) || 72)}px; top:${Math.max(8, Number(dockPosition.y) || 120)}px; width:${normalizeCompileFloatingWidth(dockSize.width)}px; height:${normalizeCompileFloatingHeight(dockSize.height)}px;"`
     : ` style="--compile-output-height:${outputHeight}px;"`;
   return `
-    <div class="compile-code-workspace is-output-panel-${escapeHtml(activePanel)}" data-compile-workspace data-compile-theme="${escapeHtml(compileTheme)}" style="--compile-sidebar-width:${sidebarWidth}px; --compile-output-height:${outputHeight}px;">
+    <div class="compile-code-workspace is-output-panel-${escapeHtml(activePanel)}" data-compile-workspace data-compile-theme="${escapeHtml(compileTheme)}" data-compile-line-numbers="${showLineNumbers ? "true" : "false"}" style="--compile-sidebar-width:${sidebarWidth}px; --compile-output-height:${outputHeight}px;">
       ${renderCompileIdeMenuBar(project, activeFile)}
       <aside class="compile-code-sidebar" aria-label="Compile code files">
         <div class="compile-code-sidebar-heading">
@@ -13471,10 +14506,12 @@ function renderCompileCodeSection(project) {
         ${compileEditorTabs(project, activeFile)}
         ${activeFile ? `
           ${compileFileBreadcrumbs(activeFile)}
+          ${renderHdlCompileMenus(project, activeFile, workspace)}
           <div class="compile-code-editor-grid compile-code-editor-grid-single">
             <section class="compile-code-preview-panel compile-code-active-panel" aria-label="Active syntax highlighted code editor">
-              <div class="compile-code-active-editor">
-                <pre class="compile-code-preview" aria-label="Code editor"><code data-compile-preview data-compile-active-editor data-compile-field="code" contenteditable="true" spellcheck="false" role="textbox" aria-multiline="true">${tokenizedCodeHtml(activeFile.code || "", activeFile.language)}</code></pre>
+              <div class="compile-code-active-editor${showLineNumbers ? " has-line-numbers" : ""}">
+                ${showLineNumbers ? `<div class="compile-line-gutter" data-compile-line-gutter aria-hidden="true">${compileEditorLineNumbersHtml(activeFile.code || "")}</div>` : ""}
+                <pre class="compile-code-preview" aria-label="Code editor"><code data-compile-preview data-compile-active-editor data-compile-field="code" contenteditable="true" spellcheck="false" role="textbox" aria-multiline="true">${tokenizedCodeHtml(activeFile.code || "", activeFile.language, compileEditorDiagnosticsForFile(workspace, activeFile))}</code></pre>
               </div>
             </section>
           </div>
@@ -13815,6 +14852,7 @@ function renderAll() {
   if (project && !sectionOptions(project).some((section) => section.id === activeSectionId)) {
     activeSectionId = "brief";
   }
+  renderBuilderAppMenuBar();
   renderFunFactsEditor();
   renderSiteContentEditor();
   renderProfileEditor();
@@ -14010,6 +15048,16 @@ async function handleGlobalKeyboardShortcuts(event) {
   if (key === "f1") {
     event.preventDefault();
     builderGuideOpen?.click();
+    return;
+  }
+  if ((event.ctrlKey || event.metaKey) && event.altKey && key === "l") {
+    event.preventDefault();
+    const project = selectedProject();
+    if (projectDialog?.open && activeSectionIsCompileCode(project) && project) {
+      await runCompileIdeAction(project, "toggle-line-numbers");
+    } else {
+      setCompileLineNumbers(builderPreferences.compileLineNumbers === false);
+    }
     return;
   }
   if (!modifier || event.altKey) return;
@@ -14376,20 +15424,34 @@ function updateVisibleSynthesisDiagram(project, file = activeCompileFile(project
   const workspace = ensureCompileCode(project);
   const stage = sectionContent.querySelector(".compile-synthesis-zoom-stage");
   if (!stage || !isHdlLanguage(file?.language)) return;
-  stage.innerHTML = renderSynthesisDiagramSvg(activeSynthesisDiagram(project, file).graph || {}, workspace.synthesisDiagramFilter || "");
+  stage.innerHTML = renderSynthesisDiagramSvg(activeSynthesisDiagram(project, file).graph || {}, workspace.synthesisDiagramFilter || "", {
+    expandedNodes: workspace.synthesisExpandedNodes
+  });
 }
 
 function addCompileSourceFile(project, file = null, options = {}) {
   const workspace = ensureCompileCode(project);
-  const language = normalizeCodeLanguage(options.language || file?.language || "javascript");
+  const creationMetadata = file || options.metadata
+    ? options.metadata || null
+    : promptCompileFileMetadata({
+      defaultLanguage: options.language || activeCompileFile(project)?.language || "javascript",
+      defaultType: "source"
+    });
+  if (!file && !creationMetadata) return;
+  const language = normalizeCodeLanguage(options.language || creationMetadata?.resolvedLanguage || file?.language || "javascript");
   const targetDirectory = compileDirectoryPath(options.directory || "");
   const sourceFile = file || newCompileFile(language, {
     relativePath: uniqueCompileFilePath(
       workspace,
       targetDirectory ? `${targetDirectory}/${defaultCodeFileName(language)}` : defaultCodeFileName(language),
       language
-    )
+    ),
+    role: creationMetadata?.role || (isHdlLanguage(language) ? "design" : "source"),
+    fileType: creationMetadata?.fileType && creationMetadata.fileType !== "auto" ? creationMetadata.fileType : (isHdlLanguage(language) ? "design" : "source")
   });
+  sourceFile.language = language;
+  sourceFile.role = normalizeCompileFileRole(sourceFile.role, language);
+  sourceFile.fileType = normalizeCompileFileType(sourceFile.fileType, sourceFile);
   addCompileDirectoryPath(workspace, compileFileDirectory(sourceFile.relativePath));
   workspace.files.push(sourceFile);
   openCompileFileView(workspace, sourceFile.id);
@@ -14401,7 +15463,13 @@ function addCompileSourceFile(project, file = null, options = {}) {
 function addCompileTestbenchFile(project, options = {}) {
   const workspace = ensureCompileCode(project);
   const activeFile = activeCompileFile(project);
-  const language = isHdlLanguage(activeFile?.language) ? normalizeCodeLanguage(activeFile.language) : "systemverilog";
+  const metadata = options.metadata || promptCompileFileMetadata({
+    defaultLanguage: isHdlLanguage(activeFile?.language) ? normalizeCodeLanguage(activeFile.language) : "systemverilog",
+    defaultType: "testbench",
+    defaultRole: "testbench"
+  });
+  if (!metadata) return;
+  const language = isHdlLanguage(metadata.resolvedLanguage) ? normalizeCodeLanguage(metadata.resolvedLanguage) : "systemverilog";
   const designName = firstHdlModuleName(activeFile?.code || "") || "design";
   const extension = language === "verilog" ? ".v" : ".sv";
   const targetDirectory = compileDirectoryPath(options.directory || compileFileDirectory(activeFile?.relativePath || ""));
@@ -14412,6 +15480,7 @@ function addCompileTestbenchFile(project, options = {}) {
       language
     ),
     role: "testbench",
+    fileType: "testbench",
     code: hdlTestbenchTemplate(language, designName)
   });
   addCompileDirectoryPath(workspace, compileFileDirectory(file.relativePath));
@@ -14426,6 +15495,12 @@ function addCompileTestbenchFile(project, options = {}) {
 function addCompileUvmStyleTestbenchFile(project, options = {}) {
   const workspace = ensureCompileCode(project);
   const activeFile = activeCompileFile(project);
+  const metadata = options.metadata || promptCompileFileMetadata({
+    defaultLanguage: "systemverilog",
+    defaultType: "testbench",
+    defaultRole: "testbench"
+  });
+  if (!metadata) return;
   const designName = firstHdlModuleName(activeFile?.code || "") || "design";
   const targetDirectory = compileDirectoryPath(options.directory || compileFileDirectory(activeFile?.relativePath || ""));
   const file = newCompileFile("systemverilog", {
@@ -14435,6 +15510,7 @@ function addCompileUvmStyleTestbenchFile(project, options = {}) {
       "systemverilog"
     ),
     role: "testbench",
+    fileType: "testbench",
     code: hdlUvmStyleTestbenchTemplate(designName)
   });
   addCompileDirectoryPath(workspace, compileFileDirectory(file.relativePath));
@@ -14474,12 +15550,19 @@ function addCompileIpBlock(project, ipId = "") {
 }
 
 function updateCompilePreview(file, sourceElement = null) {
+  const project = selectedProject();
+  const workspace = project ? ensureCompileCode(project) : {};
   const editor = sourceElement?.closest?.(".compile-code-active-editor");
   const preview = editor?.querySelector("[data-compile-preview]") || sectionContent.querySelector("[data-compile-preview]");
   if (!preview || !file) return;
   const preserveCaret = preview === sourceElement || preview.contains?.(sourceElement);
   const caretOffset = preserveCaret ? compileEditorSelectionOffset(preview) : null;
-  preview.innerHTML = tokenizedCodeHtml(file.code || "", file.language);
+  preview.innerHTML = tokenizedCodeHtml(file.code || "", file.language, compileEditorDiagnosticsForFile(workspace, file));
+  const lineGutter = preview.closest?.(".compile-code-active-editor")?.querySelector?.("[data-compile-line-gutter]");
+  if (lineGutter) {
+    lineGutter.innerHTML = compileEditorLineNumbersHtml(file.code || "");
+    lineGutter.style.transform = `translateY(${-Math.max(0, preview.scrollTop || 0)}px)`;
+  }
   if (preserveCaret && caretOffset !== null) restoreCompileEditorSelection(preview, caretOffset);
 }
 
@@ -14727,7 +15810,11 @@ function compilePayload(project, file, options = {}) {
     action: options.action || "",
     forceRebuild: options.forceRebuild === true,
     hdlSimulationTimeoutMs: workspace.hdlSimulationTimeoutMs || 30000,
-    synthesisTopModule: workspace.synthesisTopModule || ""
+    synthesisTopModule: workspace.synthesisTopModule || "",
+    synthesisFileMode: workspace.synthesisFileMode || "all",
+    selectedFileIds: Array.isArray(workspace.selectedFileIds) ? workspace.selectedFileIds : [],
+    simulationTopFileId: workspace.simulationTopFileId || "",
+    constraintFileIds: Array.isArray(workspace.constraintFileIds) ? workspace.constraintFileIds : []
   };
 }
 
@@ -14950,6 +16037,13 @@ async function importCompileFiles(project, options = {}) {
   const workspace = ensureCompileCode(project);
   hideCompileTreeContextMenus();
   const directoryImport = options.directory === true;
+  const importMetadata = options.metadata || promptCompileFileMetadata({
+    allowAuto: true,
+    defaultLanguage: "javascript",
+    fallbackLanguage: activeCompileFile(project)?.language || "javascript",
+    defaultType: "auto"
+  });
+  if (!importMetadata) return;
   let entries = [];
   let importedDirectories = [];
   if (directoryImport) {
@@ -14998,12 +16092,21 @@ async function importCompileFiles(project, options = {}) {
       ? entry.relativePath || file.webkitRelativePath || file.name
       : file.name;
     const incomingPath = [targetDirectory, pickedPath].filter(Boolean).join("/");
-    const language = allowedExtensions.includes(extension) ? detectCodeLanguage(code, incomingPath) : "text";
+    const detectedLanguage = allowedExtensions.includes(extension) ? detectCodeLanguage(code, incomingPath) : "text";
+    const language = importMetadata.autoLanguage ? detectedLanguage : importMetadata.resolvedLanguage;
     const profile = codeLanguageProfile(language);
     const relativePath = uniqueCompileFilePath(workspace, incomingPath, profile.id);
+    const role = isHdlLanguage(profile.id)
+      ? normalizeCompileFileRole(importMetadata.autoType ? inferCompileFileRole(relativePath, code, profile.id) : importMetadata.fileType, profile.id)
+      : "source";
+    const fileType = importMetadata.autoType
+      ? normalizeCompileFileType("", { fileName: relativePath, relativePath, language: profile.id, role, code })
+      : normalizeCompileFileType(importMetadata.fileType, { fileName: relativePath, relativePath, language: profile.id, role, code });
     const sourceFile = newCompileFile(profile.id, {
       relativePath,
       fileName: relativePath,
+      role,
+      fileType,
       code
     });
     addCompileDirectoryPath(workspace, compileFileDirectory(relativePath));
@@ -15483,6 +16586,11 @@ async function runCompileIdeAction(project, action = "", options = {}) {
   if (action === "check-tools") return checkCompileTools(project);
   if (action === "delete-tree-target") return deleteCompileTreeTarget(project, context);
   if (action === "move-tree-file") return moveCompileTreeFile(project, context);
+  if (action === "toggle-line-numbers") {
+    setCompileLineNumbers(builderPreferences.compileLineNumbers === false);
+    renderSectionContent(project);
+    return;
+  }
   if (action === "clear-messages") {
     workspace.messages = [];
     updateCompileMessagesPanel(project);
@@ -15535,6 +16643,13 @@ async function runCompileIdeAction(project, action = "", options = {}) {
   if (action === "run") return compileActiveFile(project, file, { action: "run" });
   if (action === "simulate") return compileActiveFile(project, file, { action: "simulate" });
   if (action === "install-tools") return installCompileTools(project, file);
+  if (action === "toggle-input") {
+    workspace.stdinWindowOpen = !workspace.stdinWindowOpen;
+    setStatus(workspace.stdinWindowOpen ? "Program input window opened." : "Program input window hidden.");
+    scheduleAutosave();
+    renderSectionContent(project);
+    return;
+  }
   if (action === "show-output") {
     showCompileOutput(project, file);
     addCompileMessage(project, `Displayed terminal output for ${file?.fileName || "the active source"}.`, "info");
@@ -17521,6 +18636,31 @@ document.addEventListener("dblclick", (event) => {
   reopenRichEditorToolbar(editor);
 }, true);
 
+sectionContent.addEventListener("dblclick", (event) => {
+  const synthesisNode = event.target.closest?.("[data-synthesis-node-id]");
+  if (!synthesisNode) return;
+  const project = selectedProject();
+  if (!project) return;
+  const workspace = ensureCompileCode(project);
+  const nodeId = synthesisNode.dataset.synthesisNodeId || "";
+  if (!nodeId) return;
+  const current = synthesisExpansionLevel(workspace, nodeId);
+  const next = current >= 3 ? 0 : current + 1;
+  workspace.synthesisExpandedNodes = workspace.synthesisExpandedNodes && typeof workspace.synthesisExpandedNodes === "object"
+    ? workspace.synthesisExpandedNodes
+    : {};
+  if (next) workspace.synthesisExpandedNodes[nodeId] = next;
+  else delete workspace.synthesisExpandedNodes[nodeId];
+  const file = activeCompileFile(project);
+  updateVisibleSynthesisDiagram(project, file);
+  setStatus(next
+    ? `Expanded synthesis block to detail level ${next}. Double-click again for more detail.`
+    : "Collapsed synthesis block.");
+  scheduleAutosave(700);
+  event.preventDefault();
+  event.stopPropagation();
+});
+
 function finishTextSelectionGesture(event) {
   if (event?.button === 2 || event?.target?.closest?.("#text-selection-inspector, #summary-context-menu")) return;
   selectionGestureActive = false;
@@ -18335,6 +19475,20 @@ sectionTabs.addEventListener("contextmenu", (event) => {
   });
 });
 
+sectionContent.addEventListener("scroll", (event) => {
+  const target = event.target;
+  if (target?.matches?.("[data-compile-preview]")) {
+    const gutter = target.closest(".compile-code-active-editor")?.querySelector("[data-compile-line-gutter]");
+    if (gutter) gutter.style.transform = `translateY(${-Math.max(0, target.scrollTop || 0)}px)`;
+  }
+  if (target?.matches?.(".compile-code-workspace-tree")) {
+    const project = selectedProject();
+    if (!project) return;
+    const workspace = ensureCompileCode(project);
+    workspace.treeScrollTop = Math.max(0, target.scrollTop || 0);
+  }
+}, true);
+
 projectViewTabsBar?.addEventListener("click", (event) => {
   const closeButton = event.target.closest("[data-close-project-view-tab]");
   if (closeButton) {
@@ -18790,11 +19944,13 @@ sectionContent.addEventListener("click", async (event) => {
   }
   if (button.dataset.compileSelect) {
     const workspace = ensureCompileCode(project);
+    captureCompileTreeScroll(project);
     if (event.ctrlKey || event.metaKey) {
       event.preventDefault();
       event.stopPropagation();
       toggleCompileFileSelection(project, button.dataset.compileSelect);
       renderSectionContent(project);
+      restoreCompileTreeScroll(project);
       return;
     }
     event.preventDefault();
@@ -18803,6 +19959,7 @@ sectionContent.addEventListener("click", async (event) => {
     const openedFile = activeCompileFile(project);
     if (openedFile) scheduleLiveCompileDiagnostics(project, openedFile, 250);
     renderSectionContent(project);
+    restoreCompileTreeScroll(project);
     return;
   }
   if (hasDataset("compileTools")) {
@@ -19238,6 +20395,22 @@ sectionContent.addEventListener("contextmenu", (event) => {
 });
 
 sectionContent.addEventListener("pointerdown", (event) => {
+  const treeMenuDragHandle = event.target.closest("[data-compile-tree-menu-drag]");
+  const treeMenu = treeMenuDragHandle?.closest("[data-compile-tree-context-menu]");
+  if (treeMenu && event.button === 0) {
+    const rect = treeMenu.getBoundingClientRect();
+    activeCompileTreeMenuDrag = {
+      menu: treeMenu,
+      pointerId: event.pointerId,
+      offsetX: event.clientX - rect.left,
+      offsetY: event.clientY - rect.top
+    };
+    treeMenuDragHandle.setPointerCapture?.(event.pointerId);
+    treeMenu.classList.add("is-dragging");
+    event.preventDefault();
+    return;
+  }
+
   const scopeCursorTarget = event.target.closest("[data-scope-cursor], [data-scope-cursor-line], [data-scope-cursor-handle]");
   const scopeSvg = scopeCursorTarget?.closest(".compile-scope-svg");
   if (scopeSvg && event.button === 0) {
@@ -19406,6 +20579,19 @@ sectionContent.addEventListener("pointermove", (event) => {
 });
 
 document.addEventListener("pointermove", (event) => {
+  if (activeCompileTreeMenuDrag) {
+    const { menu, offsetX, offsetY } = activeCompileTreeMenuDrag;
+    if (!menu) return;
+    const width = menu.offsetWidth || 190;
+    const height = Math.min(menu.offsetHeight || 240, window.innerHeight - 16);
+    const left = Math.max(8, Math.min(event.clientX - offsetX, window.innerWidth - width - 8));
+    const top = Math.max(8, Math.min(event.clientY - offsetY, window.innerHeight - height - 8));
+    menu.style.left = `${left}px`;
+    menu.style.top = `${top}px`;
+    event.preventDefault();
+    return;
+  }
+
   if (activeScopeCursorDrag) {
     updateScopeCursorFromPointer(event, { svg: activeScopeCursorDrag.svg, moveCursor: true });
     event.preventDefault();
@@ -19632,6 +20818,11 @@ function endOutputDockDrag(event) {
 }
 
 function endCompileFloatingWindowDrag() {
+  if (activeCompileTreeMenuDrag) {
+    sectionContent.querySelector("[data-compile-tree-menu-drag]")?.releasePointerCapture?.(activeCompileTreeMenuDrag.pointerId);
+    activeCompileTreeMenuDrag.menu?.classList.remove("is-dragging");
+    activeCompileTreeMenuDrag = null;
+  }
   if (activeCompileStdinDrag) {
     sectionContent.querySelector("[data-compile-stdin-drag]")?.releasePointerCapture?.(activeCompileStdinDrag.pointerId);
     sectionContent.querySelector(".compile-stdin-window")?.classList.remove("is-dragging");
@@ -19740,6 +20931,36 @@ sectionContent.addEventListener("change", (event) => {
     addCompileMessage(project, workspace.synthesisTopModule
       ? `Synthesis top set to ${workspace.synthesisTopModule}. Run Synthesize to rebuild the netlist from that top.`
       : "Synthesis top reset to auto detect.", "info");
+    scheduleAutosave(900);
+    renderSectionContent(project);
+    return;
+  }
+  if (event.target.dataset.compileHdlDesignMode !== undefined) {
+    const workspace = ensureCompileCode(project);
+    const mode = String(event.target.value || "all");
+    workspace.synthesisFileMode = ["active", "selected", "all"].includes(mode) ? mode : "all";
+    addCompileMessage(project, `Synthesis design scope set to ${workspace.synthesisFileMode === "active" ? "the active file" : workspace.synthesisFileMode === "selected" ? "selected design files" : "all design files"}.`, "info");
+    scheduleAutosave(900);
+    renderSectionContent(project);
+    return;
+  }
+  if (event.target.dataset.compileHdlSimulationTop !== undefined) {
+    const workspace = ensureCompileCode(project);
+    workspace.simulationTopFileId = String(event.target.value || "");
+    const fileName = workspace.files.find((file) => file.id === workspace.simulationTopFileId)?.fileName || "auto testbench";
+    addCompileMessage(project, `Simulation testbench set to ${fileName}.`, "info");
+    scheduleAutosave(900);
+    renderSectionContent(project);
+    return;
+  }
+  if (event.target.dataset.compileHdlConstraints !== undefined) {
+    const workspace = ensureCompileCode(project);
+    workspace.constraintFileIds = [...event.target.selectedOptions]
+      .map((option) => option.value)
+      .filter(Boolean);
+    addCompileMessage(project, workspace.constraintFileIds.length
+      ? `${workspace.constraintFileIds.length} constraint file${workspace.constraintFileIds.length === 1 ? "" : "s"} selected for synthesis metadata.`
+      : "No constraint files selected.", "info");
     scheduleAutosave(900);
     renderSectionContent(project);
     return;
@@ -20104,8 +21325,21 @@ preferenceDarkTheme?.addEventListener("change", () => {
 preferenceCompileTheme?.addEventListener("change", () => {
   applyPreferenceDialogDraft({ announce: true });
 });
+preferenceCompileLineNumbers?.addEventListener("change", () => {
+  applyPreferenceDialogDraft({ announce: true });
+  const project = selectedProject();
+  if (project && activeSectionId === compileCodeSectionId) renderSectionContent(project);
+});
 lightModeReturnButton?.addEventListener("click", () => {
   setBuilderTheme("light");
+});
+
+builderAppMenuBar?.addEventListener("click", async (event) => {
+  const button = event.target.closest("[data-builder-command]");
+  if (!button || button.disabled) return;
+  event.preventDefault();
+  await handleBuilderAppCommand(button.dataset.builderCommand || "");
+  renderBuilderAppMenuBar();
 });
 
 saveDraftButton.addEventListener("click", () => saveCatalog("/api/save-draft", "Draft saved"));

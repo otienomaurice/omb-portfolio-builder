@@ -17,6 +17,15 @@ const packageJson = JSON.parse(await readFile(path.join(root, "package.json"), "
 const compileTerminalSessions = new Map();
 const compileTerminalBufferLimit = 200_000;
 const compileTerminalIdleMs = 30 * 60 * 1000;
+const defaultFpgaTarget = {
+  board: "Digilent Nexys A7-100T",
+  family: "AMD/Xilinx Artix-7",
+  part: "XC7A100T-1CSG324C",
+  speedGrade: "-1",
+  package: "CSG324",
+  synthesisFamily: "xc7",
+  constraintsHint: "Digilent Nexys A7-100T master XDC"
+};
 
 const types = {
   ".css": "text/css",
@@ -1474,6 +1483,22 @@ function normalizeCompileFileRole(value = "", language = "") {
   return ["tb", "testbench", "bench", "uvm", "uvmtest"].includes(clean) ? "testbench" : "design";
 }
 
+function normalizeCompileFileType(value = "", file = {}) {
+  const clean = String(value || "").trim().toLowerCase().replace(/[_\s-]+/g, "-");
+  if (["design", "testbench", "source", "header", "include", "support"].includes(clean)) return clean;
+  const extension = String(file.fileName || file.relativePath || "").split(".").pop()?.toLowerCase() || "";
+  if (isHdlLanguage(file.language)) return normalizeCompileFileRole(file.role || inferCompileFileRole(file.fileName, file.code, file.language), file.language);
+  if (["h", "hpp", "hh", "hxx", "svh"].includes(extension)) return "header";
+  if (["xdc", "sdc", "tcl", "do", "cfg", "ini", "yaml", "yml", "json", "xml", "md", "txt", "csv", "log"].includes(extension)) return "support";
+  return "source";
+}
+
+function isCompileConstraintFile(file = {}) {
+  const extension = String(file.fileName || file.relativePath || "").split(".").pop()?.toLowerCase() || "";
+  return ["xdc", "sdc"].includes(extension) ||
+    (extension === "tcl" && /\b(create_clock|set_property|set_input_delay|set_output_delay|PACKAGE_PIN|IOSTANDARD)\b/i.test(file.code || file.fileName || ""));
+}
+
 async function saveCompileSource({ projectId, fileId, title, fileName, relativePath, language, role = "", fileType = "", code, stdin = "" }) {
   const incomingPath = relativePath || fileName;
   const lang = normalizeCodeLanguage(language || detectCodeLanguageFromSource(code, incomingPath));
@@ -1535,6 +1560,27 @@ function hdlSourceWithoutComments(code = "") {
     .replace(/(^|[^:])\/\/.*$/gm, "$1");
 }
 
+function hdlDeclaredPortsFromModuleBody(body = "") {
+  const ports = [];
+  const seen = new Set();
+  const cleaned = String(body || "");
+  for (const match of cleaned.matchAll(/\b(input|output|inout)\b\s+(?:wire|reg|logic|signed|unsigned|tri|bit\s+)*(?:\[[^\]]+\]\s*)?([^;()]+)/gi)) {
+    const direction = String(match[1] || "").toLowerCase();
+    String(match[2] || "")
+      .split(",")
+      .map((part) => part.replace(/=.*/, "").replace(/\[[^\]]+\]/g, "").trim())
+      .map((part) => part.split(/\s+/).pop())
+      .filter((name) => /^[A-Za-z_$][\w$]*$/.test(name || ""))
+      .forEach((name) => {
+        const key = `${direction}:${name}`;
+        if (seen.has(key)) return;
+        seen.add(key);
+        ports.push({ name, direction });
+      });
+  }
+  return ports.slice(0, 80);
+}
+
 function hdlSynthesisGraph(files = []) {
   const moduleBodies = new Map();
   const moduleNames = new Set();
@@ -1559,13 +1605,19 @@ function hdlSynthesisGraph(files = []) {
   });
   const nodes = [...moduleNames].map((id) => ({
     id,
-    fileName: moduleBodies.get(id)?.fileName || ""
+    label: id,
+    kind: "module",
+    type: "source module",
+    fileName: moduleBodies.get(id)?.fileName || "",
+    ports: hdlDeclaredPortsFromModuleBody(moduleBodies.get(id)?.body || ""),
+    portCount: hdlDeclaredPortsFromModuleBody(moduleBodies.get(id)?.body || "").length
   }));
   const topModule = nodes.find((node) => !instantiated.has(node.id))?.id || nodes[0]?.id || "";
   return {
     nodes,
     edges,
     topModule,
+    target: defaultFpgaTarget,
     summary: {
       moduleCount: nodes.length,
       instanceCount: edges.length,
@@ -1777,7 +1829,7 @@ async function hdlYosysNetlistGraph(jsonPath = "", fallbackGraph = {}) {
       memoryCount,
       combinationalCellCount: Math.max(0, cellEntries.length - registerCount - memoryCount),
       notes: [
-        "Full FPGA timing closure still requires the target device, clock constraints, generated clocks, IO delays, and the vendor implementation tool.",
+        `Default FPGA target: ${defaultFpgaTarget.board} using ${defaultFpgaTarget.part}. Full timing closure still requires the board constraints file, clock constraints, generated clocks, IO delays, and the vendor implementation tool.`,
         registerCount ? `${registerCount} register-like cell${registerCount === 1 ? "" : "s"} were detected, so sequential paths can be isolated during later timing analysis.` : "No register-like cells were detected in this synthesized netlist.",
         memoryCount ? `${memoryCount} memory-like cell${memoryCount === 1 ? "" : "s"} were detected and should be reviewed against the target FPGA memory resources.` : "No memory-like cells were detected in the visible netlist."
       ]
@@ -1794,6 +1846,7 @@ async function hdlYosysNetlistGraph(jsonPath = "", fallbackGraph = {}) {
       nets: netSummaries.slice(0, 300),
       objects: objects.slice(0, 420),
       timing,
+      target: defaultFpgaTarget,
       summary: {
         moduleCount: entries.length,
         cellCount: cellEntries.length,
@@ -1888,6 +1941,8 @@ function hdlFilesFromPayload(payload = {}, activeFileName = "", activeLanguage =
       relativePath,
       language,
       role: normalizeCompileFileRole(item.role || inferCompileFileRole(fileName, code, language), language),
+      fileType: normalizeCompileFileType(item.fileType || item.type || item.role, { fileName, relativePath, language, code }),
+      type: normalizeCompileFileType(item.fileType || item.type || item.role, { fileName, relativePath, language, code }),
       code
     });
   };
@@ -1939,6 +1994,8 @@ function compileWorkspaceFilesFromPayload(payload = {}, activeFileName = "", act
       relativePath,
       language,
       role: normalizeCompileFileRole(item.role || inferCompileFileRole(fileName, code, language), language),
+      fileType: normalizeCompileFileType(item.fileType || item.type || item.role, { fileName, relativePath, language, code }),
+      type: normalizeCompileFileType(item.fileType || item.type || item.role, { fileName, relativePath, language, code }),
       code
     });
   };
@@ -2464,8 +2521,45 @@ async function compileAndRunCode(payload = {}) {
     }
   } else if (language === "verilog" || language === "systemverilog") {
     const hdlFiles = hdlFilesFromPayload(payload, saved.fileName, language);
-    const synthesisFiles = hdlFiles.filter((file) => file.role !== "testbench");
-    const synthesisSet = synthesisFiles.length ? synthesisFiles : hdlFiles;
+    const synthesisMode = ["active", "selected", "all"].includes(payload.synthesisFileMode) ? payload.synthesisFileMode : "all";
+    const selectedFileIds = new Set(Array.isArray(payload.selectedFileIds) ? payload.selectedFileIds.map(String) : []);
+    const selectedConstraintIds = new Set(Array.isArray(payload.constraintFileIds) ? payload.constraintFileIds.map(String) : []);
+    const constraintFiles = allWorkspaceFiles.filter((file) =>
+      isCompileConstraintFile(file) &&
+      (
+        selectedConstraintIds.has(String(file.id)) ||
+        selectedConstraintIds.has(String(file.relativePath)) ||
+        selectedConstraintIds.has(String(file.fileName))
+      )
+    );
+    const designFiles = hdlFiles.filter((file) => file.role !== "testbench");
+    const activeDesignFile = designFiles.find((file) =>
+      file.id === saved.id ||
+      file.fileName === saved.fileName ||
+      file.relativePath === saved.relativePath
+    );
+    let synthesisSet = designFiles.length ? designFiles : hdlFiles;
+    let synthesisScopeLabel = "all design files";
+    if (synthesisMode === "active") {
+      if (activeDesignFile) {
+        synthesisSet = [activeDesignFile];
+        synthesisScopeLabel = "active design file";
+      } else {
+        synthesisScopeLabel = "all design files (active file is not a design file)";
+      }
+    } else if (synthesisMode === "selected" && selectedFileIds.size) {
+      const selectedDesignFiles = designFiles.filter((file) =>
+        selectedFileIds.has(String(file.id)) ||
+        selectedFileIds.has(String(file.relativePath)) ||
+        selectedFileIds.has(String(file.fileName))
+      );
+      if (selectedDesignFiles.length) {
+        synthesisSet = selectedDesignFiles;
+        synthesisScopeLabel = "selected design files";
+      } else {
+        synthesisScopeLabel = "all design files (no selected design files matched)";
+      }
+    }
     const inferredSynthesisGraph = hdlSynthesisGraph(synthesisSet);
     const requestedTopModule = String(payload.synthesisTopModule || "").trim().replace(/[^\w$]/g, "");
     const selectedTopModule = requestedTopModule && inferredSynthesisGraph.nodes?.some((node) => node.id === requestedTopModule)
@@ -2481,24 +2575,31 @@ async function compileAndRunCode(payload = {}) {
       lines: String(file.code || "").split(/\r?\n/).length,
       bytes: Buffer.byteLength(String(file.code || ""), "utf8"),
       simulator: "Icarus Verilog / vvp",
-      synthesisTool: "Yosys"
+      synthesisTool: "Yosys",
+      targetBoard: defaultFpgaTarget.board,
+      targetPart: defaultFpgaTarget.part
     }));
     const sourceTiming = hdlTimingAndVerificationDiagnostics(synthesisSet);
     const synthesisGraph = {
       ...inferredSynthesisGraph,
       topModule: selectedTopModule,
+      target: defaultFpgaTarget,
       sources: synthesisSources,
       timing: {
         status: "Source timing review",
         notes: sourceTiming.length ? sourceTiming : [
-          "No obvious source-level timing warnings were detected. Run synthesis with Yosys and target constraints for deeper timing work."
+          `No obvious source-level timing warnings were detected. Run synthesis with Yosys for the ${defaultFpgaTarget.board} target and finish closure with the board XDC constraints in a vendor FPGA flow.`
         ]
       }
     };
     if (action === "synthesize") {
       const yosys = await findTool("yosys");
       const yosysVersion = yosys ? await toolVersionLine(yosys) : "";
-      terminal.push(`${profile.label} synthesis set: ${synthesisSet.length} design HDL file${synthesisSet.length === 1 ? "" : "s"}`);
+      terminal.push(`${profile.label} synthesis set: ${synthesisSet.length} design HDL file${synthesisSet.length === 1 ? "" : "s"} (${synthesisScopeLabel}).`);
+      terminal.push(`FPGA target: ${defaultFpgaTarget.board} (${defaultFpgaTarget.part}, ${defaultFpgaTarget.family}).`);
+      terminal.push(constraintFiles.length
+        ? `Selected constraint file${constraintFiles.length === 1 ? "" : "s"}: ${constraintFiles.map((file) => file.fileName).join(", ")}.`
+        : `No constraint files selected. Timing and IO closure still require the ${defaultFpgaTarget.constraintsHint}.`);
       if (synthesisGraph.topModule) {
         terminal.push(`${requestedTopModule ? "Selected" : "Inferred"} synthesis top: ${synthesisGraph.topModule}`);
       }
@@ -2513,7 +2614,14 @@ async function compileAndRunCode(payload = {}) {
             available: false,
             tool: "Yosys",
             graph: synthesisGraph,
+            target: defaultFpgaTarget,
             sources: synthesisSources,
+            constraints: constraintFiles.map((file) => ({
+              fileName: file.fileName,
+              relativePath: file.relativePath,
+              language: file.language,
+              fileType: file.fileType || file.type || "support"
+            })),
             timing: synthesisGraph.timing,
             terminal: terminal.join("\n\n").trim(),
             synthesizedAt: new Date().toISOString()
@@ -2532,7 +2640,15 @@ async function compileAndRunCode(payload = {}) {
         })),
         tool: yosys,
         toolVersion: yosysVersion,
-        topModule: synthesisGraph.topModule
+        topModule: synthesisGraph.topModule,
+        target: defaultFpgaTarget,
+        synthesisMode,
+        selectedFileIds: [...selectedFileIds],
+        constraints: constraintFiles.map((file) => ({
+          fileName: file.fileName,
+          relativePath: file.relativePath,
+          code: file.code
+        }))
       });
       const synthDir = compileCacheDirectory(payload.projectId, language, synthKey);
       const synthesisJson = path.join(synthDir, "synthesis.json");
@@ -2553,8 +2669,11 @@ async function compileAndRunCode(payload = {}) {
         const sourceLines = sourceFiles.map((file) => `read_verilog -sv ${yosysScriptQuote(file.sourcePath)}`);
         const script = [
           "# Generated by OMB Portfolio Builder Compile Code.",
+          `# Default target: ${defaultFpgaTarget.board} ${defaultFpgaTarget.part}`,
           ...sourceLines,
-          synthesisGraph.topModule ? `synth -top ${synthesisGraph.topModule}` : "synth",
+          synthesisGraph.topModule
+            ? `synth_xilinx -family ${defaultFpgaTarget.synthesisFamily} -top ${synthesisGraph.topModule}`
+            : `synth_xilinx -family ${defaultFpgaTarget.synthesisFamily}`,
           "stat",
           `write_json ${yosysScriptQuote(synthesisJson)}`
         ].join("\n");
@@ -2590,7 +2709,14 @@ async function compileAndRunCode(payload = {}) {
           cacheHit: cached,
           tool: "Yosys",
           graph: renderedGraph,
+          target: renderedGraph.target || defaultFpgaTarget,
           sources: renderedGraph.sources || synthesisSources,
+          constraints: constraintFiles.map((file) => ({
+            fileName: file.fileName,
+            relativePath: file.relativePath,
+            language: file.language,
+            fileType: file.fileType || file.type || "support"
+          })),
           timing: renderedGraph.timing || synthesisGraph.timing,
           outputPath: synthesisJson,
           netlistPath: synthesisJson,
@@ -2609,6 +2735,15 @@ async function compileAndRunCode(payload = {}) {
     }
     const hdlDiagnostics = hdlTimingAndVerificationDiagnostics(hdlFiles);
     const testbenchFiles = hdlFiles.filter((file) => file.role === "testbench");
+    const requestedTestbenchFileId = String(payload.simulationTopFileId || "");
+    const selectedTestbenchFile = requestedTestbenchFileId
+      ? testbenchFiles.find((file) =>
+        String(file.id) === requestedTestbenchFileId ||
+        String(file.relativePath) === requestedTestbenchFileId ||
+        String(file.fileName) === requestedTestbenchFileId
+      )
+      : null;
+    const activeTestbenchFiles = selectedTestbenchFile ? [selectedTestbenchFile] : testbenchFiles;
     if (action === "simulate" && !testbenchFiles.length) {
       return {
         ok: false,
@@ -2621,7 +2756,7 @@ async function compileAndRunCode(payload = {}) {
         ].join("\n")
       };
     }
-    if (action === "simulate" && !testbenchFiles.some((file) => hdlHasWaveDump(file.code))) {
+    if (action === "simulate" && !activeTestbenchFiles.some((file) => hdlHasWaveDump(file.code))) {
       return {
         ok: false,
         language,
@@ -2633,9 +2768,11 @@ async function compileAndRunCode(payload = {}) {
         ].join("\n")
       };
     }
-    const usesSystemVerilog = hdlFiles.some((file) => normalizeCodeLanguage(file.language) === "systemverilog");
+    const usesSystemVerilog = hdlFiles.some((file) => normalizeCodeLanguage(file.language) === "systemverilog"
+      || /\.svh?$/i.test(file.fileName || file.relativePath || "")
+      || /\b(always_ff|always_comb|always_latch|logic|interface|modport|typedef\s+enum|enum\s+logic|class\s+\w+|assert\s+property|covergroup|package\s+\w+)\b/.test(file.code || ""));
     const flags = usesSystemVerilog ? ["-g2012", "-Wall"] : ["-g2005-sv", "-Wall"];
-    const testbenchModuleNames = testbenchFiles.flatMap((file) => hdlModuleNames(file.code));
+    const testbenchModuleNames = activeTestbenchFiles.flatMap((file) => hdlModuleNames(file.code));
     const topModule = testbenchModuleNames.find((name) => /^(tb|testbench)(_|$)/i.test(name))
       || testbenchModuleNames[testbenchModuleNames.length - 1]
       || "";
@@ -2650,7 +2787,8 @@ async function compileAndRunCode(payload = {}) {
       compiler: found.iverilog,
       runtime: found.vvp,
       flags,
-      topModule
+      topModule,
+      simulationTopFileId: selectedTestbenchFile?.id || ""
     });
     const cacheDir = compileCacheDirectory(payload.projectId, language, cacheKey);
     const output = path.join(cacheDir, "simulation.vvp");
@@ -2660,7 +2798,9 @@ async function compileAndRunCode(payload = {}) {
     const sourceFiles = await writeHdlSimulationSources(hdlFiles, cacheDir);
     const replacements = sourceFiles.map((file) => ({ from: file.sourcePath, to: file.uniqueName }));
     const designCount = sourceFiles.filter((file) => file.role !== "testbench").length;
-    terminal.push(`${profile.label} simulation set: ${designCount} design file${designCount === 1 ? "" : "s"}, ${testbenchFiles.length} testbench file${testbenchFiles.length === 1 ? "" : "s"}`);
+    terminal.push(`${usesSystemVerilog ? "SystemVerilog" : "Verilog"} simulation set: ${designCount} design file${designCount === 1 ? "" : "s"}, ${testbenchFiles.length} testbench file${testbenchFiles.length === 1 ? "" : "s"}`);
+    terminal.push(`Simulator mode: Icarus Verilog ${usesSystemVerilog ? "SystemVerilog 2012 (-g2012)" : "Verilog/SystemVerilog compatibility (-g2005-sv)"}.`);
+    if (selectedTestbenchFile) terminal.push(`Selected simulation testbench file: ${selectedTestbenchFile.fileName}.`);
     if (topModule) terminal.push(`Testbench top: ${topModule}`);
     if (hdlDiagnostics.length) terminal.push(["HDL timing and verification notes:", ...hdlDiagnostics.map((item) => `- ${item}`)].join("\n"));
     const verilator = await findTool("verilator");
