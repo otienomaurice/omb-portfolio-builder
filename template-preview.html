@@ -11,7 +11,7 @@
     <link rel="shortcut icon" href="assets/favicon.ico" />
     <link rel="apple-touch-icon" sizes="180x180" href="assets/apple-touch-icon.png" />
     <link rel="stylesheet" href="styles.css" />
-    <link rel="stylesheet" href="template-preview.css?v=0.2.93" />
+    <link rel="stylesheet" href="template-preview.css?v=0.2.94" />
   </head>
   <body class="template-preview-page">
       <header class="template-header">
@@ -542,8 +542,9 @@
                               <li>Use Run to execute supported languages after a successful build.</li>
                               <li>Use Input beside the output tabs to open a separate moveable Program input window for stdin before running code.</li>
                               <li>Use Synthesize for Verilog or SystemVerilog to run the HDL synthesis path with Yosys from OSS CAD Suite. The normal Synthesize button reuses cached synthesis results when the HDL snapshot and selected top module have not changed; Shift-click Synthesize when you intentionally want a fresh rebuild.</li>
-                              <li>In the synthesis diagram window, choose a top module when auto-detect is not the module you intended. Use the search box to highlight modules, cells, nets, and instances inside large synthesized designs.</li>
-                              <li>After synthesis, the builder saves the Yosys netlist JSON and a DOT diagram artifact, then opens a zoomable synthesis diagram window with module/cell/net/port summary chips. Use the plus, minus, and reset zoom controls to inspect the synthesized cells and module relationships without leaving the builder.</li>
+                              <li>In the synthesized design schematic window, choose a top module when auto-detect is not the module you intended. Use the search box to highlight modules, cells, nets, ports, sources, and instances inside large synthesized designs.</li>
+                              <li>After synthesis, the builder saves the Yosys netlist JSON and a DOT diagram artifact, then opens a full-screen schematic explorer. Inputs are placed on the left, outputs on the right, cell sizes grow with subcircuit complexity, and arrows show the direction of signal flow whenever Yosys exposes enough connection information.</li>
+                              <li>Use the schematic explorer buttons to inspect the working tree, nets, objects, source metadata, predesigned IP blocks, and timing notes. Clicking a source shows language, HDL role, simulator, synthesis tool, detected modules, size, and path details. The IP panel can add reusable SystemVerilog blocks into the project workspace before the next synthesis run.</li>
                               <li>Use Simulate for Verilog or SystemVerilog when a testbench is present.</li>
                               <li>Use Append code to project to place the active source into a selected project section or nested subsection as a formatted code block.</li>
                           </ol>
@@ -1766,6 +1767,6 @@
           </div>
       </div>
       <script src="electronics-search.js?v=0.2.90"></script>
-      <script src="template-preview.js?v=0.2.93"></script>
+      <script src="template-preview.js?v=0.2.94"></script>
   </body>
 </html>
