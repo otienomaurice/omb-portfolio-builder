@@ -11,7 +11,7 @@
     <link rel="shortcut icon" href="assets/favicon.ico" />
     <link rel="apple-touch-icon" sizes="180x180" href="assets/apple-touch-icon.png" />
     <link rel="stylesheet" href="styles.css" />
-    <link rel="stylesheet" href="template-preview.css?v=0.2.94" />
+    <link rel="stylesheet" href="template-preview.css?v=0.2.97" />
   </head>
   <body class="template-preview-page">
       <header class="template-header">
@@ -39,6 +39,8 @@
               <button class="button secondary" id="apply-catalog" type="button">Apply to site</button>
           </div>
       </header>
+
+      <nav class="builder-app-menu-bar" id="builder-app-menu-bar" aria-label="Builder application menus"></nav>
 
       <main class="builder-workspace">
           <aside class="builder-sidebar" aria-labelledby="library-title">
@@ -368,6 +370,25 @@
                   <p class="builder-guide-results" id="builder-guide-results">Choose a topic to open a focused guide window.</p>
               </div>
               <div class="builder-guide-sections" id="builder-guide-sections">
+                  <details class="builder-guide-section" data-guide-section="menus commands file edit view project code build tools preferences help" open>
+                      <summary><span class="guide-card-title">Application Menus And Commands</span><span class="guide-card-summary">Use the compact top menu bar for advanced builder, project, code, publishing, and preference commands.</span></summary>
+                      <div>
+                          <p>The builder uses a normal application-style menu bar so windows do not become crowded with dozens of separate icons. Common actions stay visible where they are useful, while less frequent actions live under File, Edit, View, Project, Code, Build, Tools, Preferences, and Help.</p>
+                          <p>This menu layer is meant to feel like a lightweight IDE. File handles saving, previewing, printing, publishing, targets, and updates. Project handles project creation, section cleanup, status, details, and deletion. Code and Build handle the Compile Code workspace, while Tools and Preferences hold utility checks, toolchain setup, themes, line numbers, and profile asset managers.</p>
+                          <ol>
+                              <li>Use File for draft saving, full-section parsing, portfolio preview, printing, publishing target setup, update checks, and Apply to site.</li>
+                              <li>Use Edit for front-page text, profile/contact text, fun facts, project-title copying, search clearing, and refreshing the builder view.</li>
+                              <li>Use View for category expansion, project navigation, project preview, project health reports, portfolio preview, and builder zoom.</li>
+                              <li>Use Project for adding projects, adding categories, editing the current category, opening Overview or Compile Code, adding project sections, saving the selected project, cleaning empty content, and setting project status.</li>
+                              <li>Use Code for source files, folders, imports, testbenches, source save, Save As, Beautify, line numbers, and appending source to a project section.</li>
+                              <li>Use Build for Compile, Build project, Run, Synthesize, Simulate, Scope, Console, Syntax, Input, and the external Windows PowerShell terminal launcher.</li>
+                              <li>Use Tools for system readiness, security reports, compiler/toolchain checks, synthesis diagram viewing, and profile asset managers.</li>
+                              <li>Use Preferences for app viewing themes and Compile Code appearance themes. Theme changes affect how the builder looks while you work; the public portfolio still follows the saved portfolio appearance rules.</li>
+                              <li>Use Help for focused guide topics, shortcuts, and a short description of the builder.</li>
+                          </ol>
+                          <p>If a command is disabled, select the project, section, or source file that the command needs first. The goal is to keep the work area calm while still making advanced actions available when the correct context exists.</p>
+                      </div>
+                  </details>
                   <details class="builder-guide-section" data-guide-section="profile setup identity branding contact assets" open>
                       <summary><span class="guide-card-title">Profile, Branding, And Contact</span><span class="guide-card-summary">Set the name, contact links, resume, profile photo, brand icon, and public identity layer.</span></summary>
                       <div>
@@ -535,17 +556,22 @@
                               <li>Click Syntax to view only live background diagnostics and the active file outline. The builder checks the active file after opening it or after typing pauses, then clears old errors automatically once the source passes.</li>
                               <li>Use File details only when you need to view or edit the absolute path, source language, HDL role, file name, file type, or save status. It opens as a separate moveable, resizable window so it does not steal editor space.</li>
                               <li>Use Save Source or Ctrl+S to write the active file into the project workspace. Use Save Source As from the File menu when you need an external copy in another location.</li>
+                              <li>Use Tools, Editor, Show or Hide line numbers when you want the code editor to display line numbers on the left. Ctrl+Alt+L toggles the same setting.</li>
                               <li>Use Beautify to clean the whole active file for C, C++, Verilog, SystemVerilog, LTspice, Java, JavaScript, Python, HTML, or support text files. Syntax coloring updates while typing, after import, and after beautify.</li>
                               <li>As you type, the builder waits briefly, runs a background syntax check, and shows line and character diagnostics in the Syntax panel without saving the file.</li>
                               <li>Use Compile to check or build the active source file.</li>
                               <li>Use Build project when the language needs several files from the project workspace.</li>
                               <li>Use Run to execute supported languages after a successful build.</li>
                               <li>Use Input beside the output tabs to open a separate moveable Program input window for stdin before running code.</li>
-                              <li>Use Synthesize for Verilog or SystemVerilog to run the HDL synthesis path with Yosys from OSS CAD Suite. The normal Synthesize button reuses cached synthesis results when the HDL snapshot and selected top module have not changed; Shift-click Synthesize when you intentionally want a fresh rebuild.</li>
+                              <li>Use the HDL Design menu to synthesize the active file, selected design files, or all design files. Use the Simulation menu to choose the testbench top for simulation, and use the Constraints menu to attach XDC, SDC, or TCL constraint files to the synthesis record.</li>
+                              <li>Use Synthesize for Verilog or SystemVerilog to run the HDL synthesis path with Yosys from OSS CAD Suite. The normal Synthesize button reuses cached synthesis results when the HDL snapshot, selected source set, constraints, and selected top module have not changed; Shift-click Synthesize when you intentionally want a fresh rebuild.</li>
+                              <li>The default FPGA target is the Digilent Nexys A7-100T using the AMD/Xilinx Artix-7 XC7A100T-1CSG324C device. Synthesis summaries and source details show that target so exported notes stay tied to the intended board.</li>
                               <li>In the synthesized design schematic window, choose a top module when auto-detect is not the module you intended. Use the search box to highlight modules, cells, nets, ports, sources, and instances inside large synthesized designs.</li>
-                              <li>After synthesis, the builder saves the Yosys netlist JSON and a DOT diagram artifact, then opens a full-screen schematic explorer. Inputs are placed on the left, outputs on the right, cell sizes grow with subcircuit complexity, and arrows show the direction of signal flow whenever Yosys exposes enough connection information.</li>
+                              <li>After synthesis, the builder saves the Yosys netlist JSON and a DOT diagram artifact, then opens a large schematic explorer. Drag the title bar to move the window, drag any edge or corner to resize it, and use the compact tabs to inspect the design without oversized controls taking over the schematic.</li>
+                              <li>Schematic nets are drawn as straight or right-angled connections, not curved graph lines. Inputs stay on the left, outputs stay on the right, logic is packed into balanced columns and rows, and arrows show the direction of signal flow whenever Yosys exposes enough connection information.</li>
+                              <li>Double-click a module or synthesized cell to expand it. Repeated double-clicks reveal more detail: ports first, then child blocks or leaf-gate information, then connected nets. Double-click past the deepest level to collapse it again.</li>
                               <li>Use the schematic explorer buttons to inspect the working tree, nets, objects, source metadata, predesigned IP blocks, and timing notes. Clicking a source shows language, HDL role, simulator, synthesis tool, detected modules, size, and path details. The IP panel can add reusable SystemVerilog blocks into the project workspace before the next synthesis run.</li>
-                              <li>Use Simulate for Verilog or SystemVerilog when a testbench is present.</li>
+                              <li>Use Simulate for Verilog or SystemVerilog when a testbench is present. SystemVerilog files and SystemVerilog syntax are simulated with the SystemVerilog-capable Icarus mode before the VCD waveform is opened in Scope.</li>
                               <li>Use Append code to project to place the active source into a selected project section or nested subsection as a formatted code block.</li>
                           </ol>
                           <ul>
@@ -553,6 +579,7 @@
                               <li>Console shows compiler and runtime output for the active source.</li>
                               <li>Messages shows save, compile, build, append, tool-check, synthesis, and simulation progress.</li>
                               <li>Syntax is reserved for live background compiler diagnostics so regular messages remain readable.</li>
+                              <li>The Tools menu is grouped into Editor, Synthesis, Simulation, and Beautifier sections so compiler installation, tool checks, line numbers, scope, input, and formatting commands are easier to find.</li>
                               <li>Terminal opens a real Windows PowerShell application window under the current Windows user account. It starts in the project compile folder, can cd into any Windows drive or folder that user can access, and inherits the user environment and compiler tool paths.</li>
                               <li>Input opens stdin for the active source in a separate window so the code editor stays focused on source text.</li>
                               <li>Scope appears for Verilog/SystemVerilog and shows VCD waveforms after simulation.</li>
@@ -1542,6 +1569,10 @@
                       <option value="light-paper">Light - Paper schematic</option>
                   </select>
               </label>
+              <label class="preference-check-row">
+                  <input id="preference-compile-line-numbers" type="checkbox" />
+                  <span>Show editor line numbers</span>
+              </label>
               <p class="preference-note">Preferences repaint the builder immediately. Only Light - Default portfolio editing saves text colors for the public website. Other light and dark skins are view-only; saved website text colors normalize back to the default publish color unless changed in the default light editor.</p>
               <div class="dialog-actions">
                   <button class="button primary" type="submit">Save preferences</button>
@@ -1767,6 +1798,6 @@
           </div>
       </div>
       <script src="electronics-search.js?v=0.2.90"></script>
-      <script src="template-preview.js?v=0.2.94"></script>
+      <script src="template-preview.js?v=0.2.97"></script>
   </body>
 </html>
