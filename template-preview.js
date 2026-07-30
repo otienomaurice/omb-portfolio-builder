@@ -105,7 +105,10 @@ const builderFileViewOpen = document.querySelector("#builder-file-view-open");
 const builderFileViewDownload = document.querySelector("#builder-file-view-download");
 const builderFileViewerState = {
   fit: "contain",
+  grid: true,
   invert: false,
+  rotation: 0,
+  sourceText: "",
   target: "",
   title: "",
   type: "",
@@ -5160,7 +5163,15 @@ function builderViewerModeLabel(kind = "") {
 
 function builderViewerToolbar(kind = "") {
   const isVisual = ["pdf", "image", "schematic-image"].includes(kind);
-  if (!isVisual) return "";
+  const canRotate = ["image", "schematic-image"].includes(kind);
+  if (!isVisual) {
+    return `
+      <div class="builder-file-view-toolbar" aria-label="File viewer controls">
+        <button type="button" data-builder-file-view="copy-link">Copy path</button>
+        <button type="button" data-builder-file-view="print">Print</button>
+      </div>
+    `;
+  }
   return `
     <div class="builder-file-view-toolbar" aria-label="File viewer controls">
       <button type="button" data-builder-file-view="fit">Fit</button>
@@ -5169,17 +5180,25 @@ function builderViewerToolbar(kind = "") {
       <span>${Math.round(builderFileViewerState.zoom * 100)}%</span>
       <button type="button" data-builder-file-view="zoom-in">+</button>
       <button type="button" data-builder-file-view="reset">100%</button>
+      <button type="button" data-builder-file-view="grid" aria-pressed="${builderFileViewerState.grid ? "true" : "false"}">Grid</button>
+      ${canRotate ? `
+        <button type="button" data-builder-file-view="rotate-left">Rotate -90</button>
+        <button type="button" data-builder-file-view="rotate-right">Rotate +90</button>
+      ` : ""}
       <button type="button" data-builder-file-view="invert" aria-pressed="${builderFileViewerState.invert ? "true" : "false"}">Contrast</button>
+      <button type="button" data-builder-file-view="copy-link">Copy path</button>
+      <button type="button" data-builder-file-view="print">Print</button>
     </div>
   `;
 }
 
 function renderBuilderFileVisualViewer() {
-  const { fit, invert, target, title, type, zoom } = builderFileViewerState;
+  const { fit, grid, invert, rotation, target, title, type, zoom } = builderFileViewerState;
   const isPdf = type === "pdf";
   const visualClass = [
     "builder-file-visual-stage",
     `is-${fit}`,
+    grid ? "has-grid" : "no-grid",
     invert ? "is-inverted" : "",
     type === "schematic-image" || type === "pdf" ? "is-schematic" : ""
   ].filter(Boolean).join(" ");
@@ -5189,12 +5208,107 @@ function renderBuilderFileVisualViewer() {
   if (!builderFileViewContent) return;
   builderFileViewContent.innerHTML = `
     ${builderViewerToolbar(type)}
-    <div class="${visualClass}" style="--viewer-zoom: ${zoom}; --viewer-width: ${Math.round(zoom * 100)}%;">
+    <div class="${visualClass}" style="--viewer-zoom: ${zoom}; --viewer-width: ${Math.round(zoom * 100)}%; --viewer-rotate: ${Number(rotation) || 0}deg;">
       <div class="builder-file-visual-surface">
         ${media}
       </div>
     </div>
   `;
+}
+
+function copyBuilderFileViewerTarget() {
+  const value = builderFileViewerState.target || "";
+  if (!value) return;
+  const fallbackCopy = () => {
+    const textarea = document.createElement("textarea");
+    textarea.value = value;
+    textarea.setAttribute("readonly", "");
+    textarea.style.position = "fixed";
+    textarea.style.left = "-9999px";
+    document.body.append(textarea);
+    textarea.select();
+    document.execCommand("copy");
+    textarea.remove();
+  };
+  if (navigator.clipboard?.writeText) {
+    navigator.clipboard.writeText(value)
+      .then(() => setStatus("Copied file path."))
+      .catch(() => {
+        fallbackCopy();
+        setStatus("Copied file path.");
+      });
+    return;
+  }
+  fallbackCopy();
+  setStatus("Copied file path.");
+}
+
+function printBuilderFileViewer() {
+  const { rotation, sourceText, target, title, type, zoom } = builderFileViewerState;
+  if (!target && !sourceText) return;
+  const printWindow = window.open("", "_blank", "width=1100,height=850");
+  if (!printWindow) {
+    setStatus("The file viewer print window was blocked by the browser.");
+    return;
+  }
+  const body = type === "pdf"
+    ? `<iframe src="${escapeHtml(target)}" title="${escapeHtml(title)}"></iframe>`
+    : ["image", "schematic-image"].includes(type)
+      ? `<img src="${escapeHtml(target)}" alt="${escapeHtml(title)}" style="transform: rotate(${Number(rotation) || 0}deg) scale(${Number(zoom) || 1}); transform-origin: top left;">`
+      : `<pre>${escapeHtml(sourceText || "")}</pre>`;
+  printWindow.document.write(`
+    <!doctype html>
+    <html>
+      <head>
+        <title>${escapeHtml(title || "File preview")}</title>
+        <style>
+          body { margin: 0; padding: 18px; font-family: Arial, sans-serif; color: #0f172a; }
+          h1 { margin: 0 0 12px; font-size: 20px; }
+          iframe { width: 100%; height: calc(100vh - 72px); border: 0; }
+          img { display: block; max-width: 100%; height: auto; }
+          pre { white-space: pre-wrap; font: 12px/1.5 Consolas, "Courier New", monospace; }
+        </style>
+      </head>
+      <body>
+        <h1>${escapeHtml(title || "File preview")}</h1>
+        ${body}
+        <script>window.addEventListener("load", () => setTimeout(() => window.print(), 250));</script>
+      </body>
+    </html>
+  `);
+  printWindow.document.close();
+}
+
+function applyBuilderFileViewerAction(action = "") {
+  const visualTypes = ["pdf", "image", "schematic-image"];
+  const isVisual = visualTypes.includes(builderFileViewerState.type);
+  if (action === "copy-link") {
+    copyBuilderFileViewerTarget();
+    return;
+  }
+  if (action === "print") {
+    printBuilderFileViewer();
+    return;
+  }
+  if (!isVisual) return;
+  if (action === "fit") builderFileViewerState.fit = "contain";
+  if (action === "width") builderFileViewerState.fit = "width";
+  if (action === "zoom-in") builderFileViewerState.zoom = Math.min(4, Number(builderFileViewerState.zoom || 1) + 0.25);
+  if (action === "zoom-out") builderFileViewerState.zoom = Math.max(0.35, Number(builderFileViewerState.zoom || 1) - 0.25);
+  if (action === "reset") {
+    builderFileViewerState.zoom = 1;
+    builderFileViewerState.fit = "contain";
+    builderFileViewerState.rotation = 0;
+  }
+  if (action === "grid") builderFileViewerState.grid = !builderFileViewerState.grid;
+  if (action === "rotate-left" && builderFileViewerState.type !== "pdf") {
+    builderFileViewerState.rotation = (Number(builderFileViewerState.rotation || 0) - 90 + 360) % 360;
+  }
+  if (action === "rotate-right" && builderFileViewerState.type !== "pdf") {
+    builderFileViewerState.rotation = (Number(builderFileViewerState.rotation || 0) + 90) % 360;
+  }
+  if (action === "invert") builderFileViewerState.invert = !builderFileViewerState.invert;
+  renderBuilderFileVisualViewer();
 }
 
 function schematicSourcePoint(points, x, y) {
@@ -5265,23 +5379,45 @@ function schematicSourceMap(text = "", title = "") {
   const height = Math.max(180, maxY - minY + 80);
   const tx = (x) => x - minX + 40;
   const ty = (y) => y - minY + 40;
+  const inventoryItems = [
+    ...symbols.map((symbol) => ({ type: "symbol", value: symbol.name })),
+    ...labels.map((label) => ({ type: "net", value: label.label }))
+  ]
+    .filter((item) => item.value)
+    .slice(0, 120);
   return `
     <div class="builder-schematic-map" aria-label="Generated schematic map">
       <div class="builder-schematic-map-heading">
         <strong>${escapeHtml(title || "Schematic map")}</strong>
         <span>${wires.length} wires &middot; ${symbols.length} symbols &middot; ${labels.length} labels</span>
       </div>
+      <div class="builder-schematic-map-tools">
+        <label>
+          <span>Find net or symbol</span>
+          <input type="search" data-builder-file-source-filter placeholder="e.g. VCC, R1, opamp">
+        </label>
+        <div class="builder-schematic-inventory" aria-label="Schematic inventory">
+          ${inventoryItems.length
+            ? inventoryItems.map((item) => `
+              <button type="button" data-schematic-search="${escapeHtml(item.value)}" data-builder-file-source-filter-chip="${escapeHtml(item.value)}">
+                <small>${escapeHtml(item.type)}</small>
+                ${escapeHtml(item.value)}
+              </button>
+            `).join("")
+            : `<span>No labels or symbols were detected.</span>`}
+        </div>
+      </div>
       <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(title || "Generated schematic map")}">
         <rect class="schematic-map-bg" x="0" y="0" width="${width}" height="${height}" rx="10"></rect>
         ${wires.map((wire) => `<line class="schematic-map-wire" x1="${tx(wire.start.x)}" y1="${ty(wire.start.y)}" x2="${tx(wire.end.x)}" y2="${ty(wire.end.y)}"></line>`).join("")}
         ${symbols.map((symbol) => `
-          <g class="schematic-map-symbol" transform="translate(${tx(symbol.x)} ${ty(symbol.y)})">
+          <g class="schematic-map-symbol" data-schematic-search="${escapeHtml(symbol.name)}" transform="translate(${tx(symbol.x)} ${ty(symbol.y)})">
             <rect x="-18" y="-12" width="36" height="24" rx="4"></rect>
             <text x="0" y="4">${escapeHtml(symbol.name)}</text>
           </g>
         `).join("")}
         ${labels.map((label) => `
-          <g class="schematic-map-label" transform="translate(${tx(label.x)} ${ty(label.y)})">
+          <g class="schematic-map-label" data-schematic-search="${escapeHtml(label.label)}" transform="translate(${tx(label.x)} ${ty(label.y)})">
             <circle r="3"></circle>
             <text x="8" y="4">${escapeHtml(label.label)}</text>
           </g>
@@ -5291,6 +5427,18 @@ function schematicSourceMap(text = "", title = "") {
   `;
 }
 
+function filterBuilderSchematicSourceMap(value = "") {
+  const root = builderFileViewContent?.querySelector(".builder-schematic-map");
+  if (!root) return;
+  const filter = String(value || "").trim().toLowerCase();
+  root.querySelectorAll("[data-schematic-search]").forEach((element) => {
+    const haystack = String(element.dataset.schematicSearch || "").toLowerCase();
+    const isMatch = Boolean(filter && haystack.includes(filter));
+    element.classList.toggle("is-filtered-match", isMatch);
+    element.classList.toggle("is-filtered-muted", Boolean(filter && !isMatch));
+  });
+}
+
 async function renderBuilderTextFileViewer(target, title, kind) {
   if (!builderFileViewContent) return;
   builderFileViewContent.innerHTML = `<div class="builder-file-loading">Loading ${kind === "schematic-source" ? "schematic source" : "text file"}...</div>`;
@@ -5298,8 +5446,10 @@ async function renderBuilderTextFileViewer(target, title, kind) {
     const response = await fetch(target, { cache: "no-store" });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const text = await response.text();
+    builderFileViewerState.sourceText = text;
     const schematicMap = kind === "schematic-source" ? schematicSourceMap(text, title) : "";
     builderFileViewContent.innerHTML = `
+      ${builderViewerToolbar(kind)}
       <div class="builder-file-source-shell ${kind === "schematic-source" ? "is-schematic-source" : ""}">
         <div class="builder-file-source-title">
           <span>${escapeHtml(title)}</span>
@@ -5348,7 +5498,10 @@ async function openBuilderFileWindow(item = {}) {
 
   Object.assign(builderFileViewerState, {
     fit: "contain",
+    grid: viewerKind === "pdf" || isBuilderSchematicFile(item),
     invert: false,
+    rotation: 0,
+    sourceText: "",
     target,
     title,
     type: viewerKind,
@@ -15816,19 +15969,44 @@ viewProjectPreviewButton.addEventListener("click", openProjectPortfolioPreview);
 projectPreviewClose.addEventListener("click", closeProjectPreviewWindow);
 builderFileViewClose?.addEventListener("click", () => closeDialogElement(builderFileViewDialog, "close"));
 builderFileViewContent?.addEventListener("click", (event) => {
+  const filterChip = event.target.closest("[data-builder-file-source-filter-chip]");
+  if (filterChip) {
+    const value = filterChip.dataset.builderFileSourceFilterChip || "";
+    const input = builderFileViewContent.querySelector("[data-builder-file-source-filter]");
+    if (input) input.value = value;
+    filterBuilderSchematicSourceMap(value);
+    return;
+  }
+
   const button = event.target.closest("[data-builder-file-view]");
   if (!button) return;
-  const action = button.dataset.builderFileView;
-  if (action === "fit") builderFileViewerState.fit = "contain";
-  if (action === "width") builderFileViewerState.fit = "width";
-  if (action === "zoom-in") builderFileViewerState.zoom = Math.min(4, Number(builderFileViewerState.zoom || 1) + 0.25);
-  if (action === "zoom-out") builderFileViewerState.zoom = Math.max(0.35, Number(builderFileViewerState.zoom || 1) - 0.25);
-  if (action === "reset") {
-    builderFileViewerState.zoom = 1;
-    builderFileViewerState.fit = "contain";
-  }
-  if (action === "invert") builderFileViewerState.invert = !builderFileViewerState.invert;
-  renderBuilderFileVisualViewer();
+  applyBuilderFileViewerAction(button.dataset.builderFileView);
+});
+builderFileViewContent?.addEventListener("input", (event) => {
+  const input = event.target.closest("[data-builder-file-source-filter]");
+  if (!input) return;
+  filterBuilderSchematicSourceMap(input.value);
+});
+builderFileViewDialog?.addEventListener("keydown", (event) => {
+  if (!builderFileViewDialog.open) return;
+  if (event.target?.closest?.("input, textarea, [contenteditable='true']") && !(event.ctrlKey && event.key.toLowerCase() === "p")) return;
+  const key = event.key.toLowerCase();
+  const shortcuts = {
+    "0": "reset",
+    "=": "zoom-in",
+    "+": "zoom-in",
+    "-": "zoom-out",
+    c: "invert",
+    f: "fit",
+    g: "grid",
+    p: event.ctrlKey ? "print" : "",
+    r: event.shiftKey ? "rotate-left" : "rotate-right",
+    w: "width"
+  };
+  const action = shortcuts[key];
+  if (!action) return;
+  event.preventDefault();
+  applyBuilderFileViewerAction(action);
 });
 projectPreviewDialog.addEventListener("close", () => {
   document.body.classList.remove("full-window-open");
