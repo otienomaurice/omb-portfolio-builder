@@ -409,7 +409,7 @@ function createWindow(workspaceRoot, origin) {
   });
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    if (url.startsWith(origin)) return { action: "allow" };
+    if (url.startsWith(origin) || url === "about:blank") return { action: "allow" };
     shell.openExternal(url);
     return { action: "deny" };
   });
@@ -420,7 +420,7 @@ function createWindow(workspaceRoot, origin) {
     shell.openExternal(url);
   });
 
-  mainWindow.loadURL(`${origin}/template-preview.html`);
+  mainWindow.loadURL(`${origin}/template-preview.html?desktop=1`);
 }
 
 async function boot() {

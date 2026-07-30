@@ -11,7 +11,7 @@
     <link rel="shortcut icon" href="assets/favicon.ico" />
     <link rel="apple-touch-icon" sizes="180x180" href="assets/apple-touch-icon.png" />
     <link rel="stylesheet" href="styles.css" />
-    <link rel="stylesheet" href="template-preview.css?v=0.2.97" />
+    <link rel="stylesheet" href="template-preview.css?v=0.2.99" />
   </head>
   <body class="template-preview-page">
       <header class="template-header">
@@ -361,6 +361,7 @@
                       <button type="button" data-guide-topic="editor">Editor</button>
                       <button type="button" data-guide-topic="assets">Files</button>
                       <button type="button" data-guide-topic="code">Code</button>
+                      <button type="button" data-guide-topic="analog">AM Lab</button>
                       <button type="button" data-guide-topic="preview">Preview</button>
                       <button type="button" data-guide-topic="publish">Publish</button>
                       <button type="button" data-guide-topic="mobile">Mobile</button>
@@ -590,6 +591,30 @@
                               <li>Successful compile and synthesis results are cached by source snapshot, selected top module, toolchain, flags, and workspace files, so repeated compile/run/synthesis cycles are faster when nothing important has changed.</li>
                           </ul>
                           <p>For HDL, add or mark a Testbench file before simulation. The testbench must call $dumpfile and $dumpvars so the scope has signal-over-time data. In the scope, use signal filter, time zoom, per-signal color, and per-signal radix controls to make debugging readable.</p>
+                      </div>
+                  </details>
+                  <details class="builder-guide-section" data-guide-section="analog mixed signal am lab schematic spice pcb ic pdk gerber math simulation libraries">
+                      <summary><span class="guide-card-title">Analog/Mixed-Signal Design Lab</span><span class="guide-card-summary">Open a project-level AM workspace for schematic capture, libraries, simulations, IC/PCB planning, PDK notes, and manufacturing stages.</span></summary>
+                      <div>
+                          <p>The AM Design Lab is the beginning of the analog and mixed-signal engine inside the builder. Open a project, then use the small AM button near the project window controls to enter a full-screen workspace dedicated to analog, power, mixed-signal, IC, and board-level design. This workspace is saved inside the project draft, so each project can have its own schematic canvas, component library choices, reports, and design-stage notes.</p>
+                          <p>The first implementation is intentionally GUI-first. It gives you the design surface, stage flow, saved state, component placement, movement, zooming, panning, checking reports, library planning, PDK planning, and manufacturing planning. Real SPICE engines, PDK importers, vendor APIs, and PCB/IC backends can be wired into these same stages later without changing how the user enters the workflow.</p>
+                          <ol>
+                              <li>Use the mode selector to choose IC, board, or mixed IC plus board work. Use the focus selector for PLL, amplifier, or DC-to-DC conversion workflows.</li>
+                              <li>Use the left tool rail for Select, Pan, Wire, Label, Net, Optimize, Resistor, Capacitor, Semiconductor, Diode, and Ground. Keyboard shortcuts include V, P, W, L, N, O, R, C, S, D, and G.</li>
+                              <li>Pick parts from the component library, then click the schematic canvas to place them. Search the library when you want MOS devices, op amp cores, PLL blocks, power switches, ADC/DAC blocks, MCU/FPGA interfaces, sources, references, or board connectors.</li>
+                              <li>Drag a selected component to move it. Use the inspector to rotate, mirror, duplicate, delete, rename, resize by value notes, or add design notes. Arrow keys nudge selected components; Shift plus arrow keys moves them farther.</li>
+                              <li>Use Ctrl plus mouse wheel, Ctrl plus plus, Ctrl plus minus, and Ctrl plus zero to zoom, zoom out, and fit the canvas. Use the Pan tool, Shift-drag, or Alt-drag to move the canvas view.</li>
+                              <li>Use the stage row to move between Schematic, Symbol, Footprint, PCB, IC Layout, 3D View, Math, Simulation, Gerber, PDK, and Libraries. The stage view preserves your project context instead of opening disconnected notes.</li>
+                              <li>Use DRC and ERC to create lightweight design-check reports. The current checks look for duplicate references, missing values, zero-length wires, components without nets, and missing PDK/PCB readiness notes. Later engines can replace or extend these checks.</li>
+                              <li>Use Generate netlist to create a starter SPICE-style netlist scaffold from the schematic. It is a project artifact for review and future SPICE wiring, not a final signoff-grade netlist yet.</li>
+                              <li>Use Run calculations to populate PLL, amplifier, or DC-to-DC math notes. These reports collect target values and list the next calculations needed for sizing, stability, ripple, loop bandwidth, compensation, or power estimates.</li>
+                              <li>Use Libraries menu items for local library planning and future DigiKey or Mouser import records. Vendor API import is deliberately treated as a controlled future hook because it will need API credentials, vendor terms, and symbol/footprint validation.</li>
+                              <li>Use PDK menu items to register the intended IC process lane. The builder currently stores process notes and future PDK hooks for generic education, Sky130-style flows, GF180-style flows, model files, corners, DRC/LVS assumptions, and extraction planning.</li>
+                              <li>Use Gerber generation plan for board manufacturing readiness. This stage tracks copper, drill, mask, silkscreen, pick-and-place, assembly, fabrication, and BOM handoff items before a real PCB backend is connected.</li>
+                              <li>Use 3D View to open the physical board/package/IC planning window. It gives the GUI a dedicated place for future rotation, package clearance, stackup, exploded view, and mechanical checks.</li>
+                              <li>Save AM saves the AM workspace into the current project draft. Save the project or Save all sections when you want the parser and preview pipeline to consume the latest project state.</li>
+                          </ol>
+                          <p>The goal is a powerhouse mixed-signal design environment: schematic capture, symbols, footprints, PCB, IC layout, math, simulation, PDKs, libraries, Gerbers, DRC/ERC, optimization, and visual debugging. This guide names the intended workflow now so every future engine can be added behind a clean user-facing design process.</p>
                       </div>
                   </details>
                   <details class="builder-guide-section" data-guide-section="print pdf export portfolio">
@@ -878,6 +903,7 @@
                   <div class="project-window-actions">
                       <button class="button secondary" id="view-project-preview" type="button">View project preview</button>
                       <button class="project-control danger-control" id="project-window-delete" type="button">Delete project</button>
+                      <button class="project-control analog-mixed-launch" id="analog-mixed-open" type="button" title="Open Analog/Mixed-Signal workspace" aria-label="Open Analog/Mixed-Signal workspace">AM</button>
                       <button class="project-control close-control" id="project-window-close" type="button" aria-label="Close project window">&times;</button>
                   </div>
               </div>
@@ -921,6 +947,81 @@
                   <button class="button primary save-project-button" id="save-project" type="button">Save</button>
                   <button class="button secondary save-project-button" id="save-project-close" type="button">Save and close</button>
               </div>
+          </div>
+      </dialog>
+
+      <dialog class="analog-mixed-dialog" id="analog-mixed-dialog" aria-labelledby="analog-mixed-title">
+          <div class="analog-mixed-shell">
+              <header class="analog-mixed-titlebar">
+                  <div>
+                      <p class="eyebrow">Analog / Mixed-Signal Workspace</p>
+                      <h2 id="analog-mixed-title">AM Design Lab</h2>
+                  </div>
+                  <div class="analog-mixed-window-actions">
+                      <button class="project-window-close analog-mixed-close" id="analog-mixed-close" type="button" aria-label="Close Analog/Mixed-Signal workspace">&times;</button>
+                  </div>
+              </header>
+              <div class="analog-mixed-menu-bar" id="analog-mixed-menu-bar" aria-label="Analog/Mixed-Signal menus"></div>
+              <main class="analog-mixed-layout">
+                  <aside class="analog-mixed-tool-rail" id="analog-mixed-tool-rail" aria-label="Analog/Mixed-Signal tool shortcuts"></aside>
+                  <aside class="analog-mixed-library">
+                      <div class="analog-mixed-pane-heading">
+                          <strong>Component Library</strong>
+                          <small id="analog-mixed-library-count">0 parts</small>
+                      </div>
+                      <input class="analog-mixed-filter" id="analog-mixed-filter" type="search" placeholder="Search resistors, MOS, PLL, converter..." />
+                      <div class="analog-mixed-library-list" id="analog-mixed-library-list"></div>
+                  </aside>
+                  <section class="analog-mixed-canvas-zone">
+                      <div class="analog-mixed-context-strip">
+                          <label>
+                              <span>Workspace</span>
+                              <select id="analog-mixed-mode">
+                                  <option value="ic">IC transistor-level</option>
+                                  <option value="board">Board schematic / PCB</option>
+                                  <option value="mixed">Mixed IC + board</option>
+                              </select>
+                          </label>
+                          <label>
+                              <span>Focus</span>
+                              <select id="analog-mixed-focus">
+                                  <option value="pll">PLL</option>
+                                  <option value="amplifier">Amplifier</option>
+                                  <option value="dcdc">DC to DC conversion</option>
+                              </select>
+                          </label>
+                          <label>
+                              <span>Grid</span>
+                              <select id="analog-mixed-grid">
+                                  <option value="fine">Fine</option>
+                                  <option value="medium">Medium</option>
+                                  <option value="coarse">Coarse</option>
+                              </select>
+                          </label>
+                          <label class="analog-mixed-inline-check">
+                              <input id="analog-mixed-snap" type="checkbox" checked />
+                              <span>Snap</span>
+                          </label>
+                      </div>
+                      <div class="analog-mixed-stage-tabs" id="analog-mixed-stage-tabs" aria-label="Analog/Mixed-Signal design stages"></div>
+                      <div class="analog-mixed-stage-toolbar" id="analog-mixed-stage-toolbar" aria-label="Active EDA window commands"></div>
+                      <div class="analog-mixed-canvas-shell">
+                          <svg class="analog-mixed-canvas" id="analog-mixed-canvas" viewBox="0 0 1400 820" role="img" aria-label="Analog schematic canvas"></svg>
+                      </div>
+                  </section>
+                  <aside class="analog-mixed-inspector">
+                      <div class="analog-mixed-pane-heading">
+                          <strong>Inspector</strong>
+                          <small id="analog-mixed-selected-label">No selection</small>
+                      </div>
+                      <div class="analog-mixed-inspector-body" id="analog-mixed-inspector-body"></div>
+                  </aside>
+              </main>
+              <section class="analog-mixed-bottom">
+                  <div class="analog-mixed-tabs" id="analog-mixed-tabs"></div>
+                  <div class="analog-mixed-output" id="analog-mixed-output"></div>
+              </section>
+              <footer class="analog-mixed-status" id="analog-mixed-status">Ready. Shortcuts: W wire, L label, N net, R resistor, C capacitor, S semiconductor, D diode, O optimize.</footer>
           </div>
       </dialog>
 
@@ -1798,6 +1899,6 @@
           </div>
       </div>
       <script src="electronics-search.js?v=0.2.90"></script>
-      <script src="template-preview.js?v=0.2.97"></script>
+      <script src="template-preview.js?v=0.2.99"></script>
   </body>
 </html>
