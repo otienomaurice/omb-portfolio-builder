@@ -4076,6 +4076,7 @@ function ensureCompileCode(project) {
     ? project.compileCode.selectedFileIds.filter((id) => fileIds.has(id))
     : [];
   project.compileCode.treeScrollTop = Math.max(0, Number(project.compileCode.treeScrollTop) || 0);
+  project.compileCode.hdlMenuCollapsed = Boolean(project.compileCode.hdlMenuCollapsed);
   project.compileCode.stdinWindowOpen = Boolean(project.compileCode.stdinWindowOpen);
   const stdinPosition = project.compileCode.stdinWindowPosition || {};
   project.compileCode.stdinWindowPosition = {
@@ -16281,8 +16282,23 @@ function renderHdlCompileMenus(project, file = activeCompileFile(project), works
   const testbenchFiles = hdlFiles.filter((item) => item.role === "testbench");
   const constraintFiles = (workspace.files || []).filter(isCompileConstraintFile);
   const selectedConstraintIds = new Set(Array.isArray(workspace.constraintFileIds) ? workspace.constraintFileIds : []);
+  const designScopeLabel = workspace.synthesisFileMode === "active" ? "Active" : workspace.synthesisFileMode === "selected" ? "Selected" : "All";
+  const simulationLabel = testbenchFiles.find((item) => item.id === workspace.simulationTopFileId)?.fileName || "Auto TB";
+  const constraintsLabel = selectedConstraintIds.size ? `${selectedConstraintIds.size} constraints` : "No constraints";
+  if (workspace.hdlMenuCollapsed) {
+    return `
+      <section class="compile-hdl-menu-strip is-collapsed" aria-label="HDL build menus hidden">
+        <button class="compile-hdl-strip-toggle" type="button" data-compile-toggle-hdl-menu title="Show HDL build settings">HDL</button>
+        <span>Design: ${escapeHtml(designScopeLabel)}</span>
+        <span>Sim: ${escapeHtml(simulationLabel)}</span>
+        <span>Constraints: ${escapeHtml(constraintsLabel)}</span>
+        <span>${escapeHtml(defaultFpgaTarget.part)}</span>
+      </section>
+    `;
+  }
   return `
     <section class="compile-hdl-menu-strip" aria-label="HDL build menus">
+      <button class="compile-hdl-strip-toggle" type="button" data-compile-toggle-hdl-menu title="Hide HDL build settings">-</button>
       <label>
         <span>Design</span>
         <select data-compile-hdl-design-mode title="Choose which HDL design files Synthesize uses">
@@ -16300,7 +16316,7 @@ function renderHdlCompileMenus(project, file = activeCompileFile(project), works
       </label>
       <label>
         <span>Constraints</span>
-        <select data-compile-hdl-constraints multiple size="${Math.min(3, Math.max(1, constraintFiles.length || 1))}" title="Choose XDC/SDC/TCL constraint files recorded with the Nexys A7-100T synthesis run">
+        <select data-compile-hdl-constraints multiple size="1" title="Choose XDC/SDC/TCL constraint files recorded with the Nexys A7-100T synthesis run">
           ${constraintFiles.length
             ? constraintFiles.map((item) => `<option value="${escapeHtml(item.id)}"${selectedConstraintIds.has(item.id) ? " selected" : ""}>${escapeHtml(item.fileName)}</option>`).join("")
             : `<option value="" disabled>No constraint files</option>`}
@@ -21746,6 +21762,14 @@ sectionContent.addEventListener("click", async (event) => {
     const workspace = ensureCompileCode(project);
     workspace.stdinWindowOpen = !workspace.stdinWindowOpen;
     setStatus(workspace.stdinWindowOpen ? "Program input window opened." : "Program input window closed.");
+    scheduleAutosave();
+    renderSectionContent(project);
+    return;
+  }
+  if (hasDataset("compileToggleHdlMenu")) {
+    const workspace = ensureCompileCode(project);
+    workspace.hdlMenuCollapsed = !workspace.hdlMenuCollapsed;
+    setStatus(workspace.hdlMenuCollapsed ? "HDL build settings hidden." : "HDL build settings shown.");
     scheduleAutosave();
     renderSectionContent(project);
     return;
