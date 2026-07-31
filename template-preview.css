@@ -15479,15 +15479,37 @@ body[data-builder-theme] .selection-text-preview {
 
 .analog-mixed-library-list button {
   display: grid;
+  grid-template-columns: 58px minmax(0, 1fr);
+  align-items: center;
   justify-items: start;
-  gap: 3px;
-  min-height: 42px;
+  gap: 8px;
+  min-height: 54px;
   padding: 7px 8px;
   border-radius: 4px;
   text-align: left;
 }
 
-.analog-mixed-library-list button span {
+.analog-mixed-library-symbol {
+  width: 54px;
+  height: 38px;
+  border: 1px solid #284963;
+  border-radius: 4px;
+  background: #f8fcff;
+}
+
+.analog-mixed-library-symbol .am-symbol line,
+.analog-mixed-library-symbol .am-symbol polyline,
+.analog-mixed-library-symbol .am-symbol path {
+  stroke-width: 4;
+}
+
+.analog-mixed-library-copy {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.analog-mixed-library-list button span span {
   color: #a9c7dd;
   font-size: 0.66rem;
 }
@@ -15675,7 +15697,8 @@ body[data-builder-theme] .selection-text-preview {
 }
 
 .am-symbol line,
-.am-symbol polyline {
+.am-symbol polyline,
+.am-symbol path {
   fill: none;
   stroke: #14506c;
   stroke-width: 3;
@@ -15684,7 +15707,8 @@ body[data-builder-theme] .selection-text-preview {
 }
 
 .am-symbol rect,
-.am-symbol polygon {
+.am-symbol polygon,
+.am-symbol circle {
   stroke-width: 2.5;
 }
 
@@ -15695,9 +15719,68 @@ body[data-builder-theme] .selection-text-preview {
   font: 700 18px Consolas, "Courier New", monospace;
 }
 
+.am-symbol .am-symbol-soft-fill {
+  fill: #effaff;
+  stroke: #14506c;
+}
+
+.am-symbol .am-symbol-device-arrow {
+  fill: #14506c;
+  stroke: #14506c;
+  stroke-width: 2.5;
+}
+
+.am-symbol .am-symbol-bubble,
+.am-symbol .am-symbol-port {
+  fill: #f8fcff;
+  stroke: #14506c;
+}
+
+.am-symbol .am-source-mark,
+.am-symbol .am-block-mark,
+.am-symbol .am-pin-label,
+.am-symbol .am-symbol-plus {
+  fill: #14506c;
+  font: 900 15px Consolas, "Courier New", monospace;
+}
+
+.am-symbol .am-block-mark {
+  font-size: 18px;
+}
+
+.am-symbol .am-symbol-label {
+  font-size: 17px;
+}
+
+.am-symbol .am-symbol-value {
+  fill: #31516f;
+  font-size: 14px;
+}
+
+.am-symbol.is-preview text {
+  display: none;
+}
+
 .am-symbol.is-selected line,
-.am-symbol.is-selected polyline {
+.am-symbol.is-selected polyline,
+.am-symbol.is-selected path {
   stroke: #f59e0b;
+}
+
+.am-symbol.is-selected .am-symbol-soft-fill,
+.am-symbol.is-selected .am-symbol-bubble,
+.am-symbol.is-selected .am-symbol-port {
+  fill: #fff8e1;
+  stroke: #f59e0b;
+}
+
+.am-symbol.is-selected .am-symbol-device-arrow {
+  fill: #f59e0b;
+  stroke: #f59e0b;
+}
+
+.am-symbol.is-selected text {
+  fill: #78350f;
 }
 
 .am-wire polyline,
