@@ -11,7 +11,7 @@
     <link rel="shortcut icon" href="assets/favicon.ico" />
     <link rel="apple-touch-icon" sizes="180x180" href="assets/apple-touch-icon.png" />
     <link rel="stylesheet" href="styles.css" />
-    <link rel="stylesheet" href="template-preview.css?v=0.2.99" />
+    <link rel="stylesheet" href="template-preview.css?v=0.3.0" />
   </head>
   <body class="template-preview-page">
       <header class="template-header">
@@ -597,7 +597,7 @@
                       <summary><span class="guide-card-title">Analog/Mixed-Signal Design Lab</span><span class="guide-card-summary">Open a project-level AM workspace for schematic capture, libraries, simulations, IC/PCB planning, PDK notes, and manufacturing stages.</span></summary>
                       <div>
                           <p>The AM Design Lab is the beginning of the analog and mixed-signal engine inside the builder. Open a project, then use the small AM button near the project window controls to enter a full-screen workspace dedicated to analog, power, mixed-signal, IC, and board-level design. This workspace is saved inside the project draft, so each project can have its own schematic canvas, component library choices, reports, and design-stage notes.</p>
-                          <p>The first implementation is intentionally GUI-first. It gives you the design surface, stage flow, saved state, component placement, movement, zooming, panning, checking reports, library planning, PDK planning, and manufacturing planning. Real SPICE engines, PDK importers, vendor APIs, and PCB/IC backends can be wired into these same stages later without changing how the user enters the workflow.</p>
+                          <p>The first implementation is intentionally GUI-first. It gives you the design surface, stage flow, saved state, component placement, movement, zooming, panning, checking reports, library planning, PDK planning, and manufacturing planning. The component library now shows EDA-style symbol thumbnails for resistors, capacitors, inductors, transformers, diode families, MOSFETs, BJTs, JFETs, power devices, op amp cells, sources, grounds, supplies, and mixed-signal macros, so selecting a part feels closer to a schematic-capture tool. Real SPICE engines, PDK importers, vendor APIs, and PCB/IC backends can be wired into these same stages later without changing how the user enters the workflow.</p>
                           <ol>
                               <li>Use the mode selector to choose IC, board, or mixed IC plus board work. Use the focus selector for PLL, amplifier, or DC-to-DC conversion workflows.</li>
                               <li>Use the left tool rail for Select, Pan, Wire, Label, Net, Optimize, Resistor, Capacitor, Semiconductor, Diode, and Ground. Keyboard shortcuts include V, P, W, L, N, O, R, C, S, D, and G.</li>
@@ -605,6 +605,7 @@
                               <li>Drag a selected component to move it. Use the inspector to rotate, mirror, duplicate, delete, rename, resize by value notes, or add design notes. Arrow keys nudge selected components; Shift plus arrow keys moves them farther.</li>
                               <li>Use Ctrl plus mouse wheel, Ctrl plus plus, Ctrl plus minus, and Ctrl plus zero to zoom, zoom out, and fit the canvas. Use the Pan tool, Shift-drag, or Alt-drag to move the canvas view.</li>
                               <li>Use the stage row to move between Schematic, Symbol, Footprint, PCB, IC Layout, 3D View, Math, Simulation, Gerber, PDK, and Libraries. The stage view preserves your project context instead of opening disconnected notes.</li>
+                              <li>Use Analyze to let the local AM backend inspect the schematic. It inventories placed symbols, groups component categories, creates a backend readiness report, and refreshes the generated netlist and checking panels.</li>
                               <li>Use DRC and ERC to create lightweight design-check reports. The current checks look for duplicate references, missing values, zero-length wires, components without nets, and missing PDK/PCB readiness notes. Later engines can replace or extend these checks.</li>
                               <li>Use Generate netlist to create a starter SPICE-style netlist scaffold from the schematic. It is a project artifact for review and future SPICE wiring, not a final signoff-grade netlist yet.</li>
                               <li>Use Run calculations to populate PLL, amplifier, or DC-to-DC math notes. These reports collect target values and list the next calculations needed for sizing, stability, ripple, loop bandwidth, compensation, or power estimates.</li>
@@ -1899,6 +1900,6 @@
           </div>
       </div>
       <script src="electronics-search.js?v=0.2.90"></script>
-      <script src="template-preview.js?v=0.2.99"></script>
+      <script src="template-preview.js?v=0.3.0"></script>
   </body>
 </html>
