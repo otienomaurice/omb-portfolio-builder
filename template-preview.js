@@ -371,34 +371,71 @@ const analogMixedDomains = {
     }
   }
 };
+const analogMixedAllModes = ["ic", "board", "mixed"];
+const analogMixedAllDomains = ["pll", "amplifier", "dcdc"];
+const analogMixedIcMixedModes = ["ic", "mixed"];
+const analogMixedBoardMixedModes = ["board", "mixed"];
 const analogMixedComponentLibrary = [
-  { id: "resistor", label: "Resistor", category: "passive", symbol: "R", tool: "resistor", value: "10 kOhm", modes: ["ic", "board", "mixed"], domains: ["pll", "amplifier", "dcdc"] },
-  { id: "capacitor", label: "Capacitor", category: "passive", symbol: "C", tool: "capacitor", value: "1 pF", modes: ["ic", "board", "mixed"], domains: ["pll", "amplifier", "dcdc"] },
-  { id: "inductor", label: "Inductor", category: "passive", symbol: "L", tool: "inductor", value: "10 uH", modes: ["board", "mixed"], domains: ["dcdc"] },
-  { id: "nmos", label: "NMOS transistor", category: "semiconductor", symbol: "MN", tool: "semiconductor", value: "W/L=10/0.18", modes: ["ic", "mixed"], domains: ["pll", "amplifier"] },
-  { id: "pmos", label: "PMOS transistor", category: "semiconductor", symbol: "MP", tool: "semiconductor", value: "W/L=20/0.18", modes: ["ic", "mixed"], domains: ["pll", "amplifier"] },
-  { id: "bjt", label: "BJT transistor", category: "semiconductor", symbol: "Q", tool: "semiconductor", value: "npn", modes: ["ic", "board", "mixed"], domains: ["amplifier"] },
-  { id: "diode", label: "Diode", category: "semiconductor", symbol: "D", tool: "diode", value: "1N4148", modes: ["board", "mixed"], domains: ["dcdc", "amplifier"] },
-  { id: "opamp-stage", label: "Differential op amp core", category: "analog macro", symbol: "AMP", tool: "macro", value: "two-stage", modes: ["ic", "mixed"], domains: ["amplifier"] },
-  { id: "charge-pump", label: "PLL charge pump", category: "pll macro", symbol: "CP", tool: "macro", value: "50 uA", modes: ["ic", "mixed"], domains: ["pll"] },
-  { id: "vco-cell", label: "Current-starved VCO cell", category: "pll macro", symbol: "VCO", tool: "macro", value: "ring", modes: ["ic", "mixed"], domains: ["pll"] },
-  { id: "phase-detector", label: "Phase frequency detector", category: "pll macro", symbol: "PFD", tool: "macro", value: "digital", modes: ["ic", "mixed"], domains: ["pll"] },
-  { id: "divider", label: "Feedback divider", category: "pll macro", symbol: "DIV", tool: "macro", value: "N=100", modes: ["ic", "mixed"], domains: ["pll"] },
-  { id: "switch", label: "Power MOS switch", category: "power", symbol: "SW", tool: "semiconductor", value: "N-channel", modes: ["board", "mixed"], domains: ["dcdc"] },
-  { id: "controller", label: "PWM controller", category: "power", symbol: "CTRL", tool: "macro", value: "voltage mode", modes: ["board", "mixed"], domains: ["dcdc"] },
-  { id: "comparator", label: "Comparator", category: "mixed signal", symbol: "CMP", tool: "macro", value: "rail-to-rail", modes: ["ic", "board", "mixed"], domains: ["pll", "amplifier", "dcdc"] },
-  { id: "adc", label: "ADC block", category: "mixed signal", symbol: "ADC", tool: "macro", value: "12-bit SAR", modes: ["ic", "mixed"], domains: ["pll", "amplifier", "dcdc"] },
-  { id: "dac", label: "DAC block", category: "mixed signal", symbol: "DAC", tool: "macro", value: "10-bit current", modes: ["ic", "mixed"], domains: ["pll", "amplifier"] },
-  { id: "logic-gate", label: "Logic gate", category: "digital assist", symbol: "LOGIC", tool: "macro", value: "NAND/NOR", modes: ["ic", "mixed"], domains: ["pll", "dcdc"] },
-  { id: "flipflop", label: "Flip-flop", category: "digital assist", symbol: "DFF", tool: "macro", value: "edge triggered", modes: ["ic", "mixed"], domains: ["pll", "dcdc"] },
-  { id: "voltage-source", label: "Voltage source", category: "stimulus", symbol: "V", tool: "macro", value: "1.8 V", modes: ["ic", "board", "mixed"], domains: ["pll", "amplifier", "dcdc"] },
-  { id: "current-source", label: "Current source", category: "stimulus", symbol: "I", tool: "macro", value: "100 uA", modes: ["ic", "board", "mixed"], domains: ["pll", "amplifier", "dcdc"] },
-  { id: "connector", label: "Connector/header", category: "board interface", symbol: "J", tool: "macro", value: "pin header", modes: ["board", "mixed"], domains: ["dcdc", "amplifier"] },
-  { id: "fpga", label: "FPGA interface", category: "mixed signal", symbol: "FPGA", tool: "macro", value: "Nexys A7", modes: ["board", "mixed"], domains: ["pll", "dcdc"] },
-  { id: "mcu", label: "MCU interface", category: "mixed signal", symbol: "MCU", tool: "macro", value: "STM32", modes: ["board", "mixed"], domains: ["dcdc", "amplifier"] },
-  { id: "sensor", label: "Sensor front end", category: "analog front end", symbol: "AFE", tool: "macro", value: "bridge/sensor", modes: ["board", "mixed"], domains: ["amplifier"] },
-  { id: "ground", label: "Ground", category: "reference", symbol: "GND", tool: "ground", value: "0", modes: ["ic", "board", "mixed"], domains: ["pll", "amplifier", "dcdc"] },
-  { id: "vdd", label: "Supply rail", category: "reference", symbol: "VDD", tool: "supply", value: "1.8 V", modes: ["ic", "board", "mixed"], domains: ["pll", "amplifier", "dcdc"] }
+  { id: "resistor", label: "Resistor", category: "passive", symbol: "R", tool: "resistor", symbolKind: "resistor", spicePrefix: "R", value: "10 kOhm", pins: ["1", "2"], modes: analogMixedAllModes, domains: analogMixedAllDomains },
+  { id: "variable-resistor", label: "Variable resistor", category: "passive", symbol: "RV", tool: "resistor", symbolKind: "variable-resistor", spicePrefix: "R", value: "trim", pins: ["1", "2"], modes: analogMixedAllModes, domains: analogMixedAllDomains },
+  { id: "potentiometer", label: "Potentiometer", category: "passive", symbol: "POT", tool: "resistor", symbolKind: "potentiometer", spicePrefix: "R", value: "10 kOhm", pins: ["A", "W", "B"], modes: analogMixedBoardMixedModes, domains: ["amplifier", "dcdc"] },
+  { id: "capacitor", label: "Capacitor", category: "passive", symbol: "C", tool: "capacitor", symbolKind: "capacitor", spicePrefix: "C", value: "1 pF", pins: ["1", "2"], modes: analogMixedAllModes, domains: analogMixedAllDomains },
+  { id: "polar-capacitor", label: "Polar capacitor", category: "passive", symbol: "CP", tool: "capacitor", symbolKind: "polar-capacitor", spicePrefix: "C", value: "47 uF", pins: ["+", "-"], modes: analogMixedBoardMixedModes, domains: ["dcdc", "amplifier"] },
+  { id: "variable-capacitor", label: "Variable capacitor", category: "passive", symbol: "CV", tool: "capacitor", symbolKind: "variable-capacitor", spicePrefix: "C", value: "tunable", pins: ["1", "2"], modes: analogMixedAllModes, domains: ["pll", "amplifier"] },
+  { id: "inductor", label: "Inductor", category: "passive", symbol: "L", tool: "inductor", symbolKind: "inductor", spicePrefix: "L", value: "10 uH", pins: ["1", "2"], modes: analogMixedBoardMixedModes, domains: ["dcdc"] },
+  { id: "coupled-inductor", label: "Coupled inductor", category: "magnetics", symbol: "L", tool: "inductor", symbolKind: "coupled-inductor", spicePrefix: "L", value: "coupled", pins: ["1", "2", "3", "4"], modes: analogMixedBoardMixedModes, domains: ["dcdc"] },
+  { id: "transformer", label: "Transformer", category: "magnetics", symbol: "T", tool: "inductor", symbolKind: "transformer", spicePrefix: "X", value: "1:1", pins: ["P1", "P2", "S1", "S2"], modes: analogMixedBoardMixedModes, domains: ["dcdc"] },
+  { id: "ferrite-bead", label: "Ferrite bead", category: "passive", symbol: "FB", tool: "inductor", symbolKind: "ferrite-bead", spicePrefix: "L", value: "600 Ohm @100MHz", pins: ["1", "2"], modes: analogMixedBoardMixedModes, domains: ["dcdc", "amplifier"] },
+  { id: "crystal", label: "Crystal / resonator", category: "timing", symbol: "Y", tool: "macro", symbolKind: "crystal", spicePrefix: "Y", value: "16 MHz", pins: ["1", "2"], modes: analogMixedBoardMixedModes, domains: ["pll"] },
+  { id: "fuse", label: "Fuse", category: "protection", symbol: "F", tool: "macro", symbolKind: "fuse", spicePrefix: "F", value: "resettable", pins: ["1", "2"], modes: analogMixedBoardMixedModes, domains: ["dcdc"] },
+  { id: "nmos", label: "NMOS transistor", category: "mosfet", symbol: "MN", tool: "semiconductor", symbolKind: "nmos", spicePrefix: "M", value: "W/L=10/0.18", pins: ["D", "G", "S", "B"], modes: analogMixedIcMixedModes, domains: ["pll", "amplifier"] },
+  { id: "pmos", label: "PMOS transistor", category: "mosfet", symbol: "MP", tool: "semiconductor", symbolKind: "pmos", spicePrefix: "M", value: "W/L=20/0.18", pins: ["D", "G", "S", "B"], modes: analogMixedIcMixedModes, domains: ["pll", "amplifier"] },
+  { id: "nmos-body", label: "NMOS with body", category: "mosfet", symbol: "MNB", tool: "semiconductor", symbolKind: "nmos-body", spicePrefix: "M", value: "4-terminal", pins: ["D", "G", "S", "B"], modes: analogMixedIcMixedModes, domains: ["pll", "amplifier"] },
+  { id: "pmos-body", label: "PMOS with body", category: "mosfet", symbol: "MPB", tool: "semiconductor", symbolKind: "pmos-body", spicePrefix: "M", value: "4-terminal", pins: ["D", "G", "S", "B"], modes: analogMixedIcMixedModes, domains: ["pll", "amplifier"] },
+  { id: "depletion-nmos", label: "Depletion NMOS", category: "mosfet", symbol: "MDN", tool: "semiconductor", symbolKind: "depletion-nmos", spicePrefix: "M", value: "depletion", pins: ["D", "G", "S", "B"], modes: analogMixedIcMixedModes, domains: ["amplifier"] },
+  { id: "bjt-npn", label: "NPN transistor", category: "bipolar", symbol: "QN", tool: "semiconductor", symbolKind: "bjt-npn", spicePrefix: "Q", value: "2N3904", pins: ["C", "B", "E"], modes: analogMixedAllModes, domains: ["amplifier"] },
+  { id: "bjt-pnp", label: "PNP transistor", category: "bipolar", symbol: "QP", tool: "semiconductor", symbolKind: "bjt-pnp", spicePrefix: "Q", value: "2N3906", pins: ["C", "B", "E"], modes: analogMixedAllModes, domains: ["amplifier"] },
+  { id: "bjt", label: "BJT transistor", category: "bipolar", symbol: "Q", tool: "semiconductor", symbolKind: "bjt-npn", spicePrefix: "Q", value: "npn", pins: ["C", "B", "E"], modes: analogMixedAllModes, domains: ["amplifier"] },
+  { id: "jfet-n", label: "N-JFET", category: "fet", symbol: "JN", tool: "semiconductor", symbolKind: "jfet-n", spicePrefix: "J", value: "n-channel", pins: ["D", "G", "S"], modes: analogMixedAllModes, domains: ["amplifier"] },
+  { id: "jfet-p", label: "P-JFET", category: "fet", symbol: "JP", tool: "semiconductor", symbolKind: "jfet-p", spicePrefix: "J", value: "p-channel", pins: ["D", "G", "S"], modes: analogMixedAllModes, domains: ["amplifier"] },
+  { id: "igbt", label: "IGBT", category: "power", symbol: "IGBT", tool: "semiconductor", symbolKind: "igbt", spicePrefix: "X", value: "power switch", pins: ["C", "G", "E"], modes: analogMixedBoardMixedModes, domains: ["dcdc"] },
+  { id: "scr", label: "SCR / thyristor", category: "power", symbol: "SCR", tool: "semiconductor", symbolKind: "scr", spicePrefix: "X", value: "thyristor", pins: ["A", "K", "G"], modes: analogMixedBoardMixedModes, domains: ["dcdc"] },
+  { id: "triac", label: "TRIAC", category: "power", symbol: "TRIAC", tool: "semiconductor", symbolKind: "triac", spicePrefix: "X", value: "ac switch", pins: ["MT1", "MT2", "G"], modes: analogMixedBoardMixedModes, domains: ["dcdc"] },
+  { id: "diode", label: "Diode", category: "diode", symbol: "D", tool: "diode", symbolKind: "diode", spicePrefix: "D", value: "1N4148", pins: ["A", "K"], modes: analogMixedBoardMixedModes, domains: ["dcdc", "amplifier"] },
+  { id: "zener-diode", label: "Zener diode", category: "diode", symbol: "DZ", tool: "diode", symbolKind: "zener-diode", spicePrefix: "D", value: "3.3 V", pins: ["A", "K"], modes: analogMixedBoardMixedModes, domains: ["dcdc", "amplifier"] },
+  { id: "schottky-diode", label: "Schottky diode", category: "diode", symbol: "DS", tool: "diode", symbolKind: "schottky-diode", spicePrefix: "D", value: "SS14", pins: ["A", "K"], modes: analogMixedBoardMixedModes, domains: ["dcdc"] },
+  { id: "led", label: "LED", category: "opto", symbol: "LED", tool: "diode", symbolKind: "led", spicePrefix: "D", value: "indicator", pins: ["A", "K"], modes: analogMixedBoardMixedModes, domains: ["dcdc", "amplifier"] },
+  { id: "photodiode", label: "Photodiode", category: "opto", symbol: "PD", tool: "diode", symbolKind: "photodiode", spicePrefix: "D", value: "sensor", pins: ["A", "K"], modes: analogMixedBoardMixedModes, domains: ["amplifier"] },
+  { id: "varactor", label: "Varactor diode", category: "diode", symbol: "DV", tool: "diode", symbolKind: "varactor", spicePrefix: "D", value: "tuning", pins: ["A", "K"], modes: analogMixedAllModes, domains: ["pll"] },
+  { id: "tvs", label: "TVS protection", category: "protection", symbol: "TVS", tool: "diode", symbolKind: "tvs", spicePrefix: "D", value: "ESD", pins: ["A", "K"], modes: analogMixedBoardMixedModes, domains: ["dcdc", "amplifier"] },
+  { id: "opamp-stage", label: "Differential op amp core", category: "analog macro", symbol: "AMP", tool: "macro", symbolKind: "opamp", spicePrefix: "X", value: "two-stage", pins: ["IN+", "IN-", "OUT", "VDD", "VSS"], modes: analogMixedIcMixedModes, domains: ["amplifier"] },
+  { id: "diff-pair", label: "Differential pair", category: "analog cell", symbol: "DIFF", tool: "macro", symbolKind: "diff-pair", spicePrefix: "X", value: "NMOS pair", pins: ["IN+", "IN-", "OUT+", "OUT-", "TAIL"], modes: analogMixedIcMixedModes, domains: ["amplifier", "pll"] },
+  { id: "current-mirror", label: "Current mirror", category: "analog cell", symbol: "MIR", tool: "macro", symbolKind: "current-mirror", spicePrefix: "X", value: "1:1", pins: ["IN", "OUT", "VDD", "VSS"], modes: analogMixedIcMixedModes, domains: ["amplifier", "pll"] },
+  { id: "charge-pump", label: "PLL charge pump", category: "pll macro", symbol: "CP", tool: "macro", symbolKind: "charge-pump", spicePrefix: "X", value: "50 uA", pins: ["UP", "DN", "OUT"], modes: analogMixedIcMixedModes, domains: ["pll"] },
+  { id: "vco-cell", label: "Current-starved VCO cell", category: "pll macro", symbol: "VCO", tool: "macro", symbolKind: "vco", spicePrefix: "X", value: "ring", pins: ["CTRL", "OUT"], modes: analogMixedIcMixedModes, domains: ["pll"] },
+  { id: "phase-detector", label: "Phase frequency detector", category: "pll macro", symbol: "PFD", tool: "macro", symbolKind: "pfd", spicePrefix: "X", value: "digital", pins: ["REF", "FB", "UP", "DN"], modes: analogMixedIcMixedModes, domains: ["pll"] },
+  { id: "divider", label: "Feedback divider", category: "pll macro", symbol: "DIV", tool: "macro", symbolKind: "divider", spicePrefix: "X", value: "N=100", pins: ["IN", "OUT"], modes: analogMixedIcMixedModes, domains: ["pll"] },
+  { id: "switch", label: "Power MOS switch", category: "power", symbol: "SW", tool: "semiconductor", symbolKind: "power-switch", spicePrefix: "M", value: "N-channel", pins: ["D", "G", "S"], modes: analogMixedBoardMixedModes, domains: ["dcdc"] },
+  { id: "controller", label: "PWM controller", category: "power", symbol: "CTRL", tool: "macro", symbolKind: "controller", spicePrefix: "X", value: "voltage mode", pins: ["FB", "COMP", "PWM"], modes: analogMixedBoardMixedModes, domains: ["dcdc"] },
+  { id: "comparator", label: "Comparator", category: "mixed signal", symbol: "CMP", tool: "macro", symbolKind: "comparator", spicePrefix: "X", value: "rail-to-rail", pins: ["IN+", "IN-", "OUT"], modes: analogMixedAllModes, domains: analogMixedAllDomains },
+  { id: "adc", label: "ADC block", category: "mixed signal", symbol: "ADC", tool: "macro", symbolKind: "adc", spicePrefix: "X", value: "12-bit SAR", pins: ["AIN", "CLK", "DOUT"], modes: analogMixedIcMixedModes, domains: analogMixedAllDomains },
+  { id: "dac", label: "DAC block", category: "mixed signal", symbol: "DAC", tool: "macro", symbolKind: "dac", spicePrefix: "X", value: "10-bit current", pins: ["DIN", "CLK", "AOUT"], modes: analogMixedIcMixedModes, domains: ["pll", "amplifier"] },
+  { id: "transmission-gate", label: "Transmission gate", category: "mixed signal", symbol: "TG", tool: "macro", symbolKind: "transmission-gate", spicePrefix: "X", value: "CMOS switch", pins: ["IN", "OUT", "EN", "ENB"], modes: analogMixedIcMixedModes, domains: ["pll", "amplifier"] },
+  { id: "logic-gate", label: "Logic gate", category: "digital assist", symbol: "LOGIC", tool: "macro", symbolKind: "logic", spicePrefix: "X", value: "NAND/NOR", pins: ["A", "B", "Y"], modes: analogMixedIcMixedModes, domains: ["pll", "dcdc"] },
+  { id: "flipflop", label: "Flip-flop", category: "digital assist", symbol: "DFF", tool: "macro", symbolKind: "flipflop", spicePrefix: "X", value: "edge triggered", pins: ["D", "CLK", "Q"], modes: analogMixedIcMixedModes, domains: ["pll", "dcdc"] },
+  { id: "voltage-source", label: "Voltage source", category: "stimulus", symbol: "V", tool: "macro", symbolKind: "voltage-source", spicePrefix: "V", value: "1.8 V", pins: ["+", "-"], modes: analogMixedAllModes, domains: analogMixedAllDomains },
+  { id: "current-source", label: "Current source", category: "stimulus", symbol: "I", tool: "macro", symbolKind: "current-source", spicePrefix: "I", value: "100 uA", pins: ["+", "-"], modes: analogMixedAllModes, domains: analogMixedAllDomains },
+  { id: "ac-source", label: "AC source", category: "stimulus", symbol: "VAC", tool: "macro", symbolKind: "ac-source", spicePrefix: "V", value: "AC 1", pins: ["+", "-"], modes: analogMixedAllModes, domains: ["amplifier", "pll"] },
+  { id: "pulse-source", label: "Pulse source", category: "stimulus", symbol: "VP", tool: "macro", symbolKind: "pulse-source", spicePrefix: "V", value: "PULSE", pins: ["+", "-"], modes: analogMixedAllModes, domains: analogMixedAllDomains },
+  { id: "connector", label: "Connector/header", category: "board interface", symbol: "J", tool: "macro", symbolKind: "connector", spicePrefix: "J", value: "pin header", pins: ["1", "2", "3"], modes: analogMixedBoardMixedModes, domains: ["dcdc", "amplifier"] },
+  { id: "fpga", label: "FPGA interface", category: "mixed signal", symbol: "FPGA", tool: "macro", symbolKind: "digital-block", spicePrefix: "X", value: "Nexys A7-100T", pins: ["IO", "CLK", "GND", "VCC"], modes: analogMixedBoardMixedModes, domains: ["pll", "dcdc"] },
+  { id: "mcu", label: "MCU interface", category: "mixed signal", symbol: "MCU", tool: "macro", symbolKind: "digital-block", spicePrefix: "X", value: "STM32", pins: ["GPIO", "ADC", "PWM"], modes: analogMixedBoardMixedModes, domains: ["dcdc", "amplifier"] },
+  { id: "sensor", label: "Sensor front end", category: "analog front end", symbol: "AFE", tool: "macro", symbolKind: "afe", spicePrefix: "X", value: "bridge/sensor", pins: ["IN+", "IN-", "OUT"], modes: analogMixedBoardMixedModes, domains: ["amplifier"] },
+  { id: "ground", label: "Ground", category: "reference", symbol: "GND", tool: "ground", symbolKind: "ground", spicePrefix: "0", value: "0", pins: ["0"], modes: analogMixedAllModes, domains: analogMixedAllDomains },
+  { id: "analog-ground", label: "Analog ground", category: "reference", symbol: "AGND", tool: "ground", symbolKind: "analog-ground", spicePrefix: "0", value: "0", pins: ["0"], modes: analogMixedAllModes, domains: analogMixedAllDomains },
+  { id: "chassis-ground", label: "Chassis ground", category: "reference", symbol: "CHS", tool: "ground", symbolKind: "chassis-ground", spicePrefix: "0", value: "0", pins: ["0"], modes: analogMixedBoardMixedModes, domains: ["dcdc", "amplifier"] },
+  { id: "vdd", label: "Supply rail", category: "reference", symbol: "VDD", tool: "supply", symbolKind: "vdd", spicePrefix: "V", value: "1.8 V", pins: ["VDD"], modes: analogMixedAllModes, domains: analogMixedAllDomains },
+  { id: "vss", label: "Negative rail", category: "reference", symbol: "VSS", tool: "supply", symbolKind: "vss", spicePrefix: "V", value: "-1.8 V", pins: ["VSS"], modes: analogMixedAllModes, domains: ["amplifier", "pll"] }
 ];
 const analogMixedStages = [
   { id: "schematic", label: "Schematic", description: "Graphical transistor, gate, passive, and macro-level design canvas." },
@@ -413,10 +450,11 @@ const analogMixedStages = [
   { id: "pdk", label: "PDK", description: "Process libraries, model files, corners, device rules, and technology abstraction." },
   { id: "libraries", label: "Libraries", description: "Component, symbol, footprint, IC cell, vendor import, and reusable design libraries." }
 ];
-const analogMixedPanelIds = ["netlist", "simulation", "math", "layout", "checks", "objects", "nets", "sources", "libraries", "pdk", "gerber", "notes"];
+const analogMixedPanelIds = ["backend", "netlist", "simulation", "math", "layout", "checks", "objects", "nets", "sources", "libraries", "pdk", "gerber", "notes"];
 const analogMixedStageCommandRegistry = {
   schematic: [
     { id: "save", label: "Save", hint: "Save this AM workspace" },
+    { id: "backend-analyze", label: "Analyze", hint: "Run the local AM backend analyzer" },
     { id: "netlist", label: "Netlist", hint: "Generate a SPICE-style netlist scaffold" },
     { id: "drc", label: "DRC", hint: "Check schematic/design-rule readiness" },
     { id: "erc", label: "ERC", hint: "Check electrical-rule readiness" },
@@ -2385,6 +2423,7 @@ function analogMixedDefaultState() {
     mathReport: "",
     layoutPlan: "",
     checkReport: "",
+    backendReport: "",
     libraryReport: "",
     pdkReport: "",
     gerberReport: "",
@@ -2463,6 +2502,7 @@ function normalizeAnalogMixedWorkspace(project) {
   workspace.mathReport = String(workspace.mathReport || "");
   workspace.layoutPlan = String(workspace.layoutPlan || "");
   workspace.checkReport = String(workspace.checkReport || "");
+  workspace.backendReport = String(workspace.backendReport || "");
   workspace.libraryReport = String(workspace.libraryReport || "");
   workspace.pdkReport = String(workspace.pdkReport || "");
   workspace.gerberReport = String(workspace.gerberReport || "");
@@ -2840,7 +2880,8 @@ function analogMixedRecordStageAction(action = "") {
 
 function analogMixedHandleStageCommand(action = "") {
   if (action === "save") return saveAnalogMixedWorkspace();
-  if (action === "netlist") return analogMixedGenerateNetlist();
+  if (action === "backend-analyze") return analogMixedRunBackendAnalysis("analysis");
+  if (action === "netlist") return analogMixedGenerateNetlistFromBackend();
   if (action === "calc") return analogMixedRunCalculations();
   if (action === "drc") return analogMixedRunChecks("drc");
   if (action === "erc") return analogMixedRunChecks("erc");
@@ -2869,45 +2910,223 @@ function analogMixedHandleStageCommand(action = "") {
   return analogMixedRecordStageAction(action);
 }
 
-function analogMixedComponentSymbol(component = {}, selected = false) {
-  const libraryItem = analogMixedLibraryItem(component.type);
-  const x = Number(component.x) || 0;
-  const y = Number(component.y) || 0;
-  const stroke = selected ? "#f59e0b" : "#14506c";
-  const fill = selected ? "#fff8e1" : "#effaff";
+function analogMixedSymbolText(component = {}, libraryItem = {}, options = {}) {
+  if (options.preview) return "";
   const label = escapeHtml(component.label || libraryItem.symbol);
   const value = escapeHtml(component.value || libraryItem.value || "");
-  const transform = analogMixedComponentTransform(component);
-  if (libraryItem.tool === "capacitor") {
-    return `<g class="am-symbol${selected ? " is-selected" : ""}" data-am-component="${escapeHtml(component.id)}" transform="${transform}">
-      <line x1="-42" y1="0" x2="-10" y2="0" /><line x1="10" y1="0" x2="42" y2="0" />
-      <line x1="-10" y1="-24" x2="-10" y2="24" /><line x1="10" y1="-24" x2="10" y2="24" />
-      <text x="-30" y="-34">${label}</text><text x="-30" y="48">${value}</text>
-    </g>`;
+  return `
+    <text class="am-symbol-label" x="-58" y="-42">${label}</text>
+    ${value ? `<text class="am-symbol-value" x="-58" y="58">${value}</text>` : ""}
+  `;
+}
+
+function analogMixedPassiveSymbol(kind = "resistor") {
+  if (kind === "capacitor" || kind === "polar-capacitor" || kind === "variable-capacitor") {
+    const polar = kind === "polar-capacitor" ? `<text class="am-symbol-plus" x="-28" y="-20">+</text>` : "";
+    const variable = kind === "variable-capacitor" ? `<line class="am-symbol-device-arrow" x1="-28" y1="30" x2="30" y2="-30" /><polygon class="am-symbol-device-arrow" points="30,-30 18,-26 26,-18" />` : "";
+    return `
+      <line x1="-58" y1="0" x2="-12" y2="0" /><line x1="12" y1="0" x2="58" y2="0" />
+      <line x1="-12" y1="-28" x2="-12" y2="28" /><line x1="12" y1="-28" x2="12" y2="28" />
+      ${polar}${variable}
+    `;
   }
-  if (libraryItem.tool === "resistor") {
-    return `<g class="am-symbol${selected ? " is-selected" : ""}" data-am-component="${escapeHtml(component.id)}" transform="${transform}">
-      <line x1="-52" y1="0" x2="-34" y2="0" /><polyline points="-34,0 -24,-16 -12,16 0,-16 12,16 24,-16 34,0" /><line x1="34" y1="0" x2="52" y2="0" />
-      <text x="-34" y="-30">${label}</text><text x="-34" y="46">${value}</text>
-    </g>`;
+  if (kind === "inductor" || kind === "ferrite-bead") {
+    const bead = kind === "ferrite-bead" ? `<rect class="am-symbol-soft-fill" x="-24" y="-20" width="48" height="40" rx="4" />` : "";
+    return `
+      <line x1="-62" y1="0" x2="-44" y2="0" />
+      <polyline points="-44,0 -36,-14 -28,14 -20,-14 -12,14 -4,-14 4,14 12,-14 20,14 28,-14 36,14 44,0" />
+      <line x1="44" y1="0" x2="62" y2="0" />
+      ${bead}
+    `;
   }
-  if (libraryItem.tool === "diode") {
-    return `<g class="am-symbol${selected ? " is-selected" : ""}" data-am-component="${escapeHtml(component.id)}" transform="${transform}">
-      <line x1="-46" y1="0" x2="-12" y2="0" /><line x1="16" y1="0" x2="46" y2="0" />
-      <polygon points="-12,-22 -12,22 16,0" fill="${fill}" stroke="${stroke}" /><line x1="18" y1="-24" x2="18" y2="24" />
-      <text x="-30" y="-34">${label}</text><text x="-30" y="48">${value}</text>
-    </g>`;
+  if (kind === "coupled-inductor" || kind === "transformer") {
+    return `
+      <polyline points="-66,-18 -56,-18 -50,-30 -42,-6 -34,-30 -26,-6 -18,-30 -10,-18 -2,-18" />
+      <polyline points="2,18 10,18 18,6 26,30 34,6 42,30 50,6 56,18 66,18" />
+      <line x1="-6" y1="-36" x2="-6" y2="36" /><line x1="6" y1="-36" x2="6" y2="36" />
+    `;
   }
-  if (libraryItem.tool === "ground") {
-    return `<g class="am-symbol${selected ? " is-selected" : ""}" data-am-component="${escapeHtml(component.id)}" transform="${transform}">
-      <line x1="0" y1="-32" x2="0" y2="0" /><line x1="-26" y1="0" x2="26" y2="0" /><line x1="-18" y1="10" x2="18" y2="10" /><line x1="-9" y1="20" x2="9" y2="20" />
-      <text x="-28" y="46">${label}</text>
-    </g>`;
+  if (kind === "crystal") {
+    return `
+      <line x1="-62" y1="0" x2="-30" y2="0" /><line x1="30" y1="0" x2="62" y2="0" />
+      <line x1="-30" y1="-28" x2="-30" y2="28" /><line x1="30" y1="-28" x2="30" y2="28" />
+      <rect class="am-symbol-soft-fill" x="-16" y="-24" width="32" height="48" rx="3" />
+    `;
   }
-  const width = libraryItem.tool === "macro" ? 116 : 92;
-  return `<g class="am-symbol${selected ? " is-selected" : ""}" data-am-component="${escapeHtml(component.id)}" transform="${transform}">
-    <rect x="${-width / 2}" y="-34" width="${width}" height="68" rx="6" fill="${fill}" stroke="${stroke}" />
-    <text x="${-width / 2 + 10}" y="-8">${label}</text><text x="${-width / 2 + 10}" y="16">${escapeHtml(libraryItem.symbol)}</text><text x="${-width / 2 + 10}" y="48">${value}</text>
+  if (kind === "fuse") {
+    return `<line x1="-62" y1="0" x2="-34" y2="0" /><polyline points="-34,0 -22,-12 -10,12 2,-12 14,12 26,-12 34,0" /><line x1="34" y1="0" x2="62" y2="0" />`;
+  }
+  const variable = kind === "variable-resistor" || kind === "potentiometer";
+  const tap = kind === "potentiometer" ? `<line x1="0" y1="-42" x2="0" y2="-12" /><circle class="am-symbol-port" cx="0" cy="-44" r="3" />` : "";
+  const arrow = variable ? `<line class="am-symbol-device-arrow" x1="-28" y1="28" x2="30" y2="-30" /><polygon class="am-symbol-device-arrow" points="30,-30 18,-26 26,-18" />` : "";
+  return `
+    <line x1="-64" y1="0" x2="-40" y2="0" />
+    <polyline points="-40,0 -30,-16 -18,16 -6,-16 6,16 18,-16 30,16 40,0" />
+    <line x1="40" y1="0" x2="64" y2="0" />
+    ${tap}${arrow}
+  `;
+}
+
+function analogMixedDiodeSymbol(kind = "diode") {
+  const cathode = kind === "zener-diode"
+    ? `<polyline points="18,-26 18,26 28,18" /><line x1="18" y1="-26" x2="8" y2="-18" />`
+    : kind === "schottky-diode"
+      ? `<line x1="18" y1="-26" x2="18" y2="26" /><line x1="26" y1="-20" x2="26" y2="20" />`
+      : `<line x1="18" y1="-26" x2="18" y2="26" />`;
+  const led = kind === "led" ? `<line class="am-symbol-device-arrow" x1="18" y1="-34" x2="48" y2="-58" /><polygon class="am-symbol-device-arrow" points="48,-58 36,-55 43,-46" /><line class="am-symbol-device-arrow" x1="30" y1="-24" x2="60" y2="-48" /><polygon class="am-symbol-device-arrow" points="60,-48 48,-45 55,-36" />` : "";
+  const photo = kind === "photodiode" ? `<line class="am-symbol-device-arrow" x1="54" y1="-58" x2="24" y2="-34" /><polygon class="am-symbol-device-arrow" points="24,-34 36,-37 29,-46" /><line class="am-symbol-device-arrow" x1="66" y1="-46" x2="36" y2="-22" /><polygon class="am-symbol-device-arrow" points="36,-22 48,-25 41,-34" />` : "";
+  const varactor = kind === "varactor" ? `<line x1="30" y1="-22" x2="30" y2="22" /><line x1="38" y1="-22" x2="38" y2="22" />` : "";
+  const tvs = kind === "tvs" ? `<polyline points="-30,-24 -22,-32 -14,-24" /><polyline points="30,24 22,32 14,24" />` : "";
+  return `
+    <line x1="-62" y1="0" x2="-14" y2="0" /><line x1="22" y1="0" x2="62" y2="0" />
+    <polygon class="am-symbol-soft-fill" points="-14,-24 -14,24 18,0" />
+    ${cathode}${led}${photo}${varactor}${tvs}
+  `;
+}
+
+function analogMixedMosfetSymbol(kind = "nmos") {
+  const isPmos = kind.includes("pmos");
+  const depletion = kind.includes("depletion");
+  const body = kind.includes("body") ? `<line x1="18" y1="0" x2="48" y2="0" /><circle class="am-symbol-port" cx="50" cy="0" r="3" /><text class="am-pin-label" x="54" y="5">B</text>` : "";
+  const arrowPoints = isPmos ? "20,12 34,4 34,20" : "34,12 20,4 20,20";
+  const bubble = isPmos ? `<circle class="am-symbol-bubble" cx="-30" cy="0" r="5" />` : "";
+  return `
+    <line x1="-62" y1="0" x2="-36" y2="0" /><line x1="-30" y1="-34" x2="-30" y2="34" />${bubble}
+    <line x1="-8" y1="-36" x2="-8" y2="${depletion ? "-8" : "-14"}" /><line x1="-8" y1="${depletion ? "-4" : "14"}" x2="-8" y2="36" />
+    <line x1="-8" y1="-36" x2="42" y2="-36" /><line x1="-8" y1="36" x2="42" y2="36" />
+    <line x1="42" y1="-36" x2="62" y2="-36" /><line x1="42" y1="36" x2="62" y2="36" />
+    <polygon class="am-symbol-device-arrow" points="${arrowPoints}" />
+    ${body}
+    <text class="am-pin-label" x="-66" y="-8">G</text><text class="am-pin-label" x="64" y="-32">D</text><text class="am-pin-label" x="64" y="42">S</text>
+  `;
+}
+
+function analogMixedBjtSymbol(kind = "bjt-npn") {
+  const isPnp = kind === "bjt-pnp";
+  const arrow = isPnp ? `<polygon class="am-symbol-device-arrow" points="18,20 30,16 24,8" />` : `<polygon class="am-symbol-device-arrow" points="32,30 20,26 28,18" />`;
+  return `
+    <line x1="-62" y1="0" x2="-18" y2="0" /><line x1="-18" y1="-36" x2="-18" y2="36" />
+    <line x1="-18" y1="-18" x2="42" y2="-52" /><line x1="42" y1="-52" x2="62" y2="-52" />
+    <line x1="-18" y1="18" x2="42" y2="52" /><line x1="42" y1="52" x2="62" y2="52" />
+    ${arrow}
+    <text class="am-pin-label" x="-66" y="-8">B</text><text class="am-pin-label" x="64" y="-48">C</text><text class="am-pin-label" x="64" y="56">E</text>
+  `;
+}
+
+function analogMixedJfetSymbol(kind = "jfet-n") {
+  const isP = kind === "jfet-p";
+  const arrow = isP ? `<polygon class="am-symbol-device-arrow" points="-26,0 -40,-8 -40,8" />` : `<polygon class="am-symbol-device-arrow" points="-42,0 -28,-8 -28,8" />`;
+  return `
+    <line x1="8" y1="-52" x2="8" y2="52" /><line x1="8" y1="-52" x2="58" y2="-52" /><line x1="8" y1="52" x2="58" y2="52" />
+    <line x1="-62" y1="0" x2="-20" y2="0" /><line x1="-20" y1="-32" x2="-20" y2="32" />
+    <line x1="-20" y1="0" x2="8" y2="0" />${arrow}
+    <text class="am-pin-label" x="-66" y="-8">G</text><text class="am-pin-label" x="60" y="-48">D</text><text class="am-pin-label" x="60" y="56">S</text>
+  `;
+}
+
+function analogMixedSourceSymbol(kind = "voltage-source") {
+  const current = kind === "current-source";
+  const ac = kind === "ac-source";
+  const pulse = kind === "pulse-source";
+  const center = current
+    ? `<line class="am-symbol-device-arrow" x1="0" y1="24" x2="0" y2="-24" /><polygon class="am-symbol-device-arrow" points="0,-26 -8,-12 8,-12" />`
+    : ac
+      ? `<path d="M -26 0 Q -13 -22 0 0 T 26 0" />`
+      : pulse
+        ? `<polyline points="-28,12 -14,12 -14,-12 6,-12 6,12 28,12" />`
+        : `<text class="am-source-mark" x="-7" y="-10">+</text><text class="am-source-mark" x="-5" y="24">-</text>`;
+  return `
+    <line x1="0" y1="-64" x2="0" y2="-34" /><line x1="0" y1="34" x2="0" y2="64" />
+    <circle class="am-symbol-soft-fill" cx="0" cy="0" r="34" />
+    ${center}
+  `;
+}
+
+function analogMixedGroundSymbol(kind = "ground") {
+  if (kind === "vdd" || kind === "vss") {
+    const up = kind === "vdd";
+    return `
+      <line x1="0" y1="${up ? "42" : "-42"}" x2="0" y2="0" />
+      <polyline points="-28,${up ? "0" : "0"} 0,${up ? "-32" : "32"} 28,0" />
+      <text class="am-source-mark" x="-18" y="${up ? "-42" : "56"}">${kind.toUpperCase()}</text>
+    `;
+  }
+  if (kind === "chassis-ground") {
+    return `<line x1="0" y1="-42" x2="0" y2="-8" /><line x1="-34" y1="-8" x2="34" y2="-8" /><polyline points="-24,2 -36,18 -18,18 -30,34" /><polyline points="0,2 -12,18 6,18 -6,34" /><polyline points="24,2 12,18 30,18 18,34" />`;
+  }
+  if (kind === "analog-ground") {
+    return `<line x1="0" y1="-42" x2="0" y2="0" /><polygon class="am-symbol-soft-fill" points="-34,0 34,0 0,40" />`;
+  }
+  return `<line x1="0" y1="-42" x2="0" y2="0" /><line x1="-34" y1="0" x2="34" y2="0" /><line x1="-22" y1="12" x2="22" y2="12" /><line x1="-10" y1="24" x2="10" y2="24" />`;
+}
+
+function analogMixedMacroSymbol(kind = "macro", libraryItem = {}) {
+  if (["opamp", "comparator"].includes(kind)) {
+    const mark = kind === "comparator" ? "CMP" : "AMP";
+    return `
+      <polygon class="am-symbol-soft-fill" points="-52,-46 -52,46 58,0" />
+      <line x1="-78" y1="-22" x2="-52" y2="-22" /><line x1="-78" y1="22" x2="-52" y2="22" /><line x1="58" y1="0" x2="82" y2="0" />
+      <text class="am-source-mark" x="-44" y="-16">+</text><text class="am-source-mark" x="-44" y="28">-</text>
+      <text class="am-block-mark" x="-10" y="6">${mark}</text>
+    `;
+  }
+  if (kind === "diff-pair") {
+    return `
+      <rect class="am-symbol-soft-fill" x="-70" y="-46" width="140" height="92" rx="8" />
+      <line x1="-48" y="-30" x2="-18" y="-4" /><line x1="48" y="-30" x2="18" y="-4" />
+      <line x1="-18" y="-4" x2="-18" y="32" /><line x1="18" y="-4" x2="18" y="32" /><line x1="-18" y="32" x2="18" y="32" /><line x1="0" y="32" x2="0" y="54" />
+      <text class="am-block-mark" x="-34" y="-54">DIFF</text>
+    `;
+  }
+  if (kind === "current-mirror") {
+    return `
+      <rect class="am-symbol-soft-fill" x="-70" y="-46" width="140" height="92" rx="8" />
+      <line x1="-42" y="-28" x2="-42" y="34" /><line x1="42" y="-28" x2="42" y="34" /><line x1="-42" y="-28" x2="42" y="-28" />
+      <polygon class="am-symbol-device-arrow" points="42,-2 28,-10 28,6" />
+      <text class="am-block-mark" x="-34" y="-54">MIRROR</text>
+    `;
+  }
+  if (kind === "transmission-gate") {
+    return `<line x1="-70" y1="0" x2="-28" y2="0" /><line x1="28" y1="0" x2="70" y2="0" /><polyline points="-28,-24 28,0 -28,24" /><polyline points="28,-24 -28,0 28,24" /><line x1="0" y1="-58" x2="0" y2="-24" /><line x1="0" y1="24" x2="0" y2="58" /><text class="am-block-mark" x="-16" y="-66">TG</text>`;
+  }
+  if (kind === "digital-block" || ["adc", "dac", "logic", "flipflop", "pfd", "divider", "controller", "afe", "charge-pump", "vco"].includes(kind)) {
+    const symbol = escapeHtml(libraryItem.symbol || "X");
+    return `
+      <rect class="am-symbol-soft-fill" x="-70" y="-42" width="140" height="84" rx="6" />
+      <line x1="-92" y1="-20" x2="-70" y2="-20" /><line x1="-92" y1="20" x2="-70" y2="20" />
+      <line x1="70" y1="-20" x2="92" y2="-20" /><line x1="70" y1="20" x2="92" y2="20" />
+      <text class="am-block-mark" x="${symbol.length > 4 ? "-42" : "-28"}" y="7">${symbol}</text>
+    `;
+  }
+  if (kind === "connector") {
+    return `<rect class="am-symbol-soft-fill" x="-58" y="-42" width="116" height="84" rx="5" />${[-24, 0, 24].map((y, index) => `<circle class="am-symbol-port" cx="-20" cy="${y}" r="5" /><line x1="-58" y1="${y}" x2="-25" y2="${y}" /><text class="am-pin-label" x="8" y="${y + 5}">${index + 1}</text>`).join("")}`;
+  }
+  return `
+    <rect class="am-symbol-soft-fill" x="-62" y="-36" width="124" height="72" rx="6" />
+    <text class="am-block-mark" x="-24" y="6">${escapeHtml(libraryItem.symbol || "X")}</text>
+  `;
+}
+
+function analogMixedSymbolBody(component = {}, libraryItem = {}) {
+  const kind = libraryItem.symbolKind || libraryItem.tool || "macro";
+  if (["resistor", "variable-resistor", "potentiometer", "capacitor", "polar-capacitor", "variable-capacitor", "inductor", "coupled-inductor", "transformer", "ferrite-bead", "crystal", "fuse"].includes(kind)) return analogMixedPassiveSymbol(kind);
+  if (["diode", "zener-diode", "schottky-diode", "led", "photodiode", "varactor", "tvs"].includes(kind)) return analogMixedDiodeSymbol(kind);
+  if (["nmos", "pmos", "nmos-body", "pmos-body", "depletion-nmos", "power-switch", "igbt"].includes(kind)) return analogMixedMosfetSymbol(kind === "power-switch" || kind === "igbt" ? "nmos-body" : kind);
+  if (["bjt-npn", "bjt-pnp"].includes(kind)) return analogMixedBjtSymbol(kind);
+  if (["jfet-n", "jfet-p"].includes(kind)) return analogMixedJfetSymbol(kind);
+  if (["voltage-source", "current-source", "ac-source", "pulse-source"].includes(kind)) return analogMixedSourceSymbol(kind);
+  if (["ground", "analog-ground", "chassis-ground", "vdd", "vss"].includes(kind)) return analogMixedGroundSymbol(kind);
+  if (["scr", "triac"].includes(kind)) return `${analogMixedDiodeSymbol("diode")}<line x1="-8" y1="34" x2="-40" y2="62" /><text class="am-pin-label" x="-52" y="68">G</text>`;
+  return analogMixedMacroSymbol(kind, libraryItem);
+}
+
+function analogMixedComponentSymbol(component = {}, selected = false, options = {}) {
+  const libraryItem = analogMixedLibraryItem(component.type);
+  const transform = options.preview ? "translate(84 54) scale(0.66)" : analogMixedComponentTransform(component);
+  const dataAttribute = options.preview ? "" : ` data-am-component="${escapeHtml(component.id)}"`;
+  return `<g class="am-symbol${selected ? " is-selected" : ""}${options.preview ? " is-preview" : ""}"${dataAttribute} transform="${transform}">
+    ${analogMixedSymbolBody(component, libraryItem)}
+    ${analogMixedSymbolText(component, libraryItem, options)}
   </g>`;
 }
 
@@ -3072,7 +3291,7 @@ function analogMixedMenuGroups(workspace) {
     { label: "File", items: ["Save AM", "Export SPICE netlist", "Export KiCad-style note", "Print design report"] },
     { label: "Design", items: ["IC transistor-level", "Board schematic", "Mixed IC + board", "Open schematic stage", "Open symbol stage", "Open footprint stage", "Annotate references"] },
     { label: "View", items: ["Zoom in", "Zoom out", "Fit canvas", "Toggle grid", "Pan tool", "Open 3D stage", "Toggle 3D overlay"] },
-    { label: "Checks", items: ["Run DRC", "Run ERC", "Run DRC and ERC", "Review warnings", "Clean floating labels"] },
+    { label: "Checks", items: ["Backend analysis", "Run DRC", "Run ERC", "Run DRC and ERC", "Review warnings", "Clean floating labels"] },
     { label: "Simulate", items: ["Operating point", "DC sweep", "AC analysis", "Transient", "Noise", "Monte Carlo plan", "Corner plan"] },
     { label: "Optimize", items: ["PLL loop targets", "Amplifier compensation", "DC-DC ripple", "Device sizing", "Power estimate"] },
     { label: "Layout", items: ["Open IC layout stage", "Open PCB stage", "Open 3D stage", "Generate layout checklist", "Parasitic note", "PCB handoff note", "IC matching note", "Gerber generation plan"] },
@@ -3087,6 +3306,7 @@ function analogMixedMenuGroups(workspace) {
   `).join("");
   const quickActions = [
     { id: "save", label: "Save" },
+    { id: "backend-analyze", label: "Analyze" },
     { id: "netlist", label: "Netlist" },
     { id: "calc", label: "Calculate" },
     { id: "drc", label: "DRC" },
@@ -3113,8 +3333,13 @@ function analogMixedRenderLibrary(workspace) {
   if (analogMixedLibraryCount) analogMixedLibraryCount.textContent = `${available.length} part${available.length === 1 ? "" : "s"}`;
   analogMixedLibraryList.innerHTML = available.map((item) => `
     <button type="button" class="${workspace.selectedLibraryId === item.id ? "is-selected" : ""}" data-am-library="${escapeHtml(item.id)}">
-      <strong>${escapeHtml(item.label)}</strong>
-      <span>${escapeHtml(item.category)} | ${escapeHtml(item.value)}</span>
+      <svg class="analog-mixed-library-symbol" viewBox="0 0 168 108" aria-hidden="true">
+        ${analogMixedComponentSymbol({ id: `library-${item.id}`, type: item.id, label: item.symbol, value: "", x: 84, y: 54 }, false, { preview: true })}
+      </svg>
+      <span class="analog-mixed-library-copy">
+        <strong>${escapeHtml(item.label)}</strong>
+        <span>${escapeHtml(item.category)} | ${escapeHtml(item.value)}</span>
+      </span>
     </button>
   `).join("") || `<p class="analog-mixed-muted">No matching components for this mode and focus.</p>`;
 }
@@ -3218,6 +3443,9 @@ function analogMixedCollectProjectSections(project = {}) {
 }
 
 function analogMixedOutputPanel(workspace) {
+  if (workspace.activePanel === "backend") {
+    return `<pre>${escapeHtml(workspace.backendReport || "Run Analyze to let the local AM backend inspect components, symbols, wires, labels, netlist readiness, and DRC/ERC status.")}</pre>`;
+  }
   if (workspace.activePanel === "netlist") {
     return `<pre>${escapeHtml(workspace.netlist || `Generate a SPICE-style netlist from the ${workspace.activeStage} stage when ready.`)}</pre>`;
   }
@@ -3319,6 +3547,57 @@ function saveAnalogMixedWorkspace() {
   setStatus("Analog/Mixed-Signal workspace saved into this local project.");
   analogMixedSetStatus("Saved AM workspace into the local project draft.");
   return true;
+}
+
+async function analogMixedRunBackendAnalysis(reason = "analysis") {
+  const project = activeAnalogMixedProject();
+  if (!project) return false;
+  const workspace = normalizeAnalogMixedWorkspace(project);
+  analogMixedSetStatus("Running local AM backend analyzer...");
+  try {
+    const response = await fetch("/api/analog-mixed/analyze", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        projectTitle: project.title || "Project",
+        workspace
+      })
+    });
+    const data = await response.json();
+    if (!response.ok || !data.ok) throw new Error(data.error || "AM backend analysis failed.");
+    const analysis = data.analysis || {};
+    workspace.backendReport = String(analysis.report || "");
+    workspace.netlist = String(analysis.netlist || workspace.netlist || "");
+    workspace.checkReport = String(analysis.checkReport || workspace.checkReport || "");
+    workspace.libraryReport = [
+      "Backend symbol inventory",
+      "",
+      ...(analysis.symbolLibrary || []).map((item) => `${item.id} | ${item.label} | ${item.category} | ${item.symbolKind}`)
+    ].join("\n");
+    workspace.activePanel = reason === "netlist" ? "netlist" : "backend";
+    markDraftNeedsSave();
+    scheduleAutosave();
+    renderAnalogMixedWorkspace();
+    analogMixedSetStatus("Local AM backend analysis completed.");
+    return true;
+  } catch (error) {
+    workspace.backendReport = [
+      "AM backend analysis could not complete.",
+      "",
+      error.message || "The local backend did not respond.",
+      "",
+      "The GUI remains usable. Netlist generation will fall back to the in-browser scaffold."
+    ].join("\n");
+    workspace.activePanel = "backend";
+    renderAnalogMixedWorkspace();
+    analogMixedSetStatus("AM backend analyzer unavailable; local GUI fallback remains active.");
+    return false;
+  }
+}
+
+async function analogMixedGenerateNetlistFromBackend() {
+  const completed = await analogMixedRunBackendAnalysis("netlist");
+  if (!completed) analogMixedGenerateNetlist();
 }
 
 function analogMixedGenerateNetlist() {
@@ -3591,7 +3870,7 @@ function handleAnalogMixedMenuItem(label = "") {
     return;
   }
   if (clean.includes("spice") || clean.includes("netlist")) {
-    analogMixedGenerateNetlist();
+    analogMixedGenerateNetlistFromBackend();
     return;
   }
   if (clean.includes("zoom in")) {
@@ -3630,8 +3909,12 @@ function handleAnalogMixedMenuItem(label = "") {
     analogMixedToggle3dPreview();
     return;
   }
+  if (clean.includes("backend analysis")) {
+    analogMixedRunBackendAnalysis("analysis");
+    return;
+  }
   if (clean.includes("run drc and erc")) {
-    analogMixedRunChecks("all");
+    analogMixedRunBackendAnalysis("analysis");
     return;
   }
   if (clean.includes("run drc") || clean.includes("design rules")) {

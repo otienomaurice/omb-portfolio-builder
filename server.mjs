@@ -3685,6 +3685,236 @@ function safeFileName(value) {
   return ext ? `${name}.${ext}` : name;
 }
 
+const analogMixedServerSymbols = [
+  ["resistor", "Resistor", "passive", "R", "resistor", ["1", "2"]],
+  ["variable-resistor", "Variable resistor", "passive", "R", "variable-resistor", ["1", "2"]],
+  ["potentiometer", "Potentiometer", "passive", "R", "potentiometer", ["A", "W", "B"]],
+  ["capacitor", "Capacitor", "passive", "C", "capacitor", ["1", "2"]],
+  ["polar-capacitor", "Polar capacitor", "passive", "C", "polar-capacitor", ["+", "-"]],
+  ["variable-capacitor", "Variable capacitor", "passive", "C", "variable-capacitor", ["1", "2"]],
+  ["inductor", "Inductor", "passive", "L", "inductor", ["1", "2"]],
+  ["coupled-inductor", "Coupled inductor", "magnetics", "L", "coupled-inductor", ["1", "2", "3", "4"]],
+  ["transformer", "Transformer", "magnetics", "X", "transformer", ["P1", "P2", "S1", "S2"]],
+  ["ferrite-bead", "Ferrite bead", "passive", "L", "ferrite-bead", ["1", "2"]],
+  ["crystal", "Crystal / resonator", "timing", "Y", "crystal", ["1", "2"]],
+  ["fuse", "Fuse", "protection", "F", "fuse", ["1", "2"]],
+  ["nmos", "NMOS transistor", "mosfet", "M", "nmos", ["D", "G", "S", "B"]],
+  ["pmos", "PMOS transistor", "mosfet", "M", "pmos", ["D", "G", "S", "B"]],
+  ["nmos-body", "NMOS with body", "mosfet", "M", "nmos-body", ["D", "G", "S", "B"]],
+  ["pmos-body", "PMOS with body", "mosfet", "M", "pmos-body", ["D", "G", "S", "B"]],
+  ["depletion-nmos", "Depletion NMOS", "mosfet", "M", "depletion-nmos", ["D", "G", "S", "B"]],
+  ["bjt-npn", "NPN transistor", "bipolar", "Q", "bjt-npn", ["C", "B", "E"]],
+  ["bjt-pnp", "PNP transistor", "bipolar", "Q", "bjt-pnp", ["C", "B", "E"]],
+  ["bjt", "BJT transistor", "bipolar", "Q", "bjt-npn", ["C", "B", "E"]],
+  ["jfet-n", "N-JFET", "fet", "J", "jfet-n", ["D", "G", "S"]],
+  ["jfet-p", "P-JFET", "fet", "J", "jfet-p", ["D", "G", "S"]],
+  ["igbt", "IGBT", "power", "X", "igbt", ["C", "G", "E"]],
+  ["scr", "SCR / thyristor", "power", "X", "scr", ["A", "K", "G"]],
+  ["triac", "TRIAC", "power", "X", "triac", ["MT1", "MT2", "G"]],
+  ["diode", "Diode", "diode", "D", "diode", ["A", "K"]],
+  ["zener-diode", "Zener diode", "diode", "D", "zener-diode", ["A", "K"]],
+  ["schottky-diode", "Schottky diode", "diode", "D", "schottky-diode", ["A", "K"]],
+  ["led", "LED", "opto", "D", "led", ["A", "K"]],
+  ["photodiode", "Photodiode", "opto", "D", "photodiode", ["A", "K"]],
+  ["varactor", "Varactor diode", "diode", "D", "varactor", ["A", "K"]],
+  ["tvs", "TVS protection", "protection", "D", "tvs", ["A", "K"]],
+  ["opamp-stage", "Differential op amp core", "analog macro", "X", "opamp", ["IN+", "IN-", "OUT", "VDD", "VSS"]],
+  ["diff-pair", "Differential pair", "analog cell", "X", "diff-pair", ["IN+", "IN-", "OUT+", "OUT-", "TAIL"]],
+  ["current-mirror", "Current mirror", "analog cell", "X", "current-mirror", ["IN", "OUT", "VDD", "VSS"]],
+  ["charge-pump", "PLL charge pump", "pll macro", "X", "charge-pump", ["UP", "DN", "OUT"]],
+  ["vco-cell", "Current-starved VCO cell", "pll macro", "X", "vco", ["CTRL", "OUT"]],
+  ["phase-detector", "Phase frequency detector", "pll macro", "X", "pfd", ["REF", "FB", "UP", "DN"]],
+  ["divider", "Feedback divider", "pll macro", "X", "divider", ["IN", "OUT"]],
+  ["switch", "Power MOS switch", "power", "M", "power-switch", ["D", "G", "S"]],
+  ["controller", "PWM controller", "power", "X", "controller", ["FB", "COMP", "PWM"]],
+  ["comparator", "Comparator", "mixed signal", "X", "comparator", ["IN+", "IN-", "OUT"]],
+  ["adc", "ADC block", "mixed signal", "X", "adc", ["AIN", "CLK", "DOUT"]],
+  ["dac", "DAC block", "mixed signal", "X", "dac", ["DIN", "CLK", "AOUT"]],
+  ["transmission-gate", "Transmission gate", "mixed signal", "X", "transmission-gate", ["IN", "OUT", "EN", "ENB"]],
+  ["logic-gate", "Logic gate", "digital assist", "X", "logic", ["A", "B", "Y"]],
+  ["flipflop", "Flip-flop", "digital assist", "X", "flipflop", ["D", "CLK", "Q"]],
+  ["voltage-source", "Voltage source", "stimulus", "V", "voltage-source", ["+", "-"]],
+  ["current-source", "Current source", "stimulus", "I", "current-source", ["+", "-"]],
+  ["ac-source", "AC source", "stimulus", "V", "ac-source", ["+", "-"]],
+  ["pulse-source", "Pulse source", "stimulus", "V", "pulse-source", ["+", "-"]],
+  ["connector", "Connector/header", "board interface", "J", "connector", ["1", "2", "3"]],
+  ["fpga", "FPGA interface", "mixed signal", "X", "digital-block", ["IO", "CLK", "GND", "VCC"]],
+  ["mcu", "MCU interface", "mixed signal", "X", "digital-block", ["GPIO", "ADC", "PWM"]],
+  ["sensor", "Sensor front end", "analog front end", "X", "afe", ["IN+", "IN-", "OUT"]],
+  ["ground", "Ground", "reference", "0", "ground", ["0"]],
+  ["analog-ground", "Analog ground", "reference", "0", "analog-ground", ["0"]],
+  ["chassis-ground", "Chassis ground", "reference", "0", "chassis-ground", ["0"]],
+  ["vdd", "Supply rail", "reference", "V", "vdd", ["VDD"]],
+  ["vss", "Negative rail", "reference", "V", "vss", ["VSS"]]
+].map(([id, label, category, spicePrefix, symbolKind, pins]) => ({ id, label, category, spicePrefix, symbolKind, pins }));
+
+function analogMixedServerLibraryItem(id = "") {
+  return analogMixedServerSymbols.find((item) => item.id === id) || analogMixedServerSymbols[0];
+}
+
+function normalizeAnalogMixedServerWorkspace(workspace = {}) {
+  const source = workspace && typeof workspace === "object" ? workspace : {};
+  return {
+    mode: String(source.mode || "mixed"),
+    focus: String(source.focus || "amplifier"),
+    components: Array.isArray(source.components) ? source.components.map((component, index) => ({
+      id: String(component.id || `component-${index + 1}`),
+      type: String(component.type || "resistor"),
+      label: String(component.label || ""),
+      value: String(component.value || ""),
+      x: Number(component.x) || 0,
+      y: Number(component.y) || 0,
+      rotation: Number(component.rotation) || 0,
+      notes: String(component.notes || "")
+    })) : [],
+    wires: Array.isArray(source.wires) ? source.wires.map((wire, index) => ({
+      id: String(wire.id || `wire-${index + 1}`),
+      name: String(wire.name || `net_${index + 1}`),
+      x1: Number(wire.x1) || 0,
+      y1: Number(wire.y1) || 0,
+      x2: Number(wire.x2) || 0,
+      y2: Number(wire.y2) || 0
+    })) : [],
+    labels: Array.isArray(source.labels) ? source.labels.map((label, index) => ({
+      id: String(label.id || `label-${index + 1}`),
+      text: String(label.text || `label_${index + 1}`),
+      x: Number(label.x) || 0,
+      y: Number(label.y) || 0
+    })) : [],
+    stageData: source.stageData && typeof source.stageData === "object" ? source.stageData : {},
+    parameters: source.parameters && typeof source.parameters === "object" ? source.parameters : {}
+  };
+}
+
+function analogMixedServerValue(value = "", fallback = "") {
+  const raw = String(value || fallback || "").trim();
+  if (!raw) return "UNSET";
+  return raw.replace(/\bohm\b/ig, "").replace(/\s+/g, "");
+}
+
+function analogMixedServerNodeNames(workspace, component, index, pins) {
+  const nearby = workspace.wires.filter((wire) => {
+    const nearStart = Math.abs(wire.x1 - component.x) < 90 && Math.abs(wire.y1 - component.y) < 90;
+    const nearEnd = Math.abs(wire.x2 - component.x) < 90 && Math.abs(wire.y2 - component.y) < 90;
+    return nearStart || nearEnd;
+  }).map((wire) => wire.name || `net_${index + 1}`);
+  const nodes = pins.map((pin, pinIndex) => nearby[pinIndex] || (String(pin).toUpperCase().includes("GND") || pin === "0" ? "0" : `n${index + 1}_${pinIndex + 1}`));
+  if (nodes.length === 1) nodes.push("0");
+  return nodes;
+}
+
+function analogMixedServerComponentLine(workspace, component, index) {
+  const item = analogMixedServerLibraryItem(component.type);
+  if (item.spicePrefix === "0") return `* ${component.label || item.label}: reference node ${item.label}`;
+  const prefix = item.spicePrefix || "X";
+  const reference = `${prefix}${String(component.label || index + 1).replace(/^[A-Za-z]+/, "") || index + 1}`;
+  const nodes = analogMixedServerNodeNames(workspace, component, index, item.pins);
+  if (prefix === "M") return `${reference} ${nodes.slice(0, 4).join(" ")} ${safeSegment(component.type, "model")} W_L=${analogMixedServerValue(component.value, "unsized")} ; ${item.label}`;
+  if (prefix === "Q" || prefix === "J" || prefix === "D") return `${reference} ${nodes.slice(0, item.pins.length).join(" ")} ${safeSegment(component.type, "model")} ${analogMixedServerValue(component.value)} ; ${item.label}`;
+  if (prefix === "V" || prefix === "I") return `${reference} ${nodes[0] || `n${index + 1}`} ${nodes[1] || "0"} ${analogMixedServerValue(component.value, prefix === "V" ? "DC 1" : "DC 1m")} ; ${item.label}`;
+  if (["R", "C", "L", "F", "Y"].includes(prefix)) return `${reference} ${nodes[0] || `n${index + 1}`} ${nodes[1] || "0"} ${analogMixedServerValue(component.value, item.label)} ; ${item.label}`;
+  return `${reference} ${nodes.join(" ")} ${safeSegment(component.type, "subckt")} ; ${item.label}`;
+}
+
+function analogMixedServerNetlist(projectTitle = "Project", workspaceInput = {}) {
+  const workspace = normalizeAnalogMixedServerWorkspace(workspaceInput);
+  const lines = [
+    `* OMB AM backend netlist - ${projectTitle || "Project"}`,
+    `* Mode: ${workspace.mode}; Focus: ${workspace.focus}`,
+    "* Generated by the local AM EDA analyzer. Review nodes and models before external SPICE simulation.",
+    ""
+  ];
+  workspace.components.forEach((component, index) => {
+    lines.push(analogMixedServerComponentLine(workspace, component, index));
+  });
+  if (!workspace.components.length) lines.push("* No components placed yet.");
+  if (workspace.labels.length) {
+    lines.push("", "* Schematic labels");
+    workspace.labels.forEach((label) => lines.push(`* ${label.text} at (${label.x}, ${label.y})`));
+  }
+  lines.push("", ".end");
+  return lines.join("\n");
+}
+
+function analogMixedServerCheckReport(projectTitle = "Project", workspaceInput = {}) {
+  const workspace = normalizeAnalogMixedServerWorkspace(workspaceInput);
+  const issues = [];
+  const refCounts = new Map();
+  workspace.components.forEach((component) => {
+    const item = analogMixedServerLibraryItem(component.type);
+    const ref = String(component.label || "").trim();
+    if (!ref) issues.push({ severity: "warning", message: `${item.label} has no reference designator.` });
+    if (ref) refCounts.set(ref, (refCounts.get(ref) || 0) + 1);
+    if (!String(component.value || "").trim() && !["reference", "board interface"].includes(item.category)) issues.push({ severity: "warning", message: `${ref || item.label} has no value, sizing, model, or intent note.` });
+  });
+  for (const [ref, count] of refCounts.entries()) {
+    if (count > 1) issues.push({ severity: "error", message: `Duplicate reference designator ${ref}.` });
+  }
+  workspace.wires.forEach((wire) => {
+    if (wire.x1 === wire.x2 && wire.y1 === wire.y2) issues.push({ severity: "error", message: `Wire ${wire.name || wire.id} has zero length.` });
+    if (!String(wire.name || "").trim()) issues.push({ severity: "warning", message: `Wire ${wire.id} is unnamed.` });
+  });
+  if (workspace.components.length && !workspace.wires.length) issues.push({ severity: "warning", message: "Components exist, but no wire-level connectivity has been drawn yet." });
+  if (workspace.mode !== "board" && !workspace.stageData?.pdk?.modelFiles?.length) issues.push({ severity: "info", message: "No PDK model files are registered for IC-level simulation yet." });
+  if (!workspace.components.some((component) => analogMixedServerLibraryItem(component.type).category === "reference")) issues.push({ severity: "info", message: "No explicit ground or supply reference symbol has been placed." });
+  const title = `AM backend DRC/ERC report for ${projectTitle || "Project"}`;
+  return {
+    issues,
+    text: [
+      title,
+      `Mode: ${workspace.mode}; focus: ${workspace.focus}; components: ${workspace.components.length}; wires: ${workspace.wires.length}; labels: ${workspace.labels.length}`,
+      "",
+      ...(issues.length ? issues.map((issue) => `${issue.severity.toUpperCase()}: ${issue.message}`) : ["No blocking issues found by the current backend analyzer."])
+    ].join("\n")
+  };
+}
+
+function analogMixedAnalyzeWorkspace(projectTitle = "Project", workspaceInput = {}) {
+  const workspace = normalizeAnalogMixedServerWorkspace(workspaceInput);
+  const categoryCounts = {};
+  const symbolCounts = {};
+  workspace.components.forEach((component) => {
+    const item = analogMixedServerLibraryItem(component.type);
+    categoryCounts[item.category] = (categoryCounts[item.category] || 0) + 1;
+    symbolCounts[item.symbolKind] = (symbolCounts[item.symbolKind] || 0) + 1;
+  });
+  const checks = analogMixedServerCheckReport(projectTitle, workspace);
+  const netlist = analogMixedServerNetlist(projectTitle, workspace);
+  const report = [
+    `AM backend analysis for ${projectTitle || "Project"}`,
+    "",
+    `Placed components: ${workspace.components.length}`,
+    `Drawn wires: ${workspace.wires.length}`,
+    `Named labels: ${workspace.labels.length}`,
+    `Mode/focus: ${workspace.mode} / ${workspace.focus}`,
+    "",
+    "Component categories:",
+    ...(Object.keys(categoryCounts).length ? Object.entries(categoryCounts).map(([category, count]) => `- ${category}: ${count}`) : ["- no components placed"]),
+    "",
+    "Symbol inventory:",
+    ...(Object.keys(symbolCounts).length ? Object.entries(symbolCounts).map(([kind, count]) => `- ${kind}: ${count}`) : ["- no symbols placed"]),
+    "",
+    "Backend readiness:",
+    "- Schematic symbol catalog: available",
+    "- Netlist extraction scaffold: available",
+    "- DRC/ERC lightweight checks: available",
+    "- SPICE solve, LVS, parasitic extraction, and PDK-specific DRC: future engine hooks",
+    "",
+    checks.text
+  ].join("\n");
+  return {
+    generatedAt: new Date().toISOString(),
+    engine: "OMB AM local backend analyzer",
+    report,
+    netlist,
+    checkReport: checks.text,
+    issues: checks.issues,
+    categoryCounts,
+    symbolCounts,
+    symbolLibrary: analogMixedServerSymbols
+  };
+}
+
 function resolveInsideRoot(...segments) {
   const target = path.normalize(path.join(root, ...segments));
   if (!target.startsWith(root)) {
@@ -5307,10 +5537,41 @@ async function handleApi(request, response, url) {
     return true;
   }
 
+  if (request.method === "GET" && url.pathname === "/api/analog-mixed/symbol-library") {
+    if (!isLocalRequest(request)) {
+      sendJson(response, 403, { error: "Analog/Mixed-Signal backend details are only available from this computer." });
+      return true;
+    }
+    sendJson(response, 200, { ok: true, symbols: analogMixedServerSymbols });
+    return true;
+  }
+
   if (request.method !== "POST") return false;
 
   if (!isLocalRequest(request)) {
     sendJson(response, 403, { error: "Write actions are only allowed from this computer." });
+    return true;
+  }
+
+  if (url.pathname === "/api/analog-mixed/analyze") {
+    try {
+      const body = await readRequestJson(request);
+      const analysis = analogMixedAnalyzeWorkspace(body.projectTitle || body.title || "Project", body.workspace || {});
+      sendJson(response, 200, { ok: true, analysis });
+    } catch (error) {
+      sendJson(response, 400, { ok: false, error: error.message || "Analog/Mixed-Signal analysis could not be completed." });
+    }
+    return true;
+  }
+
+  if (url.pathname === "/api/analog-mixed/netlist") {
+    try {
+      const body = await readRequestJson(request);
+      const netlist = analogMixedServerNetlist(body.projectTitle || body.title || "Project", body.workspace || {});
+      sendJson(response, 200, { ok: true, netlist });
+    } catch (error) {
+      sendJson(response, 400, { ok: false, error: error.message || "Analog/Mixed-Signal netlist could not be generated." });
+    }
     return true;
   }
 
