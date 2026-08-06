@@ -11,7 +11,7 @@
     <link rel="shortcut icon" href="assets/favicon.ico" />
     <link rel="apple-touch-icon" sizes="180x180" href="assets/apple-touch-icon.png" />
     <link rel="stylesheet" href="styles.css" />
-    <link rel="stylesheet" href="template-preview.css?v=0.3.1" />
+    <link rel="stylesheet" href="template-preview.css?v=0.3.2" />
   </head>
   <body class="template-preview-page">
       <header class="template-header">
@@ -549,7 +549,8 @@
                           <p>Compile Code is for local engineering work inside a project. It is separate from Add Code, which is only for polished source snippets that should appear in the public portfolio. Compile Code can stay empty, but when you use it, treat it like a small project workspace.</p>
                           <p>The left explorer holds folders and source files. Drag the vertical divider beside Solution Explorer when names need more room. Imported files and imported directories appear in the tree without opening editor tabs; click a file in the tree when you want to view or edit it. The editor opens closeable file views, and the bottom output area contains Console, Messages, Terminal, Scope, Syntax, and Input so build feedback, live syntax diagnostics, and run settings stay organized instead of mixing everything into one box.</p>
                           <ol>
-                              <li>Right-click the workspace tree to add a source file, create a folder, import several files, import a directory, move selected files, or delete a selected file or folder. Compiler checks and tool installation live under the Tools menu, not in the right-click tree menu.</li>
+                              <li>Right-click the workspace tree to add a source file, create a folder, import several files, import a directory, move selected files, delete a selected file or folder, or open that workspace location in Windows File Explorer. Compiler checks and tool installation live under the Tools menu, not in the right-click tree menu.</li>
+                              <li>Use File, Open workspace in File Explorer to open the project compile folder, or File, Reveal active source in File Explorer to select the active file in normal Windows file tools.</li>
                               <li>Use the Project menu inside Compile Code for project-level actions such as saving, previewing, cleaning empty project sections, or opening the append-code destination chooser.</li>
                               <li>Ctrl-click files in the Solution Explorer to select several files, then right-click one of the selected files and choose Delete selected or Move selected.</li>
                               <li>Right-click a folder to delete the folder and the files contained inside it after confirmation.</li>
@@ -567,7 +568,7 @@
                               <li>Use the tiny HDL setup strip to synthesize the active file, selected design files, or all design files. Use Simulation to choose the testbench top and Constraints to attach XDC, SDC, or TCL files. Click the small HDL strip button to hide or restore those controls when you need more editor space.</li>
                               <li>Use Synthesize for Verilog or SystemVerilog to run the HDL synthesis path with Yosys from OSS CAD Suite. The normal Synthesize button reuses cached synthesis results when the HDL snapshot, selected source set, constraints, and selected top module have not changed; Shift-click Synthesize when you intentionally want a fresh rebuild.</li>
                               <li>The default FPGA target is the Digilent Nexys A7-100T using the AMD/Xilinx Artix-7 XC7A100T-1CSG324C device. Synthesis summaries and source details show that target so exported notes stay tied to the intended board.</li>
-                              <li>In the synthesized design schematic window, choose a top module when auto-detect is not the module you intended. Use the search box to highlight modules, cells, nets, ports, sources, and instances inside large synthesized designs.</li>
+                              <li>In the synthesized design schematic window, choose a top module when auto-detect is not the module you intended. Use the search box to highlight modules, cells, nets, ports, sources, and instances inside large synthesized designs. Use Fit when the diagram should scale into the visible schematic canvas.</li>
                               <li>After synthesis, the builder saves the Yosys netlist JSON and a DOT diagram artifact, then opens a large schematic explorer. Drag the title bar to move the window, drag any edge or corner to resize it, and use the compact tabs to inspect the design without oversized controls taking over the schematic.</li>
                               <li>Schematic nets are drawn as straight or right-angled connections, not curved graph lines. Inputs stay on the left, outputs stay on the right, logic is packed into balanced columns and rows, and arrows show the direction of signal flow whenever Yosys exposes enough connection information.</li>
                               <li>Double-click a module or synthesized cell to expand it. Repeated double-clicks reveal more detail: ports first, then child blocks or leaf-gate information, then connected nets. Double-click past the deepest level to collapse it again.</li>
@@ -609,7 +610,8 @@
                               <li>Use DRC and ERC to create lightweight design-check reports. The current checks look for duplicate references, missing values, zero-length wires, components without nets, and missing PDK/PCB readiness notes. Later engines can replace or extend these checks.</li>
                               <li>Use Generate netlist to create a starter SPICE-style netlist scaffold from the schematic. It is a project artifact for review and future SPICE wiring, not a final signoff-grade netlist yet.</li>
                               <li>Use Run calculations to populate PLL, amplifier, or DC-to-DC math notes. These reports collect target values and list the next calculations needed for sizing, stability, ripple, loop bandwidth, compensation, or power estimates.</li>
-                              <li>Use Libraries menu items for local library planning and future DigiKey or Mouser import records. Vendor API import is deliberately treated as a controlled future hook because it will need API credentials, vendor terms, and symbol/footprint validation.</li>
+                              <li>Use Libraries menu items for local library planning, SKY130-style device cells, LTspice primitives, Texas Instruments part shells, KiCad PCB footprints, and future DigiKey or Mouser import records. Vendor API import is deliberately treated as a controlled future hook because it will need API credentials, vendor terms, and symbol/footprint validation.</li>
+                              <li>Imported AM devices become normal project library items. Place them on the canvas, then edit model name, package, footprint, value, and device parameters in the Inspector before analysis or handoff planning.</li>
                               <li>Use PDK menu items to register the intended IC process lane. The builder currently stores process notes and future PDK hooks for generic education, Sky130-style flows, GF180-style flows, model files, corners, DRC/LVS assumptions, and extraction planning.</li>
                               <li>Use Gerber generation plan for board manufacturing readiness. This stage tracks copper, drill, mask, silkscreen, pick-and-place, assembly, fabrication, and BOM handoff items before a real PCB backend is connected.</li>
                               <li>Use 3D View to open the physical board/package/IC planning window. It gives the GUI a dedicated place for future rotation, package clearance, stackup, exploded view, and mechanical checks.</li>
@@ -1900,6 +1902,6 @@
           </div>
       </div>
       <script src="electronics-search.js?v=0.2.90"></script>
-      <script src="template-preview.js?v=0.3.1"></script>
+      <script src="template-preview.js?v=0.3.2"></script>
   </body>
 </html>

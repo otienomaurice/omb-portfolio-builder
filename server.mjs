@@ -501,6 +501,42 @@ async function openCompilePowerShellTerminal(payload = {}) {
   };
 }
 
+async function openCompileWorkspaceExplorer(payload = {}) {
+  if (process.platform !== "win32") {
+    throw new Error("File Explorer launching is only available on Windows.");
+  }
+  const projectFolder = safeSegment(payload.projectId, "project");
+  const kind = ["file", "folder", "workspace"].includes(payload.kind) ? payload.kind : "workspace";
+  const language = normalizeCodeLanguage(payload.language || "text");
+  const relativePath = kind === "file"
+    ? safeCodeRelativePath(payload.relativePath || payload.path || "", language)
+    : safeCodeDirectoryPath(payload.relativePath || payload.path || "");
+  const projectRoot = resolveInsideCompileRoot(projectFolder);
+  const targetPath = relativePath ? resolveInsideCompileRoot(projectFolder, relativePath) : projectRoot;
+  const existingTarget = await pathExists(targetPath);
+  const folderPath = kind === "file" ? path.dirname(targetPath) : targetPath;
+  await mkdir(folderPath, { recursive: true });
+  const explorerArgs = kind === "file" && existingTarget
+    ? [`/select,${targetPath}`]
+    : [kind === "folder" || existingTarget ? targetPath : folderPath];
+  const child = spawn("explorer.exe", explorerArgs, {
+    cwd: folderPath,
+    detached: true,
+    shell: false,
+    stdio: "ignore",
+    windowsHide: false
+  });
+  child.unref();
+  return {
+    ok: true,
+    kind,
+    rootPath: compileRoot,
+    projectPath: projectRoot,
+    targetPath: existingTarget ? targetPath : folderPath,
+    selectedFile: kind === "file" && existingTarget
+  };
+}
+
 function stripTerminalCwdSentinel(result = {}, sentinel = "") {
   if (!sentinel) return { result, cwdAbsolute: "" };
   const marker = new RegExp(`^${escapeRegExp(sentinel)}(.+)$`, "m");
@@ -3747,9 +3783,32 @@ const analogMixedServerSymbols = [
   ["vdd", "Supply rail", "reference", "V", "vdd", ["VDD"]],
   ["vss", "Negative rail", "reference", "V", "vss", ["VSS"]]
 ].map(([id, label, category, spicePrefix, symbolKind, pins]) => ({ id, label, category, spicePrefix, symbolKind, pins }));
+const analogMixedServerImportedSymbols = [
+  ["sky130-nfet-01v8", "SKY130 nfet_01v8", "sky130 mosfet", "M", "nmos-body", ["D", "G", "S", "B"], "SKY130", "sky130_fd_pr__nfet_01v8"],
+  ["sky130-pfet-01v8", "SKY130 pfet_01v8", "sky130 mosfet", "M", "pmos-body", ["D", "G", "S", "B"], "SKY130", "sky130_fd_pr__pfet_01v8"],
+  ["sky130-res-high-po", "SKY130 poly resistor", "sky130 passive", "R", "resistor", ["1", "2"], "SKY130", "sky130_fd_pr__res_high_po"],
+  ["sky130-mimcap", "SKY130 MIM capacitor", "sky130 passive", "C", "capacitor", ["1", "2"], "SKY130", "sky130_fd_pr__cap_mim_m3_1"],
+  ["sky130-diode-pw2nd", "SKY130 pn diode", "sky130 diode", "D", "diode", ["A", "K"], "SKY130", "sky130_fd_pr__diode_pw2nd_05v5"],
+  ["ltspice-vswitch", "LTspice voltage switch", "ltspice primitive", "S", "power-switch", ["N+", "N-", "NC+", "NC-"], "LTspice", "SWMOD"],
+  ["ltspice-vcvs", "LTspice VCVS", "ltspice source", "E", "voltage-source", ["OUT+", "OUT-", "IN+", "IN-"], "LTspice", "E"],
+  ["ltspice-behavioral-source", "LTspice behavioral source", "ltspice source", "B", "voltage-source", ["+", "-"], "LTspice", "B"],
+  ["ltspice-opamp-universal", "LTspice universal op amp", "ltspice macro", "X", "opamp", ["IN+", "IN-", "V+", "V-", "OUT"], "LTspice", "UniversalOpamp2"],
+  ["ti-opamp-generic", "TI op amp model shell", "ti analog", "X", "opamp", ["IN+", "IN-", "V+", "V-", "OUT"], "Texas Instruments", "TI_OPAMP_MODEL"],
+  ["ti-buck-controller-shell", "TI buck regulator shell", "ti power", "X", "controller", ["VIN", "SW", "BOOT", "FB", "COMP", "EN", "GND"], "Texas Instruments", "TI_BUCK_MODEL"],
+  ["ti-current-sense-amp-shell", "TI current-sense amp shell", "ti analog", "X", "afe", ["IN+", "IN-", "V+", "GND", "OUT", "REF"], "Texas Instruments", "TI_CSA_MODEL"],
+  ["ti-gate-driver-shell", "TI gate-driver shell", "ti power", "X", "controller", ["IN", "VDD", "OUT", "GND"], "Texas Instruments", "TI_DRIVER_MODEL"],
+  ["kicad-r-0603", "KiCad resistor 0603", "kicad passive", "R", "resistor", ["1", "2"], "KiCad", "R_0603"],
+  ["kicad-c-0603", "KiCad capacitor 0603", "kicad passive", "C", "capacitor", ["1", "2"], "KiCad", "C_0603"],
+  ["kicad-l-shielded", "KiCad shielded inductor", "kicad power", "L", "inductor", ["1", "2"], "KiCad", "L_Shielded"],
+  ["kicad-testpoint", "KiCad test point", "kicad interface", "X", "connector", ["1"], "KiCad", "TestPoint"]
+].map(([id, label, category, spicePrefix, symbolKind, pins, source, modelName]) => ({ id, label, category, spicePrefix, symbolKind, pins, source, modelName, deviceLevel: true }));
 
 function analogMixedServerLibraryItem(id = "") {
-  return analogMixedServerSymbols.find((item) => item.id === id) || analogMixedServerSymbols[0];
+  return analogMixedServerAllSymbols().find((item) => item.id === id) || analogMixedServerSymbols[0];
+}
+
+function analogMixedServerAllSymbols() {
+  return [...analogMixedServerSymbols, ...analogMixedServerImportedSymbols];
 }
 
 function normalizeAnalogMixedServerWorkspace(workspace = {}) {
@@ -3765,7 +3824,15 @@ function normalizeAnalogMixedServerWorkspace(workspace = {}) {
       x: Number(component.x) || 0,
       y: Number(component.y) || 0,
       rotation: Number(component.rotation) || 0,
-      notes: String(component.notes || "")
+      notes: String(component.notes || ""),
+      source: String(component.source || ""),
+      pdk: String(component.pdk || ""),
+      vendor: String(component.vendor || ""),
+      modelName: String(component.modelName || ""),
+      footprint: String(component.footprint || ""),
+      packageName: String(component.packageName || ""),
+      deviceLevel: Boolean(component.deviceLevel),
+      parameters: component.parameters && typeof component.parameters === "object" ? component.parameters : {}
     })) : [],
     wires: Array.isArray(source.wires) ? source.wires.map((wire, index) => ({
       id: String(wire.id || `wire-${index + 1}`),
@@ -3792,6 +3859,13 @@ function analogMixedServerValue(value = "", fallback = "") {
   return raw.replace(/\bohm\b/ig, "").replace(/\s+/g, "");
 }
 
+function analogMixedServerParamSuffix(parameters = {}) {
+  const entries = Object.entries(parameters && typeof parameters === "object" ? parameters : {})
+    .map(([key, value]) => [String(key || "").trim(), String(value ?? "").trim()])
+    .filter(([key, value]) => key && value);
+  return entries.length ? entries.map(([key, value]) => `${key.toUpperCase()}=${analogMixedServerValue(value)}`).join(" ") : "";
+}
+
 function analogMixedServerNodeNames(workspace, component, index, pins) {
   const nearby = workspace.wires.filter((wire) => {
     const nearStart = Math.abs(wire.x1 - component.x) < 90 && Math.abs(wire.y1 - component.y) < 90;
@@ -3809,11 +3883,13 @@ function analogMixedServerComponentLine(workspace, component, index) {
   const prefix = item.spicePrefix || "X";
   const reference = `${prefix}${String(component.label || index + 1).replace(/^[A-Za-z]+/, "") || index + 1}`;
   const nodes = analogMixedServerNodeNames(workspace, component, index, item.pins);
-  if (prefix === "M") return `${reference} ${nodes.slice(0, 4).join(" ")} ${safeSegment(component.type, "model")} W_L=${analogMixedServerValue(component.value, "unsized")} ; ${item.label}`;
-  if (prefix === "Q" || prefix === "J" || prefix === "D") return `${reference} ${nodes.slice(0, item.pins.length).join(" ")} ${safeSegment(component.type, "model")} ${analogMixedServerValue(component.value)} ; ${item.label}`;
+  const modelName = safeSegment(component.modelName || item.modelName || component.type, "model");
+  const parameterSuffix = analogMixedServerParamSuffix(component.parameters);
+  if (prefix === "M") return `${reference} ${nodes.slice(0, 4).join(" ")} ${modelName} ${parameterSuffix || `W_L=${analogMixedServerValue(component.value, "unsized")}`} ; ${item.label}${component.source ? ` (${component.source})` : ""}`;
+  if (prefix === "Q" || prefix === "J" || prefix === "D") return `${reference} ${nodes.slice(0, item.pins.length).join(" ")} ${modelName} ${parameterSuffix || analogMixedServerValue(component.value)} ; ${item.label}${component.source ? ` (${component.source})` : ""}`;
   if (prefix === "V" || prefix === "I") return `${reference} ${nodes[0] || `n${index + 1}`} ${nodes[1] || "0"} ${analogMixedServerValue(component.value, prefix === "V" ? "DC 1" : "DC 1m")} ; ${item.label}`;
-  if (["R", "C", "L", "F", "Y"].includes(prefix)) return `${reference} ${nodes[0] || `n${index + 1}`} ${nodes[1] || "0"} ${analogMixedServerValue(component.value, item.label)} ; ${item.label}`;
-  return `${reference} ${nodes.join(" ")} ${safeSegment(component.type, "subckt")} ; ${item.label}`;
+  if (["R", "C", "L", "F", "Y"].includes(prefix)) return `${reference} ${nodes[0] || `n${index + 1}`} ${nodes[1] || "0"} ${analogMixedServerValue(component.value, item.label)} ${parameterSuffix} ; ${item.label}${component.footprint ? ` footprint=${component.footprint}` : ""}`;
+  return `${reference} ${nodes.join(" ")} ${modelName} ${parameterSuffix} ; ${item.label}${component.source ? ` (${component.source})` : ""}`;
 }
 
 function analogMixedServerNetlist(projectTitle = "Project", workspaceInput = {}) {
@@ -3911,7 +3987,7 @@ function analogMixedAnalyzeWorkspace(projectTitle = "Project", workspaceInput = 
     issues: checks.issues,
     categoryCounts,
     symbolCounts,
-    symbolLibrary: analogMixedServerSymbols
+    symbolLibrary: analogMixedServerAllSymbols()
   };
 }
 
@@ -5542,7 +5618,7 @@ async function handleApi(request, response, url) {
       sendJson(response, 403, { error: "Analog/Mixed-Signal backend details are only available from this computer." });
       return true;
     }
-    sendJson(response, 200, { ok: true, symbols: analogMixedServerSymbols });
+    sendJson(response, 200, { ok: true, symbols: analogMixedServerAllSymbols() });
     return true;
   }
 
@@ -5668,6 +5744,17 @@ async function handleApi(request, response, url) {
       sendJson(response, 200, result);
     } catch (error) {
       sendJson(response, 400, { ok: false, error: error.message || "PowerShell terminal could not be opened." });
+    }
+    return true;
+  }
+
+  if (url.pathname === "/api/code/open-explorer") {
+    try {
+      const body = await readRequestJson(request);
+      const result = await openCompileWorkspaceExplorer(body);
+      sendJson(response, 200, result);
+    } catch (error) {
+      sendJson(response, 400, { ok: false, error: error.message || "File Explorer could not be opened." });
     }
     return true;
   }

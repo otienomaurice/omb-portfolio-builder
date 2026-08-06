@@ -437,6 +437,54 @@ const analogMixedComponentLibrary = [
   { id: "vdd", label: "Supply rail", category: "reference", symbol: "VDD", tool: "supply", symbolKind: "vdd", spicePrefix: "V", value: "1.8 V", pins: ["VDD"], modes: analogMixedAllModes, domains: analogMixedAllDomains },
   { id: "vss", label: "Negative rail", category: "reference", symbol: "VSS", tool: "supply", symbolKind: "vss", spicePrefix: "V", value: "-1.8 V", pins: ["VSS"], modes: analogMixedAllModes, domains: ["amplifier", "pll"] }
 ];
+const analogMixedDeviceImportSources = {
+  sky130: {
+    label: "SKY130 open PDK",
+    kind: "pdk",
+    description: "Device-level IC primitives for transistor, resistor, capacitor, diode, and guard-ring planning.",
+    devices: [
+      { id: "sky130-nfet-01v8", label: "SKY130 nfet_01v8", category: "sky130 mosfet", symbol: "MNS", tool: "semiconductor", symbolKind: "nmos-body", spicePrefix: "M", value: "W=1u L=0.15u", pins: ["D", "G", "S", "B"], modes: analogMixedIcMixedModes, domains: ["pll", "amplifier"], source: "SKY130", pdk: "sky130", modelName: "sky130_fd_pr__nfet_01v8", deviceLevel: true, footprint: "IC layout device", packageName: "layout", parameters: { w: "1u", l: "0.15u", nf: "1", m: "1", corner: "tt" } },
+      { id: "sky130-pfet-01v8", label: "SKY130 pfet_01v8", category: "sky130 mosfet", symbol: "MPS", tool: "semiconductor", symbolKind: "pmos-body", spicePrefix: "M", value: "W=2u L=0.15u", pins: ["D", "G", "S", "B"], modes: analogMixedIcMixedModes, domains: ["pll", "amplifier"], source: "SKY130", pdk: "sky130", modelName: "sky130_fd_pr__pfet_01v8", deviceLevel: true, footprint: "IC layout device", packageName: "layout", parameters: { w: "2u", l: "0.15u", nf: "1", m: "1", corner: "tt" } },
+      { id: "sky130-res-high-po", label: "SKY130 poly resistor", category: "sky130 passive", symbol: "RPS", tool: "resistor", symbolKind: "resistor", spicePrefix: "R", value: "10k", pins: ["1", "2"], modes: analogMixedIcMixedModes, domains: analogMixedAllDomains, source: "SKY130", pdk: "sky130", modelName: "sky130_fd_pr__res_high_po", deviceLevel: true, footprint: "resistor layout", packageName: "layout", parameters: { resistance: "10k", width: "0.35u", length: "10u", corner: "tt" } },
+      { id: "sky130-mimcap", label: "SKY130 MIM capacitor", category: "sky130 passive", symbol: "CMS", tool: "capacitor", symbolKind: "capacitor", spicePrefix: "C", value: "1p", pins: ["1", "2"], modes: analogMixedIcMixedModes, domains: ["pll", "amplifier"], source: "SKY130", pdk: "sky130", modelName: "sky130_fd_pr__cap_mim_m3_1", deviceLevel: true, footprint: "mimcap layout", packageName: "layout", parameters: { capacitance: "1p", width: "2u", length: "2u", corner: "tt" } },
+      { id: "sky130-diode-pw2nd", label: "SKY130 pn diode", category: "sky130 diode", symbol: "DDS", tool: "diode", symbolKind: "diode", spicePrefix: "D", value: "area=1", pins: ["A", "K"], modes: analogMixedIcMixedModes, domains: ["amplifier", "dcdc"], source: "SKY130", pdk: "sky130", modelName: "sky130_fd_pr__diode_pw2nd_05v5", deviceLevel: true, footprint: "diode layout", packageName: "layout", parameters: { area: "1", perimeter: "1", corner: "tt" } }
+    ]
+  },
+  ltspice: {
+    label: "LTspice device primitives",
+    kind: "spice",
+    description: "SPICE-first primitives and behavioral sources that can produce immediate netlist content.",
+    devices: [
+      { id: "ltspice-vswitch", label: "LTspice voltage switch", category: "ltspice primitive", symbol: "SW", tool: "semiconductor", symbolKind: "power-switch", spicePrefix: "S", value: "SWMOD", pins: ["N+", "N-", "NC+", "NC-"], modes: analogMixedAllModes, domains: ["pll", "dcdc"], source: "LTspice", modelName: "SWMOD", deviceLevel: true, footprint: "simulation-only", packageName: "model", parameters: { ron: "1", roff: "1Meg", vt: "0.5", vh: "0" } },
+      { id: "ltspice-vcvs", label: "LTspice VCVS", category: "ltspice source", symbol: "E", tool: "macro", symbolKind: "voltage-source", spicePrefix: "E", value: "gain=10", pins: ["OUT+", "OUT-", "IN+", "IN-"], modes: analogMixedAllModes, domains: ["amplifier", "pll"], source: "LTspice", modelName: "E", deviceLevel: true, footprint: "simulation-only", packageName: "model", parameters: { gain: "10" } },
+      { id: "ltspice-behavioral-source", label: "LTspice behavioral source", category: "ltspice source", symbol: "B", tool: "macro", symbolKind: "voltage-source", spicePrefix: "B", value: "V=V(in)", pins: ["+", "-"], modes: analogMixedAllModes, domains: analogMixedAllDomains, source: "LTspice", modelName: "B", deviceLevel: true, footprint: "simulation-only", packageName: "model", parameters: { expression: "V=V(in)" } },
+      { id: "ltspice-opamp-universal", label: "LTspice universal op amp", category: "ltspice macro", symbol: "UOP", tool: "macro", symbolKind: "opamp", spicePrefix: "X", value: "UniversalOpamp2", pins: ["IN+", "IN-", "V+", "V-", "OUT"], modes: analogMixedAllModes, domains: ["amplifier"], source: "LTspice", modelName: "UniversalOpamp2", deviceLevel: true, footprint: "simulation-only", packageName: "subckt", parameters: { gbw: "10Meg", aol: "100k", slew: "10V/u" } }
+    ]
+  },
+  texas: {
+    label: "Texas Instruments model shells",
+    kind: "vendor",
+    description: "Editable vendor-level shells for TI analog and power devices. Attach official models/datasheets later when needed.",
+    devices: [
+      { id: "ti-opamp-generic", label: "TI op amp model shell", category: "ti analog", symbol: "TIAMP", tool: "macro", symbolKind: "opamp", spicePrefix: "X", value: "TI_OPAMP_MODEL", pins: ["IN+", "IN-", "V+", "V-", "OUT"], modes: analogMixedBoardMixedModes, domains: ["amplifier"], source: "Texas Instruments", vendor: "TI", modelName: "TI_OPAMP_MODEL", deviceLevel: true, footprint: "Package_SO:SOIC-8_3.9x4.9mm_P1.27mm", packageName: "SOIC-8", parameters: { supply: "5V", gbw: "10MHz", slew: "5V/us", noise: "vendor model" } },
+      { id: "ti-buck-controller-shell", label: "TI buck regulator shell", category: "ti power", symbol: "TIBUCK", tool: "macro", symbolKind: "controller", spicePrefix: "X", value: "TI_BUCK_MODEL", pins: ["VIN", "SW", "BOOT", "FB", "COMP", "EN", "GND"], modes: analogMixedBoardMixedModes, domains: ["dcdc"], source: "Texas Instruments", vendor: "TI", modelName: "TI_BUCK_MODEL", deviceLevel: true, footprint: "Package_SO:SO-PowerPAD-8", packageName: "PowerPAD", parameters: { vin: "12V", vout: "5V", fsw: "500kHz", iout: "2A" } },
+      { id: "ti-current-sense-amp-shell", label: "TI current-sense amp shell", category: "ti analog", symbol: "CSA", tool: "macro", symbolKind: "afe", spicePrefix: "X", value: "TI_CSA_MODEL", pins: ["IN+", "IN-", "V+", "GND", "OUT", "REF"], modes: analogMixedBoardMixedModes, domains: ["amplifier", "dcdc"], source: "Texas Instruments", vendor: "TI", modelName: "TI_CSA_MODEL", deviceLevel: true, footprint: "Package_TO_SOT_SMD:SOT-23-6", packageName: "SOT-23-6", parameters: { gain: "50V/V", bandwidth: "350kHz", commonMode: "0-26V" } },
+      { id: "ti-gate-driver-shell", label: "TI gate-driver shell", category: "ti power", symbol: "GDRV", tool: "macro", symbolKind: "controller", spicePrefix: "X", value: "TI_DRIVER_MODEL", pins: ["IN", "VDD", "OUT", "GND"], modes: analogMixedBoardMixedModes, domains: ["dcdc"], source: "Texas Instruments", vendor: "TI", modelName: "TI_DRIVER_MODEL", deviceLevel: true, footprint: "Package_TO_SOT_SMD:SOT-23-5", packageName: "SOT-23-5", parameters: { driveCurrent: "1A", deadtime: "external", uvlo: "vendor model" } }
+    ]
+  },
+  kicad: {
+    label: "KiCad PCB template library",
+    kind: "pcb",
+    description: "Board-level symbols and footprints aligned to a KiCad-style schematic-to-PCB workflow.",
+    devices: [
+      { id: "kicad-r-0603", label: "KiCad resistor 0603", category: "kicad passive", symbol: "R", tool: "resistor", symbolKind: "resistor", spicePrefix: "R", value: "10k", pins: ["1", "2"], modes: analogMixedBoardMixedModes, domains: analogMixedAllDomains, source: "KiCad", deviceLevel: true, footprint: "Resistor_SMD:R_0603_1608Metric", packageName: "0603", parameters: { tolerance: "1%", power: "0.1W", voltage: "75V" } },
+      { id: "kicad-c-0603", label: "KiCad capacitor 0603", category: "kicad passive", symbol: "C", tool: "capacitor", symbolKind: "capacitor", spicePrefix: "C", value: "100n", pins: ["1", "2"], modes: analogMixedBoardMixedModes, domains: analogMixedAllDomains, source: "KiCad", deviceLevel: true, footprint: "Capacitor_SMD:C_0603_1608Metric", packageName: "0603", parameters: { dielectric: "X7R", voltage: "25V", tolerance: "10%" } },
+      { id: "kicad-l-shielded", label: "KiCad shielded inductor", category: "kicad power", symbol: "L", tool: "inductor", symbolKind: "inductor", spicePrefix: "L", value: "10u", pins: ["1", "2"], modes: analogMixedBoardMixedModes, domains: ["dcdc"], source: "KiCad", deviceLevel: true, footprint: "Inductor_SMD:L_6.3x6.3mm", packageName: "shielded SMD", parameters: { saturationCurrent: "3A", dcr: "50m", ripple: "design" } },
+      { id: "kicad-testpoint", label: "KiCad test point", category: "kicad interface", symbol: "TP", tool: "macro", symbolKind: "connector", spicePrefix: "X", value: "test point", pins: ["1"], modes: analogMixedBoardMixedModes, domains: analogMixedAllDomains, source: "KiCad", deviceLevel: true, footprint: "TestPoint:TestPoint_Pad_D1.5mm", packageName: "pad", parameters: { netClass: "signal", expose: "yes" } }
+    ]
+  }
+};
+const analogMixedDeviceCatalog = Object.values(analogMixedDeviceImportSources).flatMap((source) => source.devices);
 const analogMixedStages = [
   { id: "schematic", label: "Schematic", description: "Graphical transistor, gate, passive, and macro-level design canvas." },
   { id: "symbol", label: "Symbol", description: "Reusable symbols, ports, labels, pins, and block interfaces." },
@@ -527,8 +575,10 @@ const analogMixedStageCommandRegistry = {
   libraries: [
     { id: "save", label: "Save", hint: "Save libraries stage" },
     { id: "local-library", label: "Local", hint: "Plan local component library" },
-    { id: "digikey", label: "DigiKey", hint: "Plan DigiKey import" },
-    { id: "mouser", label: "Mouser", hint: "Plan Mouser import" },
+    { id: "import-sky130", label: "SKY130", hint: "Import SKY130 device-level primitives" },
+    { id: "import-ltspice", label: "LTspice", hint: "Import LTspice primitives and simulation shells" },
+    { id: "import-texas", label: "TI", hint: "Import Texas Instruments editable device shells" },
+    { id: "import-kicad", label: "KiCad", hint: "Import KiCad footprint-oriented PCB parts" },
     { id: "symbols", label: "Symbols", hint: "Plan symbol library" },
     { id: "footprints", label: "Footprints", hint: "Plan footprint library" }
   ]
@@ -2413,6 +2463,8 @@ function analogMixedDefaultState() {
     show3dPreview: false,
     activePdk: "generic-educational-pdk",
     activeVendorSource: "local-library",
+    importedDeviceIds: [],
+    importHistory: [],
     components: [],
     wires: [],
     labels: [],
@@ -2462,22 +2514,45 @@ function normalizeAnalogMixedWorkspace(project) {
   workspace.show3dPreview = Boolean(workspace.show3dPreview);
   workspace.activePdk = String(workspace.activePdk || defaults.activePdk);
   workspace.activeVendorSource = String(workspace.activeVendorSource || defaults.activeVendorSource);
+  workspace.importedDeviceIds = Array.isArray(workspace.importedDeviceIds)
+    ? [...new Set(workspace.importedDeviceIds.map((id) => String(id || "")).filter(Boolean))]
+    : [];
+  workspace.importHistory = Array.isArray(workspace.importHistory)
+    ? workspace.importHistory.map((item) => ({
+      source: String(item?.source || ""),
+      label: String(item?.label || ""),
+      count: Math.max(0, Number(item?.count) || 0),
+      importedAt: String(item?.importedAt || "")
+    })).filter((item) => item.source || item.label)
+    : [];
   workspace.selectedComponentId = String(workspace.selectedComponentId || "");
-  workspace.selectedLibraryId = analogMixedComponentLibrary.some((item) => item.id === workspace.selectedLibraryId)
+  workspace.selectedLibraryId = analogMixedLibraryItemsForWorkspace(workspace).some((item) => item.id === workspace.selectedLibraryId)
     ? workspace.selectedLibraryId
     : "resistor";
-  workspace.components = Array.isArray(workspace.components) ? workspace.components.map((component, index) => ({
-    id: String(component.id || `amc-${Date.now()}-${index}`),
-    type: String(component.type || component.libraryId || "resistor"),
-    label: String(component.label || component.ref || ""),
-    value: String(component.value || ""),
-    x: Math.max(40, Math.min(1360, Number(component.x) || 160 + index * 80)),
-    y: Math.max(40, Math.min(780, Number(component.y) || 160)),
-    rotation: Number(component.rotation) || 0,
-    mirrored: Boolean(component.mirrored),
-    domain: Object.keys(analogMixedDomains).includes(component.domain) ? component.domain : workspace.focus,
-    notes: String(component.notes || "")
-  })) : [];
+  workspace.components = Array.isArray(workspace.components) ? workspace.components.map((component, index) => {
+    const type = String(component.type || component.libraryId || "resistor");
+    const libraryItem = analogMixedLibraryItem(type);
+    return {
+      id: String(component.id || `amc-${Date.now()}-${index}`),
+      type,
+      label: String(component.label || component.ref || ""),
+      value: String(component.value || libraryItem.value || ""),
+      x: Math.max(40, Math.min(1360, Number(component.x) || 160 + index * 80)),
+      y: Math.max(40, Math.min(780, Number(component.y) || 160)),
+      rotation: Number(component.rotation) || 0,
+      mirrored: Boolean(component.mirrored),
+      domain: Object.keys(analogMixedDomains).includes(component.domain) ? component.domain : workspace.focus,
+      notes: String(component.notes || ""),
+      source: String(component.source || libraryItem.source || "local"),
+      pdk: String(component.pdk || libraryItem.pdk || ""),
+      vendor: String(component.vendor || libraryItem.vendor || ""),
+      modelName: String(component.modelName || libraryItem.modelName || ""),
+      footprint: String(component.footprint || libraryItem.footprint || ""),
+      packageName: String(component.packageName || libraryItem.packageName || ""),
+      deviceLevel: component.deviceLevel !== undefined ? Boolean(component.deviceLevel) : Boolean(libraryItem.deviceLevel),
+      parameters: { ...analogMixedDefaultComponentParameters(libraryItem), ...(component.parameters && typeof component.parameters === "object" ? component.parameters : {}) }
+    };
+  }) : [];
   workspace.wires = Array.isArray(workspace.wires) ? workspace.wires.map((wire, index) => ({
     id: String(wire.id || `amw-${Date.now()}-${index}`),
     name: String(wire.name || `net_${index + 1}`),
@@ -2538,16 +2613,35 @@ function analogMixedPointFromEvent(event, workspace) {
   };
 }
 
+function analogMixedAllLibraryItems() {
+  return [...analogMixedComponentLibrary, ...analogMixedDeviceCatalog];
+}
+
 function analogMixedLibraryItem(id = "") {
-  return analogMixedComponentLibrary.find((item) => item.id === id) || analogMixedComponentLibrary[0];
+  return analogMixedAllLibraryItems().find((item) => item.id === id) || analogMixedComponentLibrary[0];
+}
+
+function analogMixedLibraryItemsForWorkspace(workspace) {
+  const imported = new Set(Array.isArray(workspace?.importedDeviceIds) ? workspace.importedDeviceIds : []);
+  return [
+    ...analogMixedComponentLibrary,
+    ...analogMixedDeviceCatalog.filter((item) => imported.has(item.id))
+  ];
+}
+
+function analogMixedDefaultComponentParameters(libraryItem = {}) {
+  const defaults = libraryItem.parameters && typeof libraryItem.parameters === "object" ? libraryItem.parameters : {};
+  return Object.fromEntries(Object.entries(defaults).map(([key, value]) => [key, String(value ?? "")]));
 }
 
 function analogMixedAvailableComponents(workspace) {
   const filter = String(workspace?.libraryFilter || "").trim().toLowerCase();
-  return analogMixedComponentLibrary.filter((item) => {
-    const modeMatch = item.modes.includes(workspace.mode);
-    const domainMatch = item.domains.includes(workspace.focus);
-    const filterMatch = !filter || [item.label, item.category, item.symbol, item.value].join(" ").toLowerCase().includes(filter);
+  return analogMixedLibraryItemsForWorkspace(workspace).filter((item) => {
+    const modes = Array.isArray(item.modes) ? item.modes : analogMixedAllModes;
+    const domains = Array.isArray(item.domains) ? item.domains : analogMixedAllDomains;
+    const modeMatch = modes.includes(workspace.mode);
+    const domainMatch = domains.includes(workspace.focus);
+    const filterMatch = !filter || [item.label, item.category, item.symbol, item.value, item.source, item.modelName, item.footprint, item.packageName].join(" ").toLowerCase().includes(filter);
     return modeMatch && domainMatch && filterMatch;
   });
 }
@@ -2600,7 +2694,15 @@ function analogMixedAddComponent(project, libraryId, point = {}) {
     y: Math.max(40, Math.min(780, point.y || 160)),
     rotation: 0,
     domain: workspace.focus,
-    notes: ""
+    notes: "",
+    source: libraryItem.source || "local",
+    pdk: libraryItem.pdk || "",
+    vendor: libraryItem.vendor || "",
+    modelName: libraryItem.modelName || "",
+    footprint: libraryItem.footprint || "",
+    packageName: libraryItem.packageName || "",
+    deviceLevel: Boolean(libraryItem.deviceLevel),
+    parameters: analogMixedDefaultComponentParameters(libraryItem)
   };
   workspace.components.push(component);
   workspace.selectedComponentId = component.id;
@@ -2784,6 +2886,55 @@ function analogMixedPrepareLibraryReport(source = "local") {
   analogMixedSetStatus(`${source} library workflow prepared.`);
 }
 
+function analogMixedImportDeviceSource(sourceId = "sky130") {
+  const project = activeAnalogMixedProject();
+  if (!project) return;
+  const workspace = normalizeAnalogMixedWorkspace(project);
+  const source = analogMixedDeviceImportSources[sourceId] || analogMixedDeviceImportSources.sky130;
+  const before = new Set(workspace.importedDeviceIds);
+  source.devices.forEach((device) => before.add(device.id));
+  workspace.importedDeviceIds = [...before];
+  workspace.activeVendorSource = source.label;
+  if (sourceId === "sky130") workspace.activePdk = "sky130";
+  const stageData = workspace.stageData.libraries;
+  const importedAt = new Date().toLocaleString();
+  stageData.componentImports = Array.isArray(stageData.componentImports) ? stageData.componentImports : [];
+  stageData.componentImports.unshift({
+    source: sourceId,
+    label: source.label,
+    count: source.devices.length,
+    importedAt,
+    kind: source.kind
+  });
+  stageData.componentImports = stageData.componentImports.slice(0, 30);
+  workspace.importHistory.unshift({
+    source: sourceId,
+    label: source.label,
+    count: source.devices.length,
+    importedAt
+  });
+  workspace.importHistory = workspace.importHistory.slice(0, 30);
+  workspace.libraryFilter = "";
+  workspace.selectedLibraryId = source.devices[0]?.id || workspace.selectedLibraryId;
+  workspace.activeStage = "libraries";
+  workspace.activePanel = "libraries";
+  workspace.libraryReport = [
+    `${source.label} imported`,
+    "",
+    source.description,
+    "",
+    "Device-level entries now available in the component library:",
+    ...source.devices.map((device) => `- ${device.label} | ${device.modelName || device.source || "model"} | ${device.footprint || device.packageName || "no footprint"} | parameters: ${Object.keys(device.parameters || {}).join(", ") || "none"}`),
+    "",
+    "Editing rule: after placement, select the device and edit model, footprint, package, value, and device parameters from the Inspector."
+  ].join("\n");
+  if (sourceId === "kicad") analogMixedApplyKicadTemplate({ silent: true });
+  markDraftNeedsSave();
+  scheduleAutosave();
+  renderAnalogMixedWorkspace();
+  analogMixedSetStatus(`${source.label} devices imported into the AM library.`);
+}
+
 function analogMixedPreparePdkReport(pdkName = "generic-educational-pdk") {
   const project = activeAnalogMixedProject();
   if (!project) return;
@@ -2801,6 +2952,113 @@ function analogMixedPreparePdkReport(pdkName = "generic-educational-pdk") {
   scheduleAutosave();
   renderAnalogMixedWorkspace();
   analogMixedSetStatus(`${pdkName} selected for IC-level planning.`);
+}
+
+function analogMixedApplyKicadTemplate(options = {}) {
+  const project = activeAnalogMixedProject();
+  if (!project) return;
+  const workspace = normalizeAnalogMixedWorkspace(project);
+  const pcbData = workspace.stageData.pcb || {};
+  pcbData.boardStackup = pcbData.boardStackup || "2-layer FR-4, 1.6 mm, KiCad-style copper/mask/silkscreen/drill outputs";
+  pcbData.template = {
+    source: "KiCad",
+    schematicFormat: ".kicad_sch",
+    boardFormat: ".kicad_pcb",
+    netlistFormat: "SPICE / KiCad netlist handoff",
+    defaultLayers: ["F.Cu", "B.Cu", "F.Mask", "B.Mask", "F.SilkS", "B.SilkS", "Edge.Cuts"],
+    netClasses: ["Default", "Power", "Analog", "Sensitive", "Switching"],
+    drc: ["clearance", "track width", "via size", "edge clearance", "courtyard", "silkscreen overlap"]
+  };
+  pcbData.rules = [
+    "Keep switching-current loops compact.",
+    "Separate quiet analog sense nodes from noisy switch nodes.",
+    "Use Kelvin sensing for current and feedback paths where possible.",
+    "Tie schematic symbols to KiCad footprints before Gerber generation.",
+    ...(Array.isArray(pcbData.rules) ? pcbData.rules : [])
+  ].slice(0, 20);
+  workspace.stageData.pcb = pcbData;
+  workspace.layoutPlan = [
+    "KiCad PCB template applied",
+    "",
+    `Stackup: ${pcbData.boardStackup}`,
+    `Layers: ${pcbData.template.defaultLayers.join(", ")}`,
+    `Net classes: ${pcbData.template.netClasses.join(", ")}`,
+    "",
+    "PCB workflow: schematic capture -> annotation -> footprint assignment -> board placement -> routing -> DRC -> Gerber/drill/BOM outputs."
+  ].join("\n");
+  workspace.activeStage = "pcb";
+  workspace.activePanel = "layout";
+  if (!options.silent) {
+    markDraftNeedsSave();
+    scheduleAutosave();
+    renderAnalogMixedWorkspace();
+    analogMixedSetStatus("KiCad-style PCB template applied.");
+  }
+}
+
+function analogMixedPrepareVirtuosoFlow() {
+  const project = activeAnalogMixedProject();
+  if (!project) return;
+  const workspace = normalizeAnalogMixedWorkspace(project);
+  const layoutData = workspace.stageData["ic-layout"] || {};
+  layoutData.virtuoso = {
+    views: ["schematic", "symbol", "testbench", "layout", "extracted", "config"],
+    checks: ["schematic check", "LVS plan", "DRC plan", "PEX plan", "corner setup"],
+    pdk: workspace.activePdk || "generic-educational-pdk",
+    deviceEditing: "transistor/capacitor/resistor model parameters remain editable in Inspector"
+  };
+  workspace.stageData["ic-layout"] = layoutData;
+  workspace.layoutPlan = [
+    "Virtuoso-style IC design flow prepared",
+    "",
+    `PDK lane: ${layoutData.virtuoso.pdk}`,
+    "Views: schematic, symbol, testbench, layout, extracted, config.",
+    "Intent: keep transistor-level devices editable, then drive schematic checks, layout planning, LVS/DRC/PEX notes, and corner simulation setup from the same project workspace.",
+    "",
+    "This is not Cadence Virtuoso itself; it is the builder's local educational IC workflow layer that is structured so real engines can be connected later."
+  ].join("\n");
+  workspace.activeStage = "ic-layout";
+  workspace.activePanel = "layout";
+  markDraftNeedsSave();
+  scheduleAutosave();
+  renderAnalogMixedWorkspace();
+  analogMixedSetStatus("Virtuoso-style IC flow prepared.");
+}
+
+function analogMixedPrepareSpiceSimulationPlan(kind = "transient") {
+  const project = activeAnalogMixedProject();
+  if (!project) return;
+  const workspace = normalizeAnalogMixedWorkspace(project);
+  const simulationData = workspace.stageData.simulation || {};
+  simulationData.analyses = Array.isArray(simulationData.analyses) ? simulationData.analyses : [];
+  const label = kind === "op" ? "Operating point" : kind === "dc" ? "DC sweep" : kind === "ac" ? "AC / noise" : kind === "corners" ? "PVT corners" : "Transient";
+  simulationData.analyses.unshift({
+    type: kind,
+    label,
+    simulator: workspace.activeVendorSource === "LTspice device primitives" ? "LTspice" : "SPICE-compatible",
+    pdk: workspace.activePdk,
+    createdAt: new Date().toLocaleString()
+  });
+  simulationData.analyses = simulationData.analyses.slice(0, 20);
+  workspace.stageData.simulation = simulationData;
+  workspace.simulationPlan = [
+    `${label} simulation setup`,
+    "",
+    `Simulator target: ${simulationData.analyses[0].simulator}`,
+    `PDK/model lane: ${workspace.activePdk || "generic"}`,
+    `Devices in schematic: ${workspace.components.length}`,
+    "",
+    "Model note: imported SKY130/LTspice/TI devices keep their editable model names and parameter fields in the Inspector. Attach official model files later in the PDK/libraries stage when a full simulator engine is connected.",
+    "",
+    "Queued analyses:",
+    ...simulationData.analyses.map((item) => `- ${item.label} (${item.createdAt})`)
+  ].join("\n");
+  workspace.activeStage = "simulation";
+  workspace.activePanel = "simulation";
+  markDraftNeedsSave();
+  scheduleAutosave();
+  renderAnalogMixedWorkspace();
+  analogMixedSetStatus(`${label} simulation plan prepared.`);
 }
 
 function analogMixedPrepareGerberReport() {
@@ -2902,11 +3160,18 @@ function analogMixedHandleStageCommand(action = "") {
   if (action === "zoom-3d") return analogMixedZoom(0.15);
   if (action === "gerber") return analogMixedPrepareGerberReport();
   if (action === "pdk" || action === "pdk-generic") return analogMixedPreparePdkReport("generic-educational-pdk");
-  if (action === "pdk-sky130") return analogMixedPreparePdkReport("Sky130 future PDK");
+  if (action === "pdk-sky130") return analogMixedImportDeviceSource("sky130");
   if (action === "pdk-gf180") return analogMixedPreparePdkReport("GF180 future PDK");
+  if (action === "import-sky130") return analogMixedImportDeviceSource("sky130");
+  if (action === "import-ltspice") return analogMixedImportDeviceSource("ltspice");
+  if (action === "import-texas") return analogMixedImportDeviceSource("texas");
+  if (action === "import-kicad") return analogMixedImportDeviceSource("kicad");
   if (action === "digikey") return analogMixedPrepareLibraryReport("DigiKey");
   if (action === "mouser") return analogMixedPrepareLibraryReport("Mouser");
   if (action === "local-library") return analogMixedPrepareLibraryReport("Local component library");
+  if (action === "board-rules" || action === "route-plan") return analogMixedApplyKicadTemplate();
+  if (action === "matching" || action === "extract" || action === "lvs") return analogMixedPrepareVirtuosoFlow();
+  if (["op", "dc", "ac", "tran", "corners"].includes(action)) return analogMixedPrepareSpiceSimulationPlan(action);
   return analogMixedRecordStageAction(action);
 }
 
@@ -3289,14 +3554,17 @@ function analogMixedCanvasMarkup(workspace) {
 function analogMixedMenuGroups(workspace) {
   const menuGroups = [
     { label: "File", items: ["Save AM", "Export SPICE netlist", "Export KiCad-style note", "Print design report"] },
-    { label: "Design", items: ["IC transistor-level", "Board schematic", "Mixed IC + board", "Open schematic stage", "Open symbol stage", "Open footprint stage", "Annotate references"] },
+    { label: "Design", items: ["IC transistor-level", "Board schematic", "Mixed IC + board", "Open schematic stage", "Open symbol stage", "Open footprint stage", "Annotate references", "Virtuoso-style IC flow"] },
+    { label: "Import", items: ["Import SKY130 devices", "Import LTspice primitives", "Import Texas Instruments shells", "Import KiCad PCB parts", "Apply KiCad PCB template"] },
     { label: "View", items: ["Zoom in", "Zoom out", "Fit canvas", "Toggle grid", "Pan tool", "Open 3D stage", "Toggle 3D overlay"] },
     { label: "Checks", items: ["Backend analysis", "Run DRC", "Run ERC", "Run DRC and ERC", "Review warnings", "Clean floating labels"] },
     { label: "Simulate", items: ["Operating point", "DC sweep", "AC analysis", "Transient", "Noise", "Monte Carlo plan", "Corner plan"] },
     { label: "Optimize", items: ["PLL loop targets", "Amplifier compensation", "DC-DC ripple", "Device sizing", "Power estimate"] },
+    { label: "PCB", items: ["Open PCB stage", "Apply KiCad PCB template", "KiCad footprint assignment", "PCB DRC rules", "Route planner", "Gerber generation plan", "Board 3D handoff"] },
+    { label: "IC", items: ["Open IC layout stage", "Virtuoso-style IC flow", "Transistor parameter audit", "Common-centroid planner", "Guard-ring planner", "LVS plan", "PEX plan"] },
     { label: "Layout", items: ["Open IC layout stage", "Open PCB stage", "Open 3D stage", "Generate layout checklist", "Parasitic note", "PCB handoff note", "IC matching note", "Gerber generation plan"] },
-    { label: "Libraries", items: ["Component library", "Symbol library", "Footprint library", "Import from DigiKey", "Import from Mouser", "Local model library"] },
-    { label: "PDK", items: ["Generic educational PDK", "Sky130 future PDK", "GF180 future PDK", "Import PDK folder", "Model corner plan"] },
+    { label: "Libraries", items: ["Component library", "Symbol library", "Footprint library", "Import SKY130 devices", "Import LTspice primitives", "Import Texas Instruments shells", "Import KiCad PCB parts", "Local model library"] },
+    { label: "PDK", items: ["Generic educational PDK", "Import SKY130 devices", "Sky130 future PDK", "GF180 future PDK", "Import PDK folder", "Model corner plan"] },
     { label: "Help", items: ["Keyboard shortcuts", "AM roadmap", "Component guide"] }
   ].map((group) => `
     <div class="analog-mixed-menu">
@@ -3339,6 +3607,7 @@ function analogMixedRenderLibrary(workspace) {
       <span class="analog-mixed-library-copy">
         <strong>${escapeHtml(item.label)}</strong>
         <span>${escapeHtml(item.category)} | ${escapeHtml(item.value)}</span>
+        ${(item.source || item.modelName || item.footprint) ? `<small>${escapeHtml([item.source, item.modelName, item.footprint || item.packageName].filter(Boolean).join(" | "))}</small>` : ""}
       </span>
     </button>
   `).join("") || `<p class="analog-mixed-muted">No matching components for this mode and focus.</p>`;
@@ -3392,17 +3661,41 @@ function analogMixedParameterRows(workspace) {
   `).join("");
 }
 
+function analogMixedComponentParameterRows(component = {}, libraryItem = {}) {
+  const params = { ...analogMixedDefaultComponentParameters(libraryItem), ...(component.parameters || {}) };
+  const entries = Object.entries(params);
+  if (!entries.length) return `<p class="analog-mixed-muted">No parameter fields are defined for this device yet.</p>`;
+  return `
+    <div class="analog-mixed-parameter-grid">
+      ${entries.map(([key, value]) => `
+        <label>
+          <span>${escapeHtml(key.replace(/([A-Z])/g, " $1"))}</span>
+          <input type="text" value="${escapeHtml(value)}" data-am-component-param="${escapeHtml(key)}" />
+        </label>
+      `).join("")}
+    </div>
+  `;
+}
+
 function analogMixedRenderInspector(workspace) {
   const selected = workspace.components.find((component) => component.id === workspace.selectedComponentId);
   if (analogMixedSelectedLabel) {
     analogMixedSelectedLabel.textContent = selected ? `${selected.label} ${analogMixedLibraryItem(selected.type).label}` : analogMixedDomains[workspace.focus].label;
   }
   if (selected) {
+    const libraryItem = analogMixedLibraryItem(selected.type);
+    const sourceBadges = [selected.source, selected.pdk, selected.vendor, selected.deviceLevel ? "device-level" : ""].filter(Boolean);
     analogMixedInspectorBody.innerHTML = `
       <div class="analog-mixed-inspector-card">
-        <h3>${escapeHtml(selected.label)} <small>${escapeHtml(analogMixedLibraryItem(selected.type).label)}</small></h3>
+        <h3>${escapeHtml(selected.label)} <small>${escapeHtml(libraryItem.label)}</small></h3>
+        ${sourceBadges.length ? `<div class="analog-mixed-device-badges">${sourceBadges.map((badge) => `<span>${escapeHtml(badge)}</span>`).join("")}</div>` : ""}
         <label><span>Reference</span><input type="text" value="${escapeHtml(selected.label)}" data-am-component-field="label" /></label>
         <label><span>Value / sizing</span><input type="text" value="${escapeHtml(selected.value)}" data-am-component-field="value" /></label>
+        <label><span>Model</span><input type="text" value="${escapeHtml(selected.modelName || libraryItem.modelName || "")}" data-am-component-field="modelName" /></label>
+        <label><span>Footprint</span><input type="text" value="${escapeHtml(selected.footprint || libraryItem.footprint || "")}" data-am-component-field="footprint" /></label>
+        <label><span>Package</span><input type="text" value="${escapeHtml(selected.packageName || libraryItem.packageName || "")}" data-am-component-field="packageName" /></label>
+        <div class="analog-mixed-inspector-subtitle">Device parameters</div>
+        ${analogMixedComponentParameterRows(selected, libraryItem)}
         <label><span>Notes</span><textarea data-am-component-field="notes">${escapeHtml(selected.notes || "")}</textarea></label>
         <div class="analog-mixed-inspector-actions">
           <button type="button" data-am-component-action="rotate">Rotate 90</button>
@@ -3456,7 +3749,13 @@ function analogMixedOutputPanel(workspace) {
     return `<pre>${escapeHtml(workspace.mathReport || "Run calculations to summarize PLL, amplifier, or DC-DC design relationships.")}</pre>`;
   }
   if (workspace.activePanel === "layout") {
-    return `<pre>${escapeHtml(workspace.layoutPlan || "Layout notes will track IC matching, guard rings, extraction, PCB decoupling, thermal loops, Kelvin sense, Gerber readiness, and board/IC handoff constraints.")}</pre>`;
+    const pcbTemplate = workspace.stageData?.pcb?.template;
+    const icFlow = workspace.stageData?.["ic-layout"]?.virtuoso;
+    const extras = [
+      pcbTemplate ? `KiCad template layers: ${pcbTemplate.defaultLayers.join(", ")}\nKiCad net classes: ${pcbTemplate.netClasses.join(", ")}` : "",
+      icFlow ? `Virtuoso-style views: ${icFlow.views.join(", ")}\nVirtuoso-style checks: ${icFlow.checks.join(", ")}` : ""
+    ].filter(Boolean).join("\n\n");
+    return `<pre>${escapeHtml([workspace.layoutPlan || "Layout notes will track IC matching, guard rings, extraction, PCB decoupling, thermal loops, Kelvin sense, Gerber readiness, and board/IC handoff constraints.", extras].filter(Boolean).join("\n\n"))}</pre>`;
   }
   if (workspace.activePanel === "checks") {
     return `<pre>${escapeHtml(workspace.checkReport || "Run DRC or ERC to check references, values, obvious net issues, PDK readiness, and board/IC handoff notes.")}</pre>`;
@@ -3464,7 +3763,8 @@ function analogMixedOutputPanel(workspace) {
   if (workspace.activePanel === "objects") {
     const objects = workspace.components.map((component) => {
       const libraryItem = analogMixedLibraryItem(component.type);
-      return `${component.label || component.id} | ${libraryItem.label} | ${component.value || libraryItem.value} | x=${component.x}, y=${component.y}, rot=${component.rotation || 0}`;
+      const params = Object.entries(component.parameters || {}).map(([key, value]) => `${key}=${value}`).join(" ");
+      return `${component.label || component.id} | ${libraryItem.label} | ${component.value || libraryItem.value} | ${component.modelName || libraryItem.modelName || "no model"} | ${component.footprint || libraryItem.footprint || "no footprint"} | x=${component.x}, y=${component.y}, rot=${component.rotation || 0}${params ? ` | ${params}` : ""}`;
     });
     return `<pre>${escapeHtml(objects.join("\n") || "No schematic or physical objects have been placed yet.")}</pre>`;
   }
@@ -3484,10 +3784,26 @@ function analogMixedOutputPanel(workspace) {
     return `<pre>${escapeHtml(sources.join("\n") || "No project source files or evidence files are registered yet.")}</pre>`;
   }
   if (workspace.activePanel === "libraries") {
-    return `<pre>${escapeHtml(workspace.libraryReport || "Library work will track local symbols, footprints, reusable IC cells, vendor import plans, DigiKey/Mouser metadata hooks, and model associations.")}</pre>`;
+    const imported = (workspace.importHistory || []).map((item) => `- ${item.label || item.source}: ${item.count} devices (${item.importedAt || "saved"})`);
+    const placedDeviceCount = workspace.components.filter((component) => component.deviceLevel).length;
+    return `<pre>${escapeHtml([
+      workspace.libraryReport || "Library work tracks local symbols, footprints, reusable IC cells, vendor imports, model associations, and device-level parameters.",
+      "",
+      `Imported device records: ${workspace.importedDeviceIds.length}`,
+      `Placed device-level components: ${placedDeviceCount}`,
+      imported.length ? "Recent imports:" : "No imported device libraries yet.",
+      ...imported
+    ].join("\n"))}</pre>`;
   }
   if (workspace.activePanel === "pdk") {
-    return `<pre>${escapeHtml(workspace.pdkReport || "PDK work will track process libraries, SPICE model files, DRC/LVS assumptions, corners, and technology abstraction.")}</pre>`;
+    const pdkDevices = workspace.components.filter((component) => component.pdk || String(component.source || "").toLowerCase().includes("sky130"));
+    return `<pre>${escapeHtml([
+      workspace.pdkReport || "PDK work tracks process libraries, SPICE model files, DRC/LVS assumptions, corners, and technology abstraction.",
+      "",
+      `Active PDK: ${workspace.activePdk || "generic"}`,
+      `PDK-aware placed devices: ${pdkDevices.length}`,
+      ...pdkDevices.map((component) => `- ${component.label}: ${component.modelName || component.type} ${Object.entries(component.parameters || {}).map(([key, value]) => `${key}=${value}`).join(" ")}`)
+    ].join("\n"))}</pre>`;
   }
   if (workspace.activePanel === "gerber") {
     return `<pre>${escapeHtml(workspace.gerberReport || "Gerber work will track copper, drill, mask, silkscreen, fabrication, assembly, BOM, and release checklist outputs.")}</pre>`;
@@ -3939,6 +4255,30 @@ function handleAnalogMixedMenuItem(label = "") {
     analogMixedSetStatus("Floating generated net labels cleaned.");
     return;
   }
+  if (clean.includes("import sky130")) {
+    analogMixedImportDeviceSource("sky130");
+    return;
+  }
+  if (clean.includes("import ltspice")) {
+    analogMixedImportDeviceSource("ltspice");
+    return;
+  }
+  if (clean.includes("import texas")) {
+    analogMixedImportDeviceSource("texas");
+    return;
+  }
+  if (clean.includes("import kicad")) {
+    analogMixedImportDeviceSource("kicad");
+    return;
+  }
+  if (clean.includes("kicad pcb template") || clean.includes("export kicad")) {
+    analogMixedApplyKicadTemplate();
+    return;
+  }
+  if (clean.includes("virtuoso")) {
+    analogMixedPrepareVirtuosoFlow();
+    return;
+  }
   if (clean.includes("digikey")) {
     analogMixedPrepareLibraryReport("DigiKey");
     return;
@@ -3968,9 +4308,8 @@ function handleAnalogMixedMenuItem(label = "") {
     return;
   }
   if (clean.includes("operating") || clean.includes("sweep") || clean.includes("transient") || clean.includes("noise") || clean.includes("monte") || clean.includes("corner")) {
-    workspace.activePanel = "simulation";
-    workspace.simulationPlan = `${label}\n\nQueued for future SPICE backend wiring. Current project context: ${analogMixedDomains[workspace.focus].label}.`;
-    renderAnalogMixedWorkspace();
+    const kind = clean.includes("operating") ? "op" : clean.includes("sweep") ? "dc" : clean.includes("ac") || clean.includes("noise") ? "ac" : clean.includes("corner") || clean.includes("monte") ? "corners" : "tran";
+    analogMixedPrepareSpiceSimulationPlan(kind);
     return;
   }
   if (clean.includes("pll") || clean.includes("amplifier") || clean.includes("dc-dc") || clean.includes("sizing") || clean.includes("power estimate")) {
@@ -15417,11 +15756,12 @@ function synthesisExplorerViews() {
 function synthesisNodeDimensions(node = {}, expansionLevel = 0, detailCount = 0) {
   const labelLength = String(node.label || node.id || "").length;
   const typeLength = String(node.type || node.fileName || node.kind || "").length;
-  const expansionWidth = expansionLevel ? 32 + expansionLevel * 24 : 0;
-  const expansionHeight = expansionLevel ? 26 + Math.min(10, detailCount) * 16 + (expansionLevel > 1 ? 24 : 0) : 0;
+  const portCount = Math.max(Number(node.portCount) || 0, Array.isArray(node.ports) ? node.ports.length : 0);
+  const expansionWidth = expansionLevel ? 78 + expansionLevel * 22 : 0;
+  const expansionHeight = expansionLevel ? 40 + Math.min(12, Math.max(detailCount, portCount)) * 13 + (expansionLevel > 1 ? 22 : 0) : 0;
   return {
-    width: Math.min(420, Math.max(118, Number(node.nodeWidth) || 96 + Math.max(labelLength, typeLength) * 6) + expansionWidth),
-    height: Math.min(260, Math.max(46, Number(node.nodeHeight) || 54 + Math.min(5, Number(node.portCount) || 0) * 6) + expansionHeight)
+    width: Math.min(440, Math.max(expansionLevel ? 220 : 112, Number(node.nodeWidth) || 84 + Math.max(labelLength, typeLength) * 5.5) + expansionWidth),
+    height: Math.min(330, Math.max(44, Number(node.nodeHeight) || 48 + Math.min(5, portCount) * 5) + expansionHeight)
   };
 }
 
@@ -15677,11 +16017,37 @@ function renderSynthesisNodeDetail(node = {}, graph = {}, level = 0, nodesById =
     const nets = synthesisConnectedNetEntries(node, graph);
     lines.push(nets.length ? `Nets: ${nets.slice(0, 4).join(", ")}${nets.length > 4 ? " ..." : ""}` : "Nets: no named nets exposed");
   }
+  const detailY = position.y + 64 + Math.min(12, ports.length) * 13;
   return `
-    <text class="compile-synthesis-detail" x="${position.x + 12}" y="${position.y + 60}">
+    <text class="compile-synthesis-detail" x="${position.x + 12}" y="${detailY}">
       ${lines.slice(0, 8).map((line, index) => `<tspan x="${position.x + 12}" dy="${index ? 16 : 0}">${escapeHtml(synthesisShortText(line, Math.max(48, Math.floor(size.width / 6))))}</tspan>`).join("")}
     </text>
     <text class="compile-synthesis-expand-badge" x="${position.x + size.width - 42}" y="${position.y + 22}">L${level}</text>
+  `;
+}
+
+function renderSynthesisPortRails(node = {}, graph = {}, level = 0, position = { x: 0, y: 0 }, size = { width: 120, height: 54 }) {
+  if (!level) return "";
+  const ports = synthesisNodePorts(node, graph);
+  const leftPorts = ports.filter((port) => port.direction !== "output").slice(0, 12);
+  const rightPorts = ports.filter((port) => port.direction === "output").slice(0, 12);
+  const startY = position.y + 54;
+  const row = 13;
+  const renderPins = (items, side) => items.map((port, index) => {
+    const y = startY + index * row;
+    const pinX = side === "left" ? position.x : position.x + size.width;
+    const textX = side === "left" ? position.x + 10 : position.x + size.width - 10;
+    const leadX = side === "left" ? position.x - 10 : position.x + size.width + 10;
+    return `
+      <line class="compile-synthesis-pin" x1="${leadX}" y1="${y - 4}" x2="${pinX}" y2="${y - 4}"></line>
+      <text class="compile-synthesis-port-label${side === "right" ? " is-output" : ""}" x="${textX}" y="${y}" text-anchor="${side === "left" ? "start" : "end"}">${escapeHtml(synthesisShortText(port.name, 18))}</text>
+    `;
+  }).join("");
+  return `
+    <g class="compile-synthesis-port-rails">
+      ${renderPins(leftPorts, "left")}
+      ${renderPins(rightPorts, "right")}
+    </g>
   `;
 }
 
@@ -15731,9 +16097,9 @@ function renderSynthesisDiagramSvg(graph = {}, filter = "", options = {}) {
     });
   };
   if (isNetlist) {
-    const cellColumns = Math.min(4, Math.max(1, Math.ceil(Math.sqrt(Math.max(1, cells.length)))));
+    const cellColumns = Math.min(3, Math.max(1, Math.ceil(Math.sqrt(Math.max(1, cells.length)) * 0.85)));
     const cellRows = Math.ceil(Math.max(1, cells.length) / cellColumns);
-    const rowHeights = Array.from({ length: cellRows }, () => 106);
+    const rowHeights = Array.from({ length: cellRows }, () => 96);
     cells.forEach((node, index) => {
       const row = Math.floor(index / cellColumns);
       rowHeights[row] = Math.max(rowHeights[row], nodeSize(node).height + 26);
@@ -15744,18 +16110,18 @@ function renderSynthesisDiagramSvg(graph = {}, filter = "", options = {}) {
       return y + rowHeight;
     }, 126);
     const maxSidePorts = Math.max(inputPorts.length + inoutPorts.length, outputPorts.length, 1);
-    width = Math.max(1180, 570 + cellColumns * 260);
+    width = Math.max(1040, 500 + cellColumns * 250);
     height = Math.max(620, 190 + Math.max(rowHeights.reduce((sum, rowHeight) => sum + rowHeight, 0), maxSidePorts * 66));
     topNodes.forEach((node) => {
       const size = nodeSize(node);
       positions.set(node.id, { x: (width - size.width) / 2, y: 24 });
     });
-    placeVertical([...inputPorts, ...inoutPorts], 36, 126);
-    placeVertical(outputPorts, width - 230, 126);
+    placeVertical([...inputPorts, ...inoutPorts], 30, 116);
+    placeVertical(outputPorts, width - 190, 116);
     cells.forEach((node, index) => {
       const column = index % cellColumns;
       const row = Math.floor(index / cellColumns);
-      const columnX = 292 + column * 260;
+      const columnX = 238 + column * 250;
       positions.set(node.id, { x: columnX, y: rowY[row] });
     });
   } else {
@@ -15780,14 +16146,14 @@ function renderSynthesisDiagramSvg(graph = {}, filter = "", options = {}) {
     }, new Map());
     const sortedRanks = [...rankGroups.keys()].sort((a, b) => a - b);
     const largestRank = sortedRanks.reduce((max, rank) => Math.max(max, rankGroups.get(rank).length), 1);
-    width = Math.max(1020, 120 + sortedRanks.length * 285);
-    height = Math.max(620, 126 + largestRank * 128);
+    width = Math.max(980, 110 + sortedRanks.length * 245);
+    height = Math.max(620, 116 + largestRank * 118);
     sortedRanks.forEach((rank, rankIndex) => {
       const group = rankGroups.get(rank);
-      const x = 48 + rankIndex * 285;
-      const step = Math.max(116, Math.floor((height - 130) / Math.max(1, group.length)));
+      const x = 42 + rankIndex * 245;
+      const step = Math.max(106, Math.floor((height - 120) / Math.max(1, group.length)));
       group.forEach((node, index) => {
-        positions.set(node.id, { x, y: 72 + index * step });
+        positions.set(node.id, { x, y: 62 + index * step });
       });
     });
   }
@@ -15840,8 +16206,9 @@ function renderSynthesisDiagramSvg(graph = {}, filter = "", options = {}) {
             <rect x="${position.x}" y="${position.y}" width="${size.width}" height="${size.height}" rx="7"></rect>
             <text x="${position.x + 12}" y="${position.y + 22}">${escapeHtml(node.label || node.id)}</text>
             <text class="compile-synthesis-file" x="${position.x + 12}" y="${position.y + 40}">${escapeHtml(node.type || node.fileName || node.kind || (isTop ? "top module" : "module"))}</text>
-            ${node.portCount ? `<text class="compile-synthesis-file" x="${position.x + 12}" y="${position.y + Math.min(size.height - 9, 58)}">${Number(node.portCount)} ports</text>` : ""}
-            ${renderSynthesisNodeDetail(node, graph, level, nodeById, position, size)}
+             ${node.portCount && !level ? `<text class="compile-synthesis-file" x="${position.x + 12}" y="${position.y + Math.min(size.height - 9, 58)}">${Number(node.portCount)} ports</text>` : ""}
+             ${renderSynthesisPortRails(node, graph, level, position, size)}
+             ${renderSynthesisNodeDetail(node, graph, level, nodeById, position, size)}
           </g>
         `;
       }).join("")}
@@ -15868,11 +16235,12 @@ function renderCompileSynthesisDiagramWindow(project, file = activeCompileFile(p
       ${compileSynthesisResizeHandles()}
       <div class="compile-synthesis-diagram-heading" data-compile-synthesis-drag title="Drag to move synthesis window">
         <div>
-          <strong>Synthesized design schematic</strong>
-          <span>${escapeHtml(graph.topModule ? `Top: ${graph.topModule}` : file?.fileName || "HDL source")} - inputs left, outputs right, arrows show net direction</span>
+          <strong>Schematic</strong>
+          <span>${escapeHtml(graph.topModule ? `Top: ${graph.topModule}` : file?.fileName || "HDL source")}</span>
         </div>
         <div class="compile-synthesis-zoom-controls" aria-label="Synthesis diagram zoom controls">
           <button type="button" data-compile-synthesis-zoom="out" title="Zoom out">-</button>
+          <button type="button" data-compile-synthesis-zoom="fit" title="Fit schematic to window">Fit</button>
           <span>${Math.round(zoom * 100)}%</span>
           <button type="button" data-compile-synthesis-zoom="in" title="Zoom in">+</button>
           <button type="button" data-compile-synthesis-zoom="reset" title="Reset zoom">100%</button>
@@ -15883,19 +16251,11 @@ function renderCompileSynthesisDiagramWindow(project, file = activeCompileFile(p
         ${renderSynthesisExplorer(project, synthesis, graph)}
         <main class="compile-synthesis-main">
           <div class="compile-synthesis-toolbar">
-            <label>
-              <span>Find module, cell, net, source, or instance</span>
-              <input type="search" data-compile-synthesis-filter value="${escapeHtml(filter)}" placeholder="counter, mux, $dff, uut, clk...">
-            </label>
-            <label class="compile-synthesis-top-select">
-              <span>Top module</span>
-              <select data-compile-synthesis-top>
+            <input type="search" data-compile-synthesis-filter value="${escapeHtml(filter)}" placeholder="Find module, cell, net, source, instance..." aria-label="Find module, cell, net, source, or instance">
+            <select class="compile-synthesis-top-select" data-compile-synthesis-top aria-label="Top module">
                 <option value="">Auto detect</option>
                 ${moduleOptions.map((node) => `<option value="${escapeHtml(node.id)}"${workspace.synthesisTopModule === node.id ? " selected" : ""}>${escapeHtml(node.label || node.id)}</option>`).join("")}
-              </select>
-            </label>
-            ${synthesis.netlistPath || synthesis.outputPath ? `<button type="button" data-copy-text="${escapeHtml(synthesis.netlistPath || synthesis.outputPath)}">Copy netlist path</button>` : ""}
-            ${synthesis.dotPath ? `<button type="button" data-copy-text="${escapeHtml(synthesis.dotPath)}">Copy DOT path</button>` : ""}
+            </select>
           </div>
           ${renderSynthesisSummaryChips(synthesis, graph)}
           ${synthesis.available === false ? `<p class="compile-synthesis-warning">Yosys is not available, so this is a source-level module graph. Install OSS CAD Suite from Tools to produce a synthesized netlist.</p>` : ""}
@@ -16109,6 +16469,9 @@ function renderCompileIdeMenuBar(project, file = activeCompileFile(project)) {
         { label: "Import files", action: "import-files" },
         { label: "Import directory", action: "import-directory" },
         { separator: true },
+        { label: "Open workspace in File Explorer", action: "open-explorer" },
+        { label: "Reveal active source in File Explorer", action: "reveal-source", disabled: !hasFile },
+        { separator: true },
         { label: "Save source", action: "save-source", shortcut: "Ctrl+S", disabled: !hasFile },
         { label: "Save source as...", action: "save-source-as", disabled: !hasFile },
         { label: "Save project", action: "save-project" },
@@ -16228,6 +16591,8 @@ function renderCompileTreeContextMenu() {
     { label: "Add UVM-style testbench", action: "add-uvm-testbench" },
     { label: "Import files", action: "import-files" },
     { label: "Import directory", action: "import-directory" },
+    { separator: true },
+    { label: "Open in File Explorer", action: "open-explorer" },
     { separator: true },
     { label: "Move selected", action: "move-tree-file" },
     { label: "Delete selected", action: "delete-tree-target" }
@@ -17294,6 +17659,22 @@ function updateVisibleSynthesisDiagram(project, file = activeCompileFile(project
   stage.innerHTML = renderSynthesisDiagramSvg(activeSynthesisDiagram(project, file).graph || {}, workspace.synthesisDiagramFilter || "", {
     expandedNodes: workspace.synthesisExpandedNodes
   });
+}
+
+function fitSynthesisDiagramToVisibleCanvas(project = selectedProject()) {
+  if (!project) return false;
+  const workspace = ensureCompileCode(project);
+  const canvas = sectionContent.querySelector(".compile-synthesis-canvas");
+  const svg = sectionContent.querySelector(".compile-synthesis-svg");
+  const viewBox = svg?.viewBox?.baseVal;
+  if (!canvas || !viewBox?.width || !viewBox?.height) return false;
+  const usableWidth = Math.max(160, canvas.clientWidth - 24);
+  const usableHeight = Math.max(140, canvas.clientHeight - 24);
+  const scale = Math.min(usableWidth / viewBox.width, usableHeight / viewBox.height);
+  workspace.synthesisDiagramZoom = Math.max(0.25, Math.min(3, scale || 1));
+  canvas.scrollLeft = 0;
+  canvas.scrollTop = 0;
+  return true;
 }
 
 function addCompileSourceFile(project, file = null, options = {}) {
@@ -18383,6 +18764,57 @@ async function openCompilePowerShellTerminal(project) {
   renderSectionContent(project);
 }
 
+async function openCompileWorkspaceInExplorer(project, context = null, options = {}) {
+  if (!project) return;
+  const workspace = ensureCompileCode(project);
+  let payload = {
+    projectId: project.id,
+    kind: "workspace",
+    relativePath: "",
+    language: "text"
+  };
+  const fileFromContext = context?.type === "file"
+    ? (workspace.files || []).find((item) => item.id === context.fileId) || (workspace.files || []).find((item) => compileFilePath(item) === context.path)
+    : null;
+  const activeFile = options.activeFile ? activeCompileFile(project) : null;
+  const targetFile = activeFile || fileFromContext;
+  if (targetFile) {
+    payload = {
+      projectId: project.id,
+      kind: "file",
+      relativePath: compileFilePath(targetFile),
+      language: targetFile.language || "text"
+    };
+  } else if (context?.type === "folder") {
+    payload = {
+      projectId: project.id,
+      kind: "folder",
+      relativePath: compileDirectoryPath(context.path || ""),
+      language: "text"
+    };
+  }
+  try {
+    const response = await fetch(`/api/code/open-explorer?t=${Date.now()}`, {
+      method: "POST",
+      cache: "no-store",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    const result = await response.json();
+    if (!response.ok || !result.ok) throw new Error(result.error || "File Explorer could not be opened.");
+    const label = payload.kind === "file"
+      ? `Revealed ${targetFile?.fileName || "source file"} in File Explorer.`
+      : payload.kind === "folder"
+        ? `Opened ${compileDirectoryName(payload.relativePath) || "folder"} in File Explorer.`
+        : "Opened the compile workspace in File Explorer.";
+    addCompileMessage(project, label, "success");
+    setStatus(label);
+  } catch (error) {
+    addCompileMessage(project, error.message || "File Explorer could not be opened.", "error");
+    setStatus(error.message || "File Explorer could not be opened.");
+  }
+}
+
 async function checkCompileTools(project) {
   try {
     const response = await fetch(`/api/code/tools?t=${Date.now()}`, { cache: "no-store" });
@@ -18447,6 +18879,8 @@ async function runCompileIdeAction(project, action = "", options = {}) {
   if (action === "project-preview") return openProjectPortfolioPreview();
   if (action === "portfolio-preview") return openPortfolioPreview();
   if (action === "print-portfolio") return printPortfolioDocument();
+  if (action === "open-explorer") return openCompileWorkspaceInExplorer(project, context);
+  if (action === "reveal-source") return openCompileWorkspaceInExplorer(project, { type: "file", fileId: file?.id || "", path: file ? compileFilePath(file) : "" }, { activeFile: true });
   if (action === "builder-guide") return builderGuideOpen?.click();
   if (action === "preferences") return openPreferencesDialog();
   if (action === "check-updates") return checkForAppUpdates({ force: true, manual: true });
@@ -21896,11 +22330,15 @@ sectionContent.addEventListener("click", async (event) => {
   if (synthesisZoomButton) {
     const action = synthesisZoomButton.dataset.compileSynthesisZoom;
     const currentZoom = Math.max(0.25, Math.min(3, Number(compileWorkspace.synthesisDiagramZoom || 1) || 1));
-    compileWorkspace.synthesisDiagramZoom = action === "in"
-      ? Math.min(3, currentZoom + 0.25)
-      : action === "out"
-        ? Math.max(0.25, currentZoom - 0.25)
-        : 1;
+    if (action === "fit") {
+      if (!fitSynthesisDiagramToVisibleCanvas(project)) compileWorkspace.synthesisDiagramZoom = 1;
+    } else {
+      compileWorkspace.synthesisDiagramZoom = action === "in"
+        ? Math.min(3, currentZoom + 0.25)
+        : action === "out"
+          ? Math.max(0.25, currentZoom - 0.25)
+          : 1;
+    }
     setStatus(`Synthesis diagram zoom ${Math.round(compileWorkspace.synthesisDiagramZoom * 100)}%.`);
     scheduleAutosave(600);
     renderSectionContent(project);
@@ -23383,6 +23821,16 @@ analogMixedDialog?.addEventListener("input", (event) => {
     markDraftNeedsSave();
     scheduleAutosave();
     analogMixedSetStatus(`Updated ${selected.label || "selected component"}.`);
+    return;
+  }
+  if (event.target.dataset.amComponentParam) {
+    const selected = workspace.components.find((component) => component.id === workspace.selectedComponentId);
+    if (!selected) return;
+    selected.parameters = selected.parameters && typeof selected.parameters === "object" ? selected.parameters : {};
+    selected.parameters[event.target.dataset.amComponentParam] = event.target.value;
+    markDraftNeedsSave();
+    scheduleAutosave();
+    analogMixedSetStatus(`Updated ${selected.label || "selected device"} parameter.`);
     return;
   }
   if (event.target.dataset.amParameter) {
