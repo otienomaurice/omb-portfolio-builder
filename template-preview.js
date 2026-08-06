@@ -536,6 +536,7 @@ const analogMixedStageCommandRegistry = {
   "ic-layout": [
     { id: "save", label: "Save", hint: "Save IC layout stage" },
     { id: "layout-sync", label: "Sync", hint: "Create or refresh layout devices from schematic components" },
+    { id: "ic-netlist", label: "Netlist", hint: "Generate a PDK-included SPICE netlist" },
     { id: "ic-intent", label: "Intent", hint: "Refresh topology, targets, PDK lane, and layout priorities" },
     { id: "ic-sizing", label: "Sizing", hint: "Build a device sizing and gm/Id planning table" },
     { id: "ic-corners", label: "Corners", hint: "Build process, voltage, and temperature corner setup" },
@@ -549,7 +550,10 @@ const analogMixedStageCommandRegistry = {
     { id: "matching", label: "Match", hint: "Plan matching/common-centroid constraints" },
     { id: "layout-guard", label: "Guard", hint: "Add guard-ring planning around selected devices" },
     { id: "ic-noise", label: "Noise", hint: "Prepare input-referred and device-noise analysis notes" },
+    { id: "ic-noise-run", label: "Noise run", hint: "Write and run a PDK-aware noise deck when a SPICE engine is available" },
     { id: "ic-offset", label: "Offset", hint: "Prepare offset, mismatch, and Monte Carlo notes" },
+    { id: "ic-pex", label: "PEX", hint: "Generate parasitic extraction scripts and reports" },
+    { id: "ic-complex", label: "Complex", hint: "Generate the full advanced IC analysis plan" },
     { id: "extract", label: "Extract", hint: "Prepare extraction/PEX artifacts" },
     { id: "lvs", label: "LVS", hint: "Prepare Netgen LVS artifacts" },
     { id: "drc", label: "DRC", hint: "Prepare/run PDK layout-rule checks" },
@@ -595,6 +599,8 @@ const analogMixedStageCommandRegistry = {
     { id: "pdk-generic", label: "Generic", hint: "Use generic educational PDK planning" },
     { id: "pdk-sky130", label: "Sky130", hint: "Plan Sky130-style PDK import" },
     { id: "pdk-gf180", label: "GF180", hint: "Plan GF180-style PDK import" },
+    { id: "pdk-import", label: "Import PDK", hint: "Import a local PDK folder and inspect models, layers, and tech files" },
+    { id: "pdk-status", label: "Status", hint: "Check local PDK and tool availability" },
     { id: "models", label: "Models", hint: "Plan SPICE model files and corners" }
   ],
   libraries: [
@@ -2529,6 +2535,7 @@ function analogMixedDefaultState() {
       },
       "ic-layout": {
         pdk: "",
+        pdkImport: null,
         cellName: "",
         viewName: "layout",
         activeLayer: "metal1",
@@ -2544,6 +2551,10 @@ function analogMixedDefaultState() {
         drcMarkers: [],
         lvsRuns: [],
         extractionRuns: [],
+        parasiticRuns: [],
+        noiseRuns: [],
+        netlistRuns: [],
+        complexAnalysisRuns: [],
         matchingGroups: [],
         guardRings: [],
         artifacts: [],
@@ -3035,8 +3046,16 @@ function analogMixedLayoutObjectFromComponent(component = {}, index = 0) {
   const isMos = /mos|fet|switch/.test(symbolKind);
   const isCap = /capacitor|mim/.test(symbolKind);
   const isRes = /resistor/.test(symbolKind);
-  const width = isMos ? 170 : isCap ? 150 : isRes ? 210 : 180;
-  const height = isMos ? 96 : isCap ? 130 : isRes ? 74 : 110;
+  const params = { ...analogMixedDefaultComponentParameters(libraryItem), ...(component.parameters || {}) };
+  const numericParam = (keys, fallback) => {
+    const raw = analogMixedIcParameterValue(params, keys, fallback);
+    const match = String(raw || "").match(/[-+]?\d*\.?\d+/);
+    return match ? Number(match[0]) : Number(fallback) || 0;
+  };
+  const fingers = Math.max(1, Math.min(24, Math.round(numericParam(["nf", "fingers", "fingerCount"], isMos ? 2 : 1))));
+  const multiplier = Math.max(1, Math.min(64, Math.round(numericParam(["m", "mult", "multiplier"], 1))));
+  const width = isMos ? Math.max(170, 96 + fingers * 34) : isCap ? 150 : isRes ? 210 : 180;
+  const height = isMos ? Math.max(104, 88 + Math.min(6, multiplier) * 4) : isCap ? 130 : isRes ? 74 : 110;
   const schematicX = Number(component.x);
   const schematicY = Number(component.y);
   const x = Number.isFinite(schematicX) && schematicX > 0 ? 115 + (schematicX / 1400) * 1040 : 170 + (index % 4) * 260;
@@ -3054,7 +3073,12 @@ function analogMixedLayoutObjectFromComponent(component = {}, index = 0) {
     height,
     rotation: Number(component.rotation) || 0,
     mirrored: Boolean(component.mirrored),
-    parameters: { ...analogMixedDefaultComponentParameters(libraryItem), ...(component.parameters || {}) },
+    parameters: params,
+    fingers,
+    multiplier,
+    deviceRole: analogMixedIcDeviceRole(component, libraryItem),
+    pdkCell: String(component.modelName || libraryItem.modelName || component.type || ""),
+    wellType: /pmos|pfet/.test([symbolKind, component.modelName, component.type].join(" ").toLowerCase()) ? "nwell" : "substrate",
     pins: analogMixedComponentPins(component).map((pin) => ({ name: pin.pin, x: pin.x, y: pin.y })),
     source: component.source || libraryItem.source || "schematic",
     modelName: component.modelName || libraryItem.modelName || component.type || ""
@@ -3114,7 +3138,9 @@ function analogMixedNormalizeIcLayout(workspace = {}) {
   const layoutData = { ...clone(defaults), ...(workspace.stageData["ic-layout"] || {}) };
   layoutData.cellName = String(layoutData.cellName || "am_top");
   layoutData.viewName = String(layoutData.viewName || "layout");
-  layoutData.pdk = String(layoutData.pdk || workspace.activePdk || "generic-educational-pdk");
+  const importedPdk = layoutData.pdkImport || workspace.stageData?.pdk?.importedPdk || null;
+  layoutData.pdkImport = importedPdk && typeof importedPdk === "object" ? importedPdk : null;
+  layoutData.pdk = String(layoutData.pdk || layoutData.pdkImport?.variant || layoutData.pdkImport?.family || workspace.activePdk || "generic-educational-pdk");
   layoutData.activeLayer = analogMixedIcLayoutLayers.some((layer) => layer.id === layoutData.activeLayer) ? layoutData.activeLayer : "metal1";
   layoutData.layers = Array.isArray(layoutData.layers) && layoutData.layers.length ? layoutData.layers : analogMixedIcLayoutLayers.map((layer) => ({ ...layer, visible: true, locked: false }));
   const sourceComponents = Array.isArray(workspace.components) ? workspace.components : [];
@@ -3134,7 +3160,12 @@ function analogMixedNormalizeIcLayout(workspace = {}) {
       y: Math.max(30, Math.min(760, Number(item.y) || generated.y)),
       width: Math.max(60, Math.min(360, Number(item.width) || generated.width)),
       height: Math.max(36, Math.min(240, Number(item.height) || generated.height)),
-      parameters: item.parameters && typeof item.parameters === "object" ? item.parameters : generated.parameters
+      parameters: item.parameters && typeof item.parameters === "object" ? item.parameters : generated.parameters,
+      fingers: Math.max(1, Math.min(24, Number(item.fingers) || generated.fingers || 1)),
+      multiplier: Math.max(1, Math.min(64, Number(item.multiplier) || generated.multiplier || 1)),
+      deviceRole: String(item.deviceRole || generated.deviceRole || "layout cell"),
+      pdkCell: String(item.pdkCell || generated.pdkCell || generated.modelName || ""),
+      wellType: String(item.wellType || generated.wellType || "substrate")
     };
   }) : [];
   const existingSourceIds = new Set(normalizedObjects.map((item) => item.sourceComponentId).filter(Boolean));
@@ -3172,6 +3203,10 @@ function analogMixedNormalizeIcLayout(workspace = {}) {
   layoutData.drcMarkers = Array.isArray(layoutData.drcMarkers) ? layoutData.drcMarkers : [];
   layoutData.lvsRuns = Array.isArray(layoutData.lvsRuns) ? layoutData.lvsRuns : [];
   layoutData.extractionRuns = Array.isArray(layoutData.extractionRuns) ? layoutData.extractionRuns : [];
+  layoutData.parasiticRuns = Array.isArray(layoutData.parasiticRuns) ? layoutData.parasiticRuns : [];
+  layoutData.noiseRuns = Array.isArray(layoutData.noiseRuns) ? layoutData.noiseRuns : [];
+  layoutData.netlistRuns = Array.isArray(layoutData.netlistRuns) ? layoutData.netlistRuns : [];
+  layoutData.complexAnalysisRuns = Array.isArray(layoutData.complexAnalysisRuns) ? layoutData.complexAnalysisRuns : [];
   layoutData.matchingGroups = Array.isArray(layoutData.matchingGroups) ? layoutData.matchingGroups : [];
   layoutData.guardRings = Array.isArray(layoutData.guardRings) ? layoutData.guardRings : [];
   analogMixedNormalizeIcDesign(workspace, layoutData);
@@ -3445,6 +3480,63 @@ function analogMixedAddWire(project, start, end) {
   analogMixedSetStatus(`Added wire ${wire.name}.`);
 }
 
+function analogMixedAddIcLayoutDevice(project, libraryId, point = {}) {
+  const workspace = normalizeAnalogMixedWorkspace(project);
+  const libraryItem = analogMixedLibraryItem(libraryId);
+  const component = {
+    id: `amc-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    type: libraryItem.id,
+    label: analogMixedNextRef(workspace, libraryItem),
+    value: libraryItem.value,
+    x: Math.max(40, Math.min(1360, point.x || 160)),
+    y: Math.max(40, Math.min(780, point.y || 160)),
+    rotation: 0,
+    domain: workspace.focus,
+    notes: "",
+    source: libraryItem.source || "local",
+    pdk: libraryItem.pdk || workspace.activePdk || "",
+    vendor: libraryItem.vendor || "",
+    modelName: libraryItem.modelName || "",
+    footprint: libraryItem.footprint || "",
+    packageName: libraryItem.packageName || "",
+    deviceLevel: true,
+    parameters: analogMixedDefaultComponentParameters(libraryItem)
+  };
+  workspace.components.push(component);
+  workspace.selectedComponentId = component.id;
+  const layoutData = analogMixedNormalizeIcLayout(workspace);
+  const layoutObject = layoutData.layoutObjects.find((item) => item.sourceComponentId === component.id);
+  if (layoutObject) {
+    layoutObject.x = Math.max(30, Math.min(1320, point.x || layoutObject.x));
+    layoutObject.y = Math.max(30, Math.min(760, point.y || layoutObject.y));
+    layoutObject.layer = analogMixedLayoutLayerForComponent(component, libraryItem);
+    layoutObject.pdkCell = component.modelName || libraryItem.modelName || component.type;
+  }
+  workspace.stageData["ic-layout"] = layoutData;
+  markDraftNeedsSave();
+  scheduleAutosave();
+  renderAnalogMixedWorkspace();
+  analogMixedSetStatus(`Placed IC layout device ${component.label} on ${analogMixedLayoutLayerById(layoutData.activeLayer).label}.`);
+}
+
+function analogMixedAddIcLayoutRoute(project, start = {}, end = {}) {
+  const workspace = normalizeAnalogMixedWorkspace(project);
+  const layoutData = analogMixedNormalizeIcLayout(workspace);
+  const points = analogMixedOrthogonalWirePoints(start, end);
+  const route = {
+    id: `layout-route-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    name: `net_${layoutData.layoutRoutes.length + 1}`,
+    layer: layoutData.activeLayer,
+    points
+  };
+  layoutData.layoutRoutes.push(route);
+  workspace.stageData["ic-layout"] = layoutData;
+  markDraftNeedsSave();
+  scheduleAutosave();
+  renderAnalogMixedWorkspace();
+  analogMixedSetStatus(`Added ${analogMixedLayoutLayerById(route.layer).label} route ${route.name}.`);
+}
+
 function analogMixedAddSchematicMarker(project, kind = "junction", point = {}) {
   const workspace = normalizeAnalogMixedWorkspace(project);
   const lists = {
@@ -3701,26 +3793,111 @@ function analogMixedPreparePdkReport(pdkName = "generic-educational-pdk") {
   if (/sky130/i.test(pdkName)) analogMixedRefreshPdkStatus("sky130");
 }
 
+async function analogMixedImportPdkFolder() {
+  const project = activeAnalogMixedProject();
+  if (!project) return false;
+  const workspace = normalizeAnalogMixedWorkspace(project);
+  const existingPath = workspace.stageData?.pdk?.importedPdk?.path || "";
+  const pdkPath = String(window.prompt("Paste the local IC PDK folder path", existingPath) || "").trim();
+  if (!pdkPath) {
+    analogMixedSetStatus("PDK import cancelled.");
+    return false;
+  }
+  try {
+    const response = await fetch("/api/analog-mixed/import-pdk", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ pdkPath })
+    });
+    const data = await response.json();
+    if (!response.ok || !data.ok) throw new Error(data.error || "PDK import failed.");
+    const pdk = data.pdk || {};
+    workspace.stageData.pdk = workspace.stageData.pdk && typeof workspace.stageData.pdk === "object" ? workspace.stageData.pdk : {};
+    workspace.stageData.pdk.importedPdk = pdk;
+    workspace.stageData.pdk.modelFiles = Array.isArray(pdk.modelFiles) ? pdk.modelFiles : [];
+    workspace.stageData.pdk.libraries = Array.isArray(pdk.libraries) ? pdk.libraries : [];
+    workspace.stageData.pdk.techFiles = Array.isArray(pdk.techFiles) ? pdk.techFiles : [];
+    workspace.stageData.pdk.layerFiles = Array.isArray(pdk.layerFiles) ? pdk.layerFiles : [];
+    workspace.stageData.pdk.processCorners = Array.isArray(pdk.corners) ? pdk.corners : [];
+    workspace.stageData.pdk.importedAt = new Date().toLocaleString();
+    workspace.activePdk = pdk.variant || pdk.family || pdk.name || pdkPath;
+    const layoutData = analogMixedNormalizeIcLayout(workspace);
+    layoutData.pdk = workspace.activePdk;
+    layoutData.pdkImport = pdk;
+    workspace.stageData["ic-layout"] = layoutData;
+    workspace.pdkReport = [
+      `Imported IC PDK: ${pdk.name || pdk.variant || pdk.family || "local PDK"}`,
+      "",
+      `Path: ${pdk.path || pdkPath}`,
+      `Family: ${pdk.family || "unknown"}`,
+      `Variant: ${pdk.variant || "not identified"}`,
+      `Models: ${(pdk.modelFiles || []).length}`,
+      `Technology files: ${(pdk.techFiles || []).length}`,
+      `Layer maps: ${(pdk.layerFiles || []).length}`,
+      `LEF/GDS/libs: ${(pdk.libraries || []).length}`,
+      "",
+      "Model files:",
+      ...(pdk.modelFiles || []).slice(0, 16).map((file) => `- ${file}`),
+      "",
+      "Technology and layer files:",
+      ...(pdk.techFiles || []).slice(0, 12).map((file) => `- ${file}`),
+      ...(pdk.layerFiles || []).slice(0, 12).map((file) => `- ${file}`)
+    ].filter(Boolean).join("\n");
+    workspace.activeStage = "pdk";
+    workspace.activePanel = "pdk";
+    markDraftNeedsSave();
+    scheduleAutosave();
+    renderAnalogMixedWorkspace();
+    analogMixedSetStatus(`Imported PDK descriptor for ${pdk.name || pdk.variant || pdk.family || "local PDK"}.`);
+    return true;
+  } catch (error) {
+    workspace.pdkReport = [
+      "PDK import failed.",
+      "",
+      error.message || "The local backend could not inspect that folder.",
+      "",
+      `Requested path: ${pdkPath}`
+    ].join("\n");
+    workspace.activeStage = "pdk";
+    workspace.activePanel = "pdk";
+    renderAnalogMixedWorkspace();
+    analogMixedSetStatus("PDK import failed.");
+    return false;
+  }
+}
+
 async function analogMixedRefreshPdkStatus(pdkName = "sky130") {
   const project = activeAnalogMixedProject();
   if (!project) return false;
   const workspace = normalizeAnalogMixedWorkspace(project);
+  const importedPath = workspace.stageData?.pdk?.importedPdk?.path || workspace.stageData?.["ic-layout"]?.pdkImport?.path || "";
   try {
-    const response = await fetch(`/api/analog-mixed/tool-status?pdk=${encodeURIComponent(pdkName)}`);
+    const query = new URLSearchParams({ pdk: pdkName });
+    if (importedPath) query.set("path", importedPath);
+    const response = await fetch(`/api/analog-mixed/tool-status?${query.toString()}`);
     const data = await response.json();
     if (!response.ok || !data.ok) throw new Error(data.error || "PDK status could not be read.");
     const status = data.status || {};
     workspace.stageData.pdk = workspace.stageData.pdk && typeof workspace.stageData.pdk === "object" ? workspace.stageData.pdk : {};
     workspace.stageData.pdk.modelFiles = status.pdk?.modelFiles || [];
     workspace.stageData.pdk.libraries = status.pdk?.libraries || [];
+    workspace.stageData.pdk.techFiles = status.pdk?.techFiles || [];
+    workspace.stageData.pdk.layerFiles = status.pdk?.layerFiles || [];
     workspace.stageData.pdk.processCorners = status.pdk?.corners || [];
+    if (status.pdk?.path) workspace.stageData.pdk.importedPdk = status.pdk;
     workspace.pdkReport = [
       `PDK workspace: ${workspace.activePdk || pdkName}`,
       "",
-      status.pdk?.available ? `Detected PDK root: ${status.pdk.path}` : "No enabled SKY130 PDK was detected on this machine.",
+      status.pdk?.available ? `Detected PDK root: ${status.pdk.path}` : "No enabled IC PDK was detected on this machine.",
       status.pdk?.source ? `Source: ${status.pdk.source}` : "",
       status.pdk?.modelFiles?.length ? "Model files:" : "Model files: none detected",
       ...(status.pdk?.modelFiles || []).slice(0, 12).map((file) => `- ${file}`),
+      "",
+      status.pdk?.techFiles?.length ? "Technology files:" : "Technology files: none detected",
+      ...(status.pdk?.techFiles || []).slice(0, 10).map((file) => `- ${file}`),
+      "",
+      status.pdk?.layerFiles?.length ? "Layer files:" : "Layer files: none detected",
+      ...(status.pdk?.layerFiles || []).slice(0, 10).map((file) => `- ${file}`),
       "",
       "Local analog tools:",
       ...Object.entries(status.tools || {}).map(([tool, toolPath]) => `- ${tool}: ${toolPath || "missing"}`)
@@ -3858,6 +4035,14 @@ async function analogMixedRunIcLayoutBackend(action = "layout-sync", options = {
     if (Array.isArray(artifacts.cornerSetups)) layoutData.cornerSetups = artifacts.cornerSetups;
     if (Array.isArray(artifacts.constraintGroups)) layoutData.constraintGroups = artifacts.constraintGroups;
     if (Array.isArray(artifacts.signoffItems)) layoutData.signoffItems = artifacts.signoffItems;
+    if (artifacts.pdk && typeof artifacts.pdk === "object") layoutData.pdkImport = artifacts.pdk;
+    if (Array.isArray(artifacts.netlistRuns)) layoutData.netlistRuns = artifacts.netlistRuns;
+    if (Array.isArray(artifacts.parasiticRuns)) layoutData.parasiticRuns = artifacts.parasiticRuns;
+    if (Array.isArray(artifacts.noiseRuns)) layoutData.noiseRuns = artifacts.noiseRuns;
+    if (Array.isArray(artifacts.complexAnalysisRuns)) layoutData.complexAnalysisRuns = artifacts.complexAnalysisRuns;
+    if (Array.isArray(artifacts.extractionRuns)) layoutData.extractionRuns = artifacts.extractionRuns;
+    if (Array.isArray(artifacts.lvsRuns)) layoutData.lvsRuns = artifacts.lvsRuns;
+    if (Array.isArray(artifacts.drcMarkers)) layoutData.drcMarkers = artifacts.drcMarkers;
     layoutData.artifacts = Array.isArray(layoutData.artifacts) ? layoutData.artifacts : [];
     layoutData.artifacts.unshift(layoutData.lastBackendRun);
     layoutData.artifacts = layoutData.artifacts.slice(0, 12);
@@ -3872,6 +4057,12 @@ async function analogMixedRunIcLayoutBackend(action = "layout-sync", options = {
       "",
       "Generated files:",
       ...Object.entries(artifacts.files || {}).map(([key, value]) => `- ${key}: ${value}`),
+      "",
+      "Analysis runs:",
+      `- Netlist: ${artifacts.netlistRuns?.[0]?.status || "not run"}`,
+      `- PEX: ${artifacts.parasiticRuns?.[0]?.status || "not run"}`,
+      `- Noise: ${artifacts.noiseRuns?.[0]?.status || "not run"}`,
+      `- Complex: ${artifacts.complexAnalysisRuns?.[0]?.status || "not run"}`,
       "",
       "Tool runs:",
       ...(artifacts.toolRuns || []).length
@@ -4012,6 +4203,25 @@ async function analogMixedRecordLayoutAction(action = "") {
   } else if (action === "extract") {
     layoutData.extractionRuns.unshift({ id: `extract-${Date.now()}`, createdAt: now, status: "planned", pdk: layoutData.pdk });
     workspace.icLayoutPlan = [`Extraction/PEX run planned at ${now}.`, workspace.icLayoutPlan || workspace.layoutPlan || ""].filter(Boolean).join("\n\n");
+  } else if (action === "ic-netlist") {
+    layoutData.netlistRuns.unshift({ id: `netlist-${Date.now()}`, createdAt: now, status: "planned", pdk: layoutData.pdk, path: "" });
+    layoutData.netlistRuns = layoutData.netlistRuns.slice(0, 16);
+    workspace.icLayoutPlan = [`PDK-aware SPICE netlist generation requested at ${now}.`, workspace.icLayoutPlan || workspace.layoutPlan || ""].filter(Boolean).join("\n\n");
+  } else if (action === "ic-pex") {
+    const run = { id: `pex-${Date.now()}`, createdAt: now, status: "planned", pdk: layoutData.pdk };
+    layoutData.parasiticRuns.unshift(run);
+    layoutData.extractionRuns.unshift({ ...run, id: `extract-${Date.now()}` });
+    layoutData.parasiticRuns = layoutData.parasiticRuns.slice(0, 16);
+    layoutData.extractionRuns = layoutData.extractionRuns.slice(0, 16);
+    workspace.icLayoutPlan = [`Parasitic extraction and PEX netlist generation requested at ${now}.`, workspace.icLayoutPlan || workspace.layoutPlan || ""].filter(Boolean).join("\n\n");
+  } else if (action === "ic-noise-run") {
+    layoutData.noiseRuns.unshift({ id: `noise-${Date.now()}`, createdAt: now, status: "planned", pdk: layoutData.pdk });
+    layoutData.noiseRuns = layoutData.noiseRuns.slice(0, 16);
+    workspace.icLayoutPlan = [`PDK-aware noise analysis deck requested at ${now}.`, workspace.icLayoutPlan || workspace.layoutPlan || ""].filter(Boolean).join("\n\n");
+  } else if (action === "ic-complex") {
+    layoutData.complexAnalysisRuns.unshift({ id: `complex-${Date.now()}`, createdAt: now, status: "planned", pdk: layoutData.pdk });
+    layoutData.complexAnalysisRuns = layoutData.complexAnalysisRuns.slice(0, 16);
+    workspace.icLayoutPlan = [`Complex IC analysis package requested at ${now}: OP, DC, AC/noise, transient, PVT, Monte Carlo intent, LVS, DRC, and PEX handoff.`, workspace.icLayoutPlan || workspace.layoutPlan || ""].filter(Boolean).join("\n\n");
   } else if (action === "lvs") {
     layoutData.lvsRuns.unshift({ id: `lvs-${Date.now()}`, createdAt: now, status: "planned", schematicDevices: workspace.components.length, layoutObjects: layoutData.layoutObjects.length });
     workspace.icLayoutPlan = [`LVS comparison planned at ${now}. Schematic devices: ${workspace.components.length}; layout objects: ${layoutData.layoutObjects.length}.`, workspace.icLayoutPlan || workspace.layoutPlan || ""].filter(Boolean).join("\n\n");
@@ -4063,7 +4273,7 @@ async function analogMixedRecordLayoutAction(action = "") {
   scheduleAutosave();
   renderAnalogMixedWorkspace();
   analogMixedSetStatus(`IC layout action completed: ${action}.`);
-  if (["layout-sync", "layout-export", "klayout", "extract", "lvs", "drc", "ic-intent", "ic-sizing", "ic-gmid", "ic-corners", "ic-noise", "ic-offset", "ic-signoff"].includes(action)) {
+  if (["layout-sync", "layout-export", "klayout", "extract", "lvs", "drc", "ic-intent", "ic-sizing", "ic-gmid", "ic-corners", "ic-noise", "ic-noise-run", "ic-offset", "ic-pex", "ic-netlist", "ic-complex", "ic-signoff"].includes(action)) {
     await analogMixedRunIcLayoutBackend(action, { silent: true });
     renderAnalogMixedWorkspace();
   }
@@ -4230,7 +4440,7 @@ function analogMixedHandleStageCommand(action = "") {
   if (workspace?.activeStage === "pcb" && ["pcb-sync", "pcb-export", "board-rules", "route-plan", "gerber"].includes(action)) {
     return analogMixedRecordPcbAction(action);
   }
-  if (workspace?.activeStage === "ic-layout" && ["layout-sync", "layout-export", "klayout", "layout-diff", "layout-poly", "layout-metal1", "layout-metal2", "layout-contact", "layout-guard", "matching", "extract", "lvs", "drc", "ic-intent", "ic-sizing", "ic-gmid", "ic-corners", "ic-noise", "ic-offset", "ic-signoff"].includes(action)) {
+  if (workspace?.activeStage === "ic-layout" && ["layout-sync", "layout-export", "klayout", "layout-diff", "layout-poly", "layout-metal1", "layout-metal2", "layout-contact", "layout-guard", "matching", "extract", "lvs", "drc", "ic-intent", "ic-sizing", "ic-gmid", "ic-corners", "ic-noise", "ic-noise-run", "ic-offset", "ic-pex", "ic-netlist", "ic-complex", "ic-signoff"].includes(action)) {
     return analogMixedRecordLayoutAction(action);
   }
   if (action === "backend-analyze") return analogMixedRunBackendAnalysis("analysis");
@@ -4255,6 +4465,8 @@ function analogMixedHandleStageCommand(action = "") {
   if (action === "pan") return analogMixedSetTool("pan");
   if (action === "zoom-3d") return analogMixedZoom(0.15);
   if (action === "gerber") return analogMixedPrepareGerberReport();
+  if (action === "pdk-import") return analogMixedImportPdkFolder();
+  if (action === "pdk-status") return analogMixedRefreshPdkStatus(workspace?.activePdk || workspace?.stageData?.pdk?.importedPdk?.variant || "sky130");
   if (action === "pdk" || action === "pdk-generic") return analogMixedPreparePdkReport("generic-educational-pdk");
   if (action === "pdk-sky130") {
     analogMixedImportDeviceSource("sky130");
@@ -4269,7 +4481,7 @@ function analogMixedHandleStageCommand(action = "") {
   if (action === "mouser") return analogMixedPrepareLibraryReport("Mouser");
   if (action === "local-library") return analogMixedPrepareLibraryReport("Local component library");
   if (action === "board-rules" || action === "route-plan" || action === "pcb-sync" || action === "pcb-export") return analogMixedRecordPcbAction(action);
-  if (["layout-sync", "layout-export", "klayout", "layout-diff", "layout-poly", "layout-metal1", "layout-metal2", "layout-contact", "layout-guard", "matching", "extract", "lvs", "ic-intent", "ic-sizing", "ic-gmid", "ic-corners", "ic-noise", "ic-offset", "ic-signoff"].includes(action)) return analogMixedRecordLayoutAction(action);
+  if (["layout-sync", "layout-export", "klayout", "layout-diff", "layout-poly", "layout-metal1", "layout-metal2", "layout-contact", "layout-guard", "matching", "extract", "lvs", "ic-intent", "ic-sizing", "ic-gmid", "ic-corners", "ic-noise", "ic-noise-run", "ic-offset", "ic-pex", "ic-netlist", "ic-complex", "ic-signoff"].includes(action)) return analogMixedRecordLayoutAction(action);
   if (["op", "dc", "ac", "tran", "corners"].includes(action)) return analogMixedPrepareSpiceSimulationPlan(action);
   return analogMixedRecordStageAction(action);
 }
@@ -4557,7 +4769,7 @@ function analogMixed3dStageMarkup(workspace, stage, domain) {
   `;
 }
 
-function analogMixedLayoutObjectMarkup(object = {}, index = 0) {
+function analogMixedLayoutObjectMarkup(object = {}, index = 0, selectedComponentId = "") {
   const layer = analogMixedLayoutLayerById(object.layer);
   const x = Number(object.x) || 80;
   const y = Number(object.y) || 80;
@@ -4566,21 +4778,52 @@ function analogMixedLayoutObjectMarkup(object = {}, index = 0) {
   const label = escapeHtml(object.label || `X${index + 1}`);
   const model = escapeHtml(object.modelName || object.type || "device");
   const pinLabelY = y + height + 18;
+  const selectedClass = object.sourceComponentId && object.sourceComponentId === selectedComponentId ? " is-selected" : "";
+  const params = object.parameters && typeof object.parameters === "object" ? object.parameters : {};
+  const paramValue = (keys, fallback = "") => analogMixedIcParameterValue(params, keys, fallback);
+  const fingers = Math.max(1, Math.min(24, Number(object.fingers) || Number(paramValue(["nf", "fingers", "fingerCount"], 1)) || 1));
+  const multiplier = Math.max(1, Math.min(64, Number(object.multiplier) || Number(paramValue(["m", "mult", "multiplier"], 1)) || 1));
   if (/mos|fet|switch/.test(object.symbolKind || "")) {
-    const polyX = x + Math.round(width * 0.48);
-    const srcX = x + 28;
-    const drainX = x + width - 44;
+    const isPmos = /pmos|pfet/.test([object.symbolKind, object.modelName, object.type, object.pdkCell].join(" ").toLowerCase());
+    const diffusionX = x + 18;
+    const diffusionY = y + 26;
+    const diffusionWidth = Math.max(120, width - 36);
+    const diffusionHeight = Math.max(42, height - 52);
+    const activeColorClass = isPmos ? "am-layout-pmos-active" : "am-layout-nmos-active";
+    const fingerStep = diffusionWidth / (fingers + 1);
+    const gateMarkup = Array.from({ length: fingers }, (_, fingerIndex) => {
+      const gateX = Math.round(diffusionX + fingerStep * (fingerIndex + 1) - 5);
+      return `
+        <rect class="am-layout-poly-gate" x="${gateX}" y="${y + 8}" width="10" height="${height - 16}" rx="1" />
+        <text class="am-layout-finger-text" x="${gateX - 1}" y="${y + 18}">${fingerIndex + 1}</text>
+      `;
+    }).join("");
+    const contactCount = Math.max(2, Math.min(10, fingers + 1));
+    const contacts = Array.from({ length: contactCount }, (_, contactIndex) => {
+      const cx = Math.round(diffusionX + 12 + (contactIndex * (diffusionWidth - 24)) / Math.max(1, contactCount - 1));
+      const cy = Math.round(diffusionY + diffusionHeight / 2 - 7);
+      return `<rect class="am-layout-contact" x="${cx}" y="${cy}" width="14" height="14" rx="1" />`;
+    }).join("");
+    const well = isPmos
+      ? `<rect class="am-layout-well-outline" x="${x + 2}" y="${y + 4}" width="${width - 4}" height="${height - 8}" rx="8" />`
+      : "";
+    const tapY = isPmos ? y + height - 18 : y + 8;
+    const tapTextY = isPmos ? y + height - 6 : y + 20;
     return `
-      <g class="am-layout-device am-layout-device-mos" data-am-layout-object="${escapeHtml(object.id)}">
-        <rect class="am-layout-layer-fill am-layout-${escapeHtml(layer.id)}" x="${x}" y="${y}" width="${width}" height="${height}" rx="4" />
-        <rect class="am-layout-poly-gate" x="${polyX}" y="${y - 20}" width="18" height="${height + 40}" rx="2" />
-        <rect class="am-layout-contact" x="${srcX}" y="${y + 22}" width="22" height="22" rx="2" />
-        <rect class="am-layout-contact" x="${drainX}" y="${y + 22}" width="22" height="22" rx="2" />
-        <text x="${x + 12}" y="${y + 30}">${label}</text>
-        <text x="${x + 12}" y="${y + 56}">${model}</text>
-        <text class="am-layout-pin-text" x="${srcX - 2}" y="${pinLabelY}">S</text>
-        <text class="am-layout-pin-text" x="${polyX - 2}" y="${pinLabelY}">G</text>
-        <text class="am-layout-pin-text" x="${drainX - 2}" y="${pinLabelY}">D</text>
+      <g class="am-layout-device am-layout-device-mos${selectedClass}" data-am-layout-object="${escapeHtml(object.id)}">
+        ${well}
+        <rect class="am-layout-layer-fill ${activeColorClass}" x="${diffusionX}" y="${diffusionY}" width="${diffusionWidth}" height="${diffusionHeight}" rx="3" />
+        <rect class="am-layout-tap-rail" x="${diffusionX}" y="${tapY}" width="${diffusionWidth}" height="10" rx="1" />
+        ${gateMarkup}
+        ${contacts}
+        <line class="am-layout-metal-strap" x1="${diffusionX + 8}" y1="${diffusionY + diffusionHeight / 2}" x2="${diffusionX + diffusionWidth - 8}" y2="${diffusionY + diffusionHeight / 2}" />
+        <text class="am-layout-device-title" x="${x + 10}" y="${y + 18}">${label}</text>
+        <text class="am-layout-device-model" x="${x + 10}" y="${y + height - 24}">${model}</text>
+        <text class="am-layout-device-param" x="${x + 10}" y="${y + height - 10}">W=${escapeHtml(paramValue(["w", "width", "mosWidth"], "1u"))} L=${escapeHtml(paramValue(["l", "length", "mosLength"], "0.15u"))} nf=${fingers} m=${multiplier}</text>
+        <text class="am-layout-pin-text" x="${diffusionX - 2}" y="${pinLabelY}">S/B</text>
+        <text class="am-layout-pin-text" x="${Math.round(x + width / 2) - 6}" y="${pinLabelY}">G</text>
+        <text class="am-layout-pin-text" x="${diffusionX + diffusionWidth - 22}" y="${pinLabelY}">D</text>
+        <text class="am-layout-well-label" x="${x + width - 64}" y="${tapTextY}">${isPmos ? "NWELL TAP" : "SUB TAP"}</text>
       </g>
     `;
   }
@@ -4590,34 +4833,48 @@ function analogMixedLayoutObjectMarkup(object = {}, index = 0) {
       return `<polyline class="am-layout-poly-route" points="${sx},${y + 22} ${sx + 14},${y + 44} ${sx},${y + 66}" />`;
     }).join("");
     return `
-      <g class="am-layout-device am-layout-device-res" data-am-layout-object="${escapeHtml(object.id)}">
+      <g class="am-layout-device am-layout-device-res${selectedClass}" data-am-layout-object="${escapeHtml(object.id)}">
         <rect class="am-layout-layer-fill am-layout-${escapeHtml(layer.id)}" x="${x}" y="${y}" width="${width}" height="${height}" rx="4" />
         ${segments}
         <rect class="am-layout-contact" x="${x + 6}" y="${y + 28}" width="20" height="20" rx="2" />
         <rect class="am-layout-contact" x="${x + width - 28}" y="${y + 28}" width="20" height="20" rx="2" />
-        <text x="${x + 12}" y="${y + height + 22}">${label} ${model}</text>
+        <text class="am-layout-device-title" x="${x + 12}" y="${y + height + 22}">${label} ${model}</text>
+        <text class="am-layout-device-param" x="${x + 12}" y="${y + height + 38}">${escapeHtml(paramValue(["resistance", "r", "value"], object.parameters?.resistance || object.value || ""))}</text>
       </g>
     `;
   }
   if (/capacitor|mim/.test(object.symbolKind || "")) {
     return `
-      <g class="am-layout-device am-layout-device-cap" data-am-layout-object="${escapeHtml(object.id)}">
+      <g class="am-layout-device am-layout-device-cap${selectedClass}" data-am-layout-object="${escapeHtml(object.id)}">
         <rect class="am-layout-layer-fill am-layout-metal2" x="${x}" y="${y}" width="${width}" height="${height}" rx="4" />
         <rect class="am-layout-cap-plate" x="${x + 22}" y="${y + 18}" width="${width - 44}" height="${height - 36}" rx="3" />
         <line class="am-layout-cap-finger" x1="${x + 44}" y1="${y + 18}" x2="${x + 44}" y2="${y + height - 18}" />
         <line class="am-layout-cap-finger" x1="${x + width - 44}" y1="${y + 18}" x2="${x + width - 44}" y2="${y + height - 18}" />
-        <text x="${x + 12}" y="${y + height + 22}">${label} ${model}</text>
+        <text class="am-layout-device-title" x="${x + 12}" y="${y + height + 22}">${label} ${model}</text>
+        <text class="am-layout-device-param" x="${x + 12}" y="${y + height + 38}">${escapeHtml(paramValue(["capacitance", "c", "value"], object.parameters?.capacitance || object.value || ""))}</text>
       </g>
     `;
   }
   return `
-    <g class="am-layout-device" data-am-layout-object="${escapeHtml(object.id)}">
+    <g class="am-layout-device${selectedClass}" data-am-layout-object="${escapeHtml(object.id)}">
       <rect class="am-layout-layer-fill am-layout-${escapeHtml(layer.id)}" x="${x}" y="${y}" width="${width}" height="${height}" rx="5" />
       <rect class="am-layout-cell-core" x="${x + 14}" y="${y + 16}" width="${Math.max(30, width - 28)}" height="${Math.max(24, height - 32)}" rx="4" />
-      <text x="${x + 14}" y="${y + 36}">${label}</text>
-      <text x="${x + 14}" y="${y + 62}">${model}</text>
+      <text class="am-layout-device-title" x="${x + 14}" y="${y + 36}">${label}</text>
+      <text class="am-layout-device-model" x="${x + 14}" y="${y + 62}">${model}</text>
     </g>
   `;
+}
+
+function analogMixedLayoutRouteMarkup(route = {}) {
+  const layer = analogMixedLayoutLayerById(route.layer);
+  const points = Array.isArray(route.points) ? route.points : [];
+  const labelPoint = analogMixedRouteLabelPoint(points);
+  const viaMarkup = points.slice(1, -1).map((point) => `<circle class="am-layout-via-dot" cx="${point.x}" cy="${point.y}" r="4" />`).join("");
+  return `<g class="am-layout-route" data-am-layout-route="${escapeHtml(route.id || route.name || "")}">
+    <polyline points="${analogMixedPointsAttribute(points)}" style="stroke:${layer.color}" />
+    ${viaMarkup}
+    <text x="${labelPoint.x + 8}" y="${labelPoint.y - 8}">${escapeHtml(route.name || route.layer)}</text>
+  </g>`;
 }
 
 function analogMixedPcbFootprintMarkup(footprint = {}, index = 0) {
@@ -4715,12 +4972,12 @@ function analogMixedIcLayoutStageMarkup(workspace, stage, domain) {
       </g>
     `;
   }).join("");
-  const routes = (layoutData.layoutRoutes || []).map((route) => {
-    const layer = analogMixedLayoutLayerById(route.layer);
-    return `<g class="am-layout-route"><polyline points="${analogMixedPointsAttribute(route.points || [])}" style="stroke:${layer.color}" /><text x="${route.points?.[0]?.x || 80}" y="${(route.points?.[0]?.y || 80) - 8}">${escapeHtml(route.name || route.layer)}</text></g>`;
-  }).join("");
+  const routes = (layoutData.layoutRoutes || []).map(analogMixedLayoutRouteMarkup).join("");
+  const routePreview = analogMixedWireStart && analogMixedWirePreview && workspace.activeTool === "wire"
+    ? `<g class="am-layout-route am-layout-route-preview"><polyline points="${analogMixedPointsAttribute(analogMixedOrthogonalWirePoints(analogMixedWireStart, analogMixedWirePreview))}" /><text x="${analogMixedWireStart.x + 10}" y="${analogMixedWireStart.y - 10}">route start</text></g>`
+    : "";
   const guardRings = (layoutData.guardRings || []).map((ring) => `<rect class="am-layout-guard-ring" x="${ring.x || 120}" y="${ring.y || 120}" width="${ring.width || 320}" height="${ring.height || 190}" rx="12" />`).join("");
-  const objects = (layoutData.layoutObjects || []).map(analogMixedLayoutObjectMarkup).join("");
+  const objects = (layoutData.layoutObjects || []).map((object, index) => analogMixedLayoutObjectMarkup(object, index, workspace.selectedComponentId)).join("");
   const drc = (layoutData.drcMarkers || []).map((marker) => `<g class="am-layout-drc"><circle cx="${marker.x || 100}" cy="${marker.y || 100}" r="11" /><text x="${(marker.x || 100) + 16}" y="${(marker.y || 100) + 5}">${escapeHtml(marker.message || marker.severity || "DRC")}</text></g>`).join("");
   const empty = layoutData.layoutObjects?.length ? "" : `<g class="am-empty-hint"><rect x="360" y="300" width="690" height="136" rx="12" /><text x="400" y="352">No IC layout devices yet</text><text x="400" y="390">Place schematic devices, then click Sync or Virtuoso-style IC flow.</text></g>`;
   const intent = layoutData.designIntent || analogMixedBuildIcDesignIntent(workspace, layoutData);
@@ -4742,6 +4999,7 @@ function analogMixedIcLayoutStageMarkup(workspace, stage, domain) {
     </g>
     ${guardRings}
     ${routes}
+    ${routePreview}
     ${objects}
     ${drc}
     ${empty}
@@ -4826,7 +5084,14 @@ function analogMixedViewportTransform(workspace) {
 
 function analogMixedCanvasMarkup(workspace) {
   if (workspace.activeStage !== "schematic") {
-    return `<g class="am-viewport" transform="${analogMixedViewportTransform(workspace)}">${analogMixedStageMarkup(workspace)}</g>`;
+    return `
+      <defs>
+        <marker id="am-layout-arrow" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
+          <path d="M0,0 L0,6 L8,3 z" />
+        </marker>
+      </defs>
+      <g class="am-viewport" transform="${analogMixedViewportTransform(workspace)}">${analogMixedStageMarkup(workspace)}</g>
+    `;
   }
   const grid = analogMixedGridSize(workspace);
   const gridLines = [];
@@ -4882,16 +5147,16 @@ function analogMixedMenuGroups(workspace) {
   const menuGroups = [
     { label: "File", items: ["Save AM", "Export SPICE netlist", "Export KiCad-style note", "Print design report"] },
     { label: "Design", items: ["IC transistor-level", "Board schematic", "Mixed IC + board", "Open schematic stage", "Open symbol stage", "Open footprint stage", "Annotate references", "Virtuoso-style IC flow"] },
-    { label: "Import", items: ["Import SKY130 devices", "Import LTspice primitives", "Import Texas Instruments shells", "Import KiCad PCB parts", "Apply KiCad PCB template"] },
+    { label: "Import", items: ["Import IC PDK folder", "Import SKY130 devices", "Import LTspice primitives", "Import Texas Instruments shells", "Import KiCad PCB parts", "Apply KiCad PCB template"] },
     { label: "View", items: ["Zoom in", "Zoom out", "Fit canvas", "Toggle grid", "Pan tool", "Open 3D stage", "Toggle 3D overlay"] },
     { label: "Checks", items: ["Backend analysis", "Run DRC", "Run ERC", "Run DRC and ERC", "Review warnings", "Clean floating labels"] },
-    { label: "Simulate", items: ["Run SPICE operating point", "Run SPICE DC sweep", "Run SPICE AC analysis", "Run SPICE transient analysis", "Operating point plan", "DC sweep plan", "AC analysis plan", "Transient plan", "Noise", "Monte Carlo plan", "Corner plan"] },
+    { label: "Simulate", items: ["Run SPICE operating point", "Run SPICE DC sweep", "Run SPICE AC analysis", "Run SPICE transient analysis", "Run PDK noise extraction", "Complex analysis methods", "Operating point plan", "DC sweep plan", "AC analysis plan", "Transient plan", "Noise", "Monte Carlo plan", "Corner plan"] },
     { label: "Optimize", items: ["PLL loop targets", "Amplifier compensation", "DC-DC ripple", "Device sizing", "gm/Id sizing", "Power estimate"] },
     { label: "PCB", items: ["Open PCB stage", "Apply KiCad PCB template", "KiCad footprint assignment", "PCB DRC rules", "Route planner", "Gerber generation plan", "Board 3D handoff"] },
-    { label: "IC", items: ["Open IC layout stage", "Virtuoso-style IC flow", "IC design intent", "MOS sizing table", "gm/Id sizing", "Corner setup", "Noise plan", "Offset mismatch plan", "Sync layout from schematic", "Transistor parameter audit", "Common-centroid planner", "Guard-ring planner", "LVS plan", "PEX plan", "IC signoff checklist"] },
+    { label: "IC", items: ["Open IC layout stage", "Virtuoso-style IC flow", "IC design intent", "MOS sizing table", "gm/Id sizing", "Corner setup", "Generate PDK netlist", "Run parasitic extraction", "Run PDK noise extraction", "Complex analysis methods", "Noise plan", "Offset mismatch plan", "Sync layout from schematic", "Transistor parameter audit", "Common-centroid planner", "Guard-ring planner", "LVS plan", "PEX plan", "IC signoff checklist"] },
     { label: "Layout", items: ["Open IC layout stage", "Open PCB stage", "Open 3D stage", "Sync layout from schematic", "Generate layout checklist", "Parasitic note", "PCB handoff note", "IC matching note", "Gerber generation plan"] },
     { label: "Libraries", items: ["Component library", "Symbol library", "Footprint library", "Import SKY130 devices", "Import LTspice primitives", "Import Texas Instruments shells", "Import KiCad PCB parts", "Local model library"] },
-    { label: "PDK", items: ["Generic educational PDK", "Import SKY130 devices", "Sky130 future PDK", "GF180 future PDK", "Import PDK folder", "Model corner plan"] },
+    { label: "PDK", items: ["Generic educational PDK", "Import IC PDK folder", "PDK status", "Import SKY130 devices", "Sky130 future PDK", "GF180 future PDK", "Model corner plan"] },
     { label: "Help", items: ["Keyboard shortcuts", "AM roadmap", "Component guide"] }
   ].map((group) => `
     <div class="analog-mixed-menu">
@@ -4991,15 +5256,19 @@ function analogMixedParameterRows(workspace) {
 function analogMixedComponentParameterRows(component = {}, libraryItem = {}) {
   const params = { ...analogMixedDefaultComponentParameters(libraryItem), ...(component.parameters || {}) };
   const entries = Object.entries(params);
-  if (!entries.length) return `<p class="analog-mixed-muted">No parameter fields are defined for this device yet.</p>`;
-  return `
-    <div class="analog-mixed-parameter-grid">
-      ${entries.map(([key, value]) => `
-        <label>
+  const rows = entries.length
+    ? entries.map(([key, value]) => `
+        <label class="analog-mixed-parameter-row">
           <span>${escapeHtml(key.replace(/([A-Z])/g, " $1"))}</span>
           <input type="text" value="${escapeHtml(value)}" data-am-component-param="${escapeHtml(key)}" />
+          <button class="danger-icon compact-icon" type="button" data-am-component-param-delete="${escapeHtml(key)}" title="Delete this parameter">&times;</button>
         </label>
-      `).join("")}
+      `).join("")
+    : `<p class="analog-mixed-muted">No parameter fields are defined for this device yet.</p>`;
+  return `
+    <div class="analog-mixed-parameter-grid">
+      ${rows}
+      <button type="button" data-am-component-action="add-param">Add parameter</button>
     </div>
   `;
 }
@@ -5428,7 +5697,35 @@ function handleAnalogMixedCanvasClick(event) {
       analogMixedSetStatus(`${layoutObject?.label || "Layout object"} selected in IC layout.`);
       return;
     }
-    analogMixedSetStatus("IC layout stage is open. Use Sync, layer buttons, guard, extraction, DRC, or LVS from the stage toolbar.");
+    const point = analogMixedPointFromEvent(event, workspace);
+    if (workspace.activeTool === "wire") {
+      if (!analogMixedWireStart) {
+        analogMixedWireStart = { ...point, ref: { type: "layout-point" } };
+        analogMixedWirePreview = analogMixedWireStart;
+        renderAnalogMixedWorkspace();
+        analogMixedSetStatus(`Layout route start set at ${point.x}, ${point.y}. Click another point to finish.`);
+      } else {
+        analogMixedAddIcLayoutRoute(project, analogMixedWireStart, { ...point, ref: { type: "layout-point" } });
+        analogMixedWireStart = null;
+        analogMixedWirePreview = null;
+      }
+      return;
+    }
+    const directToolMap = {
+      resistor: "resistor",
+      capacitor: "capacitor",
+      semiconductor: workspace.selectedLibraryId && analogMixedLibraryItem(workspace.selectedLibraryId)?.tool === "semiconductor" ? workspace.selectedLibraryId : "nmos",
+      diode: "diode",
+      ground: "ground"
+    };
+    if (directToolMap[workspace.activeTool] || workspace.activeTool === "select") {
+      const libraryId = directToolMap[workspace.activeTool] || workspace.selectedLibraryId;
+      if (libraryId && workspace.activeTool !== "select") {
+        analogMixedAddIcLayoutDevice(project, libraryId, point);
+        return;
+      }
+    }
+    analogMixedSetStatus("IC layout stage is open. Select a device, choose W for route, or use PDK/PEX/LVS/DRC controls.");
     return;
   }
   if (workspace.activeStage !== "schematic") {
@@ -5484,8 +5781,31 @@ function handleAnalogMixedPointerDown(event) {
   const project = activeAnalogMixedProject();
   if (!project) return;
   const workspace = normalizeAnalogMixedWorkspace(project);
+  const layoutTarget = event.target.closest?.("[data-am-layout-object]");
   const componentTarget = event.target.closest?.("[data-am-component]");
   const point = analogMixedPointFromEvent(event, workspace);
+  if (workspace.activeStage === "ic-layout" && layoutTarget && workspace.activeTool === "select") {
+    const layoutData = analogMixedNormalizeIcLayout(workspace);
+    const layoutObject = layoutData.layoutObjects.find((item) => item.id === layoutTarget.dataset.amLayoutObject);
+    if (!layoutObject) return;
+    if (layoutObject.sourceComponentId) workspace.selectedComponentId = layoutObject.sourceComponentId;
+    analogMixedPointerState = {
+      type: "layout-object",
+      layoutObjectId: layoutObject.id,
+      pointerId: event.pointerId,
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+      startX: layoutObject.x,
+      startY: layoutObject.y,
+      offsetX: point.x - layoutObject.x,
+      offsetY: point.y - layoutObject.y,
+      moved: false
+    };
+    analogMixedCanvas.setPointerCapture?.(event.pointerId);
+    renderAnalogMixedWorkspace();
+    event.preventDefault();
+    return;
+  }
   if (componentTarget && workspace.activeTool === "select") {
     const component = workspace.components.find((item) => item.id === componentTarget.dataset.amComponent);
     if (!component) return;
@@ -5528,7 +5848,9 @@ function handleAnalogMixedPointerMove(event) {
   if (!project) return;
   const workspace = normalizeAnalogMixedWorkspace(project);
   if (analogMixedWireStart && workspace.activeTool === "wire") {
-    analogMixedWirePreview = analogMixedCapturePointFromEvent(event, workspace);
+    analogMixedWirePreview = workspace.activeStage === "ic-layout"
+      ? analogMixedPointFromEvent(event, workspace)
+      : analogMixedCapturePointFromEvent(event, workspace);
     analogMixedQueueRender();
   }
   if (!analogMixedPointerState) return;
@@ -5554,6 +5876,19 @@ function handleAnalogMixedPointerMove(event) {
     analogMixedQueueRender();
     event.preventDefault();
   }
+  if (analogMixedPointerState.type === "layout-object") {
+    const layoutData = analogMixedNormalizeIcLayout(workspace);
+    const layoutObject = layoutData.layoutObjects.find((item) => item.id === analogMixedPointerState.layoutObjectId);
+    if (!layoutObject) return;
+    const point = analogMixedPointFromEvent(event, workspace);
+    layoutObject.x = Math.max(30, Math.min(1320, point.x - analogMixedPointerState.offsetX));
+    layoutObject.y = Math.max(30, Math.min(760, point.y - analogMixedPointerState.offsetY));
+    workspace.stageData["ic-layout"] = layoutData;
+    markDraftNeedsSave();
+    scheduleAutosave();
+    analogMixedQueueRender();
+    event.preventDefault();
+  }
 }
 
 function handleAnalogMixedPointerUp(event) {
@@ -5562,7 +5897,7 @@ function handleAnalogMixedPointerUp(event) {
     analogMixedSuppressClickUntil = Date.now() + 180;
     markDraftNeedsSave();
     scheduleAutosave();
-    analogMixedSetStatus(analogMixedPointerState.type === "pan" ? "Canvas panned." : "Component moved.");
+    analogMixedSetStatus(analogMixedPointerState.type === "pan" ? "Canvas panned." : analogMixedPointerState.type === "layout-object" ? "IC layout device moved." : "Component moved.");
   }
   analogMixedCanvas?.releasePointerCapture?.(analogMixedPointerState.pointerId || event.pointerId);
   analogMixedPointerState = null;
@@ -5635,6 +5970,30 @@ function handleAnalogMixedMenuItem(label = "") {
   const clean = String(label || "").toLowerCase();
   if (clean.includes("save am")) {
     saveAnalogMixedWorkspace();
+    return;
+  }
+  if (clean.includes("import ic pdk folder") || clean.includes("import pdk folder")) {
+    analogMixedImportPdkFolder();
+    return;
+  }
+  if (clean.includes("pdk status")) {
+    analogMixedRefreshPdkStatus(workspace.activePdk || workspace.stageData?.pdk?.importedPdk?.variant || "sky130");
+    return;
+  }
+  if (clean.includes("generate pdk netlist")) {
+    analogMixedRecordLayoutAction("ic-netlist");
+    return;
+  }
+  if (clean.includes("run parasitic extraction") || clean.includes("pex plan")) {
+    analogMixedRecordLayoutAction("ic-pex");
+    return;
+  }
+  if (clean.includes("run pdk noise extraction")) {
+    analogMixedRecordLayoutAction("ic-noise-run");
+    return;
+  }
+  if (clean.includes("complex analysis")) {
+    analogMixedRecordLayoutAction("ic-complex");
     return;
   }
   if (clean.includes("run spice")) {
@@ -25343,6 +25702,30 @@ analogMixedDialog?.addEventListener("click", (event) => {
     if (action === "duplicate") {
       analogMixedAddComponent(project, selected.type, { x: selected.x + 60, y: selected.y + 60 });
     }
+    if (action === "add-param") {
+      const rawKey = String(window.prompt("Parameter name, for example W, L, nf, m, ad, as, pd, ps", "") || "").trim();
+      if (!rawKey) return;
+      const key = rawKey.replace(/[^A-Za-z0-9_]/g, "_");
+      selected.parameters = selected.parameters && typeof selected.parameters === "object" ? selected.parameters : {};
+      if (!Object.prototype.hasOwnProperty.call(selected.parameters, key)) selected.parameters[key] = "";
+      markDraftNeedsSave();
+      scheduleAutosave();
+      renderAnalogMixedWorkspace();
+      analogMixedSetStatus(`Added parameter ${key} to ${selected.label || "selected device"}.`);
+    }
+    return;
+  }
+  const componentParamDelete = event.target.closest("[data-am-component-param-delete]");
+  if (componentParamDelete) {
+    const selected = workspace.components.find((component) => component.id === workspace.selectedComponentId);
+    if (!selected) return;
+    const key = componentParamDelete.dataset.amComponentParamDelete || "";
+    selected.parameters = selected.parameters && typeof selected.parameters === "object" ? selected.parameters : {};
+    delete selected.parameters[key];
+    markDraftNeedsSave();
+    scheduleAutosave();
+    renderAnalogMixedWorkspace();
+    analogMixedSetStatus(`Deleted parameter ${key}.`);
     return;
   }
   const menuItem = event.target.closest("[data-am-menu-item]");

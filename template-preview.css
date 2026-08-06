@@ -16109,8 +16109,67 @@ body[data-builder-theme] .selection-text-preview {
   cursor: pointer;
 }
 
+.am-layout-device.is-selected .am-layout-layer-fill,
+.am-layout-device.is-selected .am-layout-well-outline,
+.am-layout-device.is-selected .am-layout-cell-core,
+.am-layout-device.is-selected .am-layout-cap-plate {
+  stroke: #facc15;
+  stroke-width: 3.4;
+}
+
 .am-layout-layer-fill {
   stroke-width: 2.4;
+}
+
+.am-layout-well-outline {
+  fill: rgba(124, 58, 237, 0.12);
+  stroke: #a78bfa;
+  stroke-width: 2.4;
+}
+
+.am-layout-pmos-active {
+  fill: rgba(244, 114, 182, 0.28);
+  stroke: #f9a8d4;
+  stroke-width: 2.4;
+}
+
+.am-layout-nmos-active {
+  fill: rgba(45, 212, 191, 0.28);
+  stroke: #5eead4;
+  stroke-width: 2.4;
+}
+
+.am-layout-tap-rail,
+.am-layout-metal-strap {
+  fill: rgba(125, 211, 252, 0.42);
+  stroke: #bae6fd;
+  stroke-width: 1.8;
+}
+
+.am-layout-finger-text,
+.am-layout-well-label,
+.am-layout-device-title,
+.am-layout-device-model,
+.am-layout-device-param {
+  pointer-events: none;
+}
+
+.am-layout-finger-text {
+  fill: #0f172a !important;
+  font-size: 10px !important;
+  font-weight: 900 !important;
+}
+
+.am-layout-device-title {
+  fill: #f8fafc !important;
+  font-size: 14px !important;
+}
+
+.am-layout-device-model,
+.am-layout-device-param,
+.am-layout-well-label {
+  fill: #cbd5e1 !important;
+  font-size: 11px !important;
 }
 
 .am-layout-nwell {
@@ -16178,6 +16237,18 @@ body[data-builder-theme] .selection-text-preview {
   stroke-width: 7;
   stroke-linecap: square;
   stroke-linejoin: miter;
+  marker-end: url("#am-layout-arrow");
+}
+
+.am-layout-route-preview polyline {
+  stroke: #facc15 !important;
+  stroke-dasharray: 14 10;
+}
+
+.am-layout-via-dot {
+  fill: #f8fafc;
+  stroke: #0f172a;
+  stroke-width: 2;
 }
 
 .am-layout-route text {
@@ -16216,6 +16287,20 @@ body[data-builder-theme] .selection-text-preview {
 .am-layout-sidebar text:first-of-type {
   fill: #ffffff;
   font-size: 17px;
+}
+
+.analog-mixed-parameter-row {
+  display: grid;
+  grid-template-columns: minmax(64px, 0.7fr) minmax(96px, 1fr) auto;
+  gap: 6px;
+  align-items: end;
+}
+
+.analog-mixed-parameter-row .compact-icon {
+  min-height: 30px;
+  height: 30px;
+  padding: 0 10px;
+  border-radius: 5px;
 }
 
 .am-pcb-grid line {
