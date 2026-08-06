@@ -4100,6 +4100,162 @@ function analogMixedParseSpiceNumber(value = "", fallback = 0) {
   return base * scale;
 }
 
+function analogMixedServerIcParameterValue(parameters = {}, aliases = [], fallback = "") {
+  const aliasSet = new Set(aliases.map((name) => String(name || "").toLowerCase()));
+  const found = Object.entries(parameters && typeof parameters === "object" ? parameters : {})
+    .find(([key]) => aliasSet.has(String(key || "").toLowerCase()));
+  return found ? String(found[1] ?? "") : fallback;
+}
+
+function analogMixedServerIcDeviceRole(component = {}, item = analogMixedServerLibraryItem(component.type)) {
+  const descriptor = [
+    component.type,
+    component.label,
+    component.value,
+    component.modelName,
+    component.source,
+    component.pdk,
+    item.label,
+    item.category,
+    item.symbolKind,
+    item.modelName
+  ].join(" ").toLowerCase();
+  if (/diff|differential/.test(descriptor)) return "differential device";
+  if (/mirror/.test(descriptor)) return "current mirror device";
+  if (/pmos|pfet|pfet_/.test(descriptor)) return "PMOS transistor";
+  if (/nmos|nfet|nfet_/.test(descriptor)) return "NMOS transistor";
+  if (/mos|fet|switch/.test(descriptor)) return "MOS device";
+  if (/mim|capacitor|cap/.test(descriptor)) return "capacitor device";
+  if (/resistor|poly/.test(descriptor)) return "resistor device";
+  if (/diode/.test(descriptor)) return "diode device";
+  if (/opamp|amplifier|comparator|pll|adc|dac|macro|afe|controller/.test(descriptor)) return "analog macro cell";
+  if (/source|stimulus|supply|ground|reference/.test(descriptor)) return "bias/reference";
+  return "layout cell";
+}
+
+function analogMixedServerIcSizingRow(component = {}, index = 0) {
+  const item = analogMixedServerLibraryItem(component.type);
+  const params = component.parameters && typeof component.parameters === "object" ? component.parameters : {};
+  const role = analogMixedServerIcDeviceRole(component, item);
+  return {
+    id: String(component.id || `ic-size-${index + 1}`),
+    reference: String(component.label || item.spicePrefix || `X${index + 1}`),
+    type: String(component.type || item.id || "device"),
+    role,
+    model: String(component.modelName || item.modelName || component.type || "model"),
+    value: String(component.value || ""),
+    width: analogMixedServerIcParameterValue(params, ["w", "width", "mosWidth", "deviceWidth"], /mos|fet|transistor/i.test(role) ? "1u" : ""),
+    length: analogMixedServerIcParameterValue(params, ["l", "length", "mosLength", "channelLength"], /mos|fet|transistor/i.test(role) ? "0.15u" : ""),
+    fingers: analogMixedServerIcParameterValue(params, ["nf", "fingers", "fingerCount"], /mos|fet|transistor/i.test(role) ? "1" : ""),
+    multiplier: analogMixedServerIcParameterValue(params, ["m", "mult", "multiplier"], "1"),
+    gmIdTarget: analogMixedServerIcParameterValue(params, ["gmId", "gm_id", "gmOverId"], /mos|fet|transistor/i.test(role) ? "10-18 V^-1" : ""),
+    currentTarget: analogMixedServerIcParameterValue(params, ["id", "current", "biasCurrent"], /mos|fet|transistor|mirror/i.test(role) ? "set by bias" : ""),
+    regionTarget: analogMixedServerIcParameterValue(params, ["region", "operatingRegion"], /mos|fet|transistor/i.test(role) ? "saturation" : ""),
+    matchingNeed: /differential|mirror|capacitor|resistor/.test(role) ? "match-critical" : "normal"
+  };
+}
+
+function analogMixedServerIcSizingRows(workspace = {}) {
+  return normalizeAnalogMixedServerWorkspace(workspace).components.map((component, index) => analogMixedServerIcSizingRow(component, index));
+}
+
+function analogMixedServerIcCornerSetups(workspace = {}) {
+  const normalized = normalizeAnalogMixedServerWorkspace(workspace);
+  const pdk = String(normalized.stageData?.["ic-layout"]?.pdk || "generic-educational-pdk");
+  const supply = String(normalized.parameters?.[normalized.focus]?.supply || normalized.parameters?.[normalized.focus]?.inputVoltage || "project supply");
+  return [
+    { id: "tt-27", process: "tt", voltage: supply, temperature: "27 C", purpose: "nominal behavior and reference plots" },
+    { id: "ss-125", process: "ss", voltage: "low supply", temperature: "125 C", purpose: "slow/high-temperature timing and gain margin" },
+    { id: "ff-40", process: "ff", voltage: "high supply", temperature: "-40 C", purpose: "fast/low-temperature speed, stability, and current checks" },
+    { id: "fs-27", process: "fs", voltage: supply, temperature: "27 C", purpose: "NMOS-fast/PMOS-slow mismatch sensitivity" },
+    { id: "sf-27", process: "sf", voltage: supply, temperature: "27 C", purpose: "PMOS-fast/NMOS-slow mismatch sensitivity" }
+  ].map((corner) => ({ ...corner, pdk }));
+}
+
+function analogMixedServerIcConstraintGroups(workspace = {}, sizingRows = analogMixedServerIcSizingRows(workspace)) {
+  const groups = [];
+  const mosRows = sizingRows.filter((row) => /mos|transistor|mirror|differential/i.test(row.role));
+  const capRows = sizingRows.filter((row) => /capacitor/i.test(row.role));
+  const resRows = sizingRows.filter((row) => /resistor/i.test(row.role));
+  const diffRows = mosRows.filter((row) => /diff|inp|inn|in\+|in-/i.test([row.reference, row.type, row.model].join(" ")));
+  const mirrorRows = mosRows.filter((row) => /mir|bias|ref|tail|load/i.test([row.reference, row.type, row.model].join(" ")));
+  if (diffRows.length >= 2) groups.push({ id: "diff-pair", type: "differential pair", members: diffRows.slice(0, 4).map((row) => row.reference), rule: "common-centroid placement, identical orientation, shared guard ring, symmetric routing" });
+  if (mirrorRows.length >= 2) groups.push({ id: "current-mirror", type: "current mirror", members: mirrorRows.slice(0, 6).map((row) => row.reference), rule: "interdigitate equal fingers, equal drain routing, shared well/substrate taps" });
+  if (capRows.length >= 2) groups.push({ id: "cap-array", type: "capacitor array", members: capRows.map((row) => row.reference), rule: "unit capacitor array with dummy edge units and common centroid when ratio-critical" });
+  if (resRows.length >= 2) groups.push({ id: "res-array", type: "resistor array", members: resRows.map((row) => row.reference), rule: "same orientation, identical width, equal thermal environment, dummy resistors at ends" });
+  return groups;
+}
+
+function analogMixedServerIcDesignIntent(projectTitle = "Project", workspace = {}) {
+  const normalized = normalizeAnalogMixedServerWorkspace(workspace);
+  const params = normalized.parameters?.[normalized.focus] || {};
+  const pdk = normalized.stageData?.["ic-layout"]?.pdk || "generic-educational-pdk";
+  const topology = normalized.focus === "pll" ? "PLL / clocking cell"
+    : normalized.focus === "dcdc" ? "power-management control and sensing cell"
+      : "analog amplifier / signal-conditioning cell";
+  return {
+    projectTitle,
+    topology,
+    mode: normalized.mode,
+    focus: normalized.focus,
+    pdk,
+    supply: String(params.supply || params.inputVoltage || params.vin || "set by schematic sources"),
+    primaryTarget: normalized.focus === "pll" ? `loop bandwidth ${params.loopBandwidth || "TBD"}` : normalized.focus === "dcdc" ? `output ${params.outputVoltage || params.vout || "TBD"}` : `gain ${params.gain || "TBD"}`,
+    secondaryTarget: normalized.focus === "pll" ? `phase margin ${params.phaseMargin || "TBD"}` : normalized.focus === "dcdc" ? `switching frequency ${params.switchingFrequency || params.fsw || "TBD"}` : `bandwidth ${params.bandwidth || "TBD"}`,
+    layoutPriority: "matching, isolation, parasitic awareness, PVT repeatability, and clear LVS/DRC handoff",
+    extractionGoal: "prepare schematic, layout, extracted view, DRC, LVS, and PEX artifacts for later real-engine execution"
+  };
+}
+
+function analogMixedServerIcSignoffItems(workspace = {}, objects = [], routes = [], constraints = [], corners = []) {
+  return [
+    { id: "schematic-complete", label: "Schematic devices placed", status: objects.length ? "ready" : "missing", detail: `${objects.length} layout object${objects.length === 1 ? "" : "s"} linked to schematic components.` },
+    { id: "connectivity", label: "Connectivity routed", status: routes.length ? "ready" : "missing", detail: `${routes.length} route${routes.length === 1 ? "" : "s"} generated from schematic wires.` },
+    { id: "constraints", label: "Matching constraints", status: constraints.length ? "ready" : "planned", detail: `${constraints.length} constraint group${constraints.length === 1 ? "" : "s"}.` },
+    { id: "corners", label: "PVT corner plan", status: corners.length ? "ready" : "planned", detail: `${corners.length} process/voltage/temperature setup${corners.length === 1 ? "" : "s"}.` },
+    { id: "drc", label: "DRC", status: "planned", detail: "Magic/KLayout rule deck handoff script is generated when available." },
+    { id: "lvs", label: "LVS", status: "planned", detail: "Netgen comparison script is generated for schematic-versus-layout planning." },
+    { id: "pex", label: "PEX / extracted view", status: "planned", detail: "Extraction run record and report are generated; full extraction waits for a connected PDK engine." }
+  ];
+}
+
+function analogMixedCsvRow(fields = []) {
+  return fields.map((field) => `"${String(field ?? "").replace(/"/g, '""')}"`).join(",");
+}
+
+function analogMixedServerIcReportMarkdown(projectTitle = "Project", intent = {}, sizingRows = [], corners = [], constraints = [], signoff = []) {
+  return [
+    `# IC Design Report - ${projectTitle || "Project"}`,
+    "",
+    "## Design Intent",
+    "",
+    `- Topology: ${intent.topology || "not set"}`,
+    `- Mode: ${intent.mode || "not set"}`,
+    `- Focus: ${intent.focus || "not set"}`,
+    `- PDK: ${intent.pdk || "generic"}`,
+    `- Supply: ${intent.supply || "not set"}`,
+    `- Primary target: ${intent.primaryTarget || "not set"}`,
+    `- Secondary target: ${intent.secondaryTarget || "not set"}`,
+    `- Layout priority: ${intent.layoutPriority || "not set"}`,
+    "",
+    "## Device Sizing",
+    "",
+    ...(sizingRows.length ? sizingRows.map((row) => `- ${row.reference}: ${row.role}; model ${row.model}; W=${row.width || "-"} L=${row.length || "-"} nf=${row.fingers || "-"} m=${row.multiplier || "-"}; gm/Id ${row.gmIdTarget || "-"}; region ${row.regionTarget || "-"}`) : ["- No devices placed yet."]),
+    "",
+    "## Matching And Layout Constraints",
+    "",
+    ...(constraints.length ? constraints.map((group) => `- ${group.type}: ${group.members.join(", ")}. ${group.rule}`) : ["- No automatic matching groups detected yet."]),
+    "",
+    "## PVT Corners",
+    "",
+    ...(corners.length ? corners.map((corner) => `- ${corner.process}: ${corner.voltage}, ${corner.temperature}; ${corner.purpose}`) : ["- No corner setups recorded yet."]),
+    "",
+    "## Signoff Checklist",
+    "",
+    ...(signoff.length ? signoff.map((item) => `- ${item.label}: ${item.status}. ${item.detail}`) : ["- No signoff items recorded yet."])
+  ].join("\n");
+}
+
 function analogMixedSpiceAnalysisLines(kind = "op", workspace = {}) {
   const voltageSource = (workspace.components || []).find((component, index) => {
     const item = analogMixedServerLibraryItem(component.type);
@@ -4386,14 +4542,32 @@ async function analogMixedBuildIcLayoutArtifacts(projectTitle = "Project", works
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
   const objects = analogMixedServerIcObjects(workspace);
   const routes = analogMixedServerIcRoutes(workspace, objects);
+  const sizingRows = analogMixedServerIcSizingRows(workspace);
+  const cornerSetups = analogMixedServerIcCornerSetups(workspace);
+  const constraintGroups = analogMixedServerIcConstraintGroups(workspace, sizingRows);
+  const designIntent = analogMixedServerIcDesignIntent(projectTitle, workspace);
+  const signoffItems = analogMixedServerIcSignoffItems(workspace, objects, routes, constraintGroups, cornerSetups);
   const netlist = analogMixedServerNetlist(projectTitle, workspace);
   const gdsPath = path.join(runRoot, `ic-layout-${stamp}.gds`);
   const klayoutScriptPath = path.join(runRoot, `build-layout-${stamp}.rb`);
   const magicScriptPath = path.join(runRoot, `magic-drc-${stamp}.tcl`);
   const netgenScriptPath = path.join(runRoot, `netgen-lvs-${stamp}.tcl`);
   const netlistPath = path.join(runRoot, `schematic-${stamp}.spice`);
+  const intentPath = path.join(runRoot, `ic-design-intent-${stamp}.json`);
+  const sizingPath = path.join(runRoot, `ic-sizing-table-${stamp}.csv`);
+  const cornersPath = path.join(runRoot, `ic-corners-${stamp}.json`);
+  const constraintsPath = path.join(runRoot, `ic-constraints-${stamp}.json`);
+  const signoffPath = path.join(runRoot, `ic-signoff-report-${stamp}.md`);
   const summaryPath = path.join(runRoot, `ic-layout-summary-${stamp}.json`);
   await writeFile(netlistPath, netlist, "utf8");
+  await writeFile(intentPath, JSON.stringify(designIntent, null, 2), "utf8");
+  await writeFile(sizingPath, [
+    analogMixedCsvRow(["Reference", "Type", "Role", "Model", "Value", "Width", "Length", "Fingers", "Multiplier", "gmIdTarget", "CurrentTarget", "RegionTarget", "MatchingNeed"]),
+    ...sizingRows.map((row) => analogMixedCsvRow([row.reference, row.type, row.role, row.model, row.value, row.width, row.length, row.fingers, row.multiplier, row.gmIdTarget, row.currentTarget, row.regionTarget, row.matchingNeed]))
+  ].join("\n"), "utf8");
+  await writeFile(cornersPath, JSON.stringify(cornerSetups, null, 2), "utf8");
+  await writeFile(constraintsPath, JSON.stringify(constraintGroups, null, 2), "utf8");
+  await writeFile(signoffPath, analogMixedServerIcReportMarkdown(projectTitle, designIntent, sizingRows, cornerSetups, constraintGroups, signoffItems), "utf8");
   await writeFile(klayoutScriptPath, analogMixedKLayoutRuby(projectTitle, workspace, { objects, routes, gdsPath }), "utf8");
   await writeFile(magicScriptPath, [
     "# Auto-generated Magic DRC plan",
@@ -4416,7 +4590,7 @@ async function analogMixedBuildIcLayoutArtifacts(projectTitle = "Project", works
     const result = await runProcess(klayout, ["-b", "-r", klayoutScriptPath], { cwd: runRoot, timeoutMs: 60000, env: await compileToolPathEnvironment() });
     toolRuns.push({ tool: "klayout", executable: klayout, ok: result.ok, exitCode: result.code, stdout: result.stdout, stderr: result.stderr, elapsedMs: result.elapsedMs });
   }
-  const files = { runRoot, netlistPath, klayoutScriptPath, magicScriptPath, netgenScriptPath, gdsPath, summaryPath };
+  const files = { runRoot, netlistPath, intentPath, sizingPath, cornersPath, constraintsPath, signoffPath, klayoutScriptPath, magicScriptPath, netgenScriptPath, gdsPath, summaryPath };
   const artifacts = Object.entries(files)
     .filter(([key]) => key !== "runRoot")
     .map(([key, value]) => ({ name: key, path: value, kind: path.extname(value).replace(".", "") || "folder" }));
@@ -4428,6 +4602,11 @@ async function analogMixedBuildIcLayoutArtifacts(projectTitle = "Project", works
     toolStatus: status.tools,
     objects,
     routes,
+    designIntent,
+    sizingRows,
+    cornerSetups,
+    constraintGroups,
+    signoffItems,
     artifactRoot: runRoot,
     files,
     artifacts,
