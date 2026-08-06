@@ -248,6 +248,46 @@ const compileToolCandidates = {
     "C:\\Program Files\\LTC\\LTspiceXVII\\XVIIx64.exe",
     "C:\\Program Files\\Analog Devices\\LTspice\\LTspice.exe",
     process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, "Programs", "ADI", "LTspice", "LTspice.exe") : ""
+  ],
+  ngspice: [
+    process.env.NGSPICE_EXE,
+    "ngspice",
+    "C:\\Spice64\\bin\\ngspice.exe",
+    "C:\\Program Files\\Spice64\\bin\\ngspice.exe",
+    "C:\\Program Files\\ngspice\\bin\\ngspice.exe",
+    process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, "Programs", "ngspice", "Spice64", "bin", "ngspice.exe") : "",
+    process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, "Programs", "ngspice", "bin", "ngspice.exe") : "",
+    process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, "Microsoft", "WinGet", "Packages", "ngspice", "bin", "ngspice.exe") : ""
+  ],
+  xyce: [
+    process.env.XYCE_EXE,
+    "Xyce",
+    "xyce",
+    "C:\\Program Files\\Xyce\\bin\\Xyce.exe",
+    "C:\\Program Files\\Xyce\\Xyce.exe",
+    process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, "Programs", "Xyce", "bin", "Xyce.exe") : ""
+  ],
+  klayout: [
+    process.env.KLAYOUT_EXE,
+    "klayout_app",
+    "klayout",
+    "C:\\Program Files\\KLayout\\klayout_app.exe",
+    "C:\\Program Files\\KLayout\\klayout.exe",
+    process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, "Programs", "KLayout", "klayout_app.exe") : ""
+  ],
+  magic: [
+    process.env.MAGIC_EXE,
+    "magic",
+    "C:\\msys64\\mingw64\\bin\\magic.exe",
+    "C:\\msys64\\usr\\bin\\magic.exe",
+    process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, "Programs", "magic", "bin", "magic.exe") : ""
+  ],
+  netgen: [
+    process.env.NETGEN_EXE,
+    "netgen",
+    "C:\\msys64\\mingw64\\bin\\netgen.exe",
+    "C:\\msys64\\usr\\bin\\netgen.exe",
+    process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, "Programs", "netgen", "bin", "netgen.exe") : ""
   ]
 };
 const compileToolCache = new Map();
@@ -1104,16 +1144,28 @@ async function findTool(toolName) {
     return found || "";
   }
 
-  if (["iverilog", "vvp", "yosys", "gtkwave", "slang", "verilator"].includes(toolName)) {
-    const executableNames = toolName === "verilator" ? ["verilator.exe", "verilator_bin.exe"] : [`${toolName}.exe`];
+  if (["iverilog", "vvp", "yosys", "gtkwave", "slang", "verilator", "ngspice", "xyce", "klayout", "magic", "netgen"].includes(toolName)) {
+    const executableNames = toolName === "verilator"
+      ? ["verilator.exe", "verilator_bin.exe"]
+      : toolName === "klayout"
+        ? ["klayout_app.exe", "klayout.exe"]
+        : toolName === "xyce"
+          ? ["Xyce.exe", "xyce.exe"]
+          : [`${toolName}.exe`];
     const searchRoots = [
       process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, "Programs", "OSS CAD Suite") : "",
       process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, "Programs", "oss-cad-suite") : "",
       process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, "OMB Portfolio Builder", "tools", "oss-cad-suite") : "",
+      process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, "Programs") : "",
       "C:\\oss-cad-suite",
       "C:\\iverilog",
+      "C:\\Spice64",
       "C:\\Program Files\\Icarus Verilog",
       "C:\\Program Files (x86)\\Icarus Verilog",
+      "C:\\Program Files\\ngspice",
+      "C:\\Program Files\\Spice64",
+      "C:\\Program Files\\Xyce",
+      "C:\\Program Files\\KLayout",
       process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, "Microsoft", "WinGet", "Packages") : ""
     ].filter(Boolean);
     for (const rootFolder of searchRoots) {
@@ -1130,7 +1182,7 @@ async function findTool(toolName) {
 }
 
 async function compileToolPathEnvironment() {
-  const toolNames = ["gcc", "g++", "javac", "java", "iverilog", "vvp", "yosys", "slang", "gtkwave", "ltspice"];
+  const toolNames = ["gcc", "g++", "javac", "java", "iverilog", "vvp", "yosys", "slang", "gtkwave", "ltspice", "ngspice", "xyce", "klayout", "magic", "netgen"];
   const folders = [];
   const extraEnv = {};
   for (const toolName of toolNames) {
@@ -3834,14 +3886,31 @@ function normalizeAnalogMixedServerWorkspace(workspace = {}) {
       deviceLevel: Boolean(component.deviceLevel),
       parameters: component.parameters && typeof component.parameters === "object" ? component.parameters : {}
     })) : [],
-    wires: Array.isArray(source.wires) ? source.wires.map((wire, index) => ({
-      id: String(wire.id || `wire-${index + 1}`),
-      name: String(wire.name || `net_${index + 1}`),
-      x1: Number(wire.x1) || 0,
-      y1: Number(wire.y1) || 0,
-      x2: Number(wire.x2) || 0,
-      y2: Number(wire.y2) || 0
-    })) : [],
+    wires: Array.isArray(source.wires) ? source.wires.map((wire, index) => {
+      const x1 = Number(wire.x1) || 0;
+      const y1 = Number(wire.y1) || 0;
+      const x2 = Number(wire.x2) || 0;
+      const y2 = Number(wire.y2) || 0;
+      const normalizeRef = (ref) => {
+        if (!ref || typeof ref !== "object") return { type: "point" };
+        if (ref.type === "pin") return { type: "pin", componentId: String(ref.componentId || ""), pin: String(ref.pin || "") };
+        return { type: "point" };
+      };
+      return {
+        id: String(wire.id || `wire-${index + 1}`),
+        name: String(wire.name || `net_${index + 1}`),
+        x1,
+        y1,
+        x2,
+        y2,
+        points: Array.isArray(wire.points) ? wire.points.map((point) => ({ x: Number(point?.x) || 0, y: Number(point?.y) || 0 })).filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y)) : [{ x: x1, y: y1 }, { x: x2, y: y2 }],
+        startRef: normalizeRef(wire.startRef),
+        endRef: normalizeRef(wire.endRef)
+      };
+    }) : [],
+    junctions: Array.isArray(source.junctions) ? source.junctions.map((item, index) => ({ id: String(item.id || `junction-${index + 1}`), x: Number(item.x) || 0, y: Number(item.y) || 0 })) : [],
+    noConnects: Array.isArray(source.noConnects) ? source.noConnects.map((item, index) => ({ id: String(item.id || `no-connect-${index + 1}`), label: String(item.label || "NC"), x: Number(item.x) || 0, y: Number(item.y) || 0 })) : [],
+    probes: Array.isArray(source.probes) ? source.probes.map((item, index) => ({ id: String(item.id || `probe-${index + 1}`), label: String(item.label || `probe_${index + 1}`), x: Number(item.x) || 0, y: Number(item.y) || 0 })) : [],
     labels: Array.isArray(source.labels) ? source.labels.map((label, index) => ({
       id: String(label.id || `label-${index + 1}`),
       text: String(label.text || `label_${index + 1}`),
@@ -3859,6 +3928,13 @@ function analogMixedServerValue(value = "", fallback = "") {
   return raw.replace(/\bohm\b/ig, "").replace(/\s+/g, "");
 }
 
+function analogMixedServerSourceValue(value = "", fallback = "DC 1") {
+  const raw = String(value || fallback || "").trim().replace(/\s+/g, " ");
+  if (!raw) return fallback;
+  if (/^(dc|ac|sin|pulse|pwl|exp|sffm|am|trnoise|trrandom)\b/i.test(raw)) return raw;
+  return `DC ${raw}`;
+}
+
 function analogMixedServerParamSuffix(parameters = {}) {
   const entries = Object.entries(parameters && typeof parameters === "object" ? parameters : {})
     .map(([key, value]) => [String(key || "").trim(), String(value ?? "").trim()])
@@ -3867,12 +3943,20 @@ function analogMixedServerParamSuffix(parameters = {}) {
 }
 
 function analogMixedServerNodeNames(workspace, component, index, pins) {
+  const pinConnected = new Map();
+  workspace.wires.forEach((wire) => {
+    [wire.startRef, wire.endRef].forEach((ref) => {
+      if (ref?.type === "pin" && ref.componentId === component.id && ref.pin) {
+        pinConnected.set(String(ref.pin).toLowerCase(), wire.name || `net_${index + 1}`);
+      }
+    });
+  });
   const nearby = workspace.wires.filter((wire) => {
     const nearStart = Math.abs(wire.x1 - component.x) < 90 && Math.abs(wire.y1 - component.y) < 90;
     const nearEnd = Math.abs(wire.x2 - component.x) < 90 && Math.abs(wire.y2 - component.y) < 90;
     return nearStart || nearEnd;
   }).map((wire) => wire.name || `net_${index + 1}`);
-  const nodes = pins.map((pin, pinIndex) => nearby[pinIndex] || (String(pin).toUpperCase().includes("GND") || pin === "0" ? "0" : `n${index + 1}_${pinIndex + 1}`));
+  const nodes = pins.map((pin, pinIndex) => pinConnected.get(String(pin).toLowerCase()) || nearby[pinIndex] || (String(pin).toUpperCase().includes("GND") || pin === "0" ? "0" : `n${index + 1}_${pinIndex + 1}`));
   if (nodes.length === 1) nodes.push("0");
   return nodes;
 }
@@ -3887,7 +3971,7 @@ function analogMixedServerComponentLine(workspace, component, index) {
   const parameterSuffix = analogMixedServerParamSuffix(component.parameters);
   if (prefix === "M") return `${reference} ${nodes.slice(0, 4).join(" ")} ${modelName} ${parameterSuffix || `W_L=${analogMixedServerValue(component.value, "unsized")}`} ; ${item.label}${component.source ? ` (${component.source})` : ""}`;
   if (prefix === "Q" || prefix === "J" || prefix === "D") return `${reference} ${nodes.slice(0, item.pins.length).join(" ")} ${modelName} ${parameterSuffix || analogMixedServerValue(component.value)} ; ${item.label}${component.source ? ` (${component.source})` : ""}`;
-  if (prefix === "V" || prefix === "I") return `${reference} ${nodes[0] || `n${index + 1}`} ${nodes[1] || "0"} ${analogMixedServerValue(component.value, prefix === "V" ? "DC 1" : "DC 1m")} ; ${item.label}`;
+  if (prefix === "V" || prefix === "I") return `${reference} ${nodes[0] || `n${index + 1}`} ${nodes[1] || "0"} ${analogMixedServerSourceValue(component.value, prefix === "V" ? "DC 1" : "DC 1m")} ; ${item.label}`;
   if (["R", "C", "L", "F", "Y"].includes(prefix)) return `${reference} ${nodes[0] || `n${index + 1}`} ${nodes[1] || "0"} ${analogMixedServerValue(component.value, item.label)} ${parameterSuffix} ; ${item.label}${component.footprint ? ` footprint=${component.footprint}` : ""}`;
   return `${reference} ${nodes.join(" ")} ${modelName} ${parameterSuffix} ; ${item.label}${component.source ? ` (${component.source})` : ""}`;
 }
@@ -3931,6 +4015,9 @@ function analogMixedServerCheckReport(projectTitle = "Project", workspaceInput =
     if (!String(wire.name || "").trim()) issues.push({ severity: "warning", message: `Wire ${wire.id} is unnamed.` });
   });
   if (workspace.components.length && !workspace.wires.length) issues.push({ severity: "warning", message: "Components exist, but no wire-level connectivity has been drawn yet." });
+  if (workspace.wires.length && !workspace.wires.some((wire) => wire.startRef?.type === "pin" || wire.endRef?.type === "pin")) issues.push({ severity: "info", message: "Wires exist, but no endpoint is snapped directly to a component pin." });
+  if (workspace.noConnects.length) issues.push({ severity: "info", message: `${workspace.noConnects.length} intentionally open node marker${workspace.noConnects.length === 1 ? "" : "s"} present.` });
+  if (workspace.probes.length && !workspace.wires.length) issues.push({ severity: "info", message: "Probe markers exist, but no wires are drawn yet." });
   if (workspace.mode !== "board" && !workspace.stageData?.pdk?.modelFiles?.length) issues.push({ severity: "info", message: "No PDK model files are registered for IC-level simulation yet." });
   if (!workspace.components.some((component) => analogMixedServerLibraryItem(component.type).category === "reference")) issues.push({ severity: "info", message: "No explicit ground or supply reference symbol has been placed." });
   const title = `AM backend DRC/ERC report for ${projectTitle || "Project"}`;
@@ -3938,7 +4025,7 @@ function analogMixedServerCheckReport(projectTitle = "Project", workspaceInput =
     issues,
     text: [
       title,
-      `Mode: ${workspace.mode}; focus: ${workspace.focus}; components: ${workspace.components.length}; wires: ${workspace.wires.length}; labels: ${workspace.labels.length}`,
+      `Mode: ${workspace.mode}; focus: ${workspace.focus}; components: ${workspace.components.length}; wires: ${workspace.wires.length}; labels: ${workspace.labels.length}; junctions: ${workspace.junctions.length}; probes: ${workspace.probes.length}`,
       "",
       ...(issues.length ? issues.map((issue) => `${issue.severity.toUpperCase()}: ${issue.message}`) : ["No blocking issues found by the current backend analyzer."])
     ].join("\n")
@@ -3961,6 +4048,7 @@ function analogMixedAnalyzeWorkspace(projectTitle = "Project", workspaceInput = 
     "",
     `Placed components: ${workspace.components.length}`,
     `Drawn wires: ${workspace.wires.length}`,
+    `Junctions / no-connects / probes: ${workspace.junctions.length} / ${workspace.noConnects.length} / ${workspace.probes.length}`,
     `Named labels: ${workspace.labels.length}`,
     `Mode/focus: ${workspace.mode} / ${workspace.focus}`,
     "",
@@ -3989,6 +4077,319 @@ function analogMixedAnalyzeWorkspace(projectTitle = "Project", workspaceInput = 
     symbolCounts,
     symbolLibrary: analogMixedServerAllSymbols()
   };
+}
+
+function analogMixedParseSpiceNumber(value = "", fallback = 0) {
+  const raw = String(value || "").trim();
+  const match = raw.match(/[-+]?\d*\.?\d+(?:e[-+]?\d+)?\s*(meg|g|k|m|u|µ|n|p|f)?/i);
+  if (!match) return fallback;
+  const base = Number(match[0].replace(/[a-zµ]+/ig, ""));
+  if (!Number.isFinite(base)) return fallback;
+  const suffix = String(match[1] || "").toLowerCase();
+  const scale = suffix === "g" ? 1e9
+    : suffix === "meg" ? 1e6
+      : suffix === "k" ? 1e3
+        : suffix === "m" ? 1e-3
+          : suffix === "u" || suffix === "µ" ? 1e-6
+            : suffix === "n" ? 1e-9
+              : suffix === "p" ? 1e-12
+                : suffix === "f" ? 1e-15
+                  : 1;
+  return base * scale;
+}
+
+function analogMixedSpiceAnalysisLines(kind = "op", workspace = {}) {
+  const voltageSource = (workspace.components || []).find((component, index) => {
+    const item = analogMixedServerLibraryItem(component.type);
+    return item.spicePrefix === "V" || /^v/i.test(component.label || "") || index === 0;
+  });
+  const sourceRef = voltageSource ? `V${String(voltageSource.label || "1").replace(/^[A-Za-z]+/, "") || "1"}` : "V1";
+  if (kind === "dc") return [`.dc ${sourceRef} 0 5 0.1`, ".print dc all"];
+  if (kind === "ac") return [".ac dec 25 1 100Meg", ".print ac all"];
+  if (kind === "tran") return [".tran 1u 5m", ".print tran all"];
+  return [".op", ".print op all"];
+}
+
+async function analogMixedPdkPathCandidates(pdkName = "sky130") {
+  const candidates = [];
+  const addCandidate = (value, source = "") => {
+    if (!value) return;
+    candidates.push({ path: path.resolve(String(value)), source });
+  };
+  addCandidate(process.env.SKY130_PDK_ROOT, "SKY130_PDK_ROOT");
+  addCandidate(process.env.PDK_ROOT, "PDK_ROOT");
+  if (process.env.LOCALAPPDATA) {
+    addCandidate(path.join(process.env.LOCALAPPDATA, "OMB Portfolio Builder", "pdks"), "OMB user-local PDK root");
+    addCandidate(path.join(process.env.LOCALAPPDATA, "Programs", "open_pdks"), "user-local open_pdks");
+  }
+  addCandidate(path.join(os.homedir(), ".volare"), "Volare default root");
+  try {
+    const volare = await runProcess("py", ["-m", "volare", "path", "--pdk", pdkName], { cwd: root, timeoutMs: 10000 });
+    const output = String(volare.stdout || "").split(/\r?\n/).map((line) => line.trim()).find(Boolean);
+    addCandidate(output, "Volare path");
+  } catch {
+    // Volare is optional; manual PDK_ROOT paths are still valid.
+  }
+  return candidates;
+}
+
+async function analogMixedFindSky130Pdk(pdkName = "sky130") {
+  const roots = await analogMixedPdkPathCandidates(pdkName);
+  const found = [];
+  const visit = async (folder, source, depth = 0) => {
+    if (!folder || depth > 6 || !(await pathExists(folder))) return;
+    const base = path.basename(folder).toLowerCase();
+    if (base === "sky130a" || base === "sky130b") {
+      found.push({ path: folder, source });
+      return;
+    }
+    let entries = [];
+    try {
+      entries = await readdir(folder, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      if (/^(node_modules|\.git|cache|tmp|dist)$/i.test(entry.name)) continue;
+      if (found.length > 4) return;
+      await visit(path.join(folder, entry.name), source, depth + 1);
+    }
+  };
+  for (const rootCandidate of roots) await visit(rootCandidate.path, rootCandidate.source, 0);
+  const unique = [];
+  const seen = new Set();
+  for (const candidate of found) {
+    const key = candidate.path.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(candidate);
+  }
+  return unique[0] || null;
+}
+
+async function analogMixedPdkStatus(pdkName = "sky130") {
+  const pdk = await analogMixedFindSky130Pdk(pdkName);
+  const tools = {};
+  for (const tool of ["ngspice", "xyce", "ltspice", "klayout", "magic", "netgen"]) {
+    tools[tool] = await findTool(tool);
+  }
+  if (!pdk) {
+    return {
+      tools,
+      pdk: {
+        available: false,
+        family: pdkName,
+        path: "",
+        source: "",
+        modelFiles: [],
+        libraries: [],
+        corners: [],
+        message: "No enabled SKY130 PDK folder was found. Use Volare/open_pdks or set PDK_ROOT/SKY130_PDK_ROOT."
+      }
+    };
+  }
+  const modelCandidates = [
+    path.join(pdk.path, "libs.tech", "ngspice", "sky130.lib.spice"),
+    path.join(pdk.path, "libs.tech", "ngspice", "sky130_fd_pr__models.spice"),
+    path.join(pdk.path, "libs.tech", "ngspice", "sky130_fd_pr__models__tt.spice")
+  ];
+  const modelFiles = [];
+  for (const modelFile of modelCandidates) {
+    if (await pathExists(modelFile)) modelFiles.push(modelFile);
+  }
+  const libraryFolders = [
+    path.join(pdk.path, "libs.ref"),
+    path.join(pdk.path, "libs.tech"),
+    path.join(pdk.path, "libs.tech", "magic"),
+    path.join(pdk.path, "libs.tech", "klayout")
+  ];
+  const libraries = [];
+  for (const folder of libraryFolders) {
+    if (await pathExists(folder)) libraries.push(folder);
+  }
+  return {
+    tools,
+    pdk: {
+      available: true,
+      family: "sky130",
+      variant: path.basename(pdk.path),
+      path: pdk.path,
+      source: pdk.source,
+      modelFiles,
+      libraries,
+      corners: ["tt", "ss", "ff", "sf", "fs"],
+      message: "SKY130 PDK folder detected."
+    }
+  };
+}
+
+function analogMixedNeedsPdkModels(workspace = {}) {
+  const normalized = normalizeAnalogMixedServerWorkspace(workspace);
+  return normalized.components.some((component) => {
+    const item = analogMixedServerLibraryItem(component.type);
+    const descriptor = [
+      component.type,
+      component.source,
+      component.pdk,
+      component.vendor,
+      component.modelName,
+      item.source,
+      item.category,
+      item.modelName,
+      item.symbolKind
+    ].join(" ").toLowerCase();
+    if (/sky130|pdk|nfet|pfet|mos|fet|bjt|diode|mim|poly/.test(descriptor)) return true;
+    return ["M", "Q", "J", "D"].includes(item.spicePrefix || "");
+  });
+}
+
+async function analogMixedSpiceDeck(projectTitle = "Project", workspaceInput = {}, kind = "op") {
+  const workspace = normalizeAnalogMixedServerWorkspace(workspaceInput);
+  const pdkStatus = analogMixedNeedsPdkModels(workspace) ? await analogMixedPdkStatus("sky130") : { pdk: null };
+  const baseNetlist = analogMixedServerNetlist(projectTitle, workspace).replace(/\n\.end\s*$/i, "");
+  const includes = (pdkStatus.pdk?.modelFiles || []).slice(0, 3).map((file) => `.include "${file.replace(/\\/g, "/")}"`);
+  const analysis = analogMixedSpiceAnalysisLines(kind, workspace);
+  const controls = [
+    ".control",
+    "set noaskquit",
+    "run",
+    kind === "op" ? "print all" : "print all",
+    "quit",
+    ".endc"
+  ];
+  return [
+    `* OMB full-SPICE deck - ${projectTitle || "Project"}`,
+    `* Analysis: ${kind.toUpperCase()}`,
+    ...includes,
+    "",
+    baseNetlist,
+    "",
+    ...analysis,
+    "",
+    ...controls,
+    ".end"
+  ].join("\n");
+}
+
+function analogMixedLiteSimulation(projectTitle = "Project", workspaceInput = {}, kind = "op", deck = "") {
+  const workspace = normalizeAnalogMixedServerWorkspace(workspaceInput);
+  const nodeVoltages = { "0": 0 };
+  const sources = [];
+  workspace.components.forEach((component, index) => {
+    const item = analogMixedServerLibraryItem(component.type);
+    if (item.spicePrefix === "V") {
+      const nodes = analogMixedServerNodeNames(workspace, component, index, item.pins);
+      const value = analogMixedParseSpiceNumber(component.value, 1);
+      nodeVoltages[nodes[0] || `n${index + 1}`] = value;
+      nodeVoltages[nodes[1] || "0"] = nodeVoltages[nodes[1] || "0"] || 0;
+      sources.push({ reference: component.label || `V${index + 1}`, value, nodes });
+    }
+  });
+  const deviceEstimates = workspace.components.map((component, index) => {
+    const item = analogMixedServerLibraryItem(component.type);
+    return {
+      reference: component.label || `${item.spicePrefix}${index + 1}`,
+      kind: item.label,
+      model: component.modelName || item.modelName || component.type,
+      value: component.value || "",
+      estimated: ["R", "C", "L", "V", "I"].includes(item.spicePrefix)
+    };
+  });
+  const sweep = kind === "dc"
+    ? Array.from({ length: 11 }, (_, step) => ({ input: step * 0.5, output: step * 0.5 }))
+    : [];
+  const report = [
+    `SPICE simulation report for ${projectTitle || "Project"}`,
+    "",
+    "Engine: OMB-SPICE Lite fallback",
+    "Status: completed with limited educational estimates",
+    "",
+    "A full external SPICE executable was not detected, so the builder used a lightweight continuity/estimate pass. Install ngspice, Xyce, or a CLI-capable SPICE engine for full nonlinear device solving, model cards, convergence control, transient integration, AC linearization, noise, and corners.",
+    "",
+    `Analysis requested: ${kind.toUpperCase()}`,
+    `Schematic devices: ${workspace.components.length}`,
+    `Sources detected: ${sources.length}`,
+    "",
+    "Estimated node voltages:",
+    ...Object.entries(nodeVoltages).map(([node, value]) => `- ${node}: ${value} V`),
+    "",
+    "Device inventory:",
+    ...deviceEstimates.map((item) => `- ${item.reference}: ${item.kind} ${item.value || item.model}`),
+    "",
+    "Generated deck:",
+    deck
+  ].join("\n");
+  return {
+    generatedAt: new Date().toISOString(),
+    engine: "OMB-SPICE Lite fallback",
+    status: "fallback",
+    report,
+    netlist: deck,
+    nodeVoltages,
+    sweep,
+    deviceEstimates
+  };
+}
+
+async function analogMixedRunSpice(projectTitle = "Project", workspaceInput = {}, kind = "op") {
+  const cleanKind = ["op", "dc", "ac", "tran"].includes(kind) ? kind : "op";
+  const deck = await analogMixedSpiceDeck(projectTitle, workspaceInput, cleanKind);
+  const engineCandidates = [
+    { id: "ngspice", label: "ngspice", usesLogFile: true, args: (deckPath, outputPath) => ["-b", "-o", outputPath, deckPath] },
+    { id: "xyce", label: "Xyce", args: (deckPath) => [deckPath] }
+  ];
+  const runRoot = resolveInsideCompileRoot(".omb-spice-runs", safeSegment(projectTitle || "project"));
+  await mkdir(runRoot, { recursive: true });
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const deckPath = path.join(runRoot, `${safeSegment(cleanKind)}-${stamp}.cir`);
+  await writeFile(deckPath, deck, "utf8");
+  for (const engine of engineCandidates) {
+    const enginePath = await findTool(engine.id);
+    if (!enginePath) continue;
+    const env = await compileToolPathEnvironment();
+    const outputPath = path.join(runRoot, `${safeSegment(cleanKind)}-${stamp}-${engine.id}.log`);
+    const result = await runProcess(enginePath, engine.args(deckPath, outputPath), { cwd: runRoot, timeoutMs: 60000, env });
+    const hasLoggedOutput = Boolean(engine.usesLogFile) && await pathExists(outputPath);
+    const loggedOutput = hasLoggedOutput ? await readFile(outputPath, "utf8").catch(() => "") : "";
+    const outputText = [loggedOutput, result.stdout, result.stderr].filter(Boolean).join("\n").trim();
+    const report = [
+      `SPICE simulation report for ${projectTitle || "Project"}`,
+      "",
+      `Engine: ${engine.label}`,
+      `Executable: ${enginePath}`,
+      `Deck: ${deckPath}`,
+      `Status: ${result.ok ? "completed" : "failed"} (exit code ${result.code ?? "unknown"})`,
+      `Elapsed: ${Number.isFinite(result.elapsedMs) ? `${(result.elapsedMs / 1000).toFixed(2)} s` : "unknown"}`,
+      "",
+      "Engine output:",
+      outputText || "No text output was returned.",
+      "",
+      "Generated deck:",
+      deck
+    ].join("\n");
+    return {
+      generatedAt: new Date().toISOString(),
+      engine: engine.label,
+      executable: enginePath,
+      deckPath,
+      outputPath: engine.usesLogFile ? outputPath : "",
+      status: result.ok ? "completed" : "failed",
+      exitCode: result.code,
+      stdout: result.stdout,
+      stderr: result.stderr,
+      report,
+      netlist: deck,
+      nodeVoltages: {},
+      sweep: [],
+      deviceEstimates: normalizeAnalogMixedServerWorkspace(workspaceInput).components.map((component, index) => ({
+        reference: component.label || `X${index + 1}`,
+        kind: analogMixedServerLibraryItem(component.type).label,
+        model: component.modelName || analogMixedServerLibraryItem(component.type).modelName || component.type
+      }))
+    };
+  }
+  return analogMixedLiteSimulation(projectTitle, workspaceInput, cleanKind, deck);
 }
 
 function resolveInsideRoot(...segments) {
@@ -5622,6 +6023,15 @@ async function handleApi(request, response, url) {
     return true;
   }
 
+  if (request.method === "GET" && url.pathname === "/api/analog-mixed/tool-status") {
+    if (!isLocalRequest(request)) {
+      sendJson(response, 403, { error: "Analog/Mixed-Signal tool details are only available from this computer." });
+      return true;
+    }
+    sendJson(response, 200, { ok: true, status: await analogMixedPdkStatus(url.searchParams.get("pdk") || "sky130") });
+    return true;
+  }
+
   if (request.method !== "POST") return false;
 
   if (!isLocalRequest(request)) {
@@ -5647,6 +6057,17 @@ async function handleApi(request, response, url) {
       sendJson(response, 200, { ok: true, netlist });
     } catch (error) {
       sendJson(response, 400, { ok: false, error: error.message || "Analog/Mixed-Signal netlist could not be generated." });
+    }
+    return true;
+  }
+
+  if (url.pathname === "/api/analog-mixed/simulate") {
+    try {
+      const body = await readRequestJson(request);
+      const simulation = await analogMixedRunSpice(body.projectTitle || body.title || "Project", body.workspace || {}, body.kind || "op");
+      sendJson(response, 200, { ok: true, simulation });
+    } catch (error) {
+      sendJson(response, 400, { ok: false, error: error.message || "Analog/Mixed-Signal SPICE simulation could not be completed." });
     }
     return true;
   }

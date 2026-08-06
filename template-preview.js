@@ -324,6 +324,9 @@ const analogMixedTools = [
   { id: "select", label: "Select", key: "V", hint: "Select, inspect, and move symbols" },
   { id: "pan", label: "Pan", key: "P", hint: "Drag the canvas view without changing the schematic" },
   { id: "wire", label: "Wire", key: "W", hint: "Draw orthogonal nets between nodes" },
+  { id: "junction", label: "Junction", key: "J", hint: "Place an electrical junction dot" },
+  { id: "probe", label: "Probe", key: "B", hint: "Place a simulation probe marker" },
+  { id: "no-connect", label: "No connect", key: "X", hint: "Mark an intentionally unconnected pin or node" },
   { id: "label", label: "Label", key: "L", hint: "Place a visible schematic label" },
   { id: "net", label: "Net", key: "N", hint: "Name a net for simulation and layout" },
   { id: "optimize", label: "Optimize", key: "O", hint: "Open sizing and design-space calculations" },
@@ -530,10 +533,18 @@ const analogMixedStageCommandRegistry = {
   ],
   "ic-layout": [
     { id: "save", label: "Save", hint: "Save IC layout stage" },
-    { id: "pdk", label: "PDK", hint: "Select or plan a PDK" },
-    { id: "matching", label: "Matching", hint: "Plan matching/common-centroid constraints" },
+    { id: "layout-sync", label: "Sync", hint: "Create or refresh layout devices from schematic components" },
+    { id: "layout-diff", label: "DIFF", hint: "Use diffusion layer for the next IC layout action" },
+    { id: "layout-poly", label: "POLY", hint: "Use poly layer for the next IC layout action" },
+    { id: "layout-metal1", label: "M1", hint: "Use metal1 layer for the next IC layout action" },
+    { id: "layout-metal2", label: "M2", hint: "Use metal2 layer for the next IC layout action" },
+    { id: "layout-contact", label: "CT", hint: "Prepare contacts or vias" },
+    { id: "matching", label: "Match", hint: "Plan matching/common-centroid constraints" },
+    { id: "layout-guard", label: "Guard", hint: "Add guard-ring planning around selected devices" },
     { id: "extract", label: "Extract", hint: "Plan extraction and parasitics" },
-    { id: "lvs", label: "LVS", hint: "Plan layout-versus-schematic checks" }
+    { id: "lvs", label: "LVS", hint: "Plan layout-versus-schematic checks" },
+    { id: "drc", label: "DRC", hint: "Check layout-rule readiness" },
+    { id: "pdk", label: "PDK", hint: "Select or check a PDK" }
   ],
   "3d-view": [
     { id: "save", label: "Save", hint: "Save 3D view settings" },
@@ -553,10 +564,14 @@ const analogMixedStageCommandRegistry = {
   ],
   simulation: [
     { id: "save", label: "Save", hint: "Save simulation stage" },
-    { id: "op", label: "OP", hint: "Plan operating point" },
-    { id: "dc", label: "DC", hint: "Plan DC sweep" },
-    { id: "ac", label: "AC", hint: "Plan AC/noise analysis" },
-    { id: "tran", label: "Transient", hint: "Plan transient analysis" },
+    { id: "spice-op", label: "Run OP", hint: "Run a SPICE operating-point analysis with the detected local engine" },
+    { id: "spice-dc", label: "Run DC", hint: "Run a SPICE DC sweep with the detected local engine" },
+    { id: "spice-ac", label: "Run AC", hint: "Run a SPICE AC analysis with the detected local engine" },
+    { id: "spice-tran", label: "Run Tran", hint: "Run a SPICE transient analysis with the detected local engine" },
+    { id: "op", label: "Plan OP", hint: "Plan operating point" },
+    { id: "dc", label: "Plan DC", hint: "Plan DC sweep" },
+    { id: "ac", label: "Plan AC", hint: "Plan AC/noise analysis" },
+    { id: "tran", label: "Plan Tran", hint: "Plan transient analysis" },
     { id: "corners", label: "Corners", hint: "Plan PVT corners" }
   ],
   gerber: [
@@ -585,6 +600,7 @@ const analogMixedStageCommandRegistry = {
 };
 let activeAnalogMixedProjectId = "";
 let analogMixedWireStart = null;
+let analogMixedWirePreview = null;
 let analogMixedPointerState = null;
 let analogMixedRenderFrame = 0;
 let analogMixedSuppressClickUntil = 0;
@@ -2467,6 +2483,9 @@ function analogMixedDefaultState() {
     importHistory: [],
     components: [],
     wires: [],
+    junctions: [],
+    noConnects: [],
+    probes: [],
     labels: [],
     notes: [],
     parameters: clone(Object.fromEntries(Object.entries(analogMixedDomains).map(([key, value]) => [key, value.parameters]))),
@@ -2484,7 +2503,20 @@ function analogMixedDefaultState() {
       symbol: { symbols: [] },
       footprint: { footprints: [] },
       pcb: { boardStackup: "", rules: [], gerberJobs: [] },
-      "ic-layout": { pdk: "", cells: [], extractionRuns: [] },
+      "ic-layout": {
+        pdk: "",
+        cellName: "",
+        viewName: "layout",
+        activeLayer: "metal1",
+        layers: [],
+        layoutObjects: [],
+        layoutRoutes: [],
+        drcMarkers: [],
+        lvsRuns: [],
+        extractionRuns: [],
+        matchingGroups: [],
+        guardRings: []
+      },
       "3d-view": { views: [], measurements: [], clearances: [] },
       math: { calculators: [] },
       simulation: { corners: [], analyses: [] },
@@ -2553,14 +2585,50 @@ function normalizeAnalogMixedWorkspace(project) {
       parameters: { ...analogMixedDefaultComponentParameters(libraryItem), ...(component.parameters && typeof component.parameters === "object" ? component.parameters : {}) }
     };
   }) : [];
-  workspace.wires = Array.isArray(workspace.wires) ? workspace.wires.map((wire, index) => ({
-    id: String(wire.id || `amw-${Date.now()}-${index}`),
-    name: String(wire.name || `net_${index + 1}`),
-    x1: Math.max(0, Math.min(1400, Number(wire.x1) || 0)),
-    y1: Math.max(0, Math.min(820, Number(wire.y1) || 0)),
-    x2: Math.max(0, Math.min(1400, Number(wire.x2) || 0)),
-    y2: Math.max(0, Math.min(820, Number(wire.y2) || 0))
+  workspace.wires = Array.isArray(workspace.wires) ? workspace.wires.map((wire, index) => {
+    const x1 = Math.max(0, Math.min(1400, Number(wire.x1) || 0));
+    const y1 = Math.max(0, Math.min(820, Number(wire.y1) || 0));
+    const x2 = Math.max(0, Math.min(1400, Number(wire.x2) || 0));
+    const y2 = Math.max(0, Math.min(820, Number(wire.y2) || 0));
+    const points = Array.isArray(wire.points) && wire.points.length >= 2
+      ? wire.points.map((point) => ({
+        x: Math.max(0, Math.min(1400, Number(point?.x) || 0)),
+        y: Math.max(0, Math.min(820, Number(point?.y) || 0))
+      }))
+      : analogMixedOrthogonalWirePoints({ x: x1, y: y1 }, { x: x2, y: y2 });
+    const normalizeRef = (ref, fallback) => {
+      if (!ref || typeof ref !== "object") return fallback;
+      if (ref.type === "pin") {
+        return {
+          type: "pin",
+          componentId: String(ref.componentId || ""),
+          pin: String(ref.pin || "")
+        };
+      }
+      return fallback;
+    };
+    return {
+      id: String(wire.id || `amw-${Date.now()}-${index}`),
+      name: String(wire.name || `net_${index + 1}`),
+      x1,
+      y1,
+      x2,
+      y2,
+      points,
+      startRef: normalizeRef(wire.startRef, { type: "point" }),
+      endRef: normalizeRef(wire.endRef, { type: "point" })
+    };
+  }) : [];
+  const normalizeMarker = (items, prefix, fallbackLabel = "") => Array.isArray(items) ? items.map((item, index) => ({
+    id: String(item.id || `${prefix}-${Date.now()}-${index}`),
+    label: String(item.label || fallbackLabel || `${prefix}_${index + 1}`),
+    x: Math.max(0, Math.min(1400, Number(item.x) || 100)),
+    y: Math.max(0, Math.min(820, Number(item.y) || 100)),
+    ref: item.ref && typeof item.ref === "object" ? item.ref : { type: "point" }
   })) : [];
+  workspace.junctions = normalizeMarker(workspace.junctions, "amj", "");
+  workspace.noConnects = normalizeMarker(workspace.noConnects, "amx", "NC");
+  workspace.probes = normalizeMarker(workspace.probes, "amp", "probe");
   workspace.labels = Array.isArray(workspace.labels) ? workspace.labels.map((label, index) => ({
     id: String(label.id || `aml-${Date.now()}-${index}`),
     text: String(label.text || `label_${index + 1}`),
@@ -2586,8 +2654,132 @@ function normalizeAnalogMixedWorkspace(project) {
   Object.entries(stageDefaults).forEach(([stage, value]) => {
     workspace.stageData[stage] = { ...clone(value), ...(workspace.stageData[stage] || {}) };
   });
+  analogMixedNormalizeIcLayout(workspace);
   project.analogMixedWorkspace = workspace;
   return workspace;
+}
+
+const analogMixedIcLayoutLayers = [
+  { id: "nwell", label: "NWELL", color: "#8b5cf6", fill: "rgba(139, 92, 246, 0.22)", purpose: "PMOS well and bias islands" },
+  { id: "diff", label: "DIFF", color: "#22c55e", fill: "rgba(34, 197, 94, 0.26)", purpose: "Active diffusion source/drain regions" },
+  { id: "poly", label: "POLY", color: "#f97316", fill: "rgba(249, 115, 22, 0.26)", purpose: "Transistor gates and poly resistors" },
+  { id: "li1", label: "LI1", color: "#d946ef", fill: "rgba(217, 70, 239, 0.22)", purpose: "Local interconnect" },
+  { id: "metal1", label: "M1", color: "#38bdf8", fill: "rgba(56, 189, 248, 0.24)", purpose: "First routing metal" },
+  { id: "metal2", label: "M2", color: "#fde047", fill: "rgba(253, 224, 71, 0.22)", purpose: "Second routing metal and straps" },
+  { id: "via", label: "VIA", color: "#f8fafc", fill: "rgba(248, 250, 252, 0.7)", purpose: "Layer-to-layer connection" },
+  { id: "tap", label: "TAP", color: "#14b8a6", fill: "rgba(20, 184, 166, 0.2)", purpose: "Well/substrate taps and guard rings" }
+];
+
+function analogMixedLayoutLayerById(layerId = "") {
+  return analogMixedIcLayoutLayers.find((layer) => layer.id === layerId) || analogMixedIcLayoutLayers.find((layer) => layer.id === "metal1");
+}
+
+function analogMixedLayoutLayerForComponent(component = {}, libraryItem = analogMixedLibraryItem(component.type)) {
+  const kind = String(libraryItem.symbolKind || component.type || "").toLowerCase();
+  const category = String(libraryItem.category || "").toLowerCase();
+  if (/pmos/.test(kind)) return "nwell";
+  if (/mos|bjt|diode|transistor|fet|switch/.test(kind) || /sky130/.test(category)) return "diff";
+  if (/resistor/.test(kind)) return "poly";
+  if (/capacitor|mim/.test(kind)) return "metal2";
+  if (/ground|supply|reference/.test(category)) return "metal1";
+  return "li1";
+}
+
+function analogMixedLayoutObjectFromComponent(component = {}, index = 0) {
+  const libraryItem = analogMixedLibraryItem(component.type);
+  const symbolKind = String(libraryItem.symbolKind || component.type || "device").toLowerCase();
+  const column = index % 4;
+  const row = Math.floor(index / 4);
+  const isMos = /mos|fet|switch/.test(symbolKind);
+  const isCap = /capacitor|mim/.test(symbolKind);
+  const isRes = /resistor/.test(symbolKind);
+  const width = isMos ? 170 : isCap ? 150 : isRes ? 210 : 180;
+  const height = isMos ? 96 : isCap ? 130 : isRes ? 74 : 110;
+  return {
+    id: `layout-${component.id || index + 1}`,
+    sourceComponentId: String(component.id || ""),
+    label: String(component.label || libraryItem.symbol || `M${index + 1}`),
+    type: String(component.type || libraryItem.id || "device"),
+    symbolKind,
+    layer: analogMixedLayoutLayerForComponent(component, libraryItem),
+    x: 170 + column * 260,
+    y: 150 + row * 165,
+    width,
+    height,
+    rotation: Number(component.rotation) || 0,
+    mirrored: Boolean(component.mirrored),
+    parameters: { ...analogMixedDefaultComponentParameters(libraryItem), ...(component.parameters || {}) },
+    pins: analogMixedComponentPins(component).map((pin) => ({ name: pin.pin, x: pin.x, y: pin.y })),
+    source: component.source || libraryItem.source || "schematic",
+    modelName: component.modelName || libraryItem.modelName || component.type || ""
+  };
+}
+
+function analogMixedNormalizeIcLayout(workspace = {}) {
+  workspace.stageData = workspace.stageData && typeof workspace.stageData === "object" ? workspace.stageData : {};
+  const defaults = analogMixedDefaultState().stageData["ic-layout"];
+  const layoutData = { ...clone(defaults), ...(workspace.stageData["ic-layout"] || {}) };
+  layoutData.cellName = String(layoutData.cellName || "am_top");
+  layoutData.viewName = String(layoutData.viewName || "layout");
+  layoutData.pdk = String(layoutData.pdk || workspace.activePdk || "generic-educational-pdk");
+  layoutData.activeLayer = analogMixedIcLayoutLayers.some((layer) => layer.id === layoutData.activeLayer) ? layoutData.activeLayer : "metal1";
+  layoutData.layers = Array.isArray(layoutData.layers) && layoutData.layers.length ? layoutData.layers : analogMixedIcLayoutLayers.map((layer) => ({ ...layer, visible: true, locked: false }));
+  const sourceComponents = Array.isArray(workspace.components) ? workspace.components : [];
+  const normalizedObjects = Array.isArray(layoutData.layoutObjects) ? layoutData.layoutObjects.map((item, index) => {
+    const linkedComponent = sourceComponents.find((component) => component.id === item.sourceComponentId) || {};
+    const generated = analogMixedLayoutObjectFromComponent(linkedComponent, index);
+    return {
+      ...generated,
+      ...item,
+      id: String(item.id || generated.id),
+      sourceComponentId: String(item.sourceComponentId || generated.sourceComponentId || ""),
+      label: String(item.label || generated.label),
+      type: String(item.type || generated.type),
+      symbolKind: String(item.symbolKind || generated.symbolKind),
+      layer: analogMixedIcLayoutLayers.some((layer) => layer.id === item.layer) ? item.layer : generated.layer,
+      x: Math.max(30, Math.min(1320, Number(item.x) || generated.x)),
+      y: Math.max(30, Math.min(760, Number(item.y) || generated.y)),
+      width: Math.max(60, Math.min(360, Number(item.width) || generated.width)),
+      height: Math.max(36, Math.min(240, Number(item.height) || generated.height)),
+      parameters: item.parameters && typeof item.parameters === "object" ? item.parameters : generated.parameters
+    };
+  }) : [];
+  const existingSourceIds = new Set(normalizedObjects.map((item) => item.sourceComponentId).filter(Boolean));
+  sourceComponents.forEach((component, index) => {
+    if (!existingSourceIds.has(component.id)) normalizedObjects.push(analogMixedLayoutObjectFromComponent(component, normalizedObjects.length || index));
+  });
+  layoutData.layoutObjects = normalizedObjects;
+  layoutData.layoutRoutes = Array.isArray(layoutData.layoutRoutes) ? layoutData.layoutRoutes.map((route, index) => ({
+    id: String(route.id || `layout-route-${index + 1}`),
+    name: String(route.name || `metal_${index + 1}`),
+    layer: analogMixedIcLayoutLayers.some((layer) => layer.id === route.layer) ? route.layer : "metal1",
+    points: Array.isArray(route.points) && route.points.length >= 2
+      ? route.points.map((point) => ({ x: Number(point?.x) || 0, y: Number(point?.y) || 0 }))
+      : [{ x: 120 + index * 80, y: 120 }, { x: 420 + index * 80, y: 120 }]
+  })) : [];
+  if (!layoutData.layoutRoutes.length && normalizedObjects.length > 1) {
+    layoutData.layoutRoutes = normalizedObjects.slice(0, -1).map((object, index) => {
+      const next = normalizedObjects[index + 1];
+      return {
+        id: `layout-route-${index + 1}`,
+        name: `net_${index + 1}`,
+        layer: index % 2 ? "metal2" : "metal1",
+        points: [
+          { x: object.x + object.width, y: object.y + Math.round(object.height / 2) },
+          { x: Math.round((object.x + object.width + next.x) / 2), y: object.y + Math.round(object.height / 2) },
+          { x: Math.round((object.x + object.width + next.x) / 2), y: next.y + Math.round(next.height / 2) },
+          { x: next.x, y: next.y + Math.round(next.height / 2) }
+        ]
+      };
+    });
+  }
+  layoutData.drcMarkers = Array.isArray(layoutData.drcMarkers) ? layoutData.drcMarkers : [];
+  layoutData.lvsRuns = Array.isArray(layoutData.lvsRuns) ? layoutData.lvsRuns : [];
+  layoutData.extractionRuns = Array.isArray(layoutData.extractionRuns) ? layoutData.extractionRuns : [];
+  layoutData.matchingGroups = Array.isArray(layoutData.matchingGroups) ? layoutData.matchingGroups : [];
+  layoutData.guardRings = Array.isArray(layoutData.guardRings) ? layoutData.guardRings : [];
+  workspace.stageData["ic-layout"] = layoutData;
+  return layoutData;
 }
 
 function activeAnalogMixedProject() {
@@ -2611,6 +2803,128 @@ function analogMixedPointFromEvent(event, workspace) {
     x: Math.round(rawX / grid) * grid,
     y: Math.round(rawY / grid) * grid
   };
+}
+
+function analogMixedRotatePoint(point = {}, rotation = 0, mirrored = false) {
+  let x = Number(point.x) || 0;
+  const y = Number(point.y) || 0;
+  if (mirrored) x *= -1;
+  const normalized = ((Number(rotation) || 0) % 360 + 360) % 360;
+  if (normalized === 90) return { x: -y, y: x };
+  if (normalized === 180) return { x: -x, y: -y };
+  if (normalized === 270) return { x: y, y: -x };
+  return { x, y };
+}
+
+function analogMixedPinLayout(component = {}) {
+  const item = analogMixedLibraryItem(component.type);
+  const pins = Array.isArray(item.pins) && item.pins.length ? item.pins : ["1", "2"];
+  const kind = item.symbolKind || item.tool || "macro";
+  if (["resistor", "variable-resistor", "capacitor", "polar-capacitor", "variable-capacitor", "inductor", "ferrite-bead", "crystal", "fuse", "diode", "zener-diode", "schottky-diode", "led", "photodiode", "varactor", "tvs"].includes(kind)) {
+    return pins.slice(0, 2).map((pin, index) => ({
+      pin: String(pin),
+      x: index === 0 ? -64 : 64,
+      y: 0,
+      side: index === 0 ? "left" : "right"
+    }));
+  }
+  if (kind === "potentiometer") {
+    const coords = [{ x: -64, y: 0, side: "left" }, { x: 0, y: -44, side: "top" }, { x: 64, y: 0, side: "right" }];
+    return pins.map((pin, index) => ({ pin: String(pin), ...(coords[index] || coords[coords.length - 1]) }));
+  }
+  if (["coupled-inductor", "transformer"].includes(kind)) {
+    const coords = [{ x: -66, y: -18, side: "left" }, { x: -2, y: -18, side: "right" }, { x: 2, y: 18, side: "left" }, { x: 66, y: 18, side: "right" }];
+    return pins.map((pin, index) => ({ pin: String(pin), ...(coords[index] || { x: 66, y: 18, side: "right" }) }));
+  }
+  if (["nmos", "pmos", "nmos-body", "pmos-body", "depletion-nmos", "power-switch", "igbt"].includes(kind)) {
+    const coords = { G: { x: -62, y: 0, side: "left" }, D: { x: 62, y: -36, side: "right" }, S: { x: 62, y: 36, side: "right" }, B: { x: 50, y: 0, side: "right" }, C: { x: 62, y: -36, side: "right" }, E: { x: 62, y: 36, side: "right" } };
+    return pins.map((pin, index) => ({ pin: String(pin), ...(coords[String(pin).toUpperCase()] || { x: index % 2 ? 62 : -62, y: (index - 1) * 24, side: index % 2 ? "right" : "left" }) }));
+  }
+  if (["bjt-npn", "bjt-pnp", "jfet-n", "jfet-p", "scr", "triac"].includes(kind)) {
+    const coords = { B: { x: -62, y: 0, side: "left" }, G: { x: -62, y: 0, side: "left" }, C: { x: 62, y: -52, side: "right" }, D: { x: 58, y: -52, side: "right" }, A: { x: -62, y: 0, side: "left" }, K: { x: 62, y: 0, side: "right" }, E: { x: 62, y: 52, side: "right" }, S: { x: 58, y: 52, side: "right" }, MT1: { x: -62, y: 0, side: "left" }, MT2: { x: 62, y: 0, side: "right" } };
+    return pins.map((pin, index) => ({ pin: String(pin), ...(coords[String(pin).toUpperCase()] || { x: index % 2 ? 62 : -62, y: (index - 1) * 24, side: index % 2 ? "right" : "left" }) }));
+  }
+  if (["ground", "analog-ground", "chassis-ground"].includes(kind)) return [{ pin: String(pins[0] || "0"), x: 0, y: -42, side: "top" }];
+  if (["vdd", "vss"].includes(kind)) return [{ pin: String(pins[0] || item.symbol || "V"), x: 0, y: kind === "vdd" ? 42 : -42, side: kind === "vdd" ? "bottom" : "top" }];
+  if (["voltage-source", "current-source", "ac-source", "pulse-source"].includes(kind)) {
+    return pins.slice(0, 2).map((pin, index) => ({ pin: String(pin), x: 0, y: index === 0 ? -64 : 64, side: index === 0 ? "top" : "bottom" }));
+  }
+  const leftCount = Math.ceil(pins.length / 2);
+  return pins.map((pin, index) => {
+    const onLeft = index < leftCount;
+    const groupIndex = onLeft ? index : index - leftCount;
+    const groupCount = onLeft ? leftCount : pins.length - leftCount;
+    const y = groupCount <= 1 ? 0 : -30 + (60 / Math.max(1, groupCount - 1)) * groupIndex;
+    return { pin: String(pin), x: onLeft ? -92 : 92, y: Math.round(y), side: onLeft ? "left" : "right" };
+  });
+}
+
+function analogMixedComponentPins(component = {}) {
+  return analogMixedPinLayout(component).map((pin) => {
+    const rotated = analogMixedRotatePoint(pin, component.rotation, component.mirrored);
+    return {
+      componentId: component.id,
+      componentLabel: component.label,
+      pin: pin.pin,
+      side: pin.side,
+      x: Math.round((Number(component.x) || 0) + rotated.x),
+      y: Math.round((Number(component.y) || 0) + rotated.y)
+    };
+  });
+}
+
+function analogMixedAllPins(workspace = {}) {
+  return (workspace.components || []).flatMap((component) => analogMixedComponentPins(component));
+}
+
+function analogMixedNearestPin(point = {}, workspace = {}, radius = 18) {
+  let nearest = null;
+  analogMixedAllPins(workspace).forEach((pin) => {
+    const distance = Math.hypot((Number(point.x) || 0) - pin.x, (Number(point.y) || 0) - pin.y);
+    if (distance <= radius && (!nearest || distance < nearest.distance)) nearest = { ...pin, distance };
+  });
+  return nearest;
+}
+
+function analogMixedCapturePointFromEvent(event, workspace, options = {}) {
+  const point = analogMixedPointFromEvent(event, workspace);
+  if (options.pinSnap === false) return { ...point, ref: { type: "point" }, snapKind: workspace?.snap ? "grid" : "free" };
+  const pin = analogMixedNearestPin(point, workspace, options.radius || 20);
+  if (pin) {
+    return {
+      x: pin.x,
+      y: pin.y,
+      ref: { type: "pin", componentId: pin.componentId, pin: pin.pin },
+      snapKind: "pin",
+      pin
+    };
+  }
+  return { ...point, ref: { type: "point" }, snapKind: workspace?.snap ? "grid" : "free" };
+}
+
+function analogMixedOrthogonalWirePoints(start = {}, end = {}) {
+  const x1 = Math.round(Number(start.x) || 0);
+  const y1 = Math.round(Number(start.y) || 0);
+  const x2 = Math.round(Number(end.x) || 0);
+  const y2 = Math.round(Number(end.y) || 0);
+  if (x1 === x2 || y1 === y2) return [{ x: x1, y: y1 }, { x: x2, y: y2 }];
+  const firstHorizontal = Math.abs(x2 - x1) >= Math.abs(y2 - y1);
+  const bend = firstHorizontal ? { x: x2, y: y1 } : { x: x1, y: y2 };
+  return [{ x: x1, y: y1 }, bend, { x: x2, y: y2 }];
+}
+
+function analogMixedWirePoints(wire = {}) {
+  if (Array.isArray(wire.points) && wire.points.length >= 2) return wire.points;
+  return analogMixedOrthogonalWirePoints({ x: wire.x1, y: wire.y1 }, { x: wire.x2, y: wire.y2 });
+}
+
+function analogMixedPointsAttribute(points = []) {
+  return points.map((point) => `${Math.round(Number(point.x) || 0)},${Math.round(Number(point.y) || 0)}`).join(" ");
+}
+
+function analogMixedRouteLabelPoint(points = []) {
+  const safe = points.length ? points : [{ x: 0, y: 0 }];
+  return safe[Math.floor(safe.length / 2)] || safe[0];
 }
 
 function analogMixedAllLibraryItems() {
@@ -2678,6 +2992,7 @@ function analogMixedSetTool(toolId = "select") {
   const workspace = normalizeAnalogMixedWorkspace(project);
   workspace.activeTool = analogMixedTools.some((tool) => tool.id === toolId) ? toolId : "select";
   analogMixedWireStart = null;
+  analogMixedWirePreview = null;
   renderAnalogMixedWorkspace();
   analogMixedSetStatus(`Tool: ${analogMixedTools.find((tool) => tool.id === workspace.activeTool)?.label || "Select"}.`);
 }
@@ -2714,19 +3029,46 @@ function analogMixedAddComponent(project, libraryId, point = {}) {
 
 function analogMixedAddWire(project, start, end) {
   const workspace = normalizeAnalogMixedWorkspace(project);
+  const points = analogMixedOrthogonalWirePoints(start, end);
   const wire = {
     id: `amw-${Date.now()}-${Math.random().toString(16).slice(2)}`,
     name: `net_${workspace.wires.length + 1}`,
     x1: start.x,
     y1: start.y,
     x2: end.x,
-    y2: end.y
+    y2: end.y,
+    points,
+    startRef: start.ref || { type: "point" },
+    endRef: end.ref || { type: "point" }
   };
   workspace.wires.push(wire);
   markDraftNeedsSave();
   scheduleAutosave();
   renderAnalogMixedWorkspace();
   analogMixedSetStatus(`Added wire ${wire.name}.`);
+}
+
+function analogMixedAddSchematicMarker(project, kind = "junction", point = {}) {
+  const workspace = normalizeAnalogMixedWorkspace(project);
+  const lists = {
+    junction: "junctions",
+    "no-connect": "noConnects",
+    probe: "probes"
+  };
+  const listKey = lists[kind] || "junctions";
+  const labels = { junction: "", "no-connect": "NC", probe: `probe_${workspace.probes.length + 1}` };
+  workspace[listKey] = Array.isArray(workspace[listKey]) ? workspace[listKey] : [];
+  workspace[listKey].push({
+    id: `amm-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    label: labels[kind] || "",
+    x: point.x,
+    y: point.y,
+    ref: point.ref || { type: "point" }
+  });
+  markDraftNeedsSave();
+  scheduleAutosave();
+  renderAnalogMixedWorkspace();
+  analogMixedSetStatus(`${kind === "no-connect" ? "No-connect marker" : kind === "probe" ? "Probe marker" : "Junction"} placed at ${point.x}, ${point.y}.`);
 }
 
 function analogMixedAddLabel(project, point, text = "") {
@@ -2842,12 +3184,17 @@ function analogMixedRunChecks(kind = "all") {
   duplicateRefs.forEach((ref) => issues.push(`Error: duplicate reference designator ${ref}.`));
   if (workspace.components.length && !workspace.wires.length) issues.push("Warning: components exist but no nets have been drawn yet.");
   if (workspace.wires.some((wire) => wire.x1 === wire.x2 && wire.y1 === wire.y2)) issues.push("Error: a zero-length wire exists.");
+  const intentionallyOpen = workspace.noConnects.length;
+  const pinConnectedWires = workspace.wires.filter((wire) => wire.startRef?.type === "pin" || wire.endRef?.type === "pin").length;
+  if (workspace.wires.length && !pinConnectedWires) issues.push("Info: wires are present, but none are snapped to component pins yet.");
+  if (workspace.probes.length && !workspace.wires.length) issues.push("Info: probes exist but no schematic nets have been drawn yet.");
+  if (intentionallyOpen) issues.push(`Info: ${intentionallyOpen} node${intentionallyOpen === 1 ? "" : "s"} marked no-connect by intent.`);
   if (workspace.mode !== "board" && !workspace.stageData.pdk?.modelFiles?.length) issues.push("Info: no PDK model files have been registered yet.");
   if (workspace.mode !== "ic" && workspace.activeStage === "pcb" && !workspace.stageData.pcb?.boardStackup) issues.push("Info: PCB stackup has not been specified yet.");
   const title = kind === "erc" ? "ERC report" : kind === "drc" ? "DRC report" : "DRC/ERC report";
   workspace.checkReport = [
     `${title} for ${project.title || "project"}`,
-    `Mode: ${workspace.mode}; focus: ${analogMixedDomains[workspace.focus].label}; components: ${workspace.components.length}; nets: ${workspace.wires.length}`,
+    `Mode: ${workspace.mode}; focus: ${analogMixedDomains[workspace.focus].label}; components: ${workspace.components.length}; nets: ${workspace.wires.length}; junctions: ${workspace.junctions.length}; probes: ${workspace.probes.length}`,
     "",
     ...(issues.length ? issues : ["No blocking schematic issues found by the current lightweight checker."])
   ].join("\n");
@@ -2940,11 +3287,13 @@ function analogMixedPreparePdkReport(pdkName = "generic-educational-pdk") {
   if (!project) return;
   const workspace = normalizeAnalogMixedWorkspace(project);
   workspace.activePdk = pdkName;
+  const layoutData = analogMixedNormalizeIcLayout(workspace);
+  layoutData.pdk = pdkName;
   workspace.pdkReport = [
     `PDK workspace: ${pdkName}`,
     "",
     "This records the process-design-kit lane for IC-level work: model files, corners, device rules, extraction assumptions, DRC/LVS hooks, and symbol-to-layout mapping.",
-    "The current builder keeps this as project state. Future engine wiring can connect open PDKs such as Sky130/GF180 or school-provided PDK paths through a controlled import dialog."
+    "The builder checks the local machine for enabled open PDK roots and records any detected model or technology files here."
   ].join("\n");
   workspace.activeStage = "pdk";
   workspace.activePanel = "pdk";
@@ -2952,6 +3301,52 @@ function analogMixedPreparePdkReport(pdkName = "generic-educational-pdk") {
   scheduleAutosave();
   renderAnalogMixedWorkspace();
   analogMixedSetStatus(`${pdkName} selected for IC-level planning.`);
+  if (/sky130/i.test(pdkName)) analogMixedRefreshPdkStatus("sky130");
+}
+
+async function analogMixedRefreshPdkStatus(pdkName = "sky130") {
+  const project = activeAnalogMixedProject();
+  if (!project) return false;
+  const workspace = normalizeAnalogMixedWorkspace(project);
+  try {
+    const response = await fetch(`/api/analog-mixed/tool-status?pdk=${encodeURIComponent(pdkName)}`);
+    const data = await response.json();
+    if (!response.ok || !data.ok) throw new Error(data.error || "PDK status could not be read.");
+    const status = data.status || {};
+    workspace.stageData.pdk = workspace.stageData.pdk && typeof workspace.stageData.pdk === "object" ? workspace.stageData.pdk : {};
+    workspace.stageData.pdk.modelFiles = status.pdk?.modelFiles || [];
+    workspace.stageData.pdk.libraries = status.pdk?.libraries || [];
+    workspace.stageData.pdk.processCorners = status.pdk?.corners || [];
+    workspace.pdkReport = [
+      `PDK workspace: ${workspace.activePdk || pdkName}`,
+      "",
+      status.pdk?.available ? `Detected PDK root: ${status.pdk.path}` : "No enabled SKY130 PDK was detected on this machine.",
+      status.pdk?.source ? `Source: ${status.pdk.source}` : "",
+      status.pdk?.modelFiles?.length ? "Model files:" : "Model files: none detected",
+      ...(status.pdk?.modelFiles || []).slice(0, 12).map((file) => `- ${file}`),
+      "",
+      "Local analog tools:",
+      ...Object.entries(status.tools || {}).map(([tool, toolPath]) => `- ${tool}: ${toolPath || "missing"}`)
+    ].filter(Boolean).join("\n");
+    workspace.activePanel = "pdk";
+    markDraftNeedsSave();
+    scheduleAutosave();
+    renderAnalogMixedWorkspace();
+    analogMixedSetStatus(status.pdk?.available ? "SKY130 PDK detected and recorded." : "SKY130 PDK was not detected yet.");
+    return true;
+  } catch (error) {
+    workspace.pdkReport = [
+      `PDK status check failed for ${pdkName}.`,
+      "",
+      error.message || "The local backend did not answer.",
+      "",
+      "You can still import SKY130-style device symbols, but full model-backed simulation needs the PDK path."
+    ].join("\n");
+    workspace.activePanel = "pdk";
+    renderAnalogMixedWorkspace();
+    analogMixedSetStatus("PDK status backend unavailable.");
+    return false;
+  }
 }
 
 function analogMixedApplyKicadTemplate(options = {}) {
@@ -3000,22 +3395,31 @@ function analogMixedPrepareVirtuosoFlow() {
   const project = activeAnalogMixedProject();
   if (!project) return;
   const workspace = normalizeAnalogMixedWorkspace(project);
-  const layoutData = workspace.stageData["ic-layout"] || {};
+  const layoutData = analogMixedNormalizeIcLayout(workspace);
+  const rawCellName = String(project.title || "am_top").trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+  layoutData.cellName = layoutData.cellName || rawCellName || "am_top";
   layoutData.virtuoso = {
     views: ["schematic", "symbol", "testbench", "layout", "extracted", "config"],
     checks: ["schematic check", "LVS plan", "DRC plan", "PEX plan", "corner setup"],
     pdk: workspace.activePdk || "generic-educational-pdk",
     deviceEditing: "transistor/capacitor/resistor model parameters remain editable in Inspector"
   };
+  layoutData.layers = analogMixedIcLayoutLayers.map((layer) => ({ ...layer, visible: true, locked: false }));
+  if (!layoutData.guardRings.length && layoutData.layoutObjects.some((item) => /mos|fet/.test(item.symbolKind))) {
+    layoutData.guardRings.push({ id: `guard-${Date.now()}`, x: 115, y: 105, width: 1020, height: 420, layer: "tap", purpose: "substrate/well noise isolation" });
+  }
   workspace.stageData["ic-layout"] = layoutData;
   workspace.layoutPlan = [
     "Virtuoso-style IC design flow prepared",
     "",
     `PDK lane: ${layoutData.virtuoso.pdk}`,
+    `Layout cell/view: ${layoutData.cellName} / ${layoutData.viewName}`,
+    `Generated layout objects: ${layoutData.layoutObjects.length}`,
+    `Generated layout routes: ${layoutData.layoutRoutes.length}`,
     "Views: schematic, symbol, testbench, layout, extracted, config.",
     "Intent: keep transistor-level devices editable, then drive schematic checks, layout planning, LVS/DRC/PEX notes, and corner simulation setup from the same project workspace.",
     "",
-    "This is not Cadence Virtuoso itself; it is the builder's local educational IC workflow layer that is structured so real engines can be connected later."
+    "This is not Cadence Virtuoso itself; it is the builder's local educational IC workflow layer. The important change is that the layout stage now contains persistent devices, layers, routes, guard-ring notes, and LVS/DRC/extraction state that real engines can later consume."
   ].join("\n");
   workspace.activeStage = "ic-layout";
   workspace.activePanel = "layout";
@@ -3023,6 +3427,61 @@ function analogMixedPrepareVirtuosoFlow() {
   scheduleAutosave();
   renderAnalogMixedWorkspace();
   analogMixedSetStatus("Virtuoso-style IC flow prepared.");
+}
+
+function analogMixedRecordLayoutAction(action = "") {
+  const project = activeAnalogMixedProject();
+  if (!project) return;
+  const workspace = normalizeAnalogMixedWorkspace(project);
+  const layoutData = analogMixedNormalizeIcLayout(workspace);
+  const now = new Date().toLocaleString();
+  if (action.startsWith("layout-") && !["layout-sync", "layout-contact", "layout-guard"].includes(action)) {
+    const layer = action.replace("layout-", "");
+    if (analogMixedIcLayoutLayers.some((item) => item.id === layer)) {
+      layoutData.activeLayer = layer;
+      workspace.layoutPlan = [`Active IC layout layer changed to ${analogMixedLayoutLayerById(layer).label}.`, workspace.layoutPlan || ""].filter(Boolean).join("\n\n");
+      workspace.activeStage = "ic-layout";
+      workspace.activePanel = "layout";
+      markDraftNeedsSave();
+      scheduleAutosave();
+      renderAnalogMixedWorkspace();
+      analogMixedSetStatus(`Active IC layout layer: ${analogMixedLayoutLayerById(layer).label}.`);
+      return;
+    }
+  }
+  if (action === "layout-sync") {
+    layoutData.layoutObjects = workspace.components.map((component, index) => analogMixedLayoutObjectFromComponent(component, index));
+    layoutData.layoutRoutes = [];
+    analogMixedNormalizeIcLayout(workspace);
+    workspace.layoutPlan = [`Layout resynchronized from ${workspace.components.length} schematic component${workspace.components.length === 1 ? "" : "s"} at ${now}.`, workspace.layoutPlan || ""].filter(Boolean).join("\n\n");
+  } else if (action === "layout-contact") {
+    layoutData.layoutRoutes.push({
+      id: `layout-route-${Date.now()}`,
+      name: `${analogMixedLayoutLayerById(layoutData.activeLayer).label}_contact`,
+      layer: layoutData.activeLayer,
+      points: [{ x: 220, y: 700 }, { x: 340, y: 700 }]
+    });
+    workspace.layoutPlan = [`Contact/via route stub added on ${analogMixedLayoutLayerById(layoutData.activeLayer).label} at ${now}.`, workspace.layoutPlan || ""].filter(Boolean).join("\n\n");
+  } else if (action === "layout-guard") {
+    layoutData.guardRings.push({ id: `guard-${Date.now()}`, x: 110, y: 110, width: 860, height: 420, layer: "tap", purpose: "guard ring around sensitive analog devices" });
+    workspace.layoutPlan = [`Guard-ring planning region added at ${now}.`, workspace.layoutPlan || ""].filter(Boolean).join("\n\n");
+  } else if (action === "matching") {
+    layoutData.matchingGroups.push({ id: `match-${Date.now()}`, createdAt: now, note: "Plan common-centroid or interdigitated placement for selected devices." });
+    workspace.layoutPlan = [`Matching group prepared at ${now}. Use it for current mirrors, differential pairs, resistor ladders, or capacitor arrays.`, workspace.layoutPlan || ""].filter(Boolean).join("\n\n");
+  } else if (action === "extract") {
+    layoutData.extractionRuns.unshift({ id: `extract-${Date.now()}`, createdAt: now, status: "planned", pdk: layoutData.pdk });
+    workspace.layoutPlan = [`Extraction/PEX run planned at ${now}.`, workspace.layoutPlan || ""].filter(Boolean).join("\n\n");
+  } else if (action === "lvs") {
+    layoutData.lvsRuns.unshift({ id: `lvs-${Date.now()}`, createdAt: now, status: "planned", schematicDevices: workspace.components.length, layoutObjects: layoutData.layoutObjects.length });
+    workspace.layoutPlan = [`LVS comparison planned at ${now}. Schematic devices: ${workspace.components.length}; layout objects: ${layoutData.layoutObjects.length}.`, workspace.layoutPlan || ""].filter(Boolean).join("\n\n");
+  }
+  workspace.stageData["ic-layout"] = layoutData;
+  workspace.activeStage = "ic-layout";
+  workspace.activePanel = "layout";
+  markDraftNeedsSave();
+  scheduleAutosave();
+  renderAnalogMixedWorkspace();
+  analogMixedSetStatus(`IC layout action completed: ${action}.`);
 }
 
 function analogMixedPrepareSpiceSimulationPlan(kind = "transient") {
@@ -3140,6 +3599,7 @@ function analogMixedHandleStageCommand(action = "") {
   if (action === "save") return saveAnalogMixedWorkspace();
   if (action === "backend-analyze") return analogMixedRunBackendAnalysis("analysis");
   if (action === "netlist") return analogMixedGenerateNetlistFromBackend();
+  if (action.startsWith("spice-")) return analogMixedRunSpiceSimulation(action.replace("spice-", ""));
   if (action === "calc") return analogMixedRunCalculations();
   if (action === "drc") return analogMixedRunChecks("drc");
   if (action === "erc") return analogMixedRunChecks("erc");
@@ -3160,7 +3620,10 @@ function analogMixedHandleStageCommand(action = "") {
   if (action === "zoom-3d") return analogMixedZoom(0.15);
   if (action === "gerber") return analogMixedPrepareGerberReport();
   if (action === "pdk" || action === "pdk-generic") return analogMixedPreparePdkReport("generic-educational-pdk");
-  if (action === "pdk-sky130") return analogMixedImportDeviceSource("sky130");
+  if (action === "pdk-sky130") {
+    analogMixedImportDeviceSource("sky130");
+    return analogMixedPreparePdkReport("sky130A");
+  }
   if (action === "pdk-gf180") return analogMixedPreparePdkReport("GF180 future PDK");
   if (action === "import-sky130") return analogMixedImportDeviceSource("sky130");
   if (action === "import-ltspice") return analogMixedImportDeviceSource("ltspice");
@@ -3170,7 +3633,7 @@ function analogMixedHandleStageCommand(action = "") {
   if (action === "mouser") return analogMixedPrepareLibraryReport("Mouser");
   if (action === "local-library") return analogMixedPrepareLibraryReport("Local component library");
   if (action === "board-rules" || action === "route-plan") return analogMixedApplyKicadTemplate();
-  if (action === "matching" || action === "extract" || action === "lvs") return analogMixedPrepareVirtuosoFlow();
+  if (["layout-sync", "layout-diff", "layout-poly", "layout-metal1", "layout-metal2", "layout-contact", "layout-guard", "matching", "extract", "lvs"].includes(action)) return analogMixedRecordLayoutAction(action);
   if (["op", "dc", "ac", "tran", "corners"].includes(action)) return analogMixedPrepareSpiceSimulationPlan(action);
   return analogMixedRecordStageAction(action);
 }
@@ -3389,8 +3852,15 @@ function analogMixedComponentSymbol(component = {}, selected = false, options = 
   const libraryItem = analogMixedLibraryItem(component.type);
   const transform = options.preview ? "translate(84 54) scale(0.66)" : analogMixedComponentTransform(component);
   const dataAttribute = options.preview ? "" : ` data-am-component="${escapeHtml(component.id)}"`;
+  const pins = options.preview ? "" : analogMixedPinLayout(component).map((pin) => `
+    <g class="am-pin" data-am-component-pin="${escapeHtml(component.id)}:${escapeHtml(pin.pin)}" transform="translate(${pin.x} ${pin.y})">
+      <circle r="4.5" />
+      <text x="${pin.side === "left" ? -20 : pin.side === "right" ? 9 : 8}" y="${pin.side === "bottom" ? 18 : pin.side === "top" ? -10 : 5}">${escapeHtml(pin.pin)}</text>
+    </g>
+  `).join("");
   return `<g class="am-symbol${selected ? " is-selected" : ""}${options.preview ? " is-preview" : ""}"${dataAttribute} transform="${transform}">
     ${analogMixedSymbolBody(component, libraryItem)}
+    ${pins}
     ${analogMixedSymbolText(component, libraryItem, options)}
   </g>`;
 }
@@ -3451,15 +3921,128 @@ function analogMixed3dStageMarkup(workspace, stage, domain) {
   `;
 }
 
+function analogMixedLayoutObjectMarkup(object = {}, index = 0) {
+  const layer = analogMixedLayoutLayerById(object.layer);
+  const x = Number(object.x) || 80;
+  const y = Number(object.y) || 80;
+  const width = Number(object.width) || 160;
+  const height = Number(object.height) || 90;
+  const label = escapeHtml(object.label || `X${index + 1}`);
+  const model = escapeHtml(object.modelName || object.type || "device");
+  const pinLabelY = y + height + 18;
+  if (/mos|fet|switch/.test(object.symbolKind || "")) {
+    const polyX = x + Math.round(width * 0.48);
+    const srcX = x + 28;
+    const drainX = x + width - 44;
+    return `
+      <g class="am-layout-device am-layout-device-mos" data-am-layout-object="${escapeHtml(object.id)}">
+        <rect class="am-layout-layer-fill am-layout-${escapeHtml(layer.id)}" x="${x}" y="${y}" width="${width}" height="${height}" rx="4" />
+        <rect class="am-layout-poly-gate" x="${polyX}" y="${y - 20}" width="18" height="${height + 40}" rx="2" />
+        <rect class="am-layout-contact" x="${srcX}" y="${y + 22}" width="22" height="22" rx="2" />
+        <rect class="am-layout-contact" x="${drainX}" y="${y + 22}" width="22" height="22" rx="2" />
+        <text x="${x + 12}" y="${y + 30}">${label}</text>
+        <text x="${x + 12}" y="${y + 56}">${model}</text>
+        <text class="am-layout-pin-text" x="${srcX - 2}" y="${pinLabelY}">S</text>
+        <text class="am-layout-pin-text" x="${polyX - 2}" y="${pinLabelY}">G</text>
+        <text class="am-layout-pin-text" x="${drainX - 2}" y="${pinLabelY}">D</text>
+      </g>
+    `;
+  }
+  if (/resistor/.test(object.symbolKind || "")) {
+    const segments = Array.from({ length: 6 }, (_, segment) => {
+      const sx = x + 18 + segment * 30;
+      return `<polyline class="am-layout-poly-route" points="${sx},${y + 22} ${sx + 14},${y + 44} ${sx},${y + 66}" />`;
+    }).join("");
+    return `
+      <g class="am-layout-device am-layout-device-res" data-am-layout-object="${escapeHtml(object.id)}">
+        <rect class="am-layout-layer-fill am-layout-${escapeHtml(layer.id)}" x="${x}" y="${y}" width="${width}" height="${height}" rx="4" />
+        ${segments}
+        <rect class="am-layout-contact" x="${x + 6}" y="${y + 28}" width="20" height="20" rx="2" />
+        <rect class="am-layout-contact" x="${x + width - 28}" y="${y + 28}" width="20" height="20" rx="2" />
+        <text x="${x + 12}" y="${y + height + 22}">${label} ${model}</text>
+      </g>
+    `;
+  }
+  if (/capacitor|mim/.test(object.symbolKind || "")) {
+    return `
+      <g class="am-layout-device am-layout-device-cap" data-am-layout-object="${escapeHtml(object.id)}">
+        <rect class="am-layout-layer-fill am-layout-metal2" x="${x}" y="${y}" width="${width}" height="${height}" rx="4" />
+        <rect class="am-layout-cap-plate" x="${x + 22}" y="${y + 18}" width="${width - 44}" height="${height - 36}" rx="3" />
+        <line class="am-layout-cap-finger" x1="${x + 44}" y1="${y + 18}" x2="${x + 44}" y2="${y + height - 18}" />
+        <line class="am-layout-cap-finger" x1="${x + width - 44}" y1="${y + 18}" x2="${x + width - 44}" y2="${y + height - 18}" />
+        <text x="${x + 12}" y="${y + height + 22}">${label} ${model}</text>
+      </g>
+    `;
+  }
+  return `
+    <g class="am-layout-device" data-am-layout-object="${escapeHtml(object.id)}">
+      <rect class="am-layout-layer-fill am-layout-${escapeHtml(layer.id)}" x="${x}" y="${y}" width="${width}" height="${height}" rx="5" />
+      <rect class="am-layout-cell-core" x="${x + 14}" y="${y + 16}" width="${Math.max(30, width - 28)}" height="${Math.max(24, height - 32)}" rx="4" />
+      <text x="${x + 14}" y="${y + 36}">${label}</text>
+      <text x="${x + 14}" y="${y + 62}">${model}</text>
+    </g>
+  `;
+}
+
+function analogMixedIcLayoutStageMarkup(workspace, stage, domain) {
+  const layoutData = analogMixedNormalizeIcLayout(workspace);
+  const visibleLayers = (layoutData.layers || analogMixedIcLayoutLayers).filter((layer) => layer.visible !== false);
+  const layerChips = visibleLayers.map((layer, index) => {
+    const baseLayer = analogMixedLayoutLayerById(layer.id);
+    const x = 80 + index * 118;
+    return `
+      <g class="am-layout-layer-chip ${layoutData.activeLayer === layer.id ? "is-active" : ""}">
+        <rect x="${x}" y="42" width="106" height="34" rx="6" style="fill:${baseLayer.fill};stroke:${baseLayer.color}" />
+        <text x="${x + 12}" y="64">${escapeHtml(baseLayer.label)}</text>
+      </g>
+    `;
+  }).join("");
+  const routes = (layoutData.layoutRoutes || []).map((route) => {
+    const layer = analogMixedLayoutLayerById(route.layer);
+    return `<g class="am-layout-route"><polyline points="${analogMixedPointsAttribute(route.points || [])}" style="stroke:${layer.color}" /><text x="${route.points?.[0]?.x || 80}" y="${(route.points?.[0]?.y || 80) - 8}">${escapeHtml(route.name || route.layer)}</text></g>`;
+  }).join("");
+  const guardRings = (layoutData.guardRings || []).map((ring) => `<rect class="am-layout-guard-ring" x="${ring.x || 120}" y="${ring.y || 120}" width="${ring.width || 320}" height="${ring.height || 190}" rx="12" />`).join("");
+  const objects = (layoutData.layoutObjects || []).map(analogMixedLayoutObjectMarkup).join("");
+  const drc = (layoutData.drcMarkers || []).map((marker) => `<g class="am-layout-drc"><circle cx="${marker.x || 100}" cy="${marker.y || 100}" r="11" /><text x="${(marker.x || 100) + 16}" y="${(marker.y || 100) + 5}">${escapeHtml(marker.message || marker.severity || "DRC")}</text></g>`).join("");
+  const empty = layoutData.layoutObjects?.length ? "" : `<g class="am-empty-hint"><rect x="360" y="300" width="690" height="136" rx="12" /><text x="400" y="352">No IC layout devices yet</text><text x="400" y="390">Place schematic devices, then click Sync or Virtuoso-style IC flow.</text></g>`;
+  return `
+    <g class="am-grid am-layout-grid">
+      ${Array.from({ length: 29 }, (_, index) => `<line x1="${index * 50}" y1="0" x2="${index * 50}" y2="820" />`).join("")}
+      ${Array.from({ length: 17 }, (_, index) => `<line x1="0" y1="${index * 50}" x2="1400" y2="${index * 50}" />`).join("")}
+    </g>
+    <g class="am-layout-title">
+      <text x="80" y="30">${escapeHtml(layoutData.cellName)} / ${escapeHtml(layoutData.viewName)} | ${escapeHtml(layoutData.pdk || workspace.activePdk || "generic PDK")} | ${escapeHtml(domain.label)}</text>
+    </g>
+    ${layerChips}
+    <g class="am-layout-floorplan">
+      <rect x="70" y="98" width="1260" height="650" rx="8" />
+      <text x="92" y="128">Virtuoso-style layout canvas: devices, layers, routes, matching, guard rings, extraction, DRC/LVS</text>
+    </g>
+    ${guardRings}
+    ${routes}
+    ${objects}
+    ${drc}
+    ${empty}
+    <g class="am-layout-sidebar">
+      <rect x="1078" y="112" width="238" height="184" rx="8" />
+      <text x="1100" y="144">Layout status</text>
+      <text x="1100" y="176">Objects: ${layoutData.layoutObjects.length}</text>
+      <text x="1100" y="206">Routes: ${layoutData.layoutRoutes.length}</text>
+      <text x="1100" y="236">Active layer: ${escapeHtml(analogMixedLayoutLayerById(layoutData.activeLayer).label)}</text>
+      <text x="1100" y="266">PDK: ${escapeHtml(layoutData.pdk || "generic")}</text>
+    </g>
+  `;
+}
+
 function analogMixedStageMarkup(workspace) {
   const stage = analogMixedStages.find((item) => item.id === workspace.activeStage) || analogMixedStages[0];
   const domain = analogMixedDomains[workspace.focus];
   if (stage.id === "3d-view") return analogMixed3dStageMarkup(workspace, stage, domain);
+  if (stage.id === "ic-layout") return analogMixedIcLayoutStageMarkup(workspace, stage, domain);
   const stageColumns = {
     symbol: ["Pins", "Symbol body", "Electrical type", "Reuse rules"],
     footprint: ["Package", "Pads", "3D/mechanical", "Pin map"],
     pcb: ["Placement", "Power loops", "Routing", "Manufacturing"],
-    "ic-layout": ["Devices", "Matching", "Guard rings", "Extraction"],
     math: ["Targets", "Equations", "Optimization", "Sensitivity"],
     simulation: ["Analyses", "Corners", "Stimuli", "Results"],
     gerber: ["Copper", "Drill", "Assembly", "Fabrication"],
@@ -3520,20 +4103,29 @@ function analogMixedCanvasMarkup(workspace) {
     for (let y = 0; y <= 820; y += grid) gridLines.push(`<line x1="0" y1="${y}" x2="1400" y2="${y}" />`);
   }
   const wires = workspace.wires.map((wire) => {
-    const midX = Math.round((wire.x1 + wire.x2) / 2);
+    const points = analogMixedWirePoints(wire);
+    const labelPoint = analogMixedRouteLabelPoint(points);
     return `<g class="am-wire" data-am-wire="${escapeHtml(wire.id)}">
-      <polyline points="${wire.x1},${wire.y1} ${midX},${wire.y1} ${midX},${wire.y2} ${wire.x2},${wire.y2}" />
-      <text x="${midX + 6}" y="${wire.y2 - 8}">${escapeHtml(wire.name)}</text>
+      <polyline points="${analogMixedPointsAttribute(points)}" />
+      <text x="${labelPoint.x + 6}" y="${labelPoint.y - 8}">${escapeHtml(wire.name)}</text>
     </g>`;
   }).join("");
   const labels = workspace.labels.map((label) => `<text class="am-label" x="${label.x}" y="${label.y}" data-am-label="${escapeHtml(label.id)}">${escapeHtml(label.text)}</text>`).join("");
+  const junctions = workspace.junctions.map((item) => `<circle class="am-junction" cx="${item.x}" cy="${item.y}" r="5" data-am-marker="${escapeHtml(item.id)}" />`).join("");
+  const noConnects = workspace.noConnects.map((item) => `<g class="am-no-connect" data-am-marker="${escapeHtml(item.id)}"><line x1="${item.x - 10}" y1="${item.y - 10}" x2="${item.x + 10}" y2="${item.y + 10}" /><line x1="${item.x + 10}" y1="${item.y - 10}" x2="${item.x - 10}" y2="${item.y + 10}" /><text x="${item.x + 12}" y="${item.y - 8}">${escapeHtml(item.label || "NC")}</text></g>`).join("");
+  const probes = workspace.probes.map((item) => `<g class="am-probe" data-am-marker="${escapeHtml(item.id)}"><path d="M ${item.x - 10} ${item.y + 12} L ${item.x} ${item.y - 14} L ${item.x + 10} ${item.y + 12} Z" /><text x="${item.x + 14}" y="${item.y + 5}">${escapeHtml(item.label || "probe")}</text></g>`).join("");
   const components = workspace.components.map((component) => analogMixedComponentSymbol(component, component.id === workspace.selectedComponentId)).join("");
+  const previewPoints = analogMixedWireStart && analogMixedWirePreview ? analogMixedOrthogonalWirePoints(analogMixedWireStart, analogMixedWirePreview) : [];
   const wirePreview = analogMixedWireStart
-    ? `<g class="am-wire-start"><circle cx="${analogMixedWireStart.x}" cy="${analogMixedWireStart.y}" r="8" /><text x="${analogMixedWireStart.x + 12}" y="${analogMixedWireStart.y - 10}">wire start</text></g>`
+    ? `<g class="am-wire-start">
+        ${previewPoints.length ? `<polyline class="am-wire-preview" points="${analogMixedPointsAttribute(previewPoints)}" />` : ""}
+        <circle cx="${analogMixedWireStart.x}" cy="${analogMixedWireStart.y}" r="8" />
+        <text x="${analogMixedWireStart.x + 12}" y="${analogMixedWireStart.y - 10}">${analogMixedWireStart.pin ? escapeHtml(`${analogMixedWireStart.pin.componentLabel || "pin"}.${analogMixedWireStart.pin.pin}`) : "wire start"}</text>
+      </g>`
     : "";
-  const empty = workspace.components.length || workspace.wires.length || workspace.labels.length
+  const empty = workspace.components.length || workspace.wires.length || workspace.labels.length || workspace.junctions.length || workspace.noConnects.length || workspace.probes.length
     ? ""
-    : `<g class="am-empty-hint"><rect x="380" y="300" width="640" height="150" rx="12" /><text x="420" y="350">Analog/Mixed-Signal schematic canvas</text><text x="420" y="390">Choose a library part or press R, C, S, D, W, L, N, O.</text></g>`;
+    : `<g class="am-empty-hint"><rect x="380" y="300" width="640" height="150" rx="12" /><text x="420" y="350">Analog/Mixed-Signal schematic canvas</text><text x="420" y="390">Choose a library part or press R, C, S, D, W, J, X, B, L, N, O.</text></g>`;
   return `
     <defs>
       <marker id="am-arrow" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
@@ -3545,6 +4137,9 @@ function analogMixedCanvasMarkup(workspace) {
       ${empty}
       ${wires}
       ${components}
+      ${junctions}
+      ${noConnects}
+      ${probes}
       ${labels}
       ${wirePreview}
     </g>
@@ -3558,11 +4153,11 @@ function analogMixedMenuGroups(workspace) {
     { label: "Import", items: ["Import SKY130 devices", "Import LTspice primitives", "Import Texas Instruments shells", "Import KiCad PCB parts", "Apply KiCad PCB template"] },
     { label: "View", items: ["Zoom in", "Zoom out", "Fit canvas", "Toggle grid", "Pan tool", "Open 3D stage", "Toggle 3D overlay"] },
     { label: "Checks", items: ["Backend analysis", "Run DRC", "Run ERC", "Run DRC and ERC", "Review warnings", "Clean floating labels"] },
-    { label: "Simulate", items: ["Operating point", "DC sweep", "AC analysis", "Transient", "Noise", "Monte Carlo plan", "Corner plan"] },
+    { label: "Simulate", items: ["Run SPICE operating point", "Run SPICE DC sweep", "Run SPICE AC analysis", "Run SPICE transient analysis", "Operating point plan", "DC sweep plan", "AC analysis plan", "Transient plan", "Noise", "Monte Carlo plan", "Corner plan"] },
     { label: "Optimize", items: ["PLL loop targets", "Amplifier compensation", "DC-DC ripple", "Device sizing", "Power estimate"] },
     { label: "PCB", items: ["Open PCB stage", "Apply KiCad PCB template", "KiCad footprint assignment", "PCB DRC rules", "Route planner", "Gerber generation plan", "Board 3D handoff"] },
-    { label: "IC", items: ["Open IC layout stage", "Virtuoso-style IC flow", "Transistor parameter audit", "Common-centroid planner", "Guard-ring planner", "LVS plan", "PEX plan"] },
-    { label: "Layout", items: ["Open IC layout stage", "Open PCB stage", "Open 3D stage", "Generate layout checklist", "Parasitic note", "PCB handoff note", "IC matching note", "Gerber generation plan"] },
+    { label: "IC", items: ["Open IC layout stage", "Virtuoso-style IC flow", "Sync layout from schematic", "Transistor parameter audit", "Common-centroid planner", "Guard-ring planner", "LVS plan", "PEX plan"] },
+    { label: "Layout", items: ["Open IC layout stage", "Open PCB stage", "Open 3D stage", "Sync layout from schematic", "Generate layout checklist", "Parasitic note", "PCB handoff note", "IC matching note", "Gerber generation plan"] },
     { label: "Libraries", items: ["Component library", "Symbol library", "Footprint library", "Import SKY130 devices", "Import LTspice primitives", "Import Texas Instruments shells", "Import KiCad PCB parts", "Local model library"] },
     { label: "PDK", items: ["Generic educational PDK", "Import SKY130 devices", "Sky130 future PDK", "GF180 future PDK", "Import PDK folder", "Model corner plan"] },
     { label: "Help", items: ["Keyboard shortcuts", "AM roadmap", "Component guide"] }
@@ -3750,10 +4345,20 @@ function analogMixedOutputPanel(workspace) {
   }
   if (workspace.activePanel === "layout") {
     const pcbTemplate = workspace.stageData?.pcb?.template;
-    const icFlow = workspace.stageData?.["ic-layout"]?.virtuoso;
+    const icLayout = analogMixedNormalizeIcLayout(workspace);
+    const icFlow = icLayout.virtuoso;
     const extras = [
       pcbTemplate ? `KiCad template layers: ${pcbTemplate.defaultLayers.join(", ")}\nKiCad net classes: ${pcbTemplate.netClasses.join(", ")}` : "",
-      icFlow ? `Virtuoso-style views: ${icFlow.views.join(", ")}\nVirtuoso-style checks: ${icFlow.checks.join(", ")}` : ""
+      [
+        `IC layout cell/view: ${icLayout.cellName} / ${icLayout.viewName}`,
+        `Active layer: ${analogMixedLayoutLayerById(icLayout.activeLayer).label}`,
+        `Layout objects: ${icLayout.layoutObjects.length}`,
+        `Layout routes: ${icLayout.layoutRoutes.length}`,
+        `Guard rings: ${icLayout.guardRings.length}`,
+        `Matching groups: ${icLayout.matchingGroups.length}`,
+        icFlow ? `Virtuoso-style views: ${icFlow.views.join(", ")}` : "",
+        icFlow ? `Virtuoso-style checks: ${icFlow.checks.join(", ")}` : ""
+      ].filter(Boolean).join("\n")
     ].filter(Boolean).join("\n\n");
     return `<pre>${escapeHtml([workspace.layoutPlan || "Layout notes will track IC matching, guard rings, extraction, PCB decoupling, thermal loops, Kelvin sense, Gerber readiness, and board/IC handoff constraints.", extras].filter(Boolean).join("\n\n"))}</pre>`;
   }
@@ -3769,9 +4374,16 @@ function analogMixedOutputPanel(workspace) {
     return `<pre>${escapeHtml(objects.join("\n") || "No schematic or physical objects have been placed yet.")}</pre>`;
   }
   if (workspace.activePanel === "nets") {
-    const nets = workspace.wires.map((wire) => `${wire.name}: (${wire.x1}, ${wire.y1}) -> (${wire.x2}, ${wire.y2})`);
+    const endpointLabel = (ref) => ref?.type === "pin" ? `${ref.componentId}.${ref.pin}` : "canvas point";
+    const nets = workspace.wires.map((wire) => {
+      const route = analogMixedWirePoints(wire).map((point) => `(${point.x}, ${point.y})`).join(" -> ");
+      return `${wire.name}: ${endpointLabel(wire.startRef)} -> ${endpointLabel(wire.endRef)} | ${route}`;
+    });
     const labels = workspace.labels.map((label) => `${label.text}: label at (${label.x}, ${label.y})`);
-    return `<pre>${escapeHtml([...nets, ...labels].join("\n") || "No nets or labels have been created yet. Use W for wire and N/L for net labels.")}</pre>`;
+    const junctions = workspace.junctions.map((item) => `junction: (${item.x}, ${item.y})`);
+    const noConnects = workspace.noConnects.map((item) => `no-connect: (${item.x}, ${item.y}) ${item.ref?.type === "pin" ? `${item.ref.componentId}.${item.ref.pin}` : ""}`.trim());
+    const probes = workspace.probes.map((item) => `${item.label || "probe"}: (${item.x}, ${item.y})`);
+    return `<pre>${escapeHtml([...nets, ...labels, ...junctions, ...noConnects, ...probes].join("\n") || "No nets, markers, probes, or labels have been created yet. Use W for wire, J for junction, X for no-connect, B for probe, and N/L for net labels.")}</pre>`;
   }
   if (workspace.activePanel === "sources") {
     const project = activeAnalogMixedProject();
@@ -3851,7 +4463,7 @@ function openAnalogMixedWorkspace(projectId = selectedProjectId) {
   document.body.classList.add("analog-mixed-open");
   analogMixedDialog.showModal();
   renderAnalogMixedWorkspace();
-  analogMixedSetStatus("Analog/Mixed-Signal workspace ready. Press W, L, N, R, C, S, D, or O to change tools.");
+  analogMixedSetStatus("Analog/Mixed-Signal workspace ready. W wire, J junction, X no-connect, B probe, L label, N net, R/C/S/D/G parts.");
 }
 
 function saveAnalogMixedWorkspace() {
@@ -3914,6 +4526,59 @@ async function analogMixedRunBackendAnalysis(reason = "analysis") {
 async function analogMixedGenerateNetlistFromBackend() {
   const completed = await analogMixedRunBackendAnalysis("netlist");
   if (!completed) analogMixedGenerateNetlist();
+}
+
+async function analogMixedRunSpiceSimulation(kind = "op") {
+  const project = activeAnalogMixedProject();
+  if (!project) return false;
+  const workspace = normalizeAnalogMixedWorkspace(project);
+  const cleanKind = ["op", "dc", "ac", "tran"].includes(kind) ? kind : "op";
+  workspace.activeStage = "simulation";
+  workspace.activePanel = "simulation";
+  analogMixedSetStatus(`Running SPICE ${cleanKind.toUpperCase()} simulation...`);
+  try {
+    const response = await fetch("/api/analog-mixed/simulate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        projectTitle: project.title || "Project",
+        kind: cleanKind,
+        workspace
+      })
+    });
+    const data = await response.json();
+    if (!response.ok || !data.ok) throw new Error(data.error || "SPICE simulation failed.");
+    const simulation = data.simulation || {};
+    workspace.simulationPlan = String(simulation.report || "");
+    workspace.netlist = String(simulation.netlist || workspace.netlist || "");
+    workspace.stageData.simulation = workspace.stageData.simulation && typeof workspace.stageData.simulation === "object" ? workspace.stageData.simulation : {};
+    workspace.stageData.simulation.lastRun = {
+      engine: simulation.engine || "SPICE Lite",
+      kind: cleanKind,
+      status: simulation.status || "completed",
+      generatedAt: simulation.generatedAt || new Date().toISOString(),
+      nodeVoltages: simulation.nodeVoltages || {},
+      sweep: simulation.sweep || [],
+      deviceEstimates: simulation.deviceEstimates || []
+    };
+    markDraftNeedsSave();
+    scheduleAutosave();
+    renderAnalogMixedWorkspace();
+    analogMixedSetStatus(`SPICE ${cleanKind.toUpperCase()} simulation completed.`);
+    return true;
+  } catch (error) {
+    workspace.simulationPlan = [
+      `SPICE ${cleanKind.toUpperCase()} simulation could not complete.`,
+      "",
+      error.message || "The local simulation backend did not respond.",
+      "",
+      "The schematic is still saved. Check that the local builder backend is running, then try again."
+    ].join("\n");
+    workspace.activePanel = "simulation";
+    renderAnalogMixedWorkspace();
+    analogMixedSetStatus("SPICE backend unavailable.");
+    return false;
+  }
 }
 
 function analogMixedGenerateNetlist() {
@@ -3991,6 +4656,18 @@ function handleAnalogMixedCanvasClick(event) {
   const project = activeAnalogMixedProject();
   if (!project) return;
   const workspace = normalizeAnalogMixedWorkspace(project);
+  if (workspace.activeStage === "ic-layout") {
+    const layoutTarget = event.target.closest?.("[data-am-layout-object]");
+    if (layoutTarget) {
+      const layoutData = analogMixedNormalizeIcLayout(workspace);
+      const layoutObject = layoutData.layoutObjects.find((item) => item.id === layoutTarget.dataset.amLayoutObject);
+      if (layoutObject?.sourceComponentId) analogMixedSelectComponent(project, layoutObject.sourceComponentId);
+      analogMixedSetStatus(`${layoutObject?.label || "Layout object"} selected in IC layout.`);
+      return;
+    }
+    analogMixedSetStatus("IC layout stage is open. Use Sync, layer buttons, guard, extraction, DRC, or LVS from the stage toolbar.");
+    return;
+  }
   if (workspace.activeStage !== "schematic") {
     analogMixedSetStatus(`${analogMixedStages.find((stage) => stage.id === workspace.activeStage)?.label || "This stage"} is open. Switch to Schematic for direct component placement.`);
     return;
@@ -4000,17 +4677,24 @@ function handleAnalogMixedCanvasClick(event) {
     analogMixedSelectComponent(project, componentTarget.dataset.amComponent || "");
     return;
   }
+  const capturePoint = analogMixedCapturePointFromEvent(event, workspace);
   const point = analogMixedPointFromEvent(event, workspace);
   if (workspace.activeTool === "wire") {
     if (!analogMixedWireStart) {
-      analogMixedWireStart = point;
+      analogMixedWireStart = capturePoint;
+      analogMixedWirePreview = capturePoint;
       renderAnalogMixedWorkspace();
-      analogMixedSetStatus(`Wire start set at ${point.x}, ${point.y}. Click another point to finish.`);
+      analogMixedSetStatus(`Wire start set at ${capturePoint.x}, ${capturePoint.y}${capturePoint.pin ? ` on ${capturePoint.pin.componentLabel || "component"}.${capturePoint.pin.pin}` : ""}. Click another node to finish.`);
     } else {
-      analogMixedAddWire(project, analogMixedWireStart, point);
+      analogMixedAddWire(project, analogMixedWireStart, capturePoint);
       analogMixedWireStart = null;
+      analogMixedWirePreview = null;
       renderAnalogMixedWorkspace();
     }
+    return;
+  }
+  if (["junction", "no-connect", "probe"].includes(workspace.activeTool)) {
+    analogMixedAddSchematicMarker(project, workspace.activeTool, capturePoint);
     return;
   }
   if (workspace.activeTool === "label" || workspace.activeTool === "net") {
@@ -4076,10 +4760,15 @@ function handleAnalogMixedPointerDown(event) {
 }
 
 function handleAnalogMixedPointerMove(event) {
-  if (!analogMixedPointerState || !analogMixedDialog?.open) return;
+  if (!analogMixedDialog?.open) return;
   const project = activeAnalogMixedProject();
   if (!project) return;
   const workspace = normalizeAnalogMixedWorkspace(project);
+  if (analogMixedWireStart && workspace.activeTool === "wire") {
+    analogMixedWirePreview = analogMixedCapturePointFromEvent(event, workspace);
+    analogMixedQueueRender();
+  }
+  if (!analogMixedPointerState) return;
   const dxClient = event.clientX - analogMixedPointerState.startClientX;
   const dyClient = event.clientY - analogMixedPointerState.startClientY;
   if (Math.abs(dxClient) + Math.abs(dyClient) > 3) analogMixedPointerState.moved = true;
@@ -4185,6 +4874,11 @@ function handleAnalogMixedMenuItem(label = "") {
     saveAnalogMixedWorkspace();
     return;
   }
+  if (clean.includes("run spice")) {
+    const kind = clean.includes("operating") ? "op" : clean.includes("dc") || clean.includes("sweep") ? "dc" : clean.includes("ac") ? "ac" : "tran";
+    analogMixedRunSpiceSimulation(kind);
+    return;
+  }
   if (clean.includes("spice") || clean.includes("netlist")) {
     analogMixedGenerateNetlistFromBackend();
     return;
@@ -4277,6 +4971,15 @@ function handleAnalogMixedMenuItem(label = "") {
   }
   if (clean.includes("virtuoso")) {
     analogMixedPrepareVirtuosoFlow();
+    return;
+  }
+  if (clean.includes("sync layout")) {
+    analogMixedRecordLayoutAction("layout-sync");
+    return;
+  }
+  if (clean.includes("common-centroid") || clean.includes("guard-ring") || clean.includes("lvs plan") || clean.includes("pex plan") || clean.includes("layout checklist") || clean.includes("parasitic note") || clean.includes("ic matching")) {
+    const action = clean.includes("guard") ? "layout-guard" : clean.includes("lvs") ? "lvs" : clean.includes("pex") || clean.includes("parasitic") ? "extract" : "matching";
+    analogMixedRecordLayoutAction(action);
     return;
   }
   if (clean.includes("digikey")) {
@@ -23665,6 +24368,7 @@ analogMixedClose?.addEventListener("click", () => {
 analogMixedDialog?.addEventListener("close", () => {
   document.body.classList.remove("analog-mixed-open");
   analogMixedWireStart = null;
+  analogMixedWirePreview = null;
 });
 analogMixedSave?.addEventListener("click", () => {
   saveAnalogMixedWorkspace();
@@ -23747,6 +24451,7 @@ analogMixedDialog?.addEventListener("click", (event) => {
   if (stageButton) {
     workspace.activeStage = stageButton.dataset.amStage || "schematic";
     analogMixedWireStart = null;
+    analogMixedWirePreview = null;
     markDraftNeedsSave();
     scheduleAutosave();
     renderAnalogMixedWorkspace();

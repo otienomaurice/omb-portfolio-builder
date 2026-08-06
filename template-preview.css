@@ -15841,6 +15841,24 @@ body[data-builder-theme] .selection-text-preview {
   font-size: 14px;
 }
 
+.am-pin circle {
+  fill: #e0f2fe;
+  stroke: #0284c7;
+  stroke-width: 1.8;
+}
+
+.am-pin text {
+  fill: #0f4660;
+  font: 850 10px Consolas, "Courier New", monospace;
+  pointer-events: none;
+}
+
+.am-symbol:hover .am-pin circle,
+.am-symbol.is-selected .am-pin circle {
+  fill: #fef3c7;
+  stroke: #d97706;
+}
+
 .am-symbol.is-preview text {
   display: none;
 }
@@ -15875,6 +15893,14 @@ body[data-builder-theme] .selection-text-preview {
   marker-end: url(#am-arrow);
 }
 
+.am-wire-preview {
+  fill: none;
+  stroke: #f59e0b;
+  stroke-width: 3;
+  stroke-dasharray: 10 7;
+  marker-end: none;
+}
+
 .am-wire text {
   fill: #0f766e;
   font-size: 15px;
@@ -15888,6 +15914,34 @@ body[data-builder-theme] .selection-text-preview {
 .am-wire-start text {
   fill: #78350f;
   font: 800 16px Arial, sans-serif;
+}
+
+.am-junction {
+  fill: #0f766e;
+  stroke: #ecfeff;
+  stroke-width: 2;
+}
+
+.am-no-connect line {
+  stroke: #dc2626;
+  stroke-width: 3;
+  stroke-linecap: square;
+}
+
+.am-no-connect text,
+.am-probe text {
+  fill: #7f1d1d;
+  font: 850 13px Arial, sans-serif;
+}
+
+.am-probe path {
+  fill: #fff7ed;
+  stroke: #ea580c;
+  stroke-width: 2.4;
+}
+
+.am-probe text {
+  fill: #9a3412;
 }
 
 .am-label {
@@ -16008,6 +16062,160 @@ body[data-builder-theme] .selection-text-preview {
 .am-3d-side-panel text:first-of-type {
   font-size: 18px;
   font-weight: 950;
+}
+
+.am-layout-grid line {
+  stroke: rgba(148, 163, 184, 0.16);
+}
+
+.am-layout-title text,
+.am-layout-floorplan text,
+.am-layout-device text,
+.am-layout-layer-chip text,
+.am-layout-sidebar text,
+.am-layout-route text,
+.am-layout-drc text {
+  fill: #e0f2fe;
+  font: 850 14px Consolas, "Courier New", monospace;
+}
+
+.am-layout-title text {
+  fill: #f8fafc;
+  font-size: 18px;
+}
+
+.am-layout-floorplan rect {
+  fill: rgba(15, 23, 42, 0.76);
+  stroke: #334155;
+  stroke-width: 2;
+}
+
+.am-layout-floorplan text {
+  fill: #bae6fd;
+}
+
+.am-layout-layer-chip text {
+  fill: #f8fafc;
+  font-size: 12px;
+  pointer-events: none;
+}
+
+.am-layout-layer-chip.is-active rect {
+  stroke: #ffffff !important;
+  stroke-width: 3;
+}
+
+.am-layout-device {
+  cursor: pointer;
+}
+
+.am-layout-layer-fill {
+  stroke-width: 2.4;
+}
+
+.am-layout-nwell {
+  fill: rgba(139, 92, 246, 0.2);
+  stroke: #8b5cf6;
+}
+
+.am-layout-diff {
+  fill: rgba(34, 197, 94, 0.28);
+  stroke: #22c55e;
+}
+
+.am-layout-poly {
+  fill: rgba(249, 115, 22, 0.26);
+  stroke: #f97316;
+}
+
+.am-layout-li1 {
+  fill: rgba(217, 70, 239, 0.22);
+  stroke: #d946ef;
+}
+
+.am-layout-metal1 {
+  fill: rgba(56, 189, 248, 0.22);
+  stroke: #38bdf8;
+}
+
+.am-layout-metal2 {
+  fill: rgba(253, 224, 71, 0.2);
+  stroke: #fde047;
+}
+
+.am-layout-tap {
+  fill: rgba(20, 184, 166, 0.18);
+  stroke: #14b8a6;
+}
+
+.am-layout-poly-gate,
+.am-layout-poly-route {
+  fill: rgba(249, 115, 22, 0.72);
+  stroke: #fed7aa;
+  stroke-width: 2;
+}
+
+.am-layout-contact {
+  fill: #f8fafc;
+  stroke: #0f172a;
+  stroke-width: 2;
+}
+
+.am-layout-cap-plate,
+.am-layout-cell-core {
+  fill: rgba(15, 23, 42, 0.42);
+  stroke: #e2e8f0;
+  stroke-width: 2;
+}
+
+.am-layout-cap-finger {
+  stroke: #f8fafc;
+  stroke-width: 4;
+}
+
+.am-layout-route polyline {
+  fill: none;
+  stroke-width: 7;
+  stroke-linecap: square;
+  stroke-linejoin: miter;
+}
+
+.am-layout-route text {
+  fill: #fef08a;
+  font-size: 13px;
+}
+
+.am-layout-pin-text {
+  fill: #f8fafc !important;
+  font-size: 12px !important;
+}
+
+.am-layout-guard-ring {
+  fill: none;
+  stroke: #14b8a6;
+  stroke-dasharray: 14 10;
+  stroke-width: 7;
+}
+
+.am-layout-drc circle {
+  fill: #fee2e2;
+  stroke: #dc2626;
+  stroke-width: 3;
+}
+
+.am-layout-drc text {
+  fill: #fecaca;
+}
+
+.am-layout-sidebar rect {
+  fill: rgba(8, 13, 24, 0.9);
+  stroke: #475569;
+  stroke-width: 2;
+}
+
+.am-layout-sidebar text:first-of-type {
+  fill: #ffffff;
+  font-size: 17px;
 }
 
 .analog-mixed-inspector-body {
