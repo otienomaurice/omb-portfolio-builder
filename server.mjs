@@ -273,7 +273,9 @@ const compileToolCandidates = {
     "klayout",
     "C:\\Program Files\\KLayout\\klayout_app.exe",
     "C:\\Program Files\\KLayout\\klayout.exe",
-    process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, "Programs", "KLayout", "klayout_app.exe") : ""
+    process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, "Programs", "KLayout", "klayout_app.exe") : "",
+    process.env.APPDATA ? path.join(process.env.APPDATA, "KLayout", "klayout_app.exe") : "",
+    process.env.APPDATA ? path.join(process.env.APPDATA, "KLayout", "klayout.exe") : ""
   ],
   magic: [
     process.env.MAGIC_EXE,
