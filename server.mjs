@@ -4246,6 +4246,254 @@ function analogMixedNeedsPdkModels(workspace = {}) {
   });
 }
 
+function analogMixedServerLayoutLayerForComponent(component = {}) {
+  const item = analogMixedServerLibraryItem(component.type);
+  const descriptor = [item.symbolKind, item.category, component.type, component.modelName].join(" ").toLowerCase();
+  if (/pmos|pfet|nwell/.test(descriptor)) return "nwell";
+  if (/mos|fet|bjt|diode|switch|sky130/.test(descriptor)) return "diff";
+  if (/resistor|poly/.test(descriptor)) return "poly";
+  if (/capacitor|mim/.test(descriptor)) return "metal2";
+  return "metal1";
+}
+
+function analogMixedServerIcObjectFromComponent(component = {}, index = 0) {
+  const item = analogMixedServerLibraryItem(component.type);
+  const descriptor = String(item.symbolKind || component.type || "").toLowerCase();
+  const isMos = /mos|fet|switch/.test(descriptor);
+  const isCap = /capacitor|mim/.test(descriptor);
+  const isRes = /resistor/.test(descriptor);
+  const width = isMos ? 170 : isCap ? 150 : isRes ? 210 : 180;
+  const height = isMos ? 96 : isCap ? 130 : isRes ? 74 : 110;
+  const schematicX = Number(component.x);
+  const schematicY = Number(component.y);
+  return {
+    id: `layout-${component.id || index + 1}`,
+    sourceComponentId: component.id || "",
+    label: component.label || `${item.spicePrefix}${index + 1}`,
+    type: component.type || item.id,
+    modelName: component.modelName || item.modelName || component.type || "",
+    symbolKind: item.symbolKind || component.type || "device",
+    layer: analogMixedServerLayoutLayerForComponent(component),
+    x: Math.round(Number.isFinite(schematicX) && schematicX > 0 ? 115 + (schematicX / 1400) * 1040 : 170 + (index % 4) * 260),
+    y: Math.round(Number.isFinite(schematicY) && schematicY > 0 ? 140 + (schematicY / 820) * 500 : 150 + Math.floor(index / 4) * 165),
+    width,
+    height,
+    pins: item.pins || [],
+    parameters: component.parameters || {}
+  };
+}
+
+function analogMixedServerIcObjects(workspace = {}) {
+  return normalizeAnalogMixedServerWorkspace(workspace).components.map((component, index) => analogMixedServerIcObjectFromComponent(component, index));
+}
+
+function analogMixedServerLayoutPinPoint(object = {}, pin = "", pinIndex = 0, pinCount = 2) {
+  const x = Number(object.x) || 0;
+  const y = Number(object.y) || 0;
+  const width = Number(object.width) || 120;
+  const height = Number(object.height) || 70;
+  const name = String(pin || "").toUpperCase();
+  if (/OUT|DOUT|AOUT|Q|Y|D|SW/.test(name)) return { x: x + width, y: y + Math.round(height / 2) };
+  if (/IN|AIN|DIN|CLK|CTRL|G|A|B/.test(name)) return { x, y: y + Math.round(height / 2) };
+  if (/VDD|VCC|V\+/.test(name)) return { x: x + Math.round(width / 2), y };
+  if (/VSS|GND|V-|0|B$/.test(name)) return { x: x + Math.round(width / 2), y: y + height };
+  const step = height / Math.max(1, pinCount + 1);
+  return { x: pinIndex % 2 ? x + width : x, y: y + Math.round(step * (pinIndex + 1)) };
+}
+
+function analogMixedServerIcRoutes(workspaceInput = {}, objects = []) {
+  const workspace = normalizeAnalogMixedServerWorkspace(workspaceInput);
+  const objectByComponent = new Map(objects.map((object) => [object.sourceComponentId, object]));
+  return workspace.wires.map((wire, index) => {
+    const startObject = wire.startRef?.type === "pin" ? objectByComponent.get(wire.startRef.componentId) : null;
+    const endObject = wire.endRef?.type === "pin" ? objectByComponent.get(wire.endRef.componentId) : null;
+    const startPinIndex = Math.max(0, (startObject?.pins || []).findIndex((pin) => pin === wire.startRef?.pin));
+    const endPinIndex = Math.max(0, (endObject?.pins || []).findIndex((pin) => pin === wire.endRef?.pin));
+    const start = startObject
+      ? analogMixedServerLayoutPinPoint(startObject, wire.startRef.pin, startPinIndex, startObject.pins.length)
+      : { x: wire.x1 || 100, y: wire.y1 || 100 };
+    const end = endObject
+      ? analogMixedServerLayoutPinPoint(endObject, wire.endRef.pin, endPinIndex, endObject.pins.length)
+      : { x: wire.x2 || 360, y: wire.y2 || 100 };
+    const midX = Math.round((start.x + end.x) / 2);
+    return {
+      id: wire.id || `layout-route-${index + 1}`,
+      name: wire.name || `net_${index + 1}`,
+      layer: index % 3 === 0 ? "metal1" : index % 3 === 1 ? "metal2" : "li1",
+      points: [start, { x: midX, y: start.y }, { x: midX, y: end.y }, end]
+    };
+  });
+}
+
+function analogMixedRubyString(value = "") {
+  return String(value || "").replace(/\\/g, "/").replace(/"/g, "\\\"");
+}
+
+function analogMixedKLayoutLayerNumbers() {
+  return {
+    nwell: [64, 20],
+    diff: [65, 20],
+    tap: [65, 44],
+    poly: [66, 20],
+    li1: [67, 20],
+    via: [67, 44],
+    metal1: [68, 20],
+    metal2: [69, 20]
+  };
+}
+
+function analogMixedKLayoutRuby(projectTitle = "Project", workspaceInput = {}, options = {}) {
+  const cellName = safeSegment(projectTitle || "am_top").replace(/-/g, "_") || "am_top";
+  const objects = options.objects || analogMixedServerIcObjects(workspaceInput);
+  const routes = options.routes || analogMixedServerIcRoutes(workspaceInput, objects);
+  const gdsPath = analogMixedRubyString(options.gdsPath || path.join(root, `${cellName}.gds`));
+  const layerNumbers = analogMixedKLayoutLayerNumbers();
+  const layerLines = Object.entries(layerNumbers).map(([name, pair]) => `${name} = layout.layer(${pair[0]}, ${pair[1]})`).join("\n");
+  const dbuBox = (x, y, width, height) => [x, y, x + width, y + height].map((value) => Math.round(Number(value || 0) * 1000));
+  const objectLines = objects.map((object) => {
+    const layer = layerNumbers[object.layer] ? object.layer : "metal1";
+    const [x1, y1, x2, y2] = dbuBox(object.x, object.y, object.width, object.height);
+    const labelX = Math.round((Number(object.x) + 6) * 1000);
+    const labelY = Math.round((Number(object.y) + 14) * 1000);
+    return [
+      `cell.shapes(${layer}).insert(RBA::Box::new(${x1}, ${y1}, ${x2}, ${y2}))`,
+      `cell.shapes(${layer}).insert(RBA::Text::new("${analogMixedRubyString(object.label || object.type)}", RBA::Trans::new(${labelX}, ${labelY})))`
+    ].join("\n");
+  }).join("\n");
+  const routeLines = routes.map((route) => {
+    const layer = layerNumbers[route.layer] ? route.layer : "metal1";
+    const points = (route.points || []).map((point) => `RBA::Point::new(${Math.round(Number(point.x || 0) * 1000)}, ${Math.round(Number(point.y || 0) * 1000)})`).join(", ");
+    return points ? `cell.shapes(${layer}).insert(RBA::Path::new([${points}], 2800))` : "";
+  }).filter(Boolean).join("\n");
+  return [
+    "# Auto-generated by OMB Portfolio Builder AM Design Lab",
+    "require 'rba'",
+    "layout = RBA::Layout::new",
+    "layout.dbu = 0.001",
+    `cell = layout.create_cell("${analogMixedRubyString(cellName)}")`,
+    layerLines,
+    objectLines,
+    routeLines,
+    `layout.write("${gdsPath}")`
+  ].join("\n");
+}
+
+async function analogMixedBuildIcLayoutArtifacts(projectTitle = "Project", workspaceInput = {}, action = "layout-sync") {
+  const workspace = normalizeAnalogMixedServerWorkspace(workspaceInput);
+  const status = await analogMixedPdkStatus("sky130");
+  const runRoot = resolveInsideCompileRoot(".omb-am-ic-layout", safeSegment(projectTitle || "project"));
+  await mkdir(runRoot, { recursive: true });
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const objects = analogMixedServerIcObjects(workspace);
+  const routes = analogMixedServerIcRoutes(workspace, objects);
+  const netlist = analogMixedServerNetlist(projectTitle, workspace);
+  const gdsPath = path.join(runRoot, `ic-layout-${stamp}.gds`);
+  const klayoutScriptPath = path.join(runRoot, `build-layout-${stamp}.rb`);
+  const magicScriptPath = path.join(runRoot, `magic-drc-${stamp}.tcl`);
+  const netgenScriptPath = path.join(runRoot, `netgen-lvs-${stamp}.tcl`);
+  const netlistPath = path.join(runRoot, `schematic-${stamp}.spice`);
+  const summaryPath = path.join(runRoot, `ic-layout-summary-${stamp}.json`);
+  await writeFile(netlistPath, netlist, "utf8");
+  await writeFile(klayoutScriptPath, analogMixedKLayoutRuby(projectTitle, workspace, { objects, routes, gdsPath }), "utf8");
+  await writeFile(magicScriptPath, [
+    "# Auto-generated Magic DRC plan",
+    status.pdk?.path ? `tech load ${path.join(status.pdk.path, "libs.tech", "magic", "sky130A.tech").replace(/\\/g, "/")}` : "# SKY130 Magic tech file not detected",
+    `gds read ${gdsPath.replace(/\\/g, "/")}`,
+    "drc euclidean on",
+    "drc check",
+    "drc count total",
+    "quit -noprompt"
+  ].join("\n"), "utf8");
+  const netgenSetup = status.pdk?.path ? path.join(status.pdk.path, "libs.tech", "netgen", "sky130A_setup.tcl") : "";
+  await writeFile(netgenScriptPath, [
+    "# Auto-generated Netgen LVS plan",
+    netgenSetup ? `source ${netgenSetup.replace(/\\/g, "/")}` : "# SKY130 Netgen setup not detected",
+    `# Compare extracted netlist against ${netlistPath.replace(/\\/g, "/")} after Magic extraction is available.`
+  ].join("\n"), "utf8");
+  const toolRuns = [];
+  const klayout = status.tools?.klayout;
+  if (klayout && ["layout-sync", "layout-export", "klayout", "drc"].includes(action)) {
+    const result = await runProcess(klayout, ["-b", "-r", klayoutScriptPath], { cwd: runRoot, timeoutMs: 60000, env: await compileToolPathEnvironment() });
+    toolRuns.push({ tool: "klayout", executable: klayout, ok: result.ok, exitCode: result.code, stdout: result.stdout, stderr: result.stderr, elapsedMs: result.elapsedMs });
+  }
+  const files = { runRoot, netlistPath, klayoutScriptPath, magicScriptPath, netgenScriptPath, gdsPath, summaryPath };
+  const artifacts = Object.entries(files)
+    .filter(([key]) => key !== "runRoot")
+    .map(([key, value]) => ({ name: key, path: value, kind: path.extname(value).replace(".", "") || "folder" }));
+  const summary = {
+    generatedAt: new Date().toISOString(),
+    action,
+    pdk: status.pdk,
+    tools: status.tools,
+    toolStatus: status.tools,
+    objects,
+    routes,
+    artifactRoot: runRoot,
+    files,
+    artifacts,
+    toolRuns
+  };
+  await writeFile(summaryPath, JSON.stringify(summary, null, 2), "utf8");
+  return summary;
+}
+
+function analogMixedServerPcbFootprintFromComponent(component = {}, index = 0) {
+  const item = analogMixedServerLibraryItem(component.type);
+  const padCount = Math.max(2, (item.pins || []).length || (/opamp|controller|mcu|fpga|connector/i.test(item.symbolKind || "") ? 8 : 2));
+  return {
+    id: `pcb-${component.id || index + 1}`,
+    ref: component.label || `${item.spicePrefix}${index + 1}`,
+    value: component.value || "",
+    footprint: component.footprint || item.footprint || "Package:Generic",
+    packageName: component.packageName || "generic",
+    x: Math.round(20 + (Number(component.x) || 100) / 12),
+    y: Math.round(20 + (Number(component.y) || 100) / 12),
+    rotation: Number(component.rotation) || 0,
+    padCount
+  };
+}
+
+async function analogMixedBuildPcbArtifacts(projectTitle = "Project", workspaceInput = {}, action = "pcb-sync") {
+  const workspace = normalizeAnalogMixedServerWorkspace(workspaceInput);
+  const runRoot = resolveInsideCompileRoot(".omb-am-pcb", safeSegment(projectTitle || "project"));
+  await mkdir(runRoot, { recursive: true });
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const footprints = workspace.components.map((component, index) => analogMixedServerPcbFootprintFromComponent(component, index));
+  const netlist = analogMixedServerNetlist(projectTitle, workspace);
+  const netlistPath = path.join(runRoot, `pcb-netlist-${stamp}.cir`);
+  const placementPath = path.join(runRoot, `placement-${stamp}.csv`);
+  const bomPath = path.join(runRoot, `bom-${stamp}.csv`);
+  const gerberPlanPath = path.join(runRoot, `gerber-plan-${stamp}.txt`);
+  const summaryPath = path.join(runRoot, `pcb-summary-${stamp}.json`);
+  await writeFile(netlistPath, netlist, "utf8");
+  await writeFile(placementPath, ["Ref,Value,Footprint,Package,Xmm,Ymm,Rotation,PadCount", ...footprints.map((item) => [item.ref, item.value, item.footprint, item.packageName, item.x, item.y, item.rotation, item.padCount].map((field) => `"${String(field).replace(/"/g, '""')}"`).join(","))].join("\n"), "utf8");
+  await writeFile(bomPath, ["Ref,Value,Footprint,Package", ...footprints.map((item) => [item.ref, item.value, item.footprint, item.packageName].map((field) => `"${String(field).replace(/"/g, '""')}"`).join(","))].join("\n"), "utf8");
+  await writeFile(gerberPlanPath, [
+    `PCB/Gerber handoff plan for ${projectTitle || "Project"}`,
+    "",
+    "PCB is intentionally separate from IC layout.",
+    "Use this output for board-level KiCad-style placement, footprints, routing classes, BOM, drill, assembly, and Gerber planning.",
+    "",
+    `Footprints: ${footprints.length}`,
+    `Schematic nets: ${workspace.wires.length}`,
+    "Default layers: F.Cu, B.Cu, F.Mask, B.Mask, F.SilkS, B.SilkS, Edge.Cuts"
+  ].join("\n"), "utf8");
+  const files = { runRoot, netlistPath, placementPath, bomPath, gerberPlanPath, summaryPath };
+  const artifacts = Object.entries(files)
+    .filter(([key]) => key !== "runRoot")
+    .map(([key, value]) => ({ name: key, path: value, kind: path.extname(value).replace(".", "") || "folder" }));
+  const summary = {
+    generatedAt: new Date().toISOString(),
+    action,
+    footprints,
+    artifactRoot: runRoot,
+    files,
+    artifacts
+  };
+  await writeFile(summaryPath, JSON.stringify(summary, null, 2), "utf8");
+  return summary;
+}
+
 async function analogMixedSpiceDeck(projectTitle = "Project", workspaceInput = {}, kind = "op") {
   const workspace = normalizeAnalogMixedServerWorkspace(workspaceInput);
   const pdkStatus = analogMixedNeedsPdkModels(workspace) ? await analogMixedPdkStatus("sky130") : { pdk: null };
@@ -6070,6 +6318,28 @@ async function handleApi(request, response, url) {
       sendJson(response, 200, { ok: true, simulation });
     } catch (error) {
       sendJson(response, 400, { ok: false, error: error.message || "Analog/Mixed-Signal SPICE simulation could not be completed." });
+    }
+    return true;
+  }
+
+  if (url.pathname === "/api/analog-mixed/ic-layout-artifacts") {
+    try {
+      const body = await readRequestJson(request);
+      const artifacts = await analogMixedBuildIcLayoutArtifacts(body.projectTitle || body.title || "Project", body.workspace || {}, body.action || "layout-sync");
+      sendJson(response, 200, { ok: true, artifacts });
+    } catch (error) {
+      sendJson(response, 400, { ok: false, error: error.message || "IC layout artifacts could not be generated." });
+    }
+    return true;
+  }
+
+  if (url.pathname === "/api/analog-mixed/pcb-layout-artifacts") {
+    try {
+      const body = await readRequestJson(request);
+      const artifacts = await analogMixedBuildPcbArtifacts(body.projectTitle || body.title || "Project", body.workspace || {}, body.action || "pcb-sync");
+      sendJson(response, 200, { ok: true, artifacts });
+    } catch (error) {
+      sendJson(response, 400, { ok: false, error: error.message || "PCB handoff artifacts could not be generated." });
     }
     return true;
   }

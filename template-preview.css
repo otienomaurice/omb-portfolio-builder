@@ -16218,6 +16218,100 @@ body[data-builder-theme] .selection-text-preview {
   font-size: 17px;
 }
 
+.am-pcb-grid line {
+  stroke: rgba(14, 116, 144, 0.16);
+  stroke-width: 1;
+}
+
+.am-pcb-title text,
+.am-pcb-board text,
+.am-pcb-footprint text,
+.am-pcb-layer-chip text,
+.am-pcb-route text,
+.am-pcb-sidebar text {
+  fill: #0f2635;
+  font: 850 14px Consolas, "Courier New", monospace;
+}
+
+.am-pcb-title text {
+  fill: #0b3347;
+  font-size: 18px;
+}
+
+.am-pcb-board rect {
+  fill: #d8f7e9;
+  stroke: #0f766e;
+  stroke-width: 3;
+}
+
+.am-pcb-board text {
+  fill: #075985;
+}
+
+.am-pcb-layer-chip text {
+  fill: #083344;
+  font-size: 12px;
+  pointer-events: none;
+}
+
+.am-pcb-layer-chip.is-active rect {
+  stroke: #0f172a !important;
+  stroke-width: 3;
+}
+
+.am-pcb-footprint {
+  cursor: pointer;
+}
+
+.am-pcb-footprint-body {
+  fill: rgba(255, 255, 255, 0.92);
+  stroke-width: 2.2;
+}
+
+.am-pcb-pad {
+  fill: #fef3c7;
+  stroke: #78350f;
+  stroke-width: 1.2;
+}
+
+.am-pcb-footprint text {
+  fill: #082f49;
+  font-size: 12px;
+}
+
+.am-pcb-footprint text:first-of-type {
+  font-size: 14px;
+  font-weight: 950;
+}
+
+.am-pcb-route polyline {
+  fill: none;
+  stroke-width: 5;
+  stroke-linecap: square;
+  stroke-linejoin: miter;
+}
+
+.am-pcb-route text {
+  fill: #7c2d12;
+  font-size: 12px;
+}
+
+.am-pcb-zone {
+  stroke-width: 2;
+  stroke-dasharray: 10 8;
+}
+
+.am-pcb-sidebar rect {
+  fill: rgba(255, 255, 255, 0.92);
+  stroke: #8bd2ee;
+  stroke-width: 2;
+}
+
+.am-pcb-sidebar text:first-of-type {
+  fill: #0f2635;
+  font-size: 17px;
+}
+
 .analog-mixed-inspector-body {
   overflow: auto;
 }

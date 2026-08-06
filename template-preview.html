@@ -11,7 +11,7 @@
     <link rel="shortcut icon" href="assets/favicon.ico" />
     <link rel="apple-touch-icon" sizes="180x180" href="assets/apple-touch-icon.png" />
     <link rel="stylesheet" href="styles.css" />
-    <link rel="stylesheet" href="template-preview.css?v=0.3.3" />
+    <link rel="stylesheet" href="template-preview.css?v=0.3.4" />
   </head>
   <body class="template-preview-page">
       <header class="template-header">
@@ -615,7 +615,9 @@
                               <li>Use Libraries menu items for local library planning, SKY130-style device cells, LTspice primitives, Texas Instruments part shells, KiCad PCB footprints, and future DigiKey or Mouser import records. Vendor API import is deliberately treated as a controlled future hook because it will need API credentials, vendor terms, and symbol/footprint validation.</li>
                               <li>Imported AM devices become normal project library items. Place them on the canvas, then edit model name, package, footprint, value, and device parameters in the Inspector before analysis or handoff planning.</li>
                               <li>Use PDK menu items to register the intended IC process lane. SKY130 checks ask the local backend for enabled PDK folders, model files, process corners, KLayout, Magic, Netgen, and SPICE tool availability.</li>
+                              <li>Use PCB for board-level work. It shows a KiCad-style board canvas with board outline, footprints, pads, PCB layers, routes, zones, BOM/placement notes, and Gerber handoff status.</li>
                               <li>Use IC Layout to view a Virtuoso-style cell/layout canvas. The builder generates persistent layout objects from schematic devices, shows device-level diffusion/poly/metal shapes, draws layout routes, tracks active layers, and stores matching, guard-ring, LVS, DRC, and extraction state.</li>
+                              <li>Keep PCB and IC Layout separate. PCB generates board artifacts such as placement, BOM, PCB netlist, and Gerber-plan files. IC Layout generates PDK artifacts such as SPICE netlist, KLayout scripts, GDS target, Magic DRC script, Netgen LVS script, and layout summaries.</li>
                               <li>Use Gerber generation plan for board manufacturing readiness. This stage tracks copper, drill, mask, silkscreen, pick-and-place, assembly, fabrication, and BOM handoff items before a real PCB backend is connected.</li>
                               <li>Use 3D View to open the physical board/package/IC planning window. It gives the GUI a dedicated place for future rotation, package clearance, stackup, exploded view, and mechanical checks.</li>
                               <li>Save AM saves the AM workspace into the current project draft. Save the project or Save all sections when you want the parser and preview pipeline to consume the latest project state.</li>
@@ -1905,6 +1907,6 @@
           </div>
       </div>
       <script src="electronics-search.js?v=0.2.90"></script>
-      <script src="template-preview.js?v=0.3.3"></script>
+      <script src="template-preview.js?v=0.3.4"></script>
   </body>
 </html>
