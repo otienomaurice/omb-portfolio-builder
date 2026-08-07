@@ -101,6 +101,7 @@ const analogMixedInspectorBody = document.querySelector("#analog-mixed-inspector
 const analogMixedTabs = document.querySelector("#analog-mixed-tabs");
 const analogMixedOutput = document.querySelector("#analog-mixed-output");
 const analogMixedStatus = document.querySelector("#analog-mixed-status");
+const analogMixedContextMenu = document.querySelector("#analog-mixed-context-menu");
 const saveProjectButton = document.querySelector("#save-project");
 const saveProjectCloseButton = document.querySelector("#save-project-close");
 const projectTitleMenu = document.querySelector("#project-title-menu");
@@ -316,25 +317,25 @@ const templatePreviewClose = document.querySelector("#template-preview-close");
 
 const standardSections = [
   { id: "brief", label: "Overview", folder: "" },
-  { id: "compile-code", label: "Compile Code", folder: "compile-code" }
+  { id: "compile-code", label: "Digital", folder: "compile-code" }
 ];
 
 const projectStatusOptions = ["Draft", "In progress", "Completed", "Archived"];
 const analogMixedTools = [
-  { id: "select", label: "Select", key: "V", hint: "Select, inspect, and move symbols" },
-  { id: "pan", label: "Pan", key: "P", hint: "Drag the canvas view without changing the schematic" },
-  { id: "wire", label: "Wire", key: "W", hint: "Draw orthogonal nets between nodes" },
-  { id: "junction", label: "Junction", key: "J", hint: "Place an electrical junction dot" },
-  { id: "probe", label: "Probe", key: "B", hint: "Place a simulation probe marker" },
-  { id: "no-connect", label: "No connect", key: "X", hint: "Mark an intentionally unconnected pin or node" },
-  { id: "label", label: "Label", key: "L", hint: "Place a visible schematic label" },
-  { id: "net", label: "Net", key: "N", hint: "Name a net for simulation and layout" },
-  { id: "optimize", label: "Optimize", key: "O", hint: "Open sizing and design-space calculations" },
-  { id: "resistor", label: "Resistor", key: "R", hint: "Place a resistor" },
-  { id: "capacitor", label: "Capacitor", key: "C", hint: "Place a capacitor" },
-  { id: "semiconductor", label: "Semiconductor", key: "S", hint: "Place MOS/BJT device" },
-  { id: "diode", label: "Diode", key: "D", hint: "Place a diode" },
-  { id: "ground", label: "Ground", key: "G", hint: "Place ground reference" }
+  { id: "select", label: "Select", icon: "↖", key: "V", cursor: "default", hint: "Arrow cursor for selecting, inspecting, moving, editing, and deleting objects" },
+  { id: "pan", label: "Pan", icon: "✥", key: "P", cursor: "grab", hint: "Drag the canvas view without changing the schematic" },
+  { id: "wire", label: "Wire", icon: "|-", key: "W", cursor: "crosshair", hint: "Draw LTspice-style horizontal or vertical net segments" },
+  { id: "junction", label: "Junction", icon: "J", key: "J", cursor: "crosshair", hint: "Place an electrical junction dot" },
+  { id: "probe", label: "Probe", icon: "B", key: "B", cursor: "crosshair", hint: "Place a simulation probe marker" },
+  { id: "no-connect", label: "No connect", icon: "X", key: "X", cursor: "crosshair", hint: "Mark an intentionally unconnected pin or node" },
+  { id: "label", label: "Label", icon: "L", key: "L", cursor: "text", hint: "Place a visible schematic label" },
+  { id: "net", label: "Net", icon: "N", key: "N", cursor: "text", hint: "Name a net for simulation and layout" },
+  { id: "optimize", label: "Optimize", icon: "O", key: "O", cursor: "pointer", hint: "Open sizing and design-space calculations" },
+  { id: "resistor", label: "Resistor", icon: "R", key: "R", cursor: "copy", hint: "Place a resistor" },
+  { id: "capacitor", label: "Capacitor", icon: "C", key: "C", cursor: "copy", hint: "Place a capacitor" },
+  { id: "semiconductor", label: "Semiconductor", icon: "S", key: "S", cursor: "copy", hint: "Place MOS/BJT device" },
+  { id: "diode", label: "Diode", icon: "D", key: "D", cursor: "copy", hint: "Place a diode" },
+  { id: "ground", label: "Ground", icon: "G", key: "G", cursor: "copy", hint: "Place ground reference" }
 ];
 const analogMixedDomains = {
   pll: {
@@ -618,6 +619,7 @@ let activeAnalogMixedProjectId = "";
 let analogMixedWireStart = null;
 let analogMixedWirePreview = null;
 let analogMixedPointerState = null;
+let analogMixedDraggingLibraryId = "";
 let analogMixedRenderFrame = 0;
 let analogMixedSuppressClickUntil = 0;
 
@@ -2485,7 +2487,10 @@ function analogMixedDefaultState() {
     activeTool: "select",
     activeStage: "schematic",
     activePanel: "netlist",
+    libraryCollapsed: false,
+    inspectorCollapsed: false,
     selectedComponentId: "",
+    selectedWireId: "",
     selectedLibraryId: "resistor",
     libraryFilter: "",
     zoom: 1,
@@ -2497,6 +2502,7 @@ function analogMixedDefaultState() {
     activeVendorSource: "local-library",
     importedDeviceIds: [],
     importHistory: [],
+    supplierComponents: [],
     components: [],
     wires: [],
     junctions: [],
@@ -2581,6 +2587,8 @@ function normalizeAnalogMixedWorkspace(project) {
   workspace.activeTool = analogMixedTools.some((tool) => tool.id === workspace.activeTool) ? workspace.activeTool : "select";
   workspace.activeStage = analogMixedStages.some((stage) => stage.id === workspace.activeStage) ? workspace.activeStage : "schematic";
   workspace.activePanel = analogMixedPanelIds.includes(workspace.activePanel) ? workspace.activePanel : "netlist";
+  workspace.libraryCollapsed = Boolean(workspace.libraryCollapsed);
+  workspace.inspectorCollapsed = Boolean(workspace.inspectorCollapsed);
   workspace.libraryFilter = String(workspace.libraryFilter || "");
   workspace.zoom = Math.max(0.25, Math.min(4, Number(workspace.zoom) || 1));
   workspace.panX = Math.max(-1400, Math.min(1400, Number(workspace.panX) || 0));
@@ -2600,7 +2608,38 @@ function normalizeAnalogMixedWorkspace(project) {
       importedAt: String(item?.importedAt || "")
     })).filter((item) => item.source || item.label)
     : [];
+  workspace.supplierComponents = Array.isArray(workspace.supplierComponents)
+    ? workspace.supplierComponents.map((item, index) => ({
+      id: String(item?.id || `supplier-${Date.now()}-${index}`),
+      label: String(item?.label || item?.mpn || "Supplier component"),
+      category: String(item?.category || item?.supplier || "supplier component"),
+      symbol: String(item?.symbol || item?.prefix || "X"),
+      tool: String(item?.tool || "macro"),
+      symbolKind: String(item?.symbolKind || "macro"),
+      spicePrefix: String(item?.spicePrefix || item?.prefix || "X").slice(0, 3) || "X",
+      value: String(item?.value || item?.mpn || "vendor model"),
+      pins: Array.isArray(item?.pins) && item.pins.length ? item.pins.map(String) : ["1", "2"],
+      modes: Array.isArray(item?.modes) && item.modes.length ? item.modes : analogMixedAllModes,
+      domains: Array.isArray(item?.domains) && item.domains.length ? item.domains : analogMixedAllDomains,
+      source: String(item?.source || item?.supplier || "Supplier"),
+      supplier: String(item?.supplier || item?.source || "Supplier"),
+      manufacturer: String(item?.manufacturer || ""),
+      mpn: String(item?.mpn || item?.value || ""),
+      vendor: String(item?.vendor || item?.supplier || ""),
+      modelName: String(item?.modelName || item?.mpn || ""),
+      fileName: String(item?.fileName || ""),
+      modelText: String(item?.modelText || ""),
+      footprint: String(item?.footprint || ""),
+      packageName: String(item?.packageName || ""),
+      deviceLevel: item?.deviceLevel !== false,
+      parameters: item?.parameters && typeof item.parameters === "object" ? item.parameters : {}
+    })).filter((item) => item.id && item.label)
+    : [];
+  workspace.supplierComponents.forEach((item) => {
+    if (!analogMixedDeviceCatalog.some((device) => device.id === item.id)) analogMixedDeviceCatalog.push(item);
+  });
   workspace.selectedComponentId = String(workspace.selectedComponentId || "");
+  workspace.selectedWireId = String(workspace.selectedWireId || "");
   workspace.selectedLibraryId = analogMixedLibraryItemsForWorkspace(workspace).some((item) => item.id === workspace.selectedLibraryId)
     ? workspace.selectedLibraryId
     : "resistor";
@@ -2624,6 +2663,9 @@ function normalizeAnalogMixedWorkspace(project) {
       modelName: String(component.modelName || libraryItem.modelName || ""),
       footprint: String(component.footprint || libraryItem.footprint || ""),
       packageName: String(component.packageName || libraryItem.packageName || ""),
+      supplier: String(component.supplier || libraryItem.supplier || ""),
+      manufacturer: String(component.manufacturer || libraryItem.manufacturer || ""),
+      mpn: String(component.mpn || libraryItem.mpn || ""),
       deviceLevel: component.deviceLevel !== undefined ? Boolean(component.deviceLevel) : Boolean(libraryItem.deviceLevel),
       parameters: { ...analogMixedDefaultComponentParameters(libraryItem), ...(component.parameters && typeof component.parameters === "object" ? component.parameters : {}) }
     };
@@ -2662,6 +2704,8 @@ function normalizeAnalogMixedWorkspace(project) {
       endRef: normalizeRef(wire.endRef, { type: "point" })
     };
   }) : [];
+  if (workspace.selectedWireId && !workspace.wires.some((wire) => wire.id === workspace.selectedWireId)) workspace.selectedWireId = "";
+  if (workspace.selectedComponentId && !workspace.components.some((component) => component.id === workspace.selectedComponentId)) workspace.selectedComponentId = "";
   const normalizeMarker = (items, prefix, fallbackLabel = "") => Array.isArray(items) ? items.map((item, index) => ({
     id: String(item.id || `${prefix}-${Date.now()}-${index}`),
     label: String(item.label || fallbackLabel || `${prefix}_${index + 1}`),
@@ -3340,9 +3384,13 @@ function analogMixedOrthogonalWirePoints(start = {}, end = {}) {
   const x2 = Math.round(Number(end.x) || 0);
   const y2 = Math.round(Number(end.y) || 0);
   if (x1 === x2 || y1 === y2) return [{ x: x1, y: y1 }, { x: x2, y: y2 }];
-  const firstHorizontal = Math.abs(x2 - x1) >= Math.abs(y2 - y1);
-  const bend = firstHorizontal ? { x: x2, y: y1 } : { x: x1, y: y2 };
-  return [{ x: x1, y: y1 }, bend, { x: x2, y: y2 }];
+  const horizontal = Math.abs(x2 - x1) >= Math.abs(y2 - y1);
+  return [{ x: x1, y: y1 }, horizontal ? { x: x2, y: y1 } : { x: x1, y: y2 }];
+}
+
+function analogMixedAxisAlignedEndpoint(start = {}, end = {}) {
+  const points = analogMixedOrthogonalWirePoints(start, end);
+  return points[points.length - 1] || { x: Number(end.x) || 0, y: Number(end.y) || 0 };
 }
 
 function analogMixedWirePoints(wire = {}) {
@@ -3367,12 +3415,41 @@ function analogMixedLibraryItem(id = "") {
   return analogMixedAllLibraryItems().find((item) => item.id === id) || analogMixedComponentLibrary[0];
 }
 
+function analogMixedIsBaseLibraryItem(id = "") {
+  return analogMixedComponentLibrary.some((item) => item.id === id);
+}
+
+function analogMixedCanClickPlaceLibraryItem(id = "") {
+  const item = analogMixedLibraryItem(id);
+  return analogMixedIsBaseLibraryItem(item.id) && ["resistor", "capacitor", "semiconductor", "diode", "ground"].includes(item.tool);
+}
+
+function analogMixedLibraryForActivePlacement(workspace = {}) {
+  const selected = analogMixedLibraryItem(workspace.selectedLibraryId);
+  if (analogMixedCanClickPlaceLibraryItem(selected.id) && selected.tool === workspace.activeTool) return selected.id;
+  const defaults = {
+    resistor: "resistor",
+    capacitor: "capacitor",
+    semiconductor: workspace.mode === "board" ? "bjt" : "nmos",
+    diode: "diode",
+    ground: "ground"
+  };
+  return defaults[workspace.activeTool] || "";
+}
+
 function analogMixedLibraryItemsForWorkspace(workspace) {
   const imported = new Set(Array.isArray(workspace?.importedDeviceIds) ? workspace.importedDeviceIds : []);
+  const supplierItems = Array.isArray(workspace?.supplierComponents) ? workspace.supplierComponents : [];
+  const seen = new Set();
   return [
     ...analogMixedComponentLibrary,
-    ...analogMixedDeviceCatalog.filter((item) => imported.has(item.id))
-  ];
+    ...analogMixedDeviceCatalog.filter((item) => imported.has(item.id)),
+    ...supplierItems
+  ].filter((item) => {
+    if (!item?.id || seen.has(item.id)) return false;
+    seen.add(item.id);
+    return true;
+  });
 }
 
 function analogMixedDefaultComponentParameters(libraryItem = {}) {
@@ -3394,8 +3471,19 @@ function analogMixedAvailableComponents(workspace) {
 
 function analogMixedNextRef(workspace, libraryItem) {
   const prefix = libraryItem.symbol.replace(/[^A-Za-z]/g, "") || "X";
-  const count = workspace.components.filter((component) => String(component.label || "").startsWith(prefix)).length + 1;
-  return `${prefix}${count}`;
+  const matcher = new RegExp(`^${regexEscape(prefix)}(\\d+)$`, "i");
+  const used = new Set(workspace.components.map((component) => String(component.label || "").trim()));
+  const maxSuffix = workspace.components.reduce((max, component) => {
+    const match = String(component.label || "").trim().match(matcher);
+    return match ? Math.max(max, Number(match[1]) || 0) : max;
+  }, 0);
+  let candidateNumber = maxSuffix + 1;
+  let candidate = `${prefix}${candidateNumber}`;
+  while (used.has(candidate)) {
+    candidateNumber += 1;
+    candidate = `${prefix}${candidateNumber}`;
+  }
+  return candidate;
 }
 
 function analogMixedComponentTransform(component = {}) {
@@ -3429,6 +3517,21 @@ function analogMixedSetTool(toolId = "select") {
   analogMixedSetStatus(`Tool: ${analogMixedTools.find((tool) => tool.id === workspace.activeTool)?.label || "Select"}.`);
 }
 
+function analogMixedAbortActiveCommand(message = "Active AM command canceled.") {
+  const project = activeAnalogMixedProject();
+  if (!project) return false;
+  const workspace = normalizeAnalogMixedWorkspace(project);
+  const hadCommand = Boolean(analogMixedWireStart || analogMixedWirePreview || analogMixedPointerState || !["select", "pan"].includes(workspace.activeTool));
+  analogMixedWireStart = null;
+  analogMixedWirePreview = null;
+  analogMixedPointerState = null;
+  analogMixedDraggingLibraryId = "";
+  workspace.activeTool = "select";
+  renderAnalogMixedWorkspace();
+  analogMixedSetStatus(message);
+  return hadCommand;
+}
+
 function analogMixedAddComponent(project, libraryId, point = {}) {
   const workspace = normalizeAnalogMixedWorkspace(project);
   const libraryItem = analogMixedLibraryItem(libraryId);
@@ -3445,6 +3548,9 @@ function analogMixedAddComponent(project, libraryId, point = {}) {
     source: libraryItem.source || "local",
     pdk: libraryItem.pdk || "",
     vendor: libraryItem.vendor || "",
+    supplier: libraryItem.supplier || "",
+    manufacturer: libraryItem.manufacturer || "",
+    mpn: libraryItem.mpn || "",
     modelName: libraryItem.modelName || "",
     footprint: libraryItem.footprint || "",
     packageName: libraryItem.packageName || "",
@@ -3453,6 +3559,7 @@ function analogMixedAddComponent(project, libraryId, point = {}) {
   };
   workspace.components.push(component);
   workspace.selectedComponentId = component.id;
+  workspace.selectedWireId = "";
   markDraftNeedsSave();
   scheduleAutosave();
   renderAnalogMixedWorkspace();
@@ -3462,16 +3569,17 @@ function analogMixedAddComponent(project, libraryId, point = {}) {
 function analogMixedAddWire(project, start, end) {
   const workspace = normalizeAnalogMixedWorkspace(project);
   const points = analogMixedOrthogonalWirePoints(start, end);
+  const finalEnd = points[points.length - 1] || end;
   const wire = {
     id: `amw-${Date.now()}-${Math.random().toString(16).slice(2)}`,
     name: `net_${workspace.wires.length + 1}`,
     x1: start.x,
     y1: start.y,
-    x2: end.x,
-    y2: end.y,
+    x2: finalEnd.x,
+    y2: finalEnd.y,
     points,
     startRef: start.ref || { type: "point" },
-    endRef: end.ref || { type: "point" }
+    endRef: { ...(end.ref || { type: "point" }), x: finalEnd.x, y: finalEnd.y }
   };
   workspace.wires.push(wire);
   markDraftNeedsSave();
@@ -3496,6 +3604,9 @@ function analogMixedAddIcLayoutDevice(project, libraryId, point = {}) {
     source: libraryItem.source || "local",
     pdk: libraryItem.pdk || workspace.activePdk || "",
     vendor: libraryItem.vendor || "",
+    supplier: libraryItem.supplier || "",
+    manufacturer: libraryItem.manufacturer || "",
+    mpn: libraryItem.mpn || "",
     modelName: libraryItem.modelName || "",
     footprint: libraryItem.footprint || "",
     packageName: libraryItem.packageName || "",
@@ -3504,6 +3615,7 @@ function analogMixedAddIcLayoutDevice(project, libraryId, point = {}) {
   };
   workspace.components.push(component);
   workspace.selectedComponentId = component.id;
+  workspace.selectedWireId = "";
   const layoutData = analogMixedNormalizeIcLayout(workspace);
   const layoutObject = layoutData.layoutObjects.find((item) => item.sourceComponentId === component.id);
   if (layoutObject) {
@@ -3519,15 +3631,32 @@ function analogMixedAddIcLayoutDevice(project, libraryId, point = {}) {
   analogMixedSetStatus(`Placed IC layout device ${component.label} on ${analogMixedLayoutLayerById(layoutData.activeLayer).label}.`);
 }
 
+function analogMixedPlaceLibraryItem(project, libraryId, point = {}, options = {}) {
+  if (!project || !libraryId) return;
+  const workspace = normalizeAnalogMixedWorkspace(project);
+  const stage = options.stage || workspace.activeStage || "schematic";
+  workspace.selectedLibraryId = libraryId;
+  if (stage === "ic-layout") {
+    analogMixedAddIcLayoutDevice(project, libraryId, point);
+    return;
+  }
+  analogMixedAddComponent(project, libraryId, point);
+}
+
 function analogMixedAddIcLayoutRoute(project, start = {}, end = {}) {
   const workspace = normalizeAnalogMixedWorkspace(project);
   const layoutData = analogMixedNormalizeIcLayout(workspace);
   const points = analogMixedOrthogonalWirePoints(start, end);
+  const finalEnd = points[points.length - 1] || end;
   const route = {
     id: `layout-route-${Date.now()}-${Math.random().toString(16).slice(2)}`,
     name: `net_${layoutData.layoutRoutes.length + 1}`,
     layer: layoutData.activeLayer,
-    points
+    points,
+    x1: start.x,
+    y1: start.y,
+    x2: finalEnd.x,
+    y2: finalEnd.y
   };
   layoutData.layoutRoutes.push(route);
   workspace.stageData["ic-layout"] = layoutData;
@@ -3579,13 +3708,191 @@ function analogMixedAddLabel(project, point, text = "") {
 function analogMixedSelectComponent(project, componentId = "") {
   const workspace = normalizeAnalogMixedWorkspace(project);
   workspace.selectedComponentId = componentId;
+  if (componentId) workspace.selectedWireId = "";
   renderAnalogMixedWorkspace();
+}
+
+function analogMixedSelectWire(project, wireId = "") {
+  const workspace = normalizeAnalogMixedWorkspace(project);
+  workspace.selectedWireId = wireId;
+  if (wireId) workspace.selectedComponentId = "";
+  renderAnalogMixedWorkspace();
+}
+
+function analogMixedSelectedWire() {
+  const project = activeAnalogMixedProject();
+  if (!project) return null;
+  const workspace = normalizeAnalogMixedWorkspace(project);
+  return workspace.wires.find((wire) => wire.id === workspace.selectedWireId) || null;
+}
+
+function analogMixedRenameSelectedWire() {
+  const project = activeAnalogMixedProject();
+  if (!project) return;
+  const workspace = normalizeAnalogMixedWorkspace(project);
+  const wire = workspace.wires.find((item) => item.id === workspace.selectedWireId);
+  if (!wire) return;
+  const next = String(window.prompt("Wire/net name", wire.name || "net") || "").trim();
+  if (!next) return;
+  wire.name = next.replace(/\s+/g, "_");
+  markDraftNeedsSave();
+  scheduleAutosave();
+  renderAnalogMixedWorkspace();
+  analogMixedSetStatus(`Renamed wire to ${wire.name}.`);
+}
+
+function analogMixedDeleteSelectedWire() {
+  const project = activeAnalogMixedProject();
+  if (!project) return;
+  const workspace = normalizeAnalogMixedWorkspace(project);
+  if (!workspace.selectedWireId) return;
+  const removed = workspace.wires.find((wire) => wire.id === workspace.selectedWireId);
+  workspace.wires = workspace.wires.filter((wire) => wire.id !== workspace.selectedWireId);
+  workspace.selectedWireId = "";
+  markDraftNeedsSave();
+  scheduleAutosave();
+  renderAnalogMixedWorkspace();
+  analogMixedSetStatus(`${removed?.name || "Selected wire"} removed.`);
+}
+
+function analogMixedHideContextMenu() {
+  if (!analogMixedContextMenu) return;
+  analogMixedContextMenu.hidden = true;
+  analogMixedContextMenu.innerHTML = "";
+}
+
+function analogMixedShowContextMenu(event, context = {}) {
+  if (!analogMixedContextMenu) return;
+  const project = activeAnalogMixedProject();
+  if (!project) return;
+  const workspace = normalizeAnalogMixedWorkspace(project);
+  const items = [];
+  if (context.type === "wire") {
+    items.push(
+      ["wire-rename", "Rename net"],
+      ["wire-delete", "Delete wire"],
+      ["wire-copy-name", "Copy net name"],
+      ["select-tool", "Select tool"]
+    );
+  } else if (context.type === "component") {
+    items.push(
+      ["component-edit", "Edit in inspector"],
+      ["component-rotate", "Rotate"],
+      ["component-mirror", "Mirror"],
+      ["component-duplicate", "Duplicate"],
+      ["component-delete", "Delete component"],
+      ["component-copy-ref", "Copy reference"]
+    );
+  } else {
+    items.push(
+      ["select-tool", "Select tool"],
+      ["wire-tool", "Wire"],
+      ["place-selected", `Place ${analogMixedLibraryItem(workspace.selectedLibraryId).label}`],
+      ["add-label", "Add label"],
+      ["add-net", "Add net name"],
+      ["import-supplier", "Import supplier part"],
+      ["toggle-library", workspace.libraryCollapsed ? "Show library" : "Hide library"],
+      ["toggle-inspector", workspace.inspectorCollapsed ? "Show inspector" : "Hide inspector"],
+      ["fit-canvas", "Fit canvas"]
+    );
+  }
+  analogMixedContextMenu.dataset.contextType = context.type || "canvas";
+  analogMixedContextMenu.dataset.contextId = context.id || "";
+  analogMixedContextMenu.innerHTML = items.map(([action, label]) => `
+    <button type="button" data-am-context-action="${escapeHtml(action)}">${escapeHtml(label)}</button>
+  `).join("");
+  analogMixedContextMenu.style.left = `${Math.min(event.clientX, window.innerWidth - 230)}px`;
+  analogMixedContextMenu.style.top = `${Math.min(event.clientY, window.innerHeight - 260)}px`;
+  analogMixedContextMenu.hidden = false;
+}
+
+async function analogMixedHandleContextAction(action = "") {
+  const project = activeAnalogMixedProject();
+  if (!project) return;
+  const workspace = normalizeAnalogMixedWorkspace(project);
+  if (action === "wire-rename") return analogMixedRenameSelectedWire();
+  if (action === "wire-delete") return analogMixedDeleteSelectedWire();
+  if (action === "wire-copy-name") {
+    const wire = analogMixedSelectedWire();
+    if (!wire) return;
+    try {
+      await navigator.clipboard.writeText(wire.name || "");
+      analogMixedSetStatus("Wire name copied.");
+    } catch {
+      analogMixedSetStatus("Wire name could not be copied by this browser.");
+    }
+    return;
+  }
+  if (action === "component-edit") {
+    workspace.inspectorCollapsed = false;
+    renderAnalogMixedWorkspace();
+    analogMixedSetStatus("Component inspector opened.");
+    return;
+  }
+  if (action === "component-rotate") {
+    const selected = analogMixedSelectedComponent();
+    if (selected) selected.rotation = (Number(selected.rotation) + 90) % 360;
+    markDraftNeedsSave();
+    scheduleAutosave();
+    renderAnalogMixedWorkspace();
+    return;
+  }
+  if (action === "component-mirror") return analogMixedMirrorSelected();
+  if (action === "component-duplicate") {
+    const selected = analogMixedSelectedComponent();
+    if (selected) analogMixedAddComponent(project, selected.type, { x: selected.x + 60, y: selected.y + 60 });
+    return;
+  }
+  if (action === "component-delete") return analogMixedDeleteSelected();
+  if (action === "component-copy-ref") {
+    const selected = analogMixedSelectedComponent();
+    if (!selected) return;
+    try {
+      await navigator.clipboard.writeText(selected.label || "");
+      analogMixedSetStatus("Component reference copied.");
+    } catch {
+      analogMixedSetStatus("Component reference could not be copied.");
+    }
+    return;
+  }
+  if (action === "select-tool") return analogMixedSetTool("select");
+  if (action === "wire-tool") return analogMixedSetTool("wire");
+  if (action === "place-selected") {
+    workspace.activeTool = analogMixedLibraryItem(workspace.selectedLibraryId).tool || "macro";
+    markDraftNeedsSave();
+    scheduleAutosave();
+    renderAnalogMixedWorkspace();
+    analogMixedSetStatus(`${analogMixedLibraryItem(workspace.selectedLibraryId).label} ready to place.`);
+    return;
+  }
+  if (action === "add-label") return analogMixedSetTool("label");
+  if (action === "add-net") return analogMixedSetTool("net");
+  if (action === "import-supplier") return analogMixedImportSupplierComponent("DigiKey");
+  if (action === "toggle-library") {
+    workspace.libraryCollapsed = !workspace.libraryCollapsed;
+    markDraftNeedsSave();
+    scheduleAutosave();
+    renderAnalogMixedWorkspace();
+    return;
+  }
+  if (action === "toggle-inspector") {
+    workspace.inspectorCollapsed = !workspace.inspectorCollapsed;
+    markDraftNeedsSave();
+    scheduleAutosave();
+    renderAnalogMixedWorkspace();
+    return;
+  }
+  if (action === "fit-canvas") return analogMixedFitCanvas();
 }
 
 function analogMixedDeleteSelected() {
   const project = activeAnalogMixedProject();
   if (!project) return;
   const workspace = normalizeAnalogMixedWorkspace(project);
+  if (workspace.selectedWireId) {
+    analogMixedDeleteSelectedWire();
+    return;
+  }
   if (!workspace.selectedComponentId) return;
   workspace.components = workspace.components.filter((component) => component.id !== workspace.selectedComponentId);
   workspace.selectedComponentId = "";
@@ -3645,6 +3952,21 @@ function analogMixedMirrorSelected() {
 }
 
 function analogMixedMoveSelected(dx = 0, dy = 0) {
+  const selectedWire = analogMixedSelectedWire();
+  if (selectedWire) {
+    selectedWire.x1 = Math.max(0, Math.min(1400, Number(selectedWire.x1) + dx));
+    selectedWire.y1 = Math.max(0, Math.min(820, Number(selectedWire.y1) + dy));
+    selectedWire.x2 = Math.max(0, Math.min(1400, Number(selectedWire.x2) + dx));
+    selectedWire.y2 = Math.max(0, Math.min(820, Number(selectedWire.y2) + dy));
+    selectedWire.points = analogMixedWirePoints(selectedWire).map((point) => ({
+      x: Math.max(0, Math.min(1400, Number(point.x) + dx)),
+      y: Math.max(0, Math.min(820, Number(point.y) + dy))
+    }));
+    markDraftNeedsSave();
+    scheduleAutosave();
+    analogMixedQueueRender();
+    return;
+  }
   const selected = analogMixedSelectedComponent();
   if (!selected) return;
   selected.x = Math.max(40, Math.min(1360, Number(selected.x) + dx));
@@ -3720,6 +4042,192 @@ function analogMixedPrepareLibraryReport(source = "local") {
   scheduleAutosave();
   renderAnalogMixedWorkspace();
   analogMixedSetStatus(`${source} library workflow prepared.`);
+}
+
+function analogMixedSupplierDefaults(kind = "macro") {
+  const clean = String(kind || "macro").toLowerCase();
+  if (clean.includes("res")) return { tool: "resistor", symbolKind: "resistor", spicePrefix: "R", symbol: "R", pins: ["1", "2"], value: "10k" };
+  if (clean.includes("cap")) return { tool: "capacitor", symbolKind: "capacitor", spicePrefix: "C", symbol: "C", pins: ["1", "2"], value: "1u" };
+  if (clean.includes("ind")) return { tool: "inductor", symbolKind: "inductor", spicePrefix: "L", symbol: "L", pins: ["1", "2"], value: "10u" };
+  if (clean.includes("pmos")) return { tool: "semiconductor", symbolKind: "pmos-body", spicePrefix: "M", symbol: "MP", pins: ["D", "G", "S", "B"], value: "vendor PMOS" };
+  if (clean.includes("nmos") || clean.includes("mos")) return { tool: "semiconductor", symbolKind: "nmos-body", spicePrefix: "M", symbol: "MN", pins: ["D", "G", "S", "B"], value: "vendor NMOS" };
+  if (clean.includes("bjt") || clean.includes("npn")) return { tool: "semiconductor", symbolKind: "bjt-npn", spicePrefix: "Q", symbol: "Q", pins: ["C", "B", "E"], value: "vendor BJT" };
+  if (clean.includes("diode") || clean.includes("zener") || clean.includes("schottky")) return { tool: "diode", symbolKind: "diode", spicePrefix: "D", symbol: "D", pins: ["A", "K"], value: "vendor diode" };
+  if (clean.includes("op") || clean.includes("amp")) return { tool: "macro", symbolKind: "opamp", spicePrefix: "X", symbol: "AMP", pins: ["IN+", "IN-", "V+", "V-", "OUT"], value: "vendor op amp" };
+  if (clean.includes("reg") || clean.includes("buck") || clean.includes("controller")) return { tool: "macro", symbolKind: "controller", spicePrefix: "X", symbol: "CTRL", pins: ["VIN", "SW", "FB", "COMP", "GND"], value: "vendor controller" };
+  if (clean.includes("conn")) return { tool: "macro", symbolKind: "connector", spicePrefix: "J", symbol: "J", pins: ["1", "2"], value: "connector" };
+  return { tool: "macro", symbolKind: "macro", spicePrefix: "X", symbol: "X", pins: ["1", "2"], value: "vendor model" };
+}
+
+function analogMixedImportSupplierComponent(defaultSupplier = "DigiKey") {
+  const project = activeAnalogMixedProject();
+  if (!project) return;
+  const workspace = normalizeAnalogMixedWorkspace(project);
+  const supplier = String(window.prompt("Supplier or manufacturer name", defaultSupplier) || "").trim();
+  if (!supplier) return;
+  const mpn = String(window.prompt("Manufacturer part number or device name", "") || "").trim();
+  if (!mpn) return;
+  const kind = String(window.prompt("Component kind, for example resistor, capacitor, nmos, pmos, op amp, buck controller, connector", "op amp") || "").trim();
+  const defaults = analogMixedSupplierDefaults(kind);
+  const manufacturer = String(window.prompt("Manufacturer name", supplier === "DigiKey" || supplier === "Mouser" ? "" : supplier) || "").trim();
+  const footprint = String(window.prompt("Footprint or package, optional", "") || "").trim();
+  const pinText = String(window.prompt("Pin names separated by commas", defaults.pins.join(", ")) || "").trim();
+  const pins = pinText.split(",").map((pin) => pin.trim()).filter(Boolean);
+  const id = `supplier-${slugify(supplier)}-${slugify(mpn)}-${Date.now()}`;
+  const component = {
+    id,
+    label: mpn,
+    category: `${supplier} ${kind || "component"}`.trim(),
+    symbol: defaults.symbol,
+    tool: defaults.tool,
+    symbolKind: defaults.symbolKind,
+    spicePrefix: defaults.spicePrefix,
+    value: mpn,
+    pins: pins.length ? pins : defaults.pins,
+    modes: analogMixedAllModes,
+    domains: analogMixedAllDomains,
+    source: supplier,
+    supplier,
+    manufacturer,
+    mpn,
+    vendor: supplier,
+    modelName: mpn,
+    footprint,
+    packageName: footprint,
+    deviceLevel: true,
+    parameters: {
+      source: supplier,
+      mpn,
+      ...(footprint ? { footprint } : {})
+    }
+  };
+  workspace.supplierComponents = Array.isArray(workspace.supplierComponents) ? workspace.supplierComponents : [];
+  workspace.supplierComponents.push(component);
+  if (!workspace.importedDeviceIds.includes(component.id)) workspace.importedDeviceIds.push(component.id);
+  if (!analogMixedDeviceCatalog.some((item) => item.id === component.id)) analogMixedDeviceCatalog.push(component);
+  workspace.selectedLibraryId = component.id;
+  workspace.activeTool = component.tool || "macro";
+  workspace.activeStage = "libraries";
+  workspace.activePanel = "libraries";
+  workspace.libraryReport = [
+    `${supplier} component imported`,
+    "",
+    `${component.label} is now a real selectable library entry.`,
+    `Kind: ${kind || component.symbolKind}`,
+    `Pins: ${component.pins.join(", ")}`,
+    footprint ? `Footprint/package: ${footprint}` : "Footprint/package: not set",
+    "",
+    "Place it from the Library, then edit value, model, package, and device parameters in the Inspector."
+  ].join("\n");
+  markDraftNeedsSave();
+  scheduleAutosave();
+  renderAnalogMixedWorkspace();
+  analogMixedSetStatus(`${component.label} imported from ${supplier}.`);
+}
+
+function analogMixedComponentFromLocalFile(file = {}, text = "", index = 0) {
+  const fileName = String(file.name || `imported-model-${index + 1}.lib`);
+  const extension = fileName.split(".").pop()?.toLowerCase() || "txt";
+  const subckt = String(text || "").match(/^\s*\.subckt\s+([^\s]+)\s+(.+)$/im);
+  const model = String(text || "").match(/^\s*\.model\s+([^\s]+)\s+([^\s]+)/im);
+  const rawName = subckt?.[1] || model?.[1] || fileName.replace(/\.[^.]+$/, "");
+  const modelKind = `${model?.[2] || ""} ${fileName}`.toLowerCase();
+  const defaults = analogMixedSupplierDefaults(
+    subckt ? "macro" :
+      modelKind.includes("pmos") || modelKind.includes("pfet") ? "pmos" :
+        modelKind.includes("nmos") || modelKind.includes("nfet") || modelKind.includes("mos") ? "nmos" :
+          modelKind.includes("diode") || modelKind.includes("d") ? "diode" :
+            modelKind.includes("res") ? "resistor" :
+              modelKind.includes("cap") ? "capacitor" : "macro"
+  );
+  const pins = subckt?.[2]
+    ? subckt[2].trim().split(/\s+/).filter(Boolean).slice(0, 24)
+    : defaults.pins;
+  const id = `local-${slugify(rawName)}-${Date.now()}-${index}`;
+  return {
+    id,
+    label: rawName,
+    category: extension === "kicad_sym" || extension === "kicad_mod" ? "local KiCad library" : "local model file",
+    symbol: defaults.symbol,
+    tool: defaults.tool,
+    symbolKind: subckt ? "macro" : defaults.symbolKind,
+    spicePrefix: subckt ? "X" : defaults.spicePrefix,
+    value: rawName,
+    pins: pins.length ? pins : defaults.pins,
+    modes: analogMixedAllModes,
+    domains: analogMixedAllDomains,
+    source: "Local file",
+    supplier: "Local",
+    manufacturer: "",
+    mpn: rawName,
+    vendor: "Local",
+    modelName: rawName,
+    fileName,
+    modelText: String(text || ""),
+    footprint: extension.includes("kicad") ? fileName : "",
+    packageName: extension.includes("kicad") ? "KiCad library" : "model",
+    deviceLevel: true,
+    parameters: {
+      sourceFile: fileName,
+      fileType: extension,
+      bytes: String(file.size || text.length || 0),
+      parsedAs: subckt ? "subcircuit" : model ? "model" : "library reference"
+    }
+  };
+}
+
+function analogMixedImportLocalModelFiles() {
+  const project = activeAnalogMixedProject();
+  if (!project) return;
+  const workspace = normalizeAnalogMixedWorkspace(project);
+  const input = document.createElement("input");
+  input.type = "file";
+  input.multiple = true;
+  input.accept = [
+    ".spice", ".sp", ".cir", ".lib", ".model", ".subckt",
+    ".asy", ".kicad_sym", ".kicad_mod", ".kicad_sch", ".kicad_pcb",
+    ".ckt", ".net", ".txt", ".json"
+  ].join(",");
+  input.addEventListener("change", async () => {
+    const files = Array.from(input.files || []);
+    if (!files.length) return;
+    const imported = [];
+    for (const [index, file] of files.entries()) {
+      let text = "";
+      try {
+        text = await file.text();
+      } catch (error) {
+        text = "";
+      }
+      imported.push(analogMixedComponentFromLocalFile(file, text, index));
+    }
+    workspace.supplierComponents = Array.isArray(workspace.supplierComponents) ? workspace.supplierComponents : [];
+    imported.forEach((item) => {
+      workspace.supplierComponents.push(item);
+      if (!workspace.importedDeviceIds.includes(item.id)) workspace.importedDeviceIds.push(item.id);
+      if (!analogMixedDeviceCatalog.some((device) => device.id === item.id)) analogMixedDeviceCatalog.push(item);
+    });
+    workspace.importHistory.unshift({
+      source: "local-files",
+      label: "Local SPICE/KiCad files",
+      count: imported.length,
+      importedAt: new Date().toLocaleString()
+    });
+    workspace.importHistory = workspace.importHistory.slice(0, 30);
+    workspace.selectedLibraryId = imported[0]?.id || workspace.selectedLibraryId;
+    workspace.activeStage = "libraries";
+    workspace.activePanel = "libraries";
+    workspace.libraryReport = [
+      "Local model import complete",
+      "",
+      ...imported.map((item) => `- ${item.label} from ${item.fileName}: ${item.parameters.parsedAs}, pins ${item.pins.join(", ")}`)
+    ].join("\n");
+    markDraftNeedsSave();
+    scheduleAutosave();
+    renderAnalogMixedWorkspace();
+    analogMixedSetStatus(`Imported ${imported.length} local model/library file${imported.length === 1 ? "" : "s"}.`);
+  }, { once: true });
+  input.click();
 }
 
 function analogMixedImportDeviceSource(sourceId = "sky130") {
@@ -3900,7 +4408,14 @@ async function analogMixedRefreshPdkStatus(pdkName = "sky130") {
       ...(status.pdk?.layerFiles || []).slice(0, 10).map((file) => `- ${file}`),
       "",
       "Local analog tools:",
-      ...Object.entries(status.tools || {}).map(([tool, toolPath]) => `- ${tool}: ${toolPath || "missing"}`)
+      ...Object.entries(status.tools || {}).map(([tool, toolPath]) => `- ${tool}: ${toolPath || "missing"}`),
+      "",
+      "C/C++/Python/Java engines:",
+      ...Object.entries(status.programmingEngines || {}).map(([id, engine]) => {
+        const pathLine = engine.path || engine.compilerPath || engine.runtimePath || "missing";
+        const versionLine = engine.version || engine.compilerVersion || engine.runtimeVersion || "";
+        return `- ${engine.label || id}: ${engine.ready ? "ready" : "missing"} | ${pathLine}${versionLine ? ` | ${versionLine}` : ""}`;
+      })
     ].filter(Boolean).join("\n");
     workspace.activePanel = "pdk";
     markDraftNeedsSave();
@@ -5086,8 +5601,8 @@ function analogMixedCanvasMarkup(workspace) {
   if (workspace.activeStage !== "schematic") {
     return `
       <defs>
-        <marker id="am-layout-arrow" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
-          <path d="M0,0 L0,6 L8,3 z" />
+      <marker id="am-layout-arrow" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
+          <path d="M0,0 L0,6 L8,3 z" fill="#38bdf8" />
         </marker>
       </defs>
       <g class="am-viewport" transform="${analogMixedViewportTransform(workspace)}">${analogMixedStageMarkup(workspace)}</g>
@@ -5102,8 +5617,10 @@ function analogMixedCanvasMarkup(workspace) {
   const wires = workspace.wires.map((wire) => {
     const points = analogMixedWirePoints(wire);
     const labelPoint = analogMixedRouteLabelPoint(points);
-    return `<g class="am-wire" data-am-wire="${escapeHtml(wire.id)}">
-      <polyline points="${analogMixedPointsAttribute(points)}" />
+    const selected = wire.id === workspace.selectedWireId;
+    return `<g class="am-wire ${selected ? "is-selected" : ""}" data-am-wire="${escapeHtml(wire.id)}">
+      <polyline class="am-wire-hit" points="${analogMixedPointsAttribute(points)}" />
+      <polyline class="am-wire-line" points="${analogMixedPointsAttribute(points)}" marker-end="url(#am-arrow)" />
       <text x="${labelPoint.x + 6}" y="${labelPoint.y - 8}">${escapeHtml(wire.name)}</text>
     </g>`;
   }).join("");
@@ -5115,7 +5632,7 @@ function analogMixedCanvasMarkup(workspace) {
   const previewPoints = analogMixedWireStart && analogMixedWirePreview ? analogMixedOrthogonalWirePoints(analogMixedWireStart, analogMixedWirePreview) : [];
   const wirePreview = analogMixedWireStart
     ? `<g class="am-wire-start">
-        ${previewPoints.length ? `<polyline class="am-wire-preview" points="${analogMixedPointsAttribute(previewPoints)}" />` : ""}
+        ${previewPoints.length ? `<polyline class="am-wire-preview" points="${analogMixedPointsAttribute(previewPoints)}" marker-end="url(#am-arrow)" />` : ""}
         <circle cx="${analogMixedWireStart.x}" cy="${analogMixedWireStart.y}" r="8" />
         <text x="${analogMixedWireStart.x + 12}" y="${analogMixedWireStart.y - 10}">${analogMixedWireStart.pin ? escapeHtml(`${analogMixedWireStart.pin.componentLabel || "pin"}.${analogMixedWireStart.pin.pin}`) : "wire start"}</text>
       </g>`
@@ -5126,7 +5643,7 @@ function analogMixedCanvasMarkup(workspace) {
   return `
     <defs>
       <marker id="am-arrow" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
-        <path d="M0,0 L0,6 L8,3 z" />
+        <path d="M0,0 L0,6 L8,3 z" fill="#0f766e" />
       </marker>
     </defs>
     <g class="am-viewport" transform="${analogMixedViewportTransform(workspace)}">
@@ -5145,32 +5662,145 @@ function analogMixedCanvasMarkup(workspace) {
 
 function analogMixedMenuGroups(workspace) {
   const menuGroups = [
-    { label: "File", items: ["Save AM", "Export SPICE netlist", "Export KiCad-style note", "Print design report"] },
-    { label: "Design", items: ["IC transistor-level", "Board schematic", "Mixed IC + board", "Open schematic stage", "Open symbol stage", "Open footprint stage", "Annotate references", "Virtuoso-style IC flow"] },
-    { label: "Import", items: ["Import IC PDK folder", "Import SKY130 devices", "Import LTspice primitives", "Import Texas Instruments shells", "Import KiCad PCB parts", "Apply KiCad PCB template"] },
-    { label: "View", items: ["Zoom in", "Zoom out", "Fit canvas", "Toggle grid", "Pan tool", "Open 3D stage", "Toggle 3D overlay"] },
-    { label: "Checks", items: ["Backend analysis", "Run DRC", "Run ERC", "Run DRC and ERC", "Review warnings", "Clean floating labels"] },
-    { label: "Simulate", items: ["Run SPICE operating point", "Run SPICE DC sweep", "Run SPICE AC analysis", "Run SPICE transient analysis", "Run PDK noise extraction", "Complex analysis methods", "Operating point plan", "DC sweep plan", "AC analysis plan", "Transient plan", "Noise", "Monte Carlo plan", "Corner plan"] },
-    { label: "Optimize", items: ["PLL loop targets", "Amplifier compensation", "DC-DC ripple", "Device sizing", "gm/Id sizing", "Power estimate"] },
-    { label: "PCB", items: ["Open PCB stage", "Apply KiCad PCB template", "KiCad footprint assignment", "PCB DRC rules", "Route planner", "Gerber generation plan", "Board 3D handoff"] },
-    { label: "IC", items: ["Open IC layout stage", "Virtuoso-style IC flow", "IC design intent", "MOS sizing table", "gm/Id sizing", "Corner setup", "Generate PDK netlist", "Run parasitic extraction", "Run PDK noise extraction", "Complex analysis methods", "Noise plan", "Offset mismatch plan", "Sync layout from schematic", "Transistor parameter audit", "Common-centroid planner", "Guard-ring planner", "LVS plan", "PEX plan", "IC signoff checklist"] },
-    { label: "Layout", items: ["Open IC layout stage", "Open PCB stage", "Open 3D stage", "Sync layout from schematic", "Generate layout checklist", "Parasitic note", "PCB handoff note", "IC matching note", "Gerber generation plan"] },
-    { label: "Libraries", items: ["Component library", "Symbol library", "Footprint library", "Import SKY130 devices", "Import LTspice primitives", "Import Texas Instruments shells", "Import KiCad PCB parts", "Local model library"] },
-    { label: "PDK", items: ["Generic educational PDK", "Import IC PDK folder", "PDK status", "Import SKY130 devices", "Sky130 future PDK", "GF180 future PDK", "Model corner plan"] },
-    { label: "Help", items: ["Keyboard shortcuts", "AM roadmap", "Component guide"] }
+    {
+      label: "File",
+      items: [
+        { label: "Save workspace", action: "save" },
+        { label: "Analyze workspace", action: "backend-analyze" },
+        { label: "Export SPICE netlist", action: "netlist" },
+        { label: "Design report", action: "print-report" }
+      ]
+    },
+    {
+      label: "Design",
+      items: [
+        { label: "Schematic editor", action: "stage:schematic:netlist" },
+        { label: "Symbol editor", action: "stage:symbol:libraries" },
+        { label: "Footprint editor", action: "stage:footprint:libraries" },
+        { label: "PCB editor", action: "stage:pcb:layout" },
+        { label: "IC layout editor", action: "stage:ic-layout:layout" },
+        { label: "3D design view", action: "stage:3d-view:layout" },
+        { label: "Math workspace", action: "stage:math:math" },
+        { label: "Simulation lab", action: "stage:simulation:simulation" },
+        { label: "PDK manager", action: "stage:pdk:pdk" },
+        { label: "Library manager", action: "stage:libraries:libraries" }
+      ]
+    },
+    {
+      label: "Place",
+      items: [
+        { label: "Select", action: "tool:select" },
+        { label: "Pan", action: "tool:pan" },
+        { label: "Wire", action: "tool:wire" },
+        { label: "Junction", action: "tool:junction" },
+        { label: "Probe", action: "tool:probe" },
+        { label: "No-connect", action: "tool:no-connect" },
+        { label: "Label", action: "tool:label" },
+        { label: "Net name", action: "tool:net" },
+        { label: "Resistor", action: "tool:resistor:resistor" },
+        { label: "Capacitor", action: "tool:capacitor:capacitor" },
+        { label: "Inductor", action: "tool:inductor:inductor" },
+        { label: "MOSFET", action: "tool:semiconductor:nmos" },
+        { label: "Diode", action: "tool:diode:diode" },
+        { label: "Ground", action: "tool:ground:ground" }
+      ]
+    },
+    {
+      label: "Import",
+      items: [
+        { label: "Local SPICE/KiCad files", action: "import-local-models" },
+        { label: "Supplier component", action: "import-supplier" },
+        { label: "DigiKey component", action: "import-digikey" },
+        { label: "Mouser component", action: "import-mouser" },
+        { label: "Manufacturer component", action: "import-manufacturer" },
+        { label: "IC PDK folder", action: "pdk-import" },
+        { label: "SKY130 devices", action: "import-sky130" },
+        { label: "LTspice primitives", action: "import-ltspice" },
+        { label: "Texas Instruments shells", action: "import-texas" },
+        { label: "KiCad PCB parts", action: "import-kicad" }
+      ]
+    },
+    {
+      label: "Checks",
+      items: [
+        { label: "Run DRC", action: "drc" },
+        { label: "Run ERC", action: "erc" },
+        { label: "Run DRC + ERC", action: "backend-analyze" },
+        { label: "PDK status", action: "pdk-status" },
+        { label: "Clean generated labels", action: "clean-floating-labels" }
+      ]
+    },
+    {
+      label: "Simulate",
+      items: [
+        { label: "Operating point", action: "spice-op" },
+        { label: "DC sweep", action: "spice-dc" },
+        { label: "AC analysis", action: "spice-ac" },
+        { label: "Transient", action: "spice-tran" },
+        { label: "Noise extraction", action: "ic-noise-run" },
+        { label: "Monte Carlo / corners", action: "corners" },
+        { label: "Complex IC analysis", action: "ic-complex" }
+      ]
+    },
+    {
+      label: "IC",
+      items: [
+        { label: "Transistor-level canvas", action: "stage:ic-layout:layout" },
+        { label: "Virtuoso-style flow", action: "layout-sync" },
+        { label: "Design intent", action: "ic-intent" },
+        { label: "MOS sizing table", action: "ic-sizing" },
+        { label: "gm/Id sizing", action: "ic-gmid" },
+        { label: "Corner setup", action: "ic-corners" },
+        { label: "Generate PDK netlist", action: "ic-netlist" },
+        { label: "Parasitic extraction", action: "ic-pex" },
+        { label: "Common-centroid planner", action: "matching" },
+        { label: "Guard-ring planner", action: "layout-guard" },
+        { label: "LVS plan", action: "lvs" },
+        { label: "Signoff checklist", action: "ic-signoff" }
+      ]
+    },
+    {
+      label: "PCB",
+      items: [
+        { label: "Board schematic", action: "stage:pcb:layout" },
+        { label: "Apply KiCad template", action: "apply-kicad-template" },
+        { label: "Footprint assignment", action: "pcb-sync" },
+        { label: "PCB DRC rules", action: "board-rules" },
+        { label: "Route planner", action: "route-plan" },
+        { label: "Gerber package", action: "gerber" },
+        { label: "Board 3D handoff", action: "view-3d" }
+      ]
+    },
+    {
+      label: "View",
+      items: [
+        { label: "Zoom in", action: "zoom-in" },
+        { label: "Zoom out", action: "zoom-out" },
+        { label: "Fit canvas", action: "fit" },
+        { label: "Toggle grid", action: "toggle-grid" },
+        { label: "Toggle library", action: "toggle-library" },
+        { label: "Toggle inspector", action: "toggle-inspector" }
+      ]
+    },
+    {
+      label: "Help",
+      items: [
+        { label: "Keyboard shortcuts", action: "help-shortcuts" },
+        { label: "Component guide", action: "help-components" },
+        { label: "AM roadmap", action: "help-roadmap" }
+      ]
+    }
   ].map((group) => `
     <div class="analog-mixed-menu">
       <button type="button">${escapeHtml(group.label)}</button>
-      <div>${group.items.map((item) => `<button type="button" data-am-menu-item="${escapeHtml(item)}">${escapeHtml(item)}</button>`).join("")}</div>
+      <div>${group.items.map((item) => `<button type="button" data-am-menu-action="${escapeHtml(item.action)}">${escapeHtml(item.label)}</button>`).join("")}</div>
     </div>
   `).join("");
   const quickActions = [
     { id: "save", label: "Save" },
     { id: "backend-analyze", label: "Analyze" },
     { id: "netlist", label: "Netlist" },
-    { id: "calc", label: "Calculate" },
     { id: "drc", label: "DRC" },
-    { id: "erc", label: "ERC" },
     { id: "fit", label: `${Math.round(workspace.zoom * 100)}%` }
   ].map((item) => `<button type="button" data-am-stage-command="${escapeHtml(item.id)}">${escapeHtml(item.label)}</button>`).join("");
   return `
@@ -5182,7 +5812,7 @@ function analogMixedMenuGroups(workspace) {
 function analogMixedRenderToolRail(workspace) {
   analogMixedToolRail.innerHTML = analogMixedTools.map((tool) => `
     <button type="button" class="${workspace.activeTool === tool.id ? "is-active" : ""}" data-am-tool="${escapeHtml(tool.id)}" title="${escapeHtml(`${tool.key}: ${tool.hint}`)}">
-      <span>${escapeHtml(tool.label)}</span>
+      <span class="am-tool-icon">${escapeHtml(tool.icon || tool.key || tool.label.slice(0, 1))}</span>
       <kbd>${escapeHtml(tool.key)}</kbd>
     </button>
   `).join("");
@@ -5192,7 +5822,7 @@ function analogMixedRenderLibrary(workspace) {
   const available = analogMixedAvailableComponents(workspace);
   if (analogMixedLibraryCount) analogMixedLibraryCount.textContent = `${available.length} part${available.length === 1 ? "" : "s"}`;
   analogMixedLibraryList.innerHTML = available.map((item) => `
-    <button type="button" class="${workspace.selectedLibraryId === item.id ? "is-selected" : ""}" data-am-library="${escapeHtml(item.id)}">
+    <button type="button" class="${workspace.selectedLibraryId === item.id ? "is-selected" : ""}" data-am-library="${escapeHtml(item.id)}" draggable="true" title="Drag ${escapeHtml(item.label)} onto the canvas or click to select it">
       <svg class="analog-mixed-library-symbol" viewBox="0 0 168 108" aria-hidden="true">
         ${analogMixedComponentSymbol({ id: `library-${item.id}`, type: item.id, label: item.symbol, value: "", x: 84, y: 54 }, false, { preview: true })}
       </svg>
@@ -5229,18 +5859,7 @@ function analogMixedRenderStageTabs(workspace) {
 
 function analogMixedRenderStageToolbar(workspace) {
   if (!analogMixedStageToolbar) return;
-  const commands = analogMixedStageCommandRegistry[workspace.activeStage] || analogMixedStageCommandRegistry.schematic;
-  analogMixedStageToolbar.innerHTML = `
-    <div class="analog-mixed-stage-toolbar-title">
-      <strong>${escapeHtml(analogMixedStages.find((stage) => stage.id === workspace.activeStage)?.label || "EDA Stage")}</strong>
-      <span>${escapeHtml(workspace.mode.toUpperCase())} / ${escapeHtml(analogMixedDomains[workspace.focus].label)}</span>
-    </div>
-    <div class="analog-mixed-stage-toolbar-actions">
-      ${commands.map((command) => `
-        <button type="button" data-am-stage-command="${escapeHtml(command.id)}" title="${escapeHtml(command.hint || command.label)}">${escapeHtml(command.label)}</button>
-      `).join("")}
-    </div>
-  `;
+  analogMixedStageToolbar.innerHTML = "";
 }
 
 function analogMixedParameterRows(workspace) {
@@ -5275,8 +5894,28 @@ function analogMixedComponentParameterRows(component = {}, libraryItem = {}) {
 
 function analogMixedRenderInspector(workspace) {
   const selected = workspace.components.find((component) => component.id === workspace.selectedComponentId);
+  const selectedWire = workspace.wires.find((wire) => wire.id === workspace.selectedWireId);
   if (analogMixedSelectedLabel) {
-    analogMixedSelectedLabel.textContent = selected ? `${selected.label} ${analogMixedLibraryItem(selected.type).label}` : analogMixedDomains[workspace.focus].label;
+    analogMixedSelectedLabel.textContent = selected
+      ? `${selected.label} ${analogMixedLibraryItem(selected.type).label}`
+      : selectedWire
+        ? selectedWire.name || "Selected wire"
+        : analogMixedDomains[workspace.focus].label;
+  }
+  if (selectedWire) {
+    const points = analogMixedWirePoints(selectedWire);
+    analogMixedInspectorBody.innerHTML = `
+      <div class="analog-mixed-inspector-card">
+        <h3>${escapeHtml(selectedWire.name || "Wire")} <small>net route</small></h3>
+        <label><span>Net name</span><input type="text" value="${escapeHtml(selectedWire.name || "")}" data-am-wire-field="name" /></label>
+        <label><span>Route points</span><textarea readonly>${escapeHtml(points.map((point) => `${point.x}, ${point.y}`).join("\n"))}</textarea></label>
+        <div class="analog-mixed-inspector-actions">
+          <button type="button" data-am-wire-action="rename">Rename</button>
+          <button class="danger-icon" type="button" data-am-wire-action="delete">Delete</button>
+        </div>
+      </div>
+    `;
+    return;
   }
   if (selected) {
     const libraryItem = analogMixedLibraryItem(selected.type);
@@ -5468,6 +6107,8 @@ function renderAnalogMixedWorkspace() {
   if (!project) return;
   const workspace = normalizeAnalogMixedWorkspace(project);
   if (analogMixedTitle) analogMixedTitle.textContent = `${project.title || "Project"} - AM Design Lab`;
+  analogMixedDialog.classList.toggle("is-library-collapsed", workspace.libraryCollapsed);
+  analogMixedDialog.classList.toggle("is-inspector-collapsed", workspace.inspectorCollapsed);
   if (analogMixedMode && analogMixedMode.value !== workspace.mode) analogMixedMode.value = workspace.mode;
   if (analogMixedFocus && analogMixedFocus.value !== workspace.focus) analogMixedFocus.value = workspace.focus;
   if (analogMixedGrid && analogMixedGrid.value !== workspace.grid) analogMixedGrid.value = workspace.grid;
@@ -5479,6 +6120,8 @@ function renderAnalogMixedWorkspace() {
   analogMixedRenderStageTabs(workspace);
   analogMixedRenderStageToolbar(workspace);
   analogMixedCanvas.innerHTML = analogMixedCanvasMarkup(workspace);
+  const activeTool = analogMixedTools.find((tool) => tool.id === workspace.activeTool);
+  analogMixedCanvas.style.cursor = activeTool?.cursor || "crosshair";
   analogMixedRenderInspector(workspace);
   analogMixedRenderBottom(workspace);
 }
@@ -5705,25 +6348,17 @@ function handleAnalogMixedCanvasClick(event) {
         renderAnalogMixedWorkspace();
         analogMixedSetStatus(`Layout route start set at ${point.x}, ${point.y}. Click another point to finish.`);
       } else {
-        analogMixedAddIcLayoutRoute(project, analogMixedWireStart, { ...point, ref: { type: "layout-point" } });
+        const endPoint = { ...analogMixedAxisAlignedEndpoint(analogMixedWireStart, point), ref: { type: "layout-point" } };
+        analogMixedAddIcLayoutRoute(project, analogMixedWireStart, endPoint);
         analogMixedWireStart = null;
         analogMixedWirePreview = null;
       }
       return;
     }
-    const directToolMap = {
-      resistor: "resistor",
-      capacitor: "capacitor",
-      semiconductor: workspace.selectedLibraryId && analogMixedLibraryItem(workspace.selectedLibraryId)?.tool === "semiconductor" ? workspace.selectedLibraryId : "nmos",
-      diode: "diode",
-      ground: "ground"
-    };
-    if (directToolMap[workspace.activeTool] || workspace.activeTool === "select") {
-      const libraryId = directToolMap[workspace.activeTool] || workspace.selectedLibraryId;
-      if (libraryId && workspace.activeTool !== "select") {
-        analogMixedAddIcLayoutDevice(project, libraryId, point);
-        return;
-      }
+    const libraryId = analogMixedLibraryForActivePlacement(workspace);
+    if (libraryId && workspace.activeTool !== "select") {
+      analogMixedPlaceLibraryItem(project, libraryId, point, { stage: "ic-layout" });
+      return;
     }
     analogMixedSetStatus("IC layout stage is open. Select a device, choose W for route, or use PDK/PEX/LVS/DRC controls.");
     return;
@@ -5732,12 +6367,18 @@ function handleAnalogMixedCanvasClick(event) {
     analogMixedSetStatus(`${analogMixedStages.find((stage) => stage.id === workspace.activeStage)?.label || "This stage"} is open. Switch to Schematic for direct component placement.`);
     return;
   }
+  const wireTarget = event.target.closest?.("[data-am-wire]");
+  if (wireTarget && workspace.activeTool === "select") {
+    analogMixedSelectWire(project, wireTarget.dataset.amWire || "");
+    analogMixedSetStatus(`${workspace.wires.find((wire) => wire.id === wireTarget.dataset.amWire)?.name || "Wire"} selected.`);
+    return;
+  }
   const componentTarget = event.target.closest?.("[data-am-component]");
   if (componentTarget) {
     analogMixedSelectComponent(project, componentTarget.dataset.amComponent || "");
     return;
   }
-  const capturePoint = analogMixedCapturePointFromEvent(event, workspace);
+  const capturePoint = analogMixedCapturePointFromEvent(event, workspace, { pinSnap: false });
   const point = analogMixedPointFromEvent(event, workspace);
   if (workspace.activeTool === "wire") {
     if (!analogMixedWireStart) {
@@ -5746,7 +6387,8 @@ function handleAnalogMixedCanvasClick(event) {
       renderAnalogMixedWorkspace();
       analogMixedSetStatus(`Wire start set at ${capturePoint.x}, ${capturePoint.y}${capturePoint.pin ? ` on ${capturePoint.pin.componentLabel || "component"}.${capturePoint.pin.pin}` : ""}. Click another node to finish.`);
     } else {
-      analogMixedAddWire(project, analogMixedWireStart, capturePoint);
+      const endPoint = { ...analogMixedAxisAlignedEndpoint(analogMixedWireStart, capturePoint), ref: { type: "point" } };
+      analogMixedAddWire(project, analogMixedWireStart, endPoint);
       analogMixedWireStart = null;
       analogMixedWirePreview = null;
       renderAnalogMixedWorkspace();
@@ -5765,15 +6407,19 @@ function handleAnalogMixedCanvasClick(event) {
     analogMixedSetStatus("Pan tool selected. Drag the canvas to move the view.");
     return;
   }
-  const directToolMap = {
-    resistor: "resistor",
-    capacitor: "capacitor",
-    semiconductor: workspace.mode === "board" ? "bjt" : "nmos",
-    diode: "diode",
-    ground: "ground"
-  };
-  const libraryId = directToolMap[workspace.activeTool] || workspace.selectedLibraryId;
-  analogMixedAddComponent(project, libraryId, point);
+  if (workspace.activeTool === "select") {
+    workspace.selectedComponentId = "";
+    workspace.selectedWireId = "";
+    renderAnalogMixedWorkspace();
+    analogMixedSetStatus("Selection cleared.");
+    return;
+  }
+  const libraryId = analogMixedLibraryForActivePlacement(workspace);
+  if (libraryId) {
+    analogMixedPlaceLibraryItem(project, libraryId, point, { stage: "schematic" });
+    return;
+  }
+  analogMixedSetStatus("Drag imported or non-common library parts onto the canvas for explicit placement.");
 }
 
 function handleAnalogMixedPointerDown(event) {
@@ -5783,7 +6429,28 @@ function handleAnalogMixedPointerDown(event) {
   const workspace = normalizeAnalogMixedWorkspace(project);
   const layoutTarget = event.target.closest?.("[data-am-layout-object]");
   const componentTarget = event.target.closest?.("[data-am-component]");
+  const wireTarget = event.target.closest?.("[data-am-wire]");
   const point = analogMixedPointFromEvent(event, workspace);
+  if (wireTarget && workspace.activeStage === "schematic" && workspace.activeTool === "select") {
+    const wire = workspace.wires.find((item) => item.id === wireTarget.dataset.amWire);
+    if (!wire) return;
+    workspace.selectedWireId = wire.id;
+    workspace.selectedComponentId = "";
+    analogMixedPointerState = {
+      type: "wire",
+      wireId: wire.id,
+      pointerId: event.pointerId,
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+      startPoint: point,
+      originalPoints: analogMixedWirePoints(wire).map((item) => ({ x: Number(item.x) || 0, y: Number(item.y) || 0 })),
+      moved: false
+    };
+    analogMixedCanvas.setPointerCapture?.(event.pointerId);
+    renderAnalogMixedWorkspace();
+    event.preventDefault();
+    return;
+  }
   if (workspace.activeStage === "ic-layout" && layoutTarget && workspace.activeTool === "select") {
     const layoutData = analogMixedNormalizeIcLayout(workspace);
     const layoutObject = layoutData.layoutObjects.find((item) => item.id === layoutTarget.dataset.amLayoutObject);
@@ -5848,9 +6515,10 @@ function handleAnalogMixedPointerMove(event) {
   if (!project) return;
   const workspace = normalizeAnalogMixedWorkspace(project);
   if (analogMixedWireStart && workspace.activeTool === "wire") {
-    analogMixedWirePreview = workspace.activeStage === "ic-layout"
+    const rawPreview = workspace.activeStage === "ic-layout"
       ? analogMixedPointFromEvent(event, workspace)
-      : analogMixedCapturePointFromEvent(event, workspace);
+      : analogMixedCapturePointFromEvent(event, workspace, { pinSnap: false });
+    analogMixedWirePreview = { ...analogMixedAxisAlignedEndpoint(analogMixedWireStart, rawPreview), ref: rawPreview.ref || { type: "point" } };
     analogMixedQueueRender();
   }
   if (!analogMixedPointerState) return;
@@ -5861,6 +6529,29 @@ function handleAnalogMixedPointerMove(event) {
     const rect = analogMixedCanvas.getBoundingClientRect();
     workspace.panX = Math.max(-1400, Math.min(1400, analogMixedPointerState.startPanX + (dxClient / rect.width) * 1400));
     workspace.panY = Math.max(-820, Math.min(820, analogMixedPointerState.startPanY + (dyClient / rect.height) * 820));
+    analogMixedQueueRender();
+    event.preventDefault();
+    return;
+  }
+  if (analogMixedPointerState.type === "wire") {
+    const wire = workspace.wires.find((item) => item.id === analogMixedPointerState.wireId);
+    if (!wire) return;
+    const point = analogMixedPointFromEvent(event, workspace);
+    const dx = point.x - (analogMixedPointerState.startPoint?.x || 0);
+    const dy = point.y - (analogMixedPointerState.startPoint?.y || 0);
+    const movedPoints = (analogMixedPointerState.originalPoints || []).map((item) => ({
+      x: Math.max(0, Math.min(1400, Math.round(item.x + dx))),
+      y: Math.max(0, Math.min(820, Math.round(item.y + dy)))
+    }));
+    if (movedPoints.length >= 2) {
+      wire.points = movedPoints;
+      wire.x1 = movedPoints[0].x;
+      wire.y1 = movedPoints[0].y;
+      wire.x2 = movedPoints[movedPoints.length - 1].x;
+      wire.y2 = movedPoints[movedPoints.length - 1].y;
+    }
+    markDraftNeedsSave();
+    scheduleAutosave();
     analogMixedQueueRender();
     event.preventDefault();
     return;
@@ -5897,7 +6588,7 @@ function handleAnalogMixedPointerUp(event) {
     analogMixedSuppressClickUntil = Date.now() + 180;
     markDraftNeedsSave();
     scheduleAutosave();
-    analogMixedSetStatus(analogMixedPointerState.type === "pan" ? "Canvas panned." : analogMixedPointerState.type === "layout-object" ? "IC layout device moved." : "Component moved.");
+    analogMixedSetStatus(analogMixedPointerState.type === "pan" ? "Canvas panned." : analogMixedPointerState.type === "wire" ? "Wire moved." : analogMixedPointerState.type === "layout-object" ? "IC layout device moved." : "Component moved.");
   }
   analogMixedCanvas?.releasePointerCapture?.(analogMixedPointerState.pointerId || event.pointerId);
   analogMixedPointerState = null;
@@ -5963,6 +6654,152 @@ function handleAnalogMixedKeyboard(event) {
   }
 }
 
+function analogMixedOpenStage(stageId = "schematic", panelId = "") {
+  const project = activeAnalogMixedProject();
+  if (!project) return;
+  const workspace = normalizeAnalogMixedWorkspace(project);
+  const validStage = analogMixedStages.some((stage) => stage.id === stageId) ? stageId : "schematic";
+  workspace.activeStage = validStage;
+  if (panelId && analogMixedPanelIds.includes(panelId)) workspace.activePanel = panelId;
+  analogMixedWireStart = null;
+  analogMixedWirePreview = null;
+  markDraftNeedsSave();
+  scheduleAutosave();
+  renderAnalogMixedWorkspace();
+  analogMixedSetStatus(`${analogMixedStages.find((stage) => stage.id === validStage)?.label || "Workspace"} opened.`);
+}
+
+function analogMixedSelectToolAction(action = "") {
+  const project = activeAnalogMixedProject();
+  if (!project) return;
+  const workspace = normalizeAnalogMixedWorkspace(project);
+  const [, tool = "select", libraryId = ""] = String(action || "").split(":");
+  if (libraryId) workspace.selectedLibraryId = libraryId;
+  workspace.activeTool = analogMixedTools.some((item) => item.id === tool) ? tool : "select";
+  markDraftNeedsSave();
+  scheduleAutosave();
+  renderAnalogMixedWorkspace();
+  analogMixedSetStatus(`${analogMixedTools.find((item) => item.id === workspace.activeTool)?.label || "Select"} active.`);
+}
+
+function analogMixedCleanFloatingLabels() {
+  const project = activeAnalogMixedProject();
+  if (!project) return;
+  const workspace = normalizeAnalogMixedWorkspace(project);
+  const usedNames = new Set(workspace.wires.map((wire) => wire.name));
+  const before = workspace.labels.length;
+  workspace.labels = workspace.labels.filter((item) => !String(item.text || "").startsWith("net_") || usedNames.has(item.text));
+  markDraftNeedsSave();
+  scheduleAutosave();
+  renderAnalogMixedWorkspace();
+  const removed = before - workspace.labels.length;
+  analogMixedSetStatus(`Cleaned ${removed} floating generated label${removed === 1 ? "" : "s"}.`);
+}
+
+function analogMixedShowHelpTopic(topic = "roadmap") {
+  const project = activeAnalogMixedProject();
+  if (!project) return;
+  const workspace = normalizeAnalogMixedWorkspace(project);
+  const topics = {
+    shortcuts: [
+      "AM keyboard shortcuts",
+      "",
+      "V selects objects, P pans, W starts wiring, J places a junction, B places a probe, L places labels, N names nets, R/C/S/D/G place common devices.",
+      "Ctrl + mouse wheel zooms the schematic canvas. Select a component or wire, then use the Inspector or right-click menu for parameters, duplicate, rotate, mirror, rename, and delete."
+    ],
+    components: [
+      "Component guide",
+      "",
+      "Library parts are device-level entries. Drag a part from the Component Library directly onto the schematic or IC layout canvas, then edit reference, model, footprint, package, value, and device parameters in the Inspector.",
+      "Use Import > Local SPICE/KiCad files for model or symbol files, or Import > Supplier component for DigiKey, Mouser, manufacturer, TI, LTspice, and SKY130-style entries."
+    ],
+    roadmap: [
+      "AM roadmap",
+      "",
+      "This workspace is organized around separate schematic, symbol, footprint, PCB, IC layout, 3D, math, simulation, Gerber, PDK, and library stages.",
+      "The immediate goal is a practical mixed-signal design bench: graphical placement and wiring, component libraries, real netlist generation, SPICE planning, PDK handoff, PCB handoff, DRC/ERC, extraction planning, and readable engineering reports."
+    ]
+  };
+  workspace.notes = topics[topic] || topics.roadmap;
+  workspace.activePanel = "notes";
+  renderAnalogMixedWorkspace();
+  analogMixedSetStatus("AM guide opened in Notes.");
+}
+
+function analogMixedHandleMenuAction(action = "") {
+  const project = activeAnalogMixedProject();
+  if (!project) return;
+  const workspace = normalizeAnalogMixedWorkspace(project);
+  const clean = String(action || "").trim();
+  if (!clean) return;
+  if (clean.startsWith("stage:")) {
+    const [, stageId = "schematic", panelId = ""] = clean.split(":");
+    analogMixedOpenStage(stageId, panelId);
+    return;
+  }
+  if (clean.startsWith("tool:")) {
+    analogMixedSelectToolAction(clean);
+    return;
+  }
+  if (clean === "save") return saveAnalogMixedWorkspace();
+  if (clean === "toggle-library") {
+    workspace.libraryCollapsed = !workspace.libraryCollapsed;
+    markDraftNeedsSave();
+    scheduleAutosave();
+    renderAnalogMixedWorkspace();
+    analogMixedSetStatus(workspace.libraryCollapsed ? "AM library hidden." : "AM library shown.");
+    return;
+  }
+  if (clean === "toggle-inspector") {
+    workspace.inspectorCollapsed = !workspace.inspectorCollapsed;
+    markDraftNeedsSave();
+    scheduleAutosave();
+    renderAnalogMixedWorkspace();
+    analogMixedSetStatus(workspace.inspectorCollapsed ? "AM inspector hidden." : "AM inspector shown.");
+    return;
+  }
+  if (clean === "toggle-grid") {
+    workspace.showGrid = !workspace.showGrid;
+    markDraftNeedsSave();
+    scheduleAutosave();
+    renderAnalogMixedWorkspace();
+    analogMixedSetStatus(workspace.showGrid ? "Schematic grid visible." : "Schematic grid hidden.");
+    return;
+  }
+  if (clean === "zoom-in") return analogMixedZoom(0.15);
+  if (clean === "zoom-out") return analogMixedZoom(-0.15);
+  if (clean === "fit") return analogMixedFitCanvas();
+  if (clean === "backend-analyze") return analogMixedRunBackendAnalysis("analysis");
+  if (clean === "netlist") return analogMixedGenerateNetlistFromBackend();
+  if (clean === "drc") return workspace.activeStage === "ic-layout" ? analogMixedRecordLayoutAction("drc") : analogMixedRunChecks("drc");
+  if (clean === "erc") return analogMixedRunChecks("erc");
+  if (clean === "clean-floating-labels") return analogMixedCleanFloatingLabels();
+  if (clean === "pdk-status") return analogMixedRefreshPdkStatus(workspace.activePdk || workspace.stageData?.pdk?.importedPdk?.variant || "sky130");
+  if (clean === "pdk-import") return analogMixedImportPdkFolder();
+  if (clean === "import-local-models") return analogMixedImportLocalModelFiles();
+  if (clean === "import-supplier") return analogMixedImportSupplierComponent("Supplier");
+  if (clean === "import-digikey") return analogMixedImportSupplierComponent("DigiKey");
+  if (clean === "import-mouser") return analogMixedImportSupplierComponent("Mouser");
+  if (clean === "import-manufacturer") return analogMixedImportSupplierComponent("Manufacturer");
+  if (clean === "import-sky130") return analogMixedImportDeviceSource("sky130");
+  if (clean === "import-ltspice") return analogMixedImportDeviceSource("ltspice");
+  if (clean === "import-texas") return analogMixedImportDeviceSource("texas");
+  if (clean === "import-kicad") return analogMixedImportDeviceSource("kicad");
+  if (clean === "apply-kicad-template") return analogMixedApplyKicadTemplate();
+  if (clean.startsWith("spice-")) return analogMixedRunSpiceSimulation(clean.replace("spice-", ""));
+  if (clean === "corners") return analogMixedPrepareSpiceSimulationPlan("corners");
+  if (clean === "print-report") {
+    workspace.activePanel = "backend";
+    analogMixedRunBackendAnalysis("analysis");
+    analogMixedSetStatus("Design report refreshed from the AM backend.");
+    return;
+  }
+  if (clean === "help-shortcuts") return analogMixedShowHelpTopic("shortcuts");
+  if (clean === "help-components") return analogMixedShowHelpTopic("components");
+  if (clean === "help-roadmap") return analogMixedShowHelpTopic("roadmap");
+  return analogMixedHandleStageCommand(clean);
+}
+
 function handleAnalogMixedMenuItem(label = "") {
   const project = activeAnalogMixedProject();
   if (!project) return;
@@ -5970,6 +6807,80 @@ function handleAnalogMixedMenuItem(label = "") {
   const clean = String(label || "").toLowerCase();
   if (clean.includes("save am")) {
     saveAnalogMixedWorkspace();
+    return;
+  }
+  if (clean.includes("toggle library")) {
+    workspace.libraryCollapsed = !workspace.libraryCollapsed;
+    markDraftNeedsSave();
+    scheduleAutosave();
+    renderAnalogMixedWorkspace();
+    analogMixedSetStatus(workspace.libraryCollapsed ? "AM library hidden." : "AM library shown.");
+    return;
+  }
+  if (clean.includes("toggle inspector")) {
+    workspace.inspectorCollapsed = !workspace.inspectorCollapsed;
+    markDraftNeedsSave();
+    scheduleAutosave();
+    renderAnalogMixedWorkspace();
+    analogMixedSetStatus(workspace.inspectorCollapsed ? "AM inspector hidden." : "AM inspector shown.");
+    return;
+  }
+  const toolMenuMap = [
+    ["select tool", "select", ""],
+    ["wire tool", "wire", ""],
+    ["place resistor", "resistor", "resistor"],
+    ["place capacitor", "capacitor", "capacitor"],
+    ["place inductor", "inductor", "inductor"],
+    ["place mosfet", "semiconductor", "nmos"],
+    ["place diode", "diode", "diode"],
+    ["place ground", "ground", "ground"],
+    ["place label", "label", ""],
+    ["place net name", "net", ""],
+    ["place probe", "probe", ""]
+  ];
+  const selectedTool = toolMenuMap.find(([name]) => clean.includes(name));
+  if (selectedTool) {
+    const [, tool, libraryId] = selectedTool;
+    if (libraryId) workspace.selectedLibraryId = libraryId;
+    workspace.activeTool = tool;
+    markDraftNeedsSave();
+    scheduleAutosave();
+    renderAnalogMixedWorkspace();
+    analogMixedSetStatus(`${label} selected.`);
+    return;
+  }
+  const stageMenuMap = [
+    ["open schematic stage", "schematic", "netlist"],
+    ["open symbol stage", "symbol", "libraries"],
+    ["open footprint stage", "footprint", "libraries"],
+    ["open pcb stage", "pcb", "layout"],
+    ["open ic layout stage", "ic-layout", "layout"],
+    ["open 3d stage", "3d-view", "layout"],
+    ["open simulation stage", "simulation", "simulation"],
+    ["open pdk stage", "pdk", "pdk"]
+  ];
+  const selectedStage = stageMenuMap.find(([name]) => clean.includes(name));
+  if (selectedStage) {
+    workspace.activeStage = selectedStage[1];
+    workspace.activePanel = selectedStage[2];
+    analogMixedWireStart = null;
+    analogMixedWirePreview = null;
+    markDraftNeedsSave();
+    scheduleAutosave();
+    renderAnalogMixedWorkspace();
+    analogMixedSetStatus(`${analogMixedStages.find((stage) => stage.id === workspace.activeStage)?.label || "Stage"} opened.`);
+    return;
+  }
+  if (clean.includes("import manufacturer component")) {
+    analogMixedImportSupplierComponent("Manufacturer");
+    return;
+  }
+  if (clean.includes("import digikey component")) {
+    analogMixedImportSupplierComponent("DigiKey");
+    return;
+  }
+  if (clean.includes("import mouser component")) {
+    analogMixedImportSupplierComponent("Mouser");
     return;
   }
   if (clean.includes("import ic pdk folder") || clean.includes("import pdk folder")) {
@@ -7467,6 +8378,19 @@ async function openCompileCodeCommand(action = "view-syntax") {
   await runCompileIdeAction(project, action);
 }
 
+function openAnalogMixedCommand(stage = "schematic") {
+  const project = requireSelectedProject();
+  if (!project) return;
+  openAnalogMixedWorkspace(project.id);
+  const workspace = normalizeAnalogMixedWorkspace(project);
+  const normalizedStage = analogMixedStages.some((item) => item.id === stage) ? stage : "schematic";
+  workspace.activeStage = normalizedStage;
+  workspace.activePanel = normalizedStage === "schematic" ? "netlist" : normalizedStage === "simulation" ? "simulation" : normalizedStage === "pdk" ? "pdk" : "layout";
+  markDraftNeedsSave();
+  scheduleAutosave();
+  renderAnalogMixedWorkspace();
+}
+
 function builderAppCommandGroups() {
   const project = selectedProject();
   const hasProject = Boolean(project);
@@ -7534,7 +8458,7 @@ function builderAppCommandGroups() {
         { label: "Edit current category", action: "edit-category", disabled: !currentProjectCategoryId() },
         { separator: true },
         { label: "Open overview", action: "open-overview", disabled: !hasProject },
-        { label: "Open Compile Code", action: "open-compile-code", disabled: !hasProject },
+        { label: "Open Digital", action: "open-compile-code", disabled: !hasProject },
         { label: "Add project section", action: "add-section", disabled: !hasProject },
         { label: "Save selected project", action: "save-selected-project", disabled: !hasProject },
         { label: "Clean empty sections", action: "clean-empty-project", disabled: !hasProject },
@@ -7551,7 +8475,23 @@ function builderAppCommandGroups() {
       ]
     },
     {
-      label: "Code",
+      label: "AM",
+      items: [
+        { label: "Open AM workspace", action: "am-open", disabled: !hasProject },
+        { label: "Schematic editor", action: "am-schematic", disabled: !hasProject },
+        { label: "Symbol editor", action: "am-symbol", disabled: !hasProject },
+        { label: "Footprint editor", action: "am-footprint", disabled: !hasProject },
+        { label: "PCB editor", action: "am-pcb", disabled: !hasProject },
+        { label: "IC layout editor", action: "am-ic-layout", disabled: !hasProject },
+        { label: "Simulation lab", action: "am-simulation", disabled: !hasProject },
+        { label: "PDK and libraries", action: "am-pdk", disabled: !hasProject },
+        { separator: true },
+        { label: "Import supplier component", action: "am-import-supplier", disabled: !hasProject },
+        { label: "Check AM tools", action: "am-tool-status", disabled: !hasProject }
+      ]
+    },
+    {
+      label: "Digital",
       items: [
         { heading: "Workspace" },
         { label: "New source file", action: "code-new-file", disabled: !hasProject },
@@ -7629,18 +8569,18 @@ function builderAppCommandGroups() {
         { label: "Dark: Crimson", action: "theme-dark-crimson" },
         { label: "Dark: Steel", action: "theme-dark-steel" },
         { separator: true },
-        { heading: "Compile Code appearance" },
-        { label: "Compile: Visual Studio blue", action: "compile-theme-dark-vs" },
-        { label: "Compile: Navy scope lab", action: "compile-theme-dark-navy" },
-        { label: "Compile: Graphite ASIC", action: "compile-theme-dark-graphite" },
-        { label: "Compile: Emerald instrument", action: "compile-theme-dark-emerald" },
-        { label: "Compile: Violet mixed signal", action: "compile-theme-dark-violet" },
-        { label: "Compile: Cobalt", action: "compile-theme-dark-cobalt" },
-        { label: "Compile: Copper", action: "compile-theme-dark-copper" },
-        { label: "Compile: Crimson", action: "compile-theme-dark-crimson" },
-        { label: "Compile: Solarized", action: "compile-theme-dark-solarized" },
-        { label: "Compile: Light sky", action: "compile-theme-light-sky" },
-        { label: "Compile: Paper schematic", action: "compile-theme-light-paper" }
+        { heading: "Digital appearance" },
+        { label: "Digital: Visual Studio blue", action: "compile-theme-dark-vs" },
+        { label: "Digital: Navy scope lab", action: "compile-theme-dark-navy" },
+        { label: "Digital: Graphite ASIC", action: "compile-theme-dark-graphite" },
+        { label: "Digital: Emerald instrument", action: "compile-theme-dark-emerald" },
+        { label: "Digital: Violet mixed signal", action: "compile-theme-dark-violet" },
+        { label: "Digital: Cobalt", action: "compile-theme-dark-cobalt" },
+        { label: "Digital: Copper", action: "compile-theme-dark-copper" },
+        { label: "Digital: Crimson", action: "compile-theme-dark-crimson" },
+        { label: "Digital: Solarized", action: "compile-theme-dark-solarized" },
+        { label: "Digital: Light sky", action: "compile-theme-light-sky" },
+        { label: "Digital: Paper schematic", action: "compile-theme-light-paper" }
       ]
     },
     {
@@ -7722,6 +8662,30 @@ async function handleBuilderAppCommand(action = "") {
     "code-install-tools": "install-tools",
     "code-synthesis-diagram": "view-synthesis-diagram"
   };
+  const analogMixedActions = {
+    "am-open": "schematic",
+    "am-schematic": "schematic",
+    "am-symbol": "symbol",
+    "am-footprint": "footprint",
+    "am-pcb": "pcb",
+    "am-ic-layout": "ic-layout",
+    "am-simulation": "simulation",
+    "am-pdk": "pdk"
+  };
+  if (analogMixedActions[action]) {
+    openAnalogMixedCommand(analogMixedActions[action]);
+    return;
+  }
+  if (action === "am-import-supplier") {
+    openAnalogMixedCommand("libraries");
+    analogMixedImportSupplierComponent("DigiKey");
+    return;
+  }
+  if (action === "am-tool-status") {
+    openAnalogMixedCommand("pdk");
+    await analogMixedRefreshPdkStatus();
+    return;
+  }
   if (compileActions[action]) {
     await openCompileCodeCommand(compileActions[action]);
     return;
@@ -25563,6 +26527,7 @@ analogMixedDialog?.addEventListener("close", () => {
   document.body.classList.remove("analog-mixed-open");
   analogMixedWireStart = null;
   analogMixedWirePreview = null;
+  analogMixedHideContextMenu();
 });
 analogMixedSave?.addEventListener("click", () => {
   saveAnalogMixedWorkspace();
@@ -25616,16 +26581,95 @@ analogMixedFilter?.addEventListener("input", () => {
   workspace.libraryFilter = analogMixedFilter.value;
   analogMixedRenderLibrary(workspace);
 });
+analogMixedLibraryList?.addEventListener("dragstart", (event) => {
+  const libraryButton = event.target.closest("[data-am-library]");
+  if (!libraryButton) return;
+  analogMixedDraggingLibraryId = libraryButton.dataset.amLibrary || "";
+  event.dataTransfer?.setData("application/x-omb-am-library", analogMixedDraggingLibraryId);
+  event.dataTransfer?.setData("text/plain", analogMixedLibraryItem(analogMixedDraggingLibraryId).label || analogMixedDraggingLibraryId);
+  if (event.dataTransfer) event.dataTransfer.effectAllowed = "copy";
+});
+analogMixedLibraryList?.addEventListener("dragend", () => {
+  analogMixedDraggingLibraryId = "";
+});
 analogMixedCanvas?.addEventListener("click", handleAnalogMixedCanvasClick);
 analogMixedCanvas?.addEventListener("pointerdown", handleAnalogMixedPointerDown);
 analogMixedCanvas?.addEventListener("pointermove", handleAnalogMixedPointerMove);
 analogMixedCanvas?.addEventListener("pointerup", handleAnalogMixedPointerUp);
 analogMixedCanvas?.addEventListener("pointercancel", handleAnalogMixedPointerUp);
 analogMixedCanvas?.addEventListener("wheel", handleAnalogMixedWheel, { passive: false });
+analogMixedCanvas?.addEventListener("dragover", (event) => {
+  const hasLibraryPart = analogMixedDraggingLibraryId || event.dataTransfer?.types?.includes("application/x-omb-am-library");
+  if (!hasLibraryPart) return;
+  event.preventDefault();
+  if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
+});
+analogMixedCanvas?.addEventListener("drop", (event) => {
+  const project = activeAnalogMixedProject();
+  if (!project) return;
+  const workspace = normalizeAnalogMixedWorkspace(project);
+  const libraryId = event.dataTransfer?.getData("application/x-omb-am-library") || analogMixedDraggingLibraryId;
+  if (!libraryId) return;
+  event.preventDefault();
+  const point = analogMixedPointFromEvent(event, workspace);
+  analogMixedPlaceLibraryItem(project, libraryId, point, { stage: workspace.activeStage });
+  analogMixedDraggingLibraryId = "";
+});
+analogMixedCanvas?.addEventListener("contextmenu", (event) => {
+  if (!analogMixedDialog?.open) return;
+  const project = activeAnalogMixedProject();
+  if (!project) return;
+  const workspace = normalizeAnalogMixedWorkspace(project);
+  if (analogMixedWireStart || !["select", "pan"].includes(workspace.activeTool)) {
+    event.preventDefault();
+    analogMixedAbortActiveCommand("Active placement or wiring command canceled.");
+    return;
+  }
+  const wireTarget = event.target.closest?.("[data-am-wire]");
+  const componentTarget = event.target.closest?.("[data-am-component]");
+  const layoutTarget = event.target.closest?.("[data-am-layout-object]");
+  event.preventDefault();
+  if (wireTarget) {
+    workspace.selectedWireId = wireTarget.dataset.amWire || "";
+    workspace.selectedComponentId = "";
+    renderAnalogMixedWorkspace();
+    analogMixedShowContextMenu(event, { type: "wire", id: workspace.selectedWireId });
+    return;
+  }
+  if (componentTarget) {
+    workspace.selectedComponentId = componentTarget.dataset.amComponent || "";
+    workspace.selectedWireId = "";
+    renderAnalogMixedWorkspace();
+    analogMixedShowContextMenu(event, { type: "component", id: workspace.selectedComponentId });
+    return;
+  }
+  if (layoutTarget) {
+    const layoutData = analogMixedNormalizeIcLayout(workspace);
+    const layoutObject = layoutData.layoutObjects.find((item) => item.id === layoutTarget.dataset.amLayoutObject);
+    if (layoutObject?.sourceComponentId) {
+      workspace.selectedComponentId = layoutObject.sourceComponentId;
+      workspace.selectedWireId = "";
+    }
+    renderAnalogMixedWorkspace();
+    analogMixedShowContextMenu(event, { type: "component", id: workspace.selectedComponentId });
+    return;
+  }
+  analogMixedShowContextMenu(event, { type: "canvas" });
+});
 analogMixedDialog?.addEventListener("click", (event) => {
   const project = activeAnalogMixedProject();
   if (!project) return;
   const workspace = normalizeAnalogMixedWorkspace(project);
+  const paneToggle = event.target.closest("[data-am-pane-toggle]");
+  if (paneToggle) {
+    const pane = paneToggle.dataset.amPaneToggle || "";
+    if (pane === "library") workspace.libraryCollapsed = !workspace.libraryCollapsed;
+    if (pane === "inspector") workspace.inspectorCollapsed = !workspace.inspectorCollapsed;
+    markDraftNeedsSave();
+    scheduleAutosave();
+    renderAnalogMixedWorkspace();
+    return;
+  }
   const toolButton = event.target.closest("[data-am-tool]");
   if (toolButton) {
     analogMixedSetTool(toolButton.dataset.amTool || "select");
@@ -25634,11 +26678,15 @@ analogMixedDialog?.addEventListener("click", (event) => {
   const libraryButton = event.target.closest("[data-am-library]");
   if (libraryButton) {
     workspace.selectedLibraryId = libraryButton.dataset.amLibrary || "resistor";
-    workspace.activeTool = analogMixedLibraryItem(workspace.selectedLibraryId).tool || "select";
+    const selectedItem = analogMixedLibraryItem(workspace.selectedLibraryId);
+    const clickPlaceable = analogMixedCanClickPlaceLibraryItem(selectedItem.id);
+    workspace.activeTool = clickPlaceable ? selectedItem.tool || "select" : "select";
     markDraftNeedsSave();
     scheduleAutosave();
     renderAnalogMixedWorkspace();
-    analogMixedSetStatus(`${analogMixedLibraryItem(workspace.selectedLibraryId).label} selected. Click the schematic canvas to place it.`);
+    analogMixedSetStatus(clickPlaceable
+      ? `${selectedItem.label} selected. Click the canvas or drag from the library to place it.`
+      : `${selectedItem.label} selected. Drag it from the library into the workspace for explicit placement.`);
     return;
   }
   const stageButton = event.target.closest("[data-am-stage]");
@@ -25715,6 +26763,13 @@ analogMixedDialog?.addEventListener("click", (event) => {
     }
     return;
   }
+  const wireAction = event.target.closest("[data-am-wire-action]");
+  if (wireAction) {
+    const action = wireAction.dataset.amWireAction || "";
+    if (action === "rename") analogMixedRenameSelectedWire();
+    if (action === "delete") analogMixedDeleteSelectedWire();
+    return;
+  }
   const componentParamDelete = event.target.closest("[data-am-component-param-delete]");
   if (componentParamDelete) {
     const selected = workspace.components.find((component) => component.id === workspace.selectedComponentId);
@@ -25728,15 +26783,42 @@ analogMixedDialog?.addEventListener("click", (event) => {
     analogMixedSetStatus(`Deleted parameter ${key}.`);
     return;
   }
+  const menuAction = event.target.closest("[data-am-menu-action]");
+  if (menuAction) {
+    analogMixedHandleMenuAction(menuAction.dataset.amMenuAction || "");
+    return;
+  }
   const menuItem = event.target.closest("[data-am-menu-item]");
   if (menuItem) {
     handleAnalogMixedMenuItem(menuItem.dataset.amMenuItem || "");
   }
 });
+analogMixedContextMenu?.addEventListener("click", async (event) => {
+  const button = event.target.closest("[data-am-context-action]");
+  if (!button) return;
+  event.preventDefault();
+  const action = button.dataset.amContextAction || "";
+  analogMixedHideContextMenu();
+  await analogMixedHandleContextAction(action);
+});
+document.addEventListener("pointerdown", (event) => {
+  if (!analogMixedContextMenu || analogMixedContextMenu.hidden) return;
+  if (event.target.closest?.("#analog-mixed-context-menu")) return;
+  analogMixedHideContextMenu();
+}, true);
 analogMixedDialog?.addEventListener("input", (event) => {
   const project = activeAnalogMixedProject();
   if (!project) return;
   const workspace = normalizeAnalogMixedWorkspace(project);
+  if (event.target.dataset.amWireField) {
+    const wire = workspace.wires.find((item) => item.id === workspace.selectedWireId);
+    if (!wire) return;
+    wire[event.target.dataset.amWireField] = event.target.value.replace(/\s+/g, "_");
+    markDraftNeedsSave();
+    scheduleAutosave();
+    analogMixedSetStatus("Updated selected wire.");
+    return;
+  }
   if (event.target.dataset.amComponentField) {
     const selected = workspace.components.find((component) => component.id === workspace.selectedComponentId);
     if (!selected) return;

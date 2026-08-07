@@ -196,7 +196,19 @@ const compileToolCandidates = {
     "C:\\Program Files\\nodejs\\node.exe",
     process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, "Programs", "nodejs", "node.exe") : ""
   ],
-  python: [process.env.PYTHON, "python", "py"],
+  python: [
+    process.env.PYTHON,
+    "python",
+    "py",
+    "python3",
+    "C:\\Program Files\\Python313\\python.exe",
+    "C:\\Program Files\\Python312\\python.exe",
+    "C:\\Program Files\\Python311\\python.exe",
+    process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, "Programs", "Python", "Python313", "python.exe") : "",
+    process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, "Programs", "Python", "Python312", "python.exe") : "",
+    process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, "Programs", "Python", "Python311", "python.exe") : ""
+  ],
+  py: [process.env.PY_PYTHON, "py", "python", "python3"],
   iverilog: [
     "iverilog",
     "C:\\iverilog\\bin\\iverilog.exe",
@@ -1184,7 +1196,7 @@ async function findTool(toolName) {
 }
 
 async function compileToolPathEnvironment() {
-  const toolNames = ["gcc", "g++", "javac", "java", "iverilog", "vvp", "yosys", "slang", "gtkwave", "ltspice", "ngspice", "xyce", "klayout", "magic", "netgen"];
+  const toolNames = ["gcc", "g++", "python", "py", "javac", "java", "node", "iverilog", "vvp", "yosys", "slang", "gtkwave", "ltspice", "ngspice", "xyce", "klayout", "magic", "netgen"];
   const folders = [];
   const extraEnv = {};
   for (const toolName of toolNames) {
@@ -1552,6 +1564,62 @@ async function compileToolStatus() {
     };
   }
   return { compileRoot, languages, tools };
+}
+
+async function analogMixedProgrammingEngineStatus() {
+  const toolNames = ["gcc", "g++", "python", "py", "javac", "java", "node"];
+  const discovered = {};
+  for (const toolName of toolNames) {
+    discovered[toolName] = await findTool(toolName);
+  }
+  const versionFor = async (toolName) => discovered[toolName] ? await toolVersionLine(discovered[toolName]) : "";
+  const pythonTool = discovered.python ? "python" : discovered.py ? "py" : "";
+  const pythonPath = pythonTool ? discovered[pythonTool] : "";
+  return {
+    c: {
+      label: "C",
+      compiler: "gcc",
+      path: discovered.gcc || "",
+      ready: Boolean(discovered.gcc),
+      version: await versionFor("gcc"),
+      role: "Native compute kernels, numerical helpers, and future AM engine acceleration."
+    },
+    cpp: {
+      label: "C++",
+      compiler: "g++",
+      path: discovered["g++"] || "",
+      ready: Boolean(discovered["g++"]),
+      version: await versionFor("g++"),
+      role: "High-performance schematic, layout, simulation, geometry, and optimization kernels."
+    },
+    python: {
+      label: "Python",
+      runtime: pythonTool || "python",
+      path: pythonPath,
+      ready: Boolean(pythonPath),
+      version: pythonPath ? await toolVersionLine(pythonPath) : "",
+      role: "Automation, numerical analysis, PDK parsing, reports, and future AI-assisted design utilities."
+    },
+    java: {
+      label: "Java",
+      compiler: "javac",
+      compilerPath: discovered.javac || "",
+      runtime: "java",
+      runtimePath: discovered.java || "",
+      ready: Boolean(discovered.javac && discovered.java),
+      compilerVersion: await versionFor("javac"),
+      runtimeVersion: await versionFor("java"),
+      role: "Portable analysis services, file indexing, and future long-running design backends."
+    },
+    javascript: {
+      label: "JavaScript / Node.js",
+      runtime: "node",
+      path: discovered.node || "",
+      ready: Boolean(discovered.node),
+      version: await versionFor("node"),
+      role: "Current builder UI/backend glue, local APIs, parsing, publishing, and orchestration."
+    }
+  };
 }
 
 function isHdlLanguage(language = "") {
@@ -6784,7 +6852,9 @@ async function handleApi(request, response, url) {
       sendJson(response, 403, { error: "Analog/Mixed-Signal tool details are only available from this computer." });
       return true;
     }
-    sendJson(response, 200, { ok: true, status: await analogMixedPdkStatus(url.searchParams.get("pdk") || "sky130", url.searchParams.get("path") || "") });
+    const status = await analogMixedPdkStatus(url.searchParams.get("pdk") || "sky130", url.searchParams.get("path") || "");
+    status.programmingEngines = await analogMixedProgrammingEngineStatus();
+    sendJson(response, 200, { ok: true, status });
     return true;
   }
 

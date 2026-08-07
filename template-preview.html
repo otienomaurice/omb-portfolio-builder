@@ -374,17 +374,18 @@
                   <details class="builder-guide-section" data-guide-section="menus commands file edit view project code build tools preferences help" open>
                       <summary><span class="guide-card-title">Application Menus And Commands</span><span class="guide-card-summary">Use the compact top menu bar for advanced builder, project, code, publishing, and preference commands.</span></summary>
                       <div>
-                          <p>The builder uses a normal application-style menu bar so windows do not become crowded with dozens of separate icons. Common actions stay visible where they are useful, while less frequent actions live under File, Edit, View, Project, Code, Build, Tools, Preferences, and Help.</p>
-                          <p>This menu layer is meant to feel like a lightweight IDE. File handles saving, previewing, printing, publishing, targets, and updates. Project handles project creation, section cleanup, status, details, and deletion. Code and Build handle the Compile Code workspace, while Tools and Preferences hold utility checks, toolchain setup, themes, line numbers, and profile asset managers.</p>
+                          <p>The builder uses a normal application-style menu bar so windows do not become crowded with dozens of separate icons. Common actions stay visible where they are useful, while less frequent actions live under File, Edit, View, Project, AM, Digital, Build, Tools, Preferences, and Help.</p>
+                          <p>This menu layer is meant to feel like a lightweight IDE. File handles saving, previewing, printing, publishing, targets, and updates. Project handles project creation, section cleanup, status, details, and deletion. AM opens analog and mixed-signal design stages. Digital and Build handle source files, compiler actions, synthesis, simulation, scope, syntax, input, and PowerShell launch. Tools and Preferences hold utility checks, toolchain setup, themes, line numbers, and profile asset managers.</p>
                           <ol>
                               <li>Use File for draft saving, full-section parsing, portfolio preview, printing, publishing target setup, update checks, and Apply to site.</li>
                               <li>Use Edit for front-page text, profile/contact text, fun facts, project-title copying, search clearing, and refreshing the builder view.</li>
                               <li>Use View for category expansion, project navigation, project preview, project health reports, portfolio preview, and builder zoom.</li>
-                              <li>Use Project for adding projects, adding categories, editing the current category, opening Overview or Compile Code, adding project sections, saving the selected project, cleaning empty content, and setting project status.</li>
-                              <li>Use Code for source files, folders, imports, testbenches, source save, Save As, Beautify, line numbers, and appending source to a project section.</li>
+                              <li>Use Project for adding projects, adding categories, editing the current category, opening Overview or Digital, adding project sections, saving the selected project, cleaning empty content, and setting project status.</li>
+                              <li>Use AM for schematic capture, symbol editing, footprint planning, PCB, IC layout, simulation, PDK/library work, supplier imports, and AM tool checks.</li>
+                              <li>Use Digital for source files, folders, imports, testbenches, source save, Save As, Beautify, line numbers, and appending source to a project section.</li>
                               <li>Use Build for Compile, Build project, Run, Synthesize, Simulate, Scope, Console, Syntax, Input, and the external Windows PowerShell terminal launcher.</li>
                               <li>Use Tools for system readiness, security reports, compiler/toolchain checks, synthesis diagram viewing, and profile asset managers.</li>
-                              <li>Use Preferences for app viewing themes and Compile Code appearance themes. Theme changes affect how the builder looks while you work; the public portfolio still follows the saved portfolio appearance rules.</li>
+                              <li>Use Preferences for app viewing themes and Digital workspace appearance themes. Theme changes affect how the builder looks while you work; the public portfolio still follows the saved portfolio appearance rules.</li>
                               <li>Use Help for focused guide topics, shortcuts, and a short description of the builder.</li>
                           </ol>
                           <p>If a command is disabled, select the project, section, or source file that the command needs first. The goal is to keep the work area calm while still making advanced actions available when the correct context exists.</p>
@@ -461,7 +462,7 @@
                           <p>The goal is to avoid hand-editing website code. You organize the project in the builder, save it, preview it, and let the parser produce the clean recruiter-facing version.</p>
                           <ol>
                               <li>New projects include only Overview by default.</li>
-                              <li>Every other section, such as Design, Simulation, Tests, Tools, PCB Builds, Documentation, References, Results, or Compile Code, must be added manually.</li>
+                              <li>Every other section, such as Design, Simulation, Tests, Tools, PCB Builds, Documentation, References, Results, or Digital, must be added manually.</li>
                               <li>Sections and subsections are nested manually. A section can contain subsections, and each subsection can contain its own child sections when the project needs that depth.</li>
                               <li>Every section and subsection uses the same workspace pattern: controls first, Overview first, files as simple rows, then child subsections as vertical expandable rows.</li>
                               <li>Expand a subsection row to view and edit that subsection in place. Its content, files, formulas, links, images, and child subsections stay inside that row so you can see exactly where the information lives.</li>
@@ -469,7 +470,7 @@
                               <li>Section chips stay in the top navigation band. Actions for the selected section stay on the far right of that same row, so the content area is reserved for text, files, images, and previews.</li>
                               <li>An overview appears automatically when it exists; it is not shown as a separate clickable Overview icon.</li>
                               <li>Project status is metadata. Right-click the project title and open Details to set Draft, In progress, Completed, or Archived, and to choose whether that status appears on the public portfolio.</li>
-                              <li>Right-click the project title or open the Compile Code Project menu to run the project health report. The report shows whether the preview is parsed, whether the overview exists, how many empty placeholders remain, how deep the section tree is, and how many source files or evidence files are attached.</li>
+                              <li>Right-click the project title or open the Digital Project menu to run the project health report. The report shows whether the preview is parsed, whether the overview exists, how many empty placeholders remain, how deep the section tree is, and how many source files or evidence files are attached.</li>
                               <li>Empty sections, empty subsections, and empty files do not render on the website.</li>
                           </ol>
                           <ul>
@@ -528,7 +529,7 @@
                               <li>Use Add mathematical formula only when you intentionally want a formula block.</li>
                               <li>Use Code block or Paste as code for C, C++, SystemVerilog, LTspice, Java, JavaScript, Python, and HTML snippets.</li>
                               <li>Choose Basic paste when you want the builder to clean extra trailing whitespace, or Keep source spacing when indentation is important.</li>
-                              <li>Add Code is for presentation snippets in the portfolio. Compile Code is a separate local workspace for buildable source files, nested folders, terminal output, and command execution.</li>
+                              <li>Add Code is for presentation snippets in the portfolio. Digital is a separate local workspace for buildable source files, nested folders, terminal output, and command execution.</li>
                               <li>Links in rich text open as websites on the portfolio unless you attach them as downloadable files.</li>
                               <li>PDFs, spreadsheets, code files, archives, and documents are saved as downloadable resources.</li>
                               <li>Image files can be visible on the website or hidden as downloadable evidence.</li>
@@ -544,14 +545,14 @@
                       </div>
                   </details>
                   <details class="builder-guide-section" data-guide-section="code compile projects terminal hdl scope">
-                      <summary><span class="guide-card-title">Compile Code Workspace</span><span class="guide-card-summary">Use the built-in IDE-style workspace for source files, folders, compiler output, terminal commands, and HDL scope viewing.</span></summary>
+                      <summary><span class="guide-card-title">Digital Workspace</span><span class="guide-card-summary">Use the built-in IDE-style workspace for source files, folders, compiler output, terminal commands, and HDL scope viewing.</span></summary>
                       <div>
-                          <p>Compile Code is for local engineering work inside a project. It is separate from Add Code, which is only for polished source snippets that should appear in the public portfolio. Compile Code can stay empty, but when you use it, treat it like a small project workspace.</p>
+                          <p>Digital is for local engineering work inside a project. It is separate from Add Code, which is only for polished source snippets that should appear in the public portfolio. Digital can stay empty, but when you use it, treat it like a small project workspace.</p>
                           <p>The left explorer holds folders and source files. Drag the vertical divider beside Solution Explorer when names need more room. Imported files and imported directories appear in the tree without opening editor tabs; click a file in the tree when you want to view or edit it. The editor opens closeable file views, and the bottom output area contains Console, Messages, Terminal, Scope, Syntax, and Input so build feedback, live syntax diagnostics, and run settings stay organized instead of mixing everything into one box.</p>
                           <ol>
                               <li>Right-click the workspace tree to add a source file, create a folder, import several files, import a directory, move selected files, delete a selected file or folder, or open that workspace location in Windows File Explorer. Compiler checks and tool installation live under the Tools menu, not in the right-click tree menu.</li>
                               <li>Use File, Open workspace in File Explorer to open the project compile folder, or File, Reveal active source in File Explorer to select the active file in normal Windows file tools.</li>
-                              <li>Use the Project menu inside Compile Code for project-level actions such as saving, previewing, cleaning empty project sections, or opening the append-code destination chooser.</li>
+                              <li>Use the Project menu inside Digital for project-level actions such as saving, previewing, cleaning empty project sections, or opening the append-code destination chooser.</li>
                               <li>Ctrl-click files in the Solution Explorer to select several files, then right-click one of the selected files and choose Delete selected or Move selected.</li>
                               <li>Right-click a folder to delete the folder and the files contained inside it after confirmation.</li>
                               <li>Use normal keyboard editing inside editable fields, including Ctrl+V paste, right-click Paste, Ctrl+Z undo, and Ctrl+Y redo. In the code editor, blank editor space is still treated as the active insertion area.</li>
@@ -587,7 +588,7 @@
                               <li>Scope appears for Verilog/SystemVerilog and shows VCD waveforms after simulation.</li>
                               <li>Click a scrollable area before using the mouse wheel there. Solution Explorer, file tabs, editor, Console, Messages, Terminal, Syntax, and Scope each keep their own scroll behavior.</li>
                               <li>In locked mode, Console, Messages, and Terminal use only the height their content needs so empty black space does not cover the workspace. Scope keeps a larger resizable viewport because waveforms need room.</li>
-                              <li>The blue status strip stays fixed at the bottom of the Compile Code workspace while the output panel is resized.</li>
+                              <li>The blue status strip stays fixed at the bottom of the Digital workspace while the output panel is resized.</li>
                               <li>Icarus Verilog and vvp are the required HDL simulator tools. Yosys is used for HDL synthesis when available. If Verilator, GTKWave, or Yosys are installed later, the builder detects them and reports the available HDL tooling clearly.</li>
                               <li>Successful compile and synthesis results are cached by source snapshot, selected top module, toolchain, flags, and workspace files, so repeated compile/run/synthesis cycles are faster when nothing important has changed.</li>
                           </ul>
@@ -754,7 +755,7 @@
                   <details class="builder-guide-section" data-guide-section="update troubleshooting preferences">
                       <summary><span class="guide-card-title">App Updates And Troubleshooting</span><span class="guide-card-summary">Update the installed app, avoid duplicate installs, switch viewing themes, and recover from stale windows.</span></summary>
                       <div>
-                          <p>Use Check updates to manually look for a newer builder. Updates come from GitHub Releases after a new installer is built. Use Preferences to select light or dark builder skins and choose the Compile Code appearance. Preference changes repaint the builder immediately, so you can test several skins before closing the dialog. Only Light - Default portfolio editing saves explicit text colors for the public website. Other light and dark skins are viewing modes: they keep text readable while you work, but saved website text colors normalize back to the default publish color unless the color was changed in the default light editor.</p>
+                          <p>Use Check updates to manually look for a newer builder. Updates come from GitHub Releases after a new installer is built. Use Preferences to select light or dark builder skins and choose the Digital appearance. Preference changes repaint the builder immediately, so you can test several skins before closing the dialog. Only Light - Default portfolio editing saves explicit text colors for the public website. Other light and dark skins are viewing modes: they keep text readable while you work, but saved website text colors normalize back to the default publish color unless the color was changed in the default light editor.</p>
                           <p>An update should behave like a repair of the existing app, not like a second installation. It should close the current builder, update the existing install location, and reopen the app with the new files.</p>
                           <ol>
                               <li>When an update is available, click Update.</li>
@@ -975,8 +976,9 @@
                   <aside class="analog-mixed-tool-rail" id="analog-mixed-tool-rail" aria-label="Analog/Mixed-Signal tool shortcuts"></aside>
                   <aside class="analog-mixed-library">
                       <div class="analog-mixed-pane-heading">
-                          <strong>Component Library</strong>
+                          <strong>Library</strong>
                           <small id="analog-mixed-library-count">0 parts</small>
+                          <button class="analog-mixed-pane-toggle" type="button" data-am-pane-toggle="library" title="Hide or show the component library" aria-label="Hide or show the component library">L</button>
                       </div>
                       <input class="analog-mixed-filter" id="analog-mixed-filter" type="search" placeholder="Search resistors, MOS, PLL, converter..." />
                       <div class="analog-mixed-library-list" id="analog-mixed-library-list"></div>
@@ -1022,6 +1024,7 @@
                       <div class="analog-mixed-pane-heading">
                           <strong>Inspector</strong>
                           <small id="analog-mixed-selected-label">No selection</small>
+                          <button class="analog-mixed-pane-toggle" type="button" data-am-pane-toggle="inspector" title="Hide or show the inspector" aria-label="Hide or show the inspector">I</button>
                       </div>
                       <div class="analog-mixed-inspector-body" id="analog-mixed-inspector-body"></div>
                   </aside>
@@ -1033,6 +1036,7 @@
               <footer class="analog-mixed-status" id="analog-mixed-status">Ready. Shortcuts: W wire, J junction, X no-connect, B probe, L label, N net, R resistor, C capacitor, S semiconductor, D diode, O optimize.</footer>
           </div>
       </dialog>
+      <div class="analog-mixed-context-menu" id="analog-mixed-context-menu" hidden></div>
 
       <dialog class="asset-dialog project-meta-dialog" id="project-meta-dialog">
           <div class="builder-guide-dialog-content project-meta-dialog-content">
@@ -1664,7 +1668,7 @@
                   </select>
               </label>
               <label>
-                  <span>Compile Code appearance</span>
+                  <span>Digital appearance</span>
                   <select id="preference-compile-theme">
                       <option value="dark-vs">Dark - Visual Studio blue</option>
                       <option value="dark-navy">Dark - Navy scope lab</option>
