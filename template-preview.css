@@ -15549,7 +15549,9 @@ body[data-builder-theme] .selection-text-preview {
   overflow: auto;
 }
 
-.analog-mixed-library-list button {
+.analog-mixed-library-list button,
+.analog-mixed-library-select,
+.analog-mixed-library-place {
   display: grid;
   grid-template-columns: 58px minmax(0, 1fr);
   align-items: center;
@@ -15559,6 +15561,47 @@ body[data-builder-theme] .selection-text-preview {
   padding: 7px 8px;
   border-radius: 4px;
   text-align: left;
+}
+
+.analog-mixed-library-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 28px;
+  gap: 4px;
+  align-items: stretch;
+  min-width: 0;
+  cursor: grab;
+}
+
+.analog-mixed-library-row:active {
+  cursor: grabbing;
+}
+
+.analog-mixed-library-select {
+  width: 100%;
+}
+
+.analog-mixed-library-place {
+  grid-template-columns: 1fr;
+  justify-items: center;
+  min-width: 28px;
+  min-height: 100%;
+  padding: 0;
+  color: #e0f7ff;
+  font-size: 0.78rem;
+  text-align: center;
+  background: #0b2942;
+}
+
+.analog-mixed-library-place:hover,
+.analog-mixed-library-row.is-placing .analog-mixed-library-place {
+  color: #04111d;
+  background: #7dd3fc;
+}
+
+.analog-mixed-library-row.is-selected .analog-mixed-library-select {
+  border-color: #38bdf8;
+  color: #04111d;
+  background: #7dd3fc;
 }
 
 .analog-mixed-library-symbol {
@@ -15740,6 +15783,95 @@ body[data-builder-theme] .selection-text-preview {
   background: #0e1d2f;
   font-size: 0.72rem;
   font-weight: 900;
+}
+
+.analog-mixed-ic-tool-strip {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 280px;
+  max-width: 100%;
+  align-items: stretch;
+  gap: 2px;
+  padding: 2px 4px;
+  overflow-x: auto;
+  border-left: 1px solid #1f3a54;
+  border-right: 1px solid #1f3a54;
+  background: #07111d;
+  scrollbar-width: thin;
+}
+
+.analog-mixed-ic-tool-label,
+.analog-mixed-ic-tool-selected {
+  display: inline-grid;
+  min-height: 24px;
+  align-items: center;
+  padding: 0 7px;
+  border: 1px solid #1f3a54;
+  color: #bae6fd;
+  background: #0b1b2b;
+  font-size: 0.62rem;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.analog-mixed-ic-tool-buttons,
+.analog-mixed-ic-layer-buttons {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+}
+
+.analog-mixed-ic-tool-strip button,
+.analog-mixed-ic-tool-strip select {
+  min-height: 24px;
+  height: 24px;
+  border: 1px solid #25435f;
+  border-radius: 0;
+  color: #e0f2fe;
+  background: #102235;
+  font-size: 0.62rem;
+  font-weight: 900;
+}
+
+.analog-mixed-ic-tool-strip button {
+  display: inline-flex;
+  min-width: 28px;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 0 5px;
+}
+
+.analog-mixed-ic-tool-strip button span {
+  color: #7dd3fc;
+  font-weight: 950;
+}
+
+.analog-mixed-ic-tool-strip button small {
+  font-size: 0.58rem;
+  font-weight: 850;
+}
+
+.analog-mixed-ic-tool-strip select {
+  width: 128px;
+  padding: 0 5px;
+}
+
+.analog-mixed-ic-tool-strip button:hover,
+.analog-mixed-ic-tool-strip button.is-active,
+.analog-mixed-ic-tool-strip select:focus {
+  border-color: #7dd3fc;
+  color: #04111d;
+  background: #7dd3fc;
+}
+
+.analog-mixed-ic-tool-strip button:hover span,
+.analog-mixed-ic-tool-strip button.is-active span {
+  color: #04111d;
+}
+
+.analog-mixed-ic-layer {
+  min-width: 36px !important;
 }
 
 .analog-mixed-canvas-shell {
@@ -16678,7 +16810,7 @@ body[data-builder-theme="dark"].template-preview-page .analog-mixed-launch {
   font-size: 0.7rem;
 }
 
-.analog-mixed-library-list button {
+.analog-mixed-library-select {
   grid-template-columns: 42px minmax(0, 1fr);
   min-height: 42px;
   gap: 6px;
@@ -16686,8 +16818,14 @@ body[data-builder-theme="dark"].template-preview-page .analog-mixed-launch {
   cursor: grab;
 }
 
-.analog-mixed-library-list button:active {
+.analog-mixed-library-select:active {
   cursor: grabbing;
+}
+
+.analog-mixed-library-place {
+  min-width: 26px;
+  min-height: 42px;
+  font-size: 0.72rem;
 }
 
 .analog-mixed-library-symbol {
@@ -16736,6 +16874,15 @@ body[data-builder-theme="dark"].template-preview-page .analog-mixed-launch {
   min-height: 28px;
   padding: 0 8px;
   font-size: 0.66rem;
+}
+
+.analog-mixed-stage-tabs .analog-mixed-ic-tool-strip button,
+.analog-mixed-stage-tabs .analog-mixed-ic-tool-strip select {
+  min-height: 24px !important;
+  height: 24px !important;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+  font-size: 0.62rem !important;
 }
 
 .am-wire {
