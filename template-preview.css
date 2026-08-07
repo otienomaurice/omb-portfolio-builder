@@ -16393,11 +16393,68 @@ body[data-builder-theme] .selection-text-preview {
   font-size: 12px !important;
 }
 
-.am-layout-guard-ring {
+.am-layout-guard-ring,
+.am-layout-guard-region rect {
   fill: none;
   stroke: #14b8a6;
   stroke-dasharray: 14 10;
   stroke-width: 7;
+}
+
+.am-layout-guard-region text {
+  fill: #5eead4;
+  font: 800 12px Consolas, "Courier New", monospace;
+  pointer-events: none;
+}
+
+.am-layout-match-region rect {
+  fill: rgba(250, 204, 21, 0.08);
+  stroke: #facc15;
+  stroke-width: 4;
+  stroke-dasharray: 8 8;
+}
+
+.am-layout-match-region text {
+  fill: #fef08a;
+  font: 850 12px Consolas, "Courier New", monospace;
+  pointer-events: none;
+}
+
+.am-layout-measure line {
+  stroke: #facc15;
+  stroke-width: 3;
+  stroke-dasharray: 7 5;
+}
+
+.am-layout-measure circle {
+  fill: #facc15;
+  stroke: #0f172a;
+  stroke-width: 2;
+}
+
+.am-layout-measure text {
+  fill: #fef3c7;
+  font: 900 13px Consolas, "Courier New", monospace;
+  paint-order: stroke;
+  stroke: #0f172a;
+  stroke-width: 3;
+}
+
+.am-layout-selection-handles {
+  pointer-events: none;
+}
+
+.am-layout-selection-handles > rect:first-child {
+  fill: none;
+  stroke: #facc15;
+  stroke-width: 2;
+  stroke-dasharray: 6 5;
+}
+
+.am-layout-selection-handles > rect:not(:first-child) {
+  fill: #facc15;
+  stroke: #0f172a;
+  stroke-width: 1.4;
 }
 
 .am-layout-drc circle {

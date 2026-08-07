@@ -632,6 +632,7 @@ const analogMixedIcWorkflowLanes = [
 let activeAnalogMixedProjectId = "";
 let analogMixedWireStart = null;
 let analogMixedWirePreview = null;
+let analogMixedLayoutMeasureStart = null;
 let analogMixedPointerState = null;
 let analogMixedDraggingLibraryId = "";
 let analogMixedRenderFrame = 0;
@@ -2580,6 +2581,7 @@ function analogMixedDefaultState() {
         powerIntegrityRuns: [],
         matchingGroups: [],
         guardRings: [],
+        measurements: [],
         artifacts: [],
         lastBackendRun: null
       },
@@ -3274,6 +3276,15 @@ function analogMixedNormalizeIcLayout(workspace = {}) {
   layoutData.powerIntegrityRuns = Array.isArray(layoutData.powerIntegrityRuns) ? layoutData.powerIntegrityRuns : [];
   layoutData.matchingGroups = Array.isArray(layoutData.matchingGroups) ? layoutData.matchingGroups : [];
   layoutData.guardRings = Array.isArray(layoutData.guardRings) ? layoutData.guardRings : [];
+  layoutData.measurements = Array.isArray(layoutData.measurements) ? layoutData.measurements.map((item, index) => ({
+    id: String(item.id || `measure-${index + 1}`),
+    label: String(item.label || `M${index + 1}`),
+    layer: analogMixedIcLayoutLayers.some((layer) => layer.id === item.layer) ? item.layer : layoutData.activeLayer,
+    x1: Number(item.x1) || 120,
+    y1: Number(item.y1) || 120,
+    x2: Number(item.x2) || 260,
+    y2: Number(item.y2) || 120
+  })) : [];
   analogMixedNormalizeIcDesign(workspace, layoutData);
   workspace.stageData["ic-layout"] = layoutData;
   return layoutData;
@@ -3536,6 +3547,7 @@ function analogMixedAbortActiveCommand(message = "Active AM command canceled.") 
   const hadCommand = Boolean(analogMixedWireStart || analogMixedWirePreview || analogMixedPointerState || !["select", "pan"].includes(workspace.activeTool));
   analogMixedWireStart = null;
   analogMixedWirePreview = null;
+  analogMixedLayoutMeasureStart = null;
   analogMixedPointerState = null;
   analogMixedDraggingLibraryId = "";
   workspace.activeTool = "select";
@@ -3581,15 +3593,12 @@ function analogMixedSetIcLayoutTool(toolId = "select") {
   workspace.stageData["ic-layout"] = layoutData;
   analogMixedWireStart = null;
   analogMixedWirePreview = null;
+  analogMixedLayoutMeasureStart = null;
   if (tool.id === "device") {
     analogMixedArmLibraryPlacement(workspace.selectedLibraryId);
     return;
   }
   workspace.activeTool = tool.id === "route" ? "wire" : "select";
-  if (tool.id === "via") {
-    analogMixedRecordLayoutAction("layout-contact");
-    return;
-  }
   if (tool.id === "measure") {
     workspace.icLayoutPlan = [
       `Measurement cursor armed on ${analogMixedLayoutLayerById(layoutData.activeLayer).label}.`,
@@ -3602,19 +3611,96 @@ function analogMixedSetIcLayoutTool(toolId = "select") {
   analogMixedSetStatus(`IC layout tool: ${tool.label}.`);
 }
 
-function analogMixedSetIcWorkflowLane(laneId = "layout-suite") {
+function analogMixedMarkIcWorkflowLane(workspace, layoutData, lane, detail = "", status = "updated") {
+  const now = new Date().toLocaleString();
+  layoutData.workflowLanes = (Array.isArray(layoutData.workflowLanes) && layoutData.workflowLanes.length
+    ? layoutData.workflowLanes
+    : analogMixedIcWorkflowLanes.map((item) => ({ ...item, status: "available" }))
+  ).map((item) => item.id === lane.id
+    ? { ...item, status, lastRun: now, detail: detail || lane.summary }
+    : item
+  );
+  layoutData.reports = Array.isArray(layoutData.reports) ? layoutData.reports : [];
+  layoutData.reports.unshift({
+    id: `workflow-${lane.id}-${Date.now()}`,
+    action: `workflow:${lane.id}`,
+    createdAt: now,
+    title: `${lane.label} workflow`,
+    text: detail || lane.summary
+  });
+  layoutData.reports = layoutData.reports.slice(0, 24);
+}
+
+async function analogMixedSetIcWorkflowLane(laneId = "layout-suite") {
   const project = activeAnalogMixedProject();
   if (!project) return;
   const workspace = normalizeAnalogMixedWorkspace(project);
   const layoutData = analogMixedNormalizeIcLayout(workspace);
   const lane = analogMixedIcWorkflowLanes.find((item) => item.id === laneId) || analogMixedIcWorkflowLanes[1];
   layoutData.activeWorkflowLane = lane.id;
+  analogMixedMarkIcWorkflowLane(workspace, layoutData, lane, lane.summary, "selected");
   workspace.stageData["ic-layout"] = layoutData;
   workspace.icLayoutPlan = [
     `${lane.label} lane selected.`,
     lane.summary,
     workspace.icLayoutPlan || workspace.layoutPlan || ""
   ].filter(Boolean).join("\n\n");
+  if (lane.id === "schematic-editor") {
+    workspace.activeStage = "schematic";
+    workspace.activePanel = "netlist";
+    markDraftNeedsSave();
+    scheduleAutosave();
+    renderAnalogMixedWorkspace();
+    await analogMixedGenerateNetlistFromBackend();
+    analogMixedSetStatus("Schematic Editor lane generated the schematic netlist view.");
+    return;
+  }
+  if (lane.id === "layout-suite") {
+    workspace.activeStage = "ic-layout";
+    workspace.activePanel = "layout";
+    markDraftNeedsSave();
+    scheduleAutosave();
+    renderAnalogMixedWorkspace();
+    await analogMixedRecordLayoutAction("layout-sync");
+    analogMixedSetStatus("Layout Suite lane synchronized devices, routes, and layout reports.");
+    return;
+  }
+  if (lane.id === "ade-suite") {
+    analogMixedPrepareSpiceSimulationPlan("corners");
+    analogMixedSetStatus("ADE lane opened the simulation cockpit and created a corner-aware analysis setup.");
+    return;
+  }
+  if (lane.id === "device-router") {
+    layoutData.activeLayoutTool = "route";
+    workspace.activeTool = "wire";
+    workspace.activeStage = "ic-layout";
+    workspace.activePanel = "layout";
+    workspace.stageData["ic-layout"] = layoutData;
+    workspace.icLayoutPlan = [
+      "Device Router lane armed: click in the layout canvas to start a layer-aware orthogonal route. Right-click aborts the active route.",
+      workspace.icLayoutPlan || workspace.layoutPlan || ""
+    ].filter(Boolean).join("\n\n");
+    markDraftNeedsSave();
+    scheduleAutosave();
+    renderAnalogMixedWorkspace();
+    analogMixedSetStatus("Device Router lane armed the IC route tool.");
+    return;
+  }
+  if (lane.id === "spectre-platform") {
+    await analogMixedRunSpiceSimulation("op");
+    analogMixedSetStatus("Spectre-style lane requested an operating-point SPICE run.");
+    return;
+  }
+  if (lane.id === "quantus-extraction") {
+    await analogMixedRecordLayoutAction("ic-pex");
+    analogMixedSetStatus("Quantus-style lane created a parasitic extraction handoff.");
+    return;
+  }
+  if (lane.id === "voltus-xfi") {
+    await analogMixedRecordLayoutAction("ic-power");
+    analogMixedSetStatus("Voltus-XFi-style lane created a power-integrity planning run.");
+    return;
+  }
   markDraftNeedsSave();
   scheduleAutosave();
   renderAnalogMixedWorkspace();
@@ -3750,6 +3836,99 @@ function analogMixedAddIcLayoutContact(project, point = {}) {
   scheduleAutosave();
   renderAnalogMixedWorkspace();
   analogMixedSetStatus(`Placed contact/via on ${analogMixedLayoutLayerById(layoutData.activeLayer).label} at ${x}, ${y}.`);
+}
+
+function analogMixedSelectedLayoutObject(workspace = null) {
+  const activeWorkspace = workspace || normalizeAnalogMixedWorkspace(activeAnalogMixedProject());
+  if (!activeWorkspace) return null;
+  const layoutData = analogMixedNormalizeIcLayout(activeWorkspace);
+  return layoutData.layoutObjects.find((item) => item.sourceComponentId && item.sourceComponentId === activeWorkspace.selectedComponentId) || null;
+}
+
+function analogMixedLayoutRegionFromPoint(workspace = {}, point = {}, options = {}) {
+  const layoutObject = analogMixedSelectedLayoutObject(workspace);
+  if (layoutObject) {
+    const pad = Number(options.pad) || 34;
+    return {
+      x: Math.max(20, Number(layoutObject.x) - pad),
+      y: Math.max(20, Number(layoutObject.y) - pad),
+      width: Math.max(96, Number(layoutObject.width) + pad * 2),
+      height: Math.max(70, Number(layoutObject.height) + pad * 2),
+      sourceComponentId: layoutObject.sourceComponentId,
+      sourceLayoutObjectId: layoutObject.id
+    };
+  }
+  const width = Number(options.width) || 260;
+  const height = Number(options.height) || 150;
+  return {
+    x: Math.max(20, Math.min(1320 - width, (Number(point.x) || 220) - width / 2)),
+    y: Math.max(20, Math.min(760 - height, (Number(point.y) || 220) - height / 2)),
+    width,
+    height,
+    sourceComponentId: "",
+    sourceLayoutObjectId: ""
+  };
+}
+
+function analogMixedAddIcGuardRing(project, point = {}) {
+  const workspace = normalizeAnalogMixedWorkspace(project);
+  const layoutData = analogMixedNormalizeIcLayout(workspace);
+  const region = analogMixedLayoutRegionFromPoint(workspace, point, { pad: 48, width: 360, height: 210 });
+  const guard = {
+    id: `guard-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    ...region,
+    layer: "tap",
+    purpose: region.sourceLayoutObjectId ? "guard ring around selected IC device" : "guard ring planning region"
+  };
+  layoutData.guardRings.push(guard);
+  workspace.stageData["ic-layout"] = layoutData;
+  markDraftNeedsSave();
+  scheduleAutosave();
+  renderAnalogMixedWorkspace();
+  analogMixedSetStatus(`Guard ring added at ${Math.round(guard.x)}, ${Math.round(guard.y)}.`);
+}
+
+function analogMixedAddIcMatchingGroup(project, point = {}) {
+  const workspace = normalizeAnalogMixedWorkspace(project);
+  const layoutData = analogMixedNormalizeIcLayout(workspace);
+  const region = analogMixedLayoutRegionFromPoint(workspace, point, { pad: 62, width: 430, height: 230 });
+  const group = {
+    id: `match-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    createdAt: new Date().toLocaleString(),
+    ...region,
+    label: `MATCH${layoutData.matchingGroups.length + 1}`,
+    note: region.sourceLayoutObjectId ? "Matching group around selected layout device." : "Common-centroid/interdigitated matching planning group."
+  };
+  layoutData.matchingGroups.push(group);
+  layoutData.constraintGroups = analogMixedBuildIcConstraintGroups(workspace, layoutData);
+  workspace.stageData["ic-layout"] = layoutData;
+  markDraftNeedsSave();
+  scheduleAutosave();
+  renderAnalogMixedWorkspace();
+  analogMixedSetStatus(`${group.label} matching region added.`);
+}
+
+function analogMixedAddIcMeasurement(project, start = {}, end = {}) {
+  const workspace = normalizeAnalogMixedWorkspace(project);
+  const layoutData = analogMixedNormalizeIcLayout(workspace);
+  const dx = (Number(end.x) || 0) - (Number(start.x) || 0);
+  const dy = (Number(end.y) || 0) - (Number(start.y) || 0);
+  const distance = Math.round(Math.sqrt(dx * dx + dy * dy));
+  const measurement = {
+    id: `measure-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    label: `${distance} dbu`,
+    layer: layoutData.activeLayer,
+    x1: Math.max(0, Math.min(1400, Number(start.x) || 0)),
+    y1: Math.max(0, Math.min(820, Number(start.y) || 0)),
+    x2: Math.max(0, Math.min(1400, Number(end.x) || 0)),
+    y2: Math.max(0, Math.min(820, Number(end.y) || 0))
+  };
+  layoutData.measurements.push(measurement);
+  workspace.stageData["ic-layout"] = layoutData;
+  markDraftNeedsSave();
+  scheduleAutosave();
+  renderAnalogMixedWorkspace();
+  analogMixedSetStatus(`Measured ${measurement.label} on ${analogMixedLayoutLayerById(measurement.layer).label}.`);
 }
 
 function analogMixedAddIcLayoutRoute(project, start = {}, end = {}) {
@@ -3892,6 +4071,23 @@ function analogMixedShowContextMenu(event, context = {}) {
       ["component-delete", "Delete component"],
       ["component-copy-ref", "Copy reference"]
     );
+  } else if (context.type === "layout-object") {
+    items.push(
+      ["layout-edit", "Edit device parameters"],
+      ["layout-duplicate", "Duplicate layout device"],
+      ["layout-guard-selected", "Add guard ring"],
+      ["layout-match-selected", "Add matching group"],
+      ["layout-measure-tool", "Measure from here"],
+      ["layout-copy-cell", "Copy PDK cell"],
+      ["layout-delete", "Delete layout device"]
+    );
+  } else if (context.type === "layout-route") {
+    items.push(
+      ["layout-route-copy-name", "Copy route name"],
+      ["layout-route-delete", "Delete route"],
+      ["layout-tool-route", "Continue routing"],
+      ["layout-tool-via", "Place via"]
+    );
   } else {
     items.push(
       ["select-tool", "Select tool"],
@@ -3964,15 +4160,81 @@ async function analogMixedHandleContextAction(action = "") {
     }
     return;
   }
-  if (action === "select-tool") return analogMixedSetTool("select");
-  if (action === "wire-tool") return analogMixedSetTool("wire");
-  if (action === "place-selected") {
-    workspace.activeTool = analogMixedLibraryItem(workspace.selectedLibraryId).tool || "macro";
+  if (action === "layout-edit") {
+    workspace.activeStage = "ic-layout";
+    workspace.inspectorCollapsed = false;
+    renderAnalogMixedWorkspace();
+    analogMixedSetStatus("IC layout device inspector opened.");
+    return;
+  }
+  if (action === "layout-duplicate") {
+    const selected = analogMixedSelectedLayoutObject(workspace);
+    if (!selected?.sourceComponentId) return;
+    const component = workspace.components.find((item) => item.id === selected.sourceComponentId);
+    if (!component) return;
+    analogMixedAddIcLayoutDevice(project, component.type, { x: selected.x + 70, y: selected.y + 50 });
+    return;
+  }
+  if (action === "layout-guard-selected") return analogMixedAddIcGuardRing(project, {});
+  if (action === "layout-match-selected") return analogMixedAddIcMatchingGroup(project, {});
+  if (action === "layout-measure-tool") return analogMixedSetIcLayoutTool("measure");
+  if (action === "layout-copy-cell") {
+    const selected = analogMixedSelectedLayoutObject(workspace);
+    if (!selected) return;
+    try {
+      await navigator.clipboard.writeText(selected.pdkCell || selected.type || selected.label || "");
+      analogMixedSetStatus("PDK cell copied.");
+    } catch {
+      analogMixedSetStatus("PDK cell could not be copied.");
+    }
+    return;
+  }
+  if (action === "layout-delete") {
+    const selected = analogMixedSelectedLayoutObject(workspace);
+    if (!selected) return;
+    const layoutData = analogMixedNormalizeIcLayout(workspace);
+    layoutData.layoutObjects = layoutData.layoutObjects.filter((item) => item.id !== selected.id);
+    if (selected.sourceComponentId) {
+      workspace.components = workspace.components.filter((item) => item.id !== selected.sourceComponentId);
+      workspace.selectedComponentId = "";
+    }
+    workspace.stageData["ic-layout"] = layoutData;
     markDraftNeedsSave();
     scheduleAutosave();
     renderAnalogMixedWorkspace();
-    analogMixedSetStatus(`${analogMixedLibraryItem(workspace.selectedLibraryId).label} ready to place.`);
+    analogMixedSetStatus("IC layout device deleted.");
     return;
+  }
+  if (action === "layout-route-copy-name") {
+    const routeId = analogMixedContextMenu?.dataset.contextId || "";
+    const layoutData = analogMixedNormalizeIcLayout(workspace);
+    const route = layoutData.layoutRoutes.find((item) => item.id === routeId);
+    if (!route) return;
+    try {
+      await navigator.clipboard.writeText(route.name || route.id || "");
+      analogMixedSetStatus("IC route name copied.");
+    } catch {
+      analogMixedSetStatus("IC route name could not be copied.");
+    }
+    return;
+  }
+  if (action === "layout-route-delete") {
+    const routeId = analogMixedContextMenu?.dataset.contextId || "";
+    const layoutData = analogMixedNormalizeIcLayout(workspace);
+    layoutData.layoutRoutes = layoutData.layoutRoutes.filter((item) => item.id !== routeId);
+    workspace.stageData["ic-layout"] = layoutData;
+    markDraftNeedsSave();
+    scheduleAutosave();
+    renderAnalogMixedWorkspace();
+    analogMixedSetStatus("IC layout route deleted.");
+    return;
+  }
+  if (action === "layout-tool-route") return analogMixedSetIcLayoutTool("route");
+  if (action === "layout-tool-via") return analogMixedSetIcLayoutTool("via");
+  if (action === "select-tool") return analogMixedSetTool("select");
+  if (action === "wire-tool") return analogMixedSetTool("wire");
+  if (action === "place-selected") {
+    return analogMixedArmLibraryPlacement(workspace.selectedLibraryId);
   }
   if (action === "add-label") return analogMixedSetTool("label");
   if (action === "add-net") return analogMixedSetTool("net");
@@ -4003,6 +4265,11 @@ function analogMixedDeleteSelected() {
     return;
   }
   if (!workspace.selectedComponentId) return;
+  if (workspace.stageData?.["ic-layout"]) {
+    const layoutData = analogMixedNormalizeIcLayout(workspace);
+    layoutData.layoutObjects = layoutData.layoutObjects.filter((item) => item.sourceComponentId !== workspace.selectedComponentId);
+    workspace.stageData["ic-layout"] = layoutData;
+  }
   workspace.components = workspace.components.filter((component) => component.id !== workspace.selectedComponentId);
   workspace.selectedComponentId = "";
   markDraftNeedsSave();
@@ -4819,11 +5086,11 @@ async function analogMixedRecordLayoutAction(action = "") {
     });
     workspace.icLayoutPlan = [`Contact/via route stub added on ${analogMixedLayoutLayerById(layoutData.activeLayer).label} at ${now}.`, workspace.icLayoutPlan || workspace.layoutPlan || ""].filter(Boolean).join("\n\n");
   } else if (action === "layout-guard") {
-    layoutData.guardRings.push({ id: `guard-${Date.now()}`, x: 110, y: 110, width: 860, height: 420, layer: "tap", purpose: "guard ring around sensitive analog devices" });
-    workspace.icLayoutPlan = [`Guard-ring planning region added at ${now}.`, workspace.icLayoutPlan || workspace.layoutPlan || ""].filter(Boolean).join("\n\n");
+    analogMixedAddIcGuardRing(project, {});
+    return;
   } else if (action === "matching") {
-    layoutData.matchingGroups.push({ id: `match-${Date.now()}`, createdAt: now, note: "Plan common-centroid or interdigitated placement for selected devices." });
-    workspace.icLayoutPlan = [`Matching group prepared at ${now}. Use it for current mirrors, differential pairs, resistor ladders, or capacitor arrays.`, workspace.icLayoutPlan || workspace.layoutPlan || ""].filter(Boolean).join("\n\n");
+    analogMixedAddIcMatchingGroup(project, {});
+    return;
   } else if (action === "extract") {
     layoutData.extractionRuns.unshift({ id: `extract-${Date.now()}`, createdAt: now, status: "planned", pdk: layoutData.pdk });
     workspace.icLayoutPlan = [`Extraction/PEX run planned at ${now}.`, workspace.icLayoutPlan || workspace.layoutPlan || ""].filter(Boolean).join("\n\n");
@@ -5505,6 +5772,65 @@ function analogMixedLayoutRouteMarkup(route = {}) {
   </g>`;
 }
 
+function analogMixedGuardRingMarkup(ring = {}, index = 0) {
+  const x = Number(ring.x) || 120;
+  const y = Number(ring.y) || 120;
+  const width = Number(ring.width) || 320;
+  const height = Number(ring.height) || 190;
+  return `
+    <g class="am-layout-guard-region" data-am-layout-guard="${escapeHtml(ring.id || `guard-${index}`)}">
+      <rect x="${x}" y="${y}" width="${width}" height="${height}" rx="12" />
+      <text x="${x + 12}" y="${y + 24}">${escapeHtml(ring.purpose || "guard ring")}</text>
+    </g>
+  `;
+}
+
+function analogMixedMatchingGroupMarkup(group = {}, index = 0) {
+  const x = Number(group.x) || 160;
+  const y = Number(group.y) || 160;
+  const width = Number(group.width) || 360;
+  const height = Number(group.height) || 210;
+  return `
+    <g class="am-layout-match-region" data-am-layout-match="${escapeHtml(group.id || `match-${index}`)}">
+      <rect x="${x}" y="${y}" width="${width}" height="${height}" rx="10" />
+      <text x="${x + 12}" y="${y + 24}">${escapeHtml(group.label || `MATCH${index + 1}`)}</text>
+      <text x="${x + 12}" y="${y + height - 12}">${escapeHtml(group.note || "matching group")}</text>
+    </g>
+  `;
+}
+
+function analogMixedMeasurementMarkup(item = {}, index = 0) {
+  const x1 = Number(item.x1) || 0;
+  const y1 = Number(item.y1) || 0;
+  const x2 = Number(item.x2) || x1 + 120;
+  const y2 = Number(item.y2) || y1;
+  const labelX = Math.round((x1 + x2) / 2) + 8;
+  const labelY = Math.round((y1 + y2) / 2) - 8;
+  return `
+    <g class="am-layout-measure" data-am-layout-measure="${escapeHtml(item.id || `measure-${index}`)}">
+      <line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" />
+      <circle cx="${x1}" cy="${y1}" r="5" />
+      <circle cx="${x2}" cy="${y2}" r="5" />
+      <text x="${labelX}" y="${labelY}">${escapeHtml(item.label || "measurement")}</text>
+    </g>
+  `;
+}
+
+function analogMixedLayoutSelectionHandlesMarkup(layoutObject = null) {
+  if (!layoutObject) return "";
+  const x = Number(layoutObject.x) || 0;
+  const y = Number(layoutObject.y) || 0;
+  const width = Number(layoutObject.width) || 120;
+  const height = Number(layoutObject.height) || 80;
+  const handles = [
+    [x, y],
+    [x + width, y],
+    [x + width, y + height],
+    [x, y + height]
+  ].map(([hx, hy]) => `<rect x="${hx - 4}" y="${hy - 4}" width="8" height="8" rx="1" />`).join("");
+  return `<g class="am-layout-selection-handles"><rect x="${x - 8}" y="${y - 8}" width="${width + 16}" height="${height + 16}" rx="8" />${handles}</g>`;
+}
+
 function analogMixedPcbFootprintMarkup(footprint = {}, index = 0) {
   const layer = analogMixedPcbLayerById(footprint.layer);
   const x = Number(footprint.x) || 90 + (index % 5) * 190;
@@ -5604,7 +5930,11 @@ function analogMixedIcLayoutStageMarkup(workspace, stage, domain) {
   const routePreview = analogMixedWireStart && analogMixedWirePreview && workspace.activeTool === "wire"
     ? `<g class="am-layout-route am-layout-route-preview"><polyline points="${analogMixedPointsAttribute(analogMixedOrthogonalWirePoints(analogMixedWireStart, analogMixedWirePreview))}" /><text x="${analogMixedWireStart.x + 10}" y="${analogMixedWireStart.y - 10}">route start</text></g>`
     : "";
-  const guardRings = (layoutData.guardRings || []).map((ring) => `<rect class="am-layout-guard-ring" x="${ring.x || 120}" y="${ring.y || 120}" width="${ring.width || 320}" height="${ring.height || 190}" rx="12" />`).join("");
+  const guardRings = (layoutData.guardRings || []).map(analogMixedGuardRingMarkup).join("");
+  const matchingGroups = (layoutData.matchingGroups || []).map(analogMixedMatchingGroupMarkup).join("");
+  const measurements = (layoutData.measurements || []).map(analogMixedMeasurementMarkup).join("");
+  const selectedLayoutObject = (layoutData.layoutObjects || []).find((item) => item.sourceComponentId && item.sourceComponentId === workspace.selectedComponentId);
+  const selectionHandles = analogMixedLayoutSelectionHandlesMarkup(selectedLayoutObject);
   const objects = (layoutData.layoutObjects || []).map((object, index) => analogMixedLayoutObjectMarkup(object, index, workspace.selectedComponentId)).join("");
   const drc = (layoutData.drcMarkers || []).map((marker) => `<g class="am-layout-drc"><circle cx="${marker.x || 100}" cy="${marker.y || 100}" r="11" /><text x="${(marker.x || 100) + 16}" y="${(marker.y || 100) + 5}">${escapeHtml(marker.message || marker.severity || "DRC")}</text></g>`).join("");
   const empty = layoutData.layoutObjects?.length ? "" : `<g class="am-empty-hint"><rect x="360" y="300" width="690" height="136" rx="12" /><text x="400" y="352">No IC layout devices yet</text><text x="400" y="390">Place schematic devices, then click Sync or Virtuoso-style IC flow.</text></g>`;
@@ -5627,9 +5957,12 @@ function analogMixedIcLayoutStageMarkup(workspace, stage, domain) {
       <text x="92" y="128">${escapeHtml(workflowLane.summary)}</text>
     </g>
     ${guardRings}
+    ${matchingGroups}
     ${routes}
     ${routePreview}
     ${objects}
+    ${selectionHandles}
+    ${measurements}
     ${drc}
     ${empty}
     <g class="am-layout-sidebar">
@@ -5641,13 +5974,15 @@ function analogMixedIcLayoutStageMarkup(workspace, stage, domain) {
       <text x="1100" y="248">Sizing rows: ${layoutData.sizingTable.length}</text>
       <text x="1100" y="274">Corners: ${layoutData.cornerSetups.length}</text>
       <text x="1100" y="300">Signoff: ${signoffReady}/${signoffTotal}</text>
-      <rect x="1078" y="348" width="238" height="174" rx="8" />
+      <rect x="1078" y="348" width="238" height="228" rx="8" />
       <text x="1100" y="378">Layout status</text>
       <text x="1100" y="406">Objects: ${layoutData.layoutObjects.length}</text>
       <text x="1100" y="432">Routes: ${layoutData.layoutRoutes.length}</text>
       <text x="1100" y="458">Layer: ${escapeHtml(analogMixedLayoutLayerById(layoutData.activeLayer).label)}</text>
-      <text x="1100" y="484">Constraints: ${layoutData.constraintGroups.length}</text>
-      <text x="1100" y="510">${escapeHtml(recentReport ? recentReport.title || recentReport.action || "report ready" : "No report yet")}</text>
+      <text x="1100" y="484">Guard rings: ${layoutData.guardRings.length}</text>
+      <text x="1100" y="510">Match groups: ${layoutData.matchingGroups.length}</text>
+      <text x="1100" y="536">Measurements: ${layoutData.measurements.length}</text>
+      <text x="1100" y="562">${escapeHtml(recentReport ? recentReport.title || recentReport.action || "report ready" : "No report yet")}</text>
     </g>
   `;
 }
@@ -6181,10 +6516,14 @@ function analogMixedOutputPanel(workspace) {
     const icFlow = icLayout.virtuoso;
     const backend = icLayout.lastBackendRun;
     const intent = icLayout.designIntent || analogMixedBuildIcDesignIntent(workspace, icLayout);
+    const workflowLane = analogMixedIcWorkflowLanes.find((lane) => lane.id === icLayout.activeWorkflowLane) || analogMixedIcWorkflowLanes[1];
+    const workflowStatus = (icLayout.workflowLanes || []).find((lane) => lane.id === workflowLane.id);
     const signoffReady = (icLayout.signoffItems || []).filter((item) => item.status === "ready").length;
     const extras = [
       [
         `IC layout cell/view: ${icLayout.cellName} / ${icLayout.viewName}`,
+        `Workflow lane: ${workflowLane.label}${workflowStatus?.status ? ` (${workflowStatus.status})` : ""}`,
+        workflowStatus?.lastRun ? `Workflow last run: ${workflowStatus.lastRun}` : "",
         `PDK: ${icLayout.pdk || workspace.activePdk || "generic"}`,
         `Topology: ${intent.topology || "not set"}`,
         `Supply: ${intent.supply || "not set"}`,
@@ -6195,12 +6534,14 @@ function analogMixedOutputPanel(workspace) {
         `Layout routes: ${icLayout.layoutRoutes.length}`,
         `Guard rings: ${icLayout.guardRings.length}`,
         `Matching groups: ${icLayout.matchingGroups.length}`,
+        `Measurements: ${icLayout.measurements.length}`,
         `Constraint groups: ${icLayout.constraintGroups.length}`,
         `Sizing rows: ${icLayout.sizingTable.length}`,
         `PVT corners: ${icLayout.cornerSetups.length}`,
         `Signoff ready: ${signoffReady}/${icLayout.signoffItems.length || 1}`,
         icFlow ? `Virtuoso-style views: ${icFlow.views.join(", ")}` : "",
         icFlow ? `Virtuoso-style checks: ${icFlow.checks.join(", ")}` : "",
+        `Power integrity runs: ${(icLayout.powerIntegrityRuns || []).length}`,
         backend ? `Last IC backend action: ${backend.action || "layout"} (${backend.ok ? "ok" : "failed"})` : "",
         backend?.artifactRoot ? `IC artifact folder: ${backend.artifactRoot}` : ""
       ].filter(Boolean).join("\n")
@@ -6506,22 +6847,35 @@ function handleAnalogMixedCanvasClick(event) {
   if (!project) return;
   const workspace = normalizeAnalogMixedWorkspace(project);
   if (workspace.activeStage === "ic-layout") {
+    const layoutData = analogMixedNormalizeIcLayout(workspace);
     const layoutTarget = event.target.closest?.("[data-am-layout-object]");
-    if (layoutTarget) {
-      const layoutData = analogMixedNormalizeIcLayout(workspace);
+    if (layoutTarget && layoutData.activeLayoutTool === "select" && workspace.activeTool === "select") {
       const layoutObject = layoutData.layoutObjects.find((item) => item.id === layoutTarget.dataset.amLayoutObject);
       if (layoutObject?.sourceComponentId) analogMixedSelectComponent(project, layoutObject.sourceComponentId);
       analogMixedSetStatus(`${layoutObject?.label || "Layout object"} selected in IC layout.`);
       return;
     }
     const point = analogMixedPointFromEvent(event, workspace);
-    const layoutData = analogMixedNormalizeIcLayout(workspace);
     if (layoutData.activeLayoutTool === "via") {
       analogMixedAddIcLayoutContact(project, point);
       return;
     }
+    if (layoutData.activeLayoutTool === "guard") {
+      analogMixedAddIcGuardRing(project, point);
+      return;
+    }
+    if (layoutData.activeLayoutTool === "match") {
+      analogMixedAddIcMatchingGroup(project, point);
+      return;
+    }
     if (layoutData.activeLayoutTool === "measure") {
-      analogMixedSetStatus(`IC measure: ${analogMixedLayoutLayerById(layoutData.activeLayer).label} at x=${point.x}, y=${point.y}.`);
+      if (!analogMixedLayoutMeasureStart) {
+        analogMixedLayoutMeasureStart = point;
+        analogMixedSetStatus(`Measure start set at x=${point.x}, y=${point.y}. Click the end point.`);
+      } else {
+        analogMixedAddIcMeasurement(project, analogMixedLayoutMeasureStart, point);
+        analogMixedLayoutMeasureStart = null;
+      }
       return;
     }
     if (workspace.activeTool === "wire") {
@@ -6590,6 +6944,11 @@ function handleAnalogMixedCanvasClick(event) {
     analogMixedSetStatus("Pan tool selected. Drag the canvas to move the view.");
     return;
   }
+  if (workspace.activeTool === "optimize") {
+    analogMixedRunCalculations();
+    analogMixedSetStatus("Optimization/math workspace refreshed from the active AM design.");
+    return;
+  }
   if (workspace.activeTool === "select") {
     workspace.selectedComponentId = "";
     workspace.selectedWireId = "";
@@ -6634,7 +6993,7 @@ function handleAnalogMixedPointerDown(event) {
     event.preventDefault();
     return;
   }
-  if (workspace.activeStage === "ic-layout" && layoutTarget && workspace.activeTool === "select") {
+  if (workspace.activeStage === "ic-layout" && layoutTarget && workspace.activeTool === "select" && analogMixedNormalizeIcLayout(workspace).activeLayoutTool === "select") {
     const layoutData = analogMixedNormalizeIcLayout(workspace);
     const layoutObject = layoutData.layoutObjects.find((item) => item.id === layoutTarget.dataset.amLayoutObject);
     if (!layoutObject) return;
@@ -26715,6 +27074,7 @@ analogMixedDialog?.addEventListener("close", () => {
   document.body.classList.remove("analog-mixed-open");
   analogMixedWireStart = null;
   analogMixedWirePreview = null;
+  analogMixedLayoutMeasureStart = null;
   analogMixedHideContextMenu();
 });
 analogMixedSave?.addEventListener("click", () => {
@@ -26815,6 +27175,7 @@ analogMixedCanvas?.addEventListener("contextmenu", (event) => {
   }
   const wireTarget = event.target.closest?.("[data-am-wire]");
   const componentTarget = event.target.closest?.("[data-am-component]");
+  const layoutRouteTarget = event.target.closest?.("[data-am-layout-route]");
   const layoutTarget = event.target.closest?.("[data-am-layout-object]");
   event.preventDefault();
   if (wireTarget) {
@@ -26831,6 +27192,10 @@ analogMixedCanvas?.addEventListener("contextmenu", (event) => {
     analogMixedShowContextMenu(event, { type: "component", id: workspace.selectedComponentId });
     return;
   }
+  if (layoutRouteTarget) {
+    analogMixedShowContextMenu(event, { type: "layout-route", id: layoutRouteTarget.dataset.amLayoutRoute || "" });
+    return;
+  }
   if (layoutTarget) {
     const layoutData = analogMixedNormalizeIcLayout(workspace);
     const layoutObject = layoutData.layoutObjects.find((item) => item.id === layoutTarget.dataset.amLayoutObject);
@@ -26839,7 +27204,7 @@ analogMixedCanvas?.addEventListener("contextmenu", (event) => {
       workspace.selectedWireId = "";
     }
     renderAnalogMixedWorkspace();
-    analogMixedShowContextMenu(event, { type: "component", id: workspace.selectedComponentId });
+    analogMixedShowContextMenu(event, { type: "layout-object", id: layoutObject?.id || "" });
     return;
   }
   analogMixedShowContextMenu(event, { type: "canvas" });
@@ -27045,9 +27410,9 @@ analogMixedDialog?.addEventListener("input", (event) => {
     scheduleAutosave();
   }
 });
-analogMixedDialog?.addEventListener("change", (event) => {
+analogMixedDialog?.addEventListener("change", async (event) => {
   if (event.target.dataset.amIcWorkflowLane !== undefined) {
-    analogMixedSetIcWorkflowLane(event.target.value || "layout-suite");
+    await analogMixedSetIcWorkflowLane(event.target.value || "layout-suite");
     return;
   }
   if (!event.target.dataset.amComponentField) return;
