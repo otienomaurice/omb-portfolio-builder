@@ -17581,6 +17581,121 @@ body[data-builder-theme="dark"].template-preview-page .analog-mixed-launch {
   font-weight: 800;
 }
 
+.analog-mixed-tool-window.is-ic-analysis {
+  grid-template-rows: 30px auto auto minmax(0, 1fr);
+}
+
+.analog-mixed-analysis-view-tabs {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+
+.analog-mixed-analysis-view-tabs button {
+  min-height: 24px;
+  padding: 0 8px;
+  border: 1px solid #31516f;
+  color: #dff5ff;
+  background: #07111d;
+  font: 850 0.64rem Arial, sans-serif;
+  cursor: pointer;
+}
+
+.analog-mixed-analysis-view-tabs button:hover,
+.analog-mixed-analysis-view-tabs button.is-active {
+  color: #04111d;
+  background: #7dd3fc;
+}
+
+.analog-mixed-analysis-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 8px;
+  padding: 8px 10px;
+  border-bottom: 1px solid #25435f;
+  background: #0b1725;
+}
+
+.analog-mixed-analysis-card {
+  display: grid;
+  gap: 3px;
+  min-height: 74px;
+  padding: 8px;
+  border: 1px solid #25435f;
+  background: #07111d;
+}
+
+.analog-mixed-analysis-card strong,
+.analog-mixed-analysis-body h4 {
+  margin: 0;
+  color: #f8fafc;
+  font-size: 0.74rem;
+}
+
+.analog-mixed-analysis-card span {
+  color: #b7d7ea;
+  font-size: 0.68rem;
+}
+
+.analog-mixed-analysis-body {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 10px;
+  min-height: 0;
+  overflow: auto;
+  padding: 10px;
+  background: #07111d;
+}
+
+.analog-mixed-analysis-body section {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  min-width: 0;
+}
+
+.analog-mixed-analysis-table {
+  display: grid;
+  align-content: start;
+  min-width: 0;
+  overflow: auto;
+  border: 1px solid #1f3a54;
+}
+
+.analog-mixed-analysis-row {
+  display: grid;
+  grid-template-columns: minmax(96px, 0.8fr) repeat(4, minmax(72px, 1fr));
+  gap: 6px;
+  align-items: center;
+  min-height: 30px;
+  padding: 4px 8px;
+  border-bottom: 1px solid #18344d;
+  color: #dff5ff;
+  font-size: 0.66rem;
+}
+
+.analog-mixed-analysis-row:hover {
+  background: #075985;
+}
+
+.analog-mixed-analysis-row strong,
+.analog-mixed-analysis-row span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.analog-mixed-analysis-recommendations ul {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  padding: 0 0 0 18px;
+  color: #dff5ff;
+  font-size: 0.7rem;
+  line-height: 1.45;
+}
+
 .analog-mixed-3d-model-list {
   display: grid;
   align-content: start;
