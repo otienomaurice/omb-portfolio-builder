@@ -599,19 +599,20 @@
                       <summary><span class="guide-card-title">Analog/Mixed-Signal Design Lab</span><span class="guide-card-summary">Open a project-level AM workspace for schematic capture, libraries, simulations, IC/PCB planning, PDK notes, and manufacturing stages.</span></summary>
                       <div>
                           <p>The AM Design Lab is the beginning of the analog and mixed-signal engine inside the builder. Open a project, then use the small AM button near the project window controls to enter a full-screen workspace dedicated to analog, power, mixed-signal, IC, and board-level design. This workspace is saved inside the project draft, so each project can have its own schematic canvas, component library choices, reports, and design-stage notes.</p>
-                          <p>The first implementation is intentionally GUI-first, but the AM workflow is no longer only a note-taking surface. It gives you the design surface, stage flow, saved state, component placement, movement, zooming, panning, pin-snapped wiring, junction markers, no-connect markers, probes, checking reports, library planning, PDK status, SPICE deck generation, IC layout geometry, and manufacturing planning. The component library shows EDA-style symbol thumbnails for resistors, capacitors, inductors, transformers, diode families, MOSFETs, BJTs, JFETs, power devices, op amp cells, sources, grounds, supplies, and mixed-signal macros, so selecting a part feels closer to a schematic-capture tool.</p>
+                          <p>The AM workspace is now split into two deliberate suites. <strong>IC Design Suite</strong> handles transistor-level schematic capture, symbols, IC layout, PDK setup, ADE-style SPICE planning, extracted-netlist planning, parasitic/noise notes, and IC library work. <strong>PCB Design Suite</strong> handles board schematic flow, symbols, footprints, PCB placement/routing plans, 3D board/package review, Gerber/manufacturing handoff, and KiCad-style library work. Shared tools such as Schematic, Symbol, Simulation, Math, and Libraries keep the same project context, but the visible stages and lower panels change to match the selected suite.</p>
                           <ol>
-                              <li>Use the mode selector to choose IC, board, or mixed IC plus board work. Use the focus selector for PLL, amplifier, or DC-to-DC conversion workflows.</li>
+                              <li>Use the Suite selector to switch between IC Design Suite and PCB Design Suite. Use the focus selector for PLL, amplifier, or DC-to-DC conversion workflows.</li>
                               <li>Use the left tool rail for Select, Pan, Wire, Junction, Probe, No-connect, Label, Net, Optimize, Resistor, Capacitor, Semiconductor, Diode, and Ground. Keyboard shortcuts include V, P, W, J, B, X, L, N, O, R, C, S, D, and G.</li>
                               <li>Pick parts from the component library, then click the schematic canvas to place them. Search the library when you want MOS devices, op amp cores, PLL blocks, power switches, ADC/DAC blocks, MCU/FPGA interfaces, sources, references, or board connectors.</li>
                               <li>Wire drawing is pin-aware. Start with W, click near a component pin, then move the mouse to see the orthogonal route preview. Click another pin or grid point to finish the route. Use J for junction dots, X for intentionally open pins, and B for simulation probes.</li>
                               <li>Drag a selected component to move it. Use the inspector to rotate, mirror, duplicate, delete, rename, resize by value notes, or add design notes. Arrow keys nudge selected components; Shift plus arrow keys moves them farther.</li>
                               <li>Use Ctrl plus mouse wheel, Ctrl plus plus, Ctrl plus minus, and Ctrl plus zero to zoom, zoom out, and fit the canvas. Use the Pan tool, Shift-drag, or Alt-drag to move the canvas view.</li>
-                              <li>Use the stage row to move between Schematic, Symbol, Footprint, PCB, IC Layout, 3D View, Math, Simulation, Gerber, PDK, and Libraries. The stage view preserves your project context instead of opening disconnected notes.</li>
+                              <li>In IC Design Suite, the stage row follows Schematic, Symbol, IC Layout, Simulation, Math, PDK, and Libraries. In PCB Design Suite, it follows Schematic, Symbol, Footprint, PCB, 3D View, Simulation, Math, Gerber, and Libraries.</li>
+                              <li>When one suite tool depends on another, use the matching update command instead of manually copying notes. IC Layout can sync from schematic devices and nets. PCB can sync schematic parts into footprint and board planning. Netlist and SPICE windows consume the current schematic, libraries, and PDK settings. Gerber consumes the PCB planning state.</li>
                               <li>Use Analyze to let the local AM backend inspect the schematic. It inventories placed symbols, groups component categories, creates a backend readiness report, and refreshes the generated netlist and checking panels.</li>
-                              <li>Use DRC and ERC to create lightweight design-check reports. The current checks look for duplicate references, missing values, zero-length wires, components without nets, and missing PDK/PCB readiness notes. Later engines can replace or extend these checks.</li>
-                              <li>Use Generate netlist to create a starter SPICE-style netlist scaffold from the schematic. Pin-snapped wires are preferred by the netlist generator before it falls back to geometric guesses, so connecting directly to visible pins produces cleaner node names.</li>
-                              <li>Use the Simulation stage for operating point, DC sweep, AC, and transient runs. The backend writes a SPICE deck and prefers a detected local engine such as ngspice or Xyce. If no full solver is installed, the builder clearly labels the result as an educational fallback rather than a full SPICE solve.</li>
+                              <li>Use DRC and ERC to open the dedicated check window. It has check-type, scope, and severity/category filters, then lists errors, warnings, information, connectivity notes, PDK readiness, and PCB readiness as issue rows.</li>
+                              <li>Use Netlist to open the dedicated netlist window. It can refresh the schematic-derived netlist, choose SPICE, Spectre-style, KiCad, or Verilog-AMS formatting, and control whether comments, models, and PDK includes are shown.</li>
+                              <li>Use the Simulation stage or SPICE commands to open the dedicated SPICE window. It separates operating point, DC sweep, AC, transient, noise, and corner planning, records simulator/corner choices, and stores the latest backend result.</li>
                               <li>Use Run calculations to populate PLL, amplifier, or DC-to-DC math notes. These reports collect target values and list the next calculations needed for sizing, stability, ripple, loop bandwidth, compensation, or power estimates.</li>
                               <li>Use Libraries menu items for local library planning, SKY130-style device cells, LTspice primitives, Texas Instruments part shells, KiCad PCB footprints, and future DigiKey or Mouser import records. Vendor API import is deliberately treated as a controlled future hook because it will need API credentials, vendor terms, and symbol/footprint validation.</li>
                               <li>Imported AM devices become normal project library items. Place them on the canvas, then edit model name, package, footprint, value, and device parameters in the Inspector before analysis or handoff planning.</li>
@@ -986,11 +987,10 @@
                   <section class="analog-mixed-canvas-zone">
                       <div class="analog-mixed-context-strip">
                           <label>
-                              <span>Workspace</span>
-                              <select id="analog-mixed-mode">
-                                  <option value="ic">IC transistor-level</option>
-                                  <option value="board">Board schematic / PCB</option>
-                                  <option value="mixed">Mixed IC + board</option>
+                              <span>Suite</span>
+                              <select id="analog-mixed-suite">
+                                  <option value="ic">IC Design Suite</option>
+                                  <option value="pcb">PCB Design Suite</option>
                               </select>
                           </label>
                           <label>
@@ -1019,6 +1019,7 @@
                       <div class="analog-mixed-canvas-shell">
                           <svg class="analog-mixed-canvas" id="analog-mixed-canvas" viewBox="0 0 1400 820" role="img" aria-label="Analog schematic canvas"></svg>
                       </div>
+                      <div class="analog-mixed-tool-window-layer" id="analog-mixed-tool-window-layer" aria-live="polite"></div>
                   </section>
                   <aside class="analog-mixed-inspector">
                       <div class="analog-mixed-pane-heading">
