@@ -16536,6 +16536,7 @@ body[data-builder-theme] .selection-text-preview {
   text-transform: uppercase;
 }
 
+.analog-mixed-tool-window-controls input,
 .analog-mixed-tool-window-controls select,
 .analog-mixed-tool-window-controls button {
   min-height: 26px;
@@ -17585,6 +17586,11 @@ body[data-builder-theme="dark"].template-preview-page .analog-mixed-launch {
   grid-template-rows: 30px auto auto minmax(0, 1fr);
 }
 
+.analog-mixed-tool-window.is-net-explorer,
+.analog-mixed-tool-window.is-design-rules {
+  grid-template-rows: 30px auto minmax(0, 1fr);
+}
+
 .analog-mixed-analysis-view-tabs {
   display: inline-flex;
   flex-wrap: wrap;
@@ -17694,6 +17700,75 @@ body[data-builder-theme="dark"].template-preview-page .analog-mixed-launch {
   color: #dff5ff;
   font-size: 0.7rem;
   line-height: 1.45;
+}
+
+.analog-mixed-net-table,
+.analog-mixed-rule-table {
+  display: grid;
+  align-content: start;
+  min-height: 0;
+  overflow: auto;
+  padding: 6px;
+  background: #07111d;
+}
+
+.analog-mixed-net-row,
+.analog-mixed-rule-row {
+  display: grid;
+  gap: 6px;
+  align-items: center;
+  min-height: 30px;
+  padding: 4px 8px;
+  border-bottom: 1px solid #18344d;
+  color: #dff5ff;
+  font-size: 0.66rem;
+}
+
+.analog-mixed-net-row {
+  grid-template-columns: minmax(100px, 0.58fr) minmax(120px, 0.75fr) minmax(120px, 0.75fr) minmax(90px, 0.5fr) minmax(90px, 0.5fr) minmax(120px, 0.68fr);
+}
+
+.analog-mixed-rule-row {
+  grid-template-columns: minmax(74px, 0.3fr) minmax(92px, 0.35fr) minmax(170px, 1fr) minmax(130px, 0.68fr) minmax(62px, 0.24fr) minmax(150px, 0.8fr);
+}
+
+.analog-mixed-net-row.is-head,
+.analog-mixed-rule-row.is-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  color: #ffffff;
+  background: #102235;
+  text-transform: uppercase;
+}
+
+.analog-mixed-net-row:hover,
+.analog-mixed-rule-row:hover {
+  background: #075985;
+}
+
+.analog-mixed-rule-row.is-warning {
+  color: #fef3c7;
+  background: rgba(120, 53, 15, 0.16);
+}
+
+.analog-mixed-rule-row.is-error {
+  color: #fecaca;
+  background: rgba(127, 29, 29, 0.2);
+}
+
+.analog-mixed-rule-row.is-ok {
+  color: #dcfce7;
+  background: rgba(20, 83, 45, 0.16);
+}
+
+.analog-mixed-net-row strong,
+.analog-mixed-net-row span,
+.analog-mixed-rule-row strong,
+.analog-mixed-rule-row span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .analog-mixed-3d-model-list {
@@ -17939,4 +18014,94 @@ body[data-builder-theme="dark"].template-preview-page .analog-mixed-launch {
   .analog-mixed-canvas-zone {
     grid-column: 2;
   }
+}
+
+/* AM launcher stability: when no suite tool is open, the dialog should behave
+   like a normal full-screen launcher, not like a panned/zoomed canvas. */
+.analog-mixed-dialog.is-hub-open {
+  overflow: hidden !important;
+}
+
+.analog-mixed-dialog.is-hub-open .analog-mixed-shell {
+  grid-template-rows: 30px 30px minmax(0, 1fr) 22px !important;
+}
+
+.analog-mixed-dialog.is-hub-open .analog-mixed-menu-bar {
+  overflow: visible !important;
+}
+
+.analog-mixed-dialog.is-hub-open .analog-mixed-layout {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) !important;
+  grid-template-rows: minmax(0, 1fr) !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+}
+
+.analog-mixed-dialog.is-hub-open .analog-mixed-tool-hub {
+  display: grid !important;
+  grid-template-rows: auto minmax(0, 1fr) !important;
+  align-content: start !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  max-height: none !important;
+  overflow: auto !important;
+  overscroll-behavior: contain;
+  padding: 10px !important;
+}
+
+.analog-mixed-dialog.is-hub-open .analog-mixed-layout > :not(.analog-mixed-tool-hub) {
+  display: none !important;
+}
+
+.analog-mixed-dialog.is-hub-open .analog-mixed-bottom {
+  display: none !important;
+}
+
+.analog-mixed-launcher-menu {
+  align-items: center !important;
+  padding: 0 10px;
+  color: #b7d7eb;
+  font-size: 0.7rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.analog-mixed-dialog.is-hub-open .analog-mixed-top-actions button {
+  min-width: 58px !important;
+  height: 30px !important;
+}
+
+.analog-mixed-dialog.is-hub-open .analog-mixed-top-actions button.is-active {
+  border-color: #38bdf8 !important;
+  color: #04111d !important;
+  background: #bae6fd !important;
+}
+
+.analog-mixed-dialog.is-hub-open .analog-mixed-tool-hub-head {
+  grid-template-columns: minmax(210px, 0.34fr) minmax(0, 1fr) !important;
+  align-items: center !important;
+  padding: 9px 12px !important;
+}
+
+.analog-mixed-dialog.is-hub-open .analog-mixed-tool-hub-head h3 {
+  font-size: 0.95rem !important;
+}
+
+.analog-mixed-dialog.is-hub-open .analog-mixed-tool-hub-head p {
+  font-size: 0.72rem !important;
+}
+
+.analog-mixed-dialog.is-hub-open .analog-mixed-suite-grid {
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)) !important;
+  align-content: start !important;
+  min-height: 0 !important;
+  overflow: auto !important;
+}
+
+.analog-mixed-dialog.is-hub-open .analog-mixed-suite-card {
+  min-height: 0 !important;
 }
