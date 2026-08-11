@@ -85,6 +85,8 @@ const analogMixedSave = document.querySelector("#analog-mixed-save");
 const analogMixedNetlist = document.querySelector("#analog-mixed-netlist");
 const analogMixedCalc = document.querySelector("#analog-mixed-calc");
 const analogMixedMenuBar = document.querySelector("#analog-mixed-menu-bar");
+const analogMixedLayout = document.querySelector("#analog-mixed-layout");
+const analogMixedToolHub = document.querySelector("#analog-mixed-tool-hub");
 const analogMixedToolRail = document.querySelector("#analog-mixed-tool-rail");
 const analogMixedFilter = document.querySelector("#analog-mixed-filter");
 const analogMixedLibraryList = document.querySelector("#analog-mixed-library-list");
@@ -103,6 +105,7 @@ const analogMixedInspectorBody = document.querySelector("#analog-mixed-inspector
 const analogMixedTabs = document.querySelector("#analog-mixed-tabs");
 const analogMixedOutput = document.querySelector("#analog-mixed-output");
 const analogMixedStatus = document.querySelector("#analog-mixed-status");
+const analogMixedBottom = document.querySelector(".analog-mixed-bottom");
 const analogMixedContextMenu = document.querySelector("#analog-mixed-context-menu");
 const saveProjectButton = document.querySelector("#save-project");
 const saveProjectCloseButton = document.querySelector("#save-project-close");
@@ -516,9 +519,171 @@ const analogMixedSuites = {
     panels: ["backend", "netlist", "simulation", "math", "layout", "checks", "objects", "nets", "sources", "libraries", "gerber", "notes"]
   }
 };
+const analogMixedDesignToolCatalog = [
+  {
+    id: "pcb-schematic",
+    suite: "pcb",
+    label: "Schematic Editor",
+    stage: "schematic",
+    panel: "netlist",
+    description: "Board-level KiCad-style circuit entry, wiring, labels, power symbols, probes, and netlist readiness.",
+    outputs: "Feeds symbol review, footprint assignment, PCB layout, checks, netlist, and SPICE planning.",
+    commands: ["Place", "Wire", "Netlist", "DRC", "ERC"]
+  },
+  {
+    id: "pcb-symbol",
+    suite: "pcb",
+    label: "Symbol Editor",
+    stage: "symbol",
+    panel: "libraries",
+    description: "Create and review board symbols, pins, labels, reference prefixes, and reusable block interfaces.",
+    outputs: "Feeds schematic capture and component-library records.",
+    commands: ["Pins", "Labels", "Library", "Check"]
+  },
+  {
+    id: "pcb-footprint",
+    suite: "pcb",
+    label: "Footprint Editor",
+    stage: "footprint",
+    panel: "libraries",
+    description: "Package footprints, pads, pin mapping, land patterns, assembly hints, and package validation.",
+    outputs: "Feeds PCB placement, routing, BOM, and Gerber manufacturing handoff.",
+    commands: ["Pads", "Pin map", "Rules", "Library"]
+  },
+  {
+    id: "pcb-editor",
+    suite: "pcb",
+    label: "PCB Editor",
+    stage: "pcb",
+    panel: "layout",
+    description: "Board outline, footprint placement, route planning, stackup notes, zones, thermal planning, and DRC readiness.",
+    outputs: "Feeds 3D view, Gerber package, BOM, and board manufacturing files.",
+    commands: ["Sync", "Route", "Board rules", "3D", "Gerber"]
+  },
+  {
+    id: "pcb-gerber",
+    suite: "pcb",
+    label: "Gerber Viewer",
+    stage: "gerber",
+    panel: "gerber",
+    description: "Manufacturing package review for copper, drill, soldermask, silkscreen, pick-and-place, BOM, and fab notes.",
+    outputs: "Consumes PCB state and produces manufacturing handoff records.",
+    commands: ["Gerber", "Drill", "BOM", "Assembly"]
+  },
+  {
+    id: "pcb-math",
+    suite: "pcb",
+    label: "PCB Math Calculator",
+    stage: "math",
+    panel: "math",
+    description: "Trace width, current density, copper temperature rise, voltage drop, impedance, ripple, and power-loop planning.",
+    outputs: "Feeds PCB rules, placement constraints, and design notes.",
+    commands: ["Trace width", "Current", "Thermal", "Impedance"]
+  },
+  {
+    id: "pcb-marketplace",
+    suite: "pcb",
+    label: "PCB Marketplace",
+    stage: "libraries",
+    panel: "libraries",
+    description: "Project-local import area for KiCad footprints, vendor parts, manufacturer parts, DigiKey/Mouser records, and LTspice models.",
+    outputs: "Feeds schematic symbols, footprint mapping, BOM, and PCB libraries.",
+    commands: ["KiCad", "DigiKey", "Mouser", "Manufacturer"]
+  },
+  {
+    id: "ic-schematic",
+    suite: "ic",
+    label: "IC Schematic Editor",
+    stage: "schematic",
+    panel: "netlist",
+    description: "Transistor-level and mixed-signal schematic entry with device placement, pin-aware wiring, labels, probes, and net naming.",
+    outputs: "Feeds IC symbol work, ADE/SPICE, PDK netlists, layout sync, DRC/ERC, and extraction planning.",
+    commands: ["Place", "Wire", "SPICE netlist", "DRC", "ERC"]
+  },
+  {
+    id: "ic-symbol",
+    suite: "ic",
+    label: "IC Symbol Editor",
+    stage: "symbol",
+    panel: "libraries",
+    description: "Cell symbols, pins, hierarchy boundaries, analog interfaces, mixed-signal ports, and reusable macro wrappers.",
+    outputs: "Feeds hierarchical schematic entry and library records.",
+    commands: ["Pins", "Ports", "Hierarchy", "Library"]
+  },
+  {
+    id: "ic-layout",
+    suite: "ic",
+    label: "IC Layout Suite",
+    stage: "ic-layout",
+    panel: "layout",
+    description: "Virtuoso-style layout planning for diffusion, poly, wells, contacts, vias, metal, matching, guard rings, extraction, and LVS.",
+    outputs: "Consumes schematic devices and PDK data; feeds PEX, LVS, DRC, GDS/KLayout/Magic handoff, and signoff.",
+    commands: ["Sync", "Device", "Route", "PEX", "LVS", "Signoff"]
+  },
+  {
+    id: "ic-ade",
+    suite: "ic",
+    label: "ADE / SPICE Cockpit",
+    stage: "simulation",
+    panel: "simulation",
+    toolWindow: "spice",
+    description: "SPICE operating point, DC, AC, transient, noise, corners, Monte Carlo planning, and solver handoff.",
+    outputs: "Consumes schematic/netlist/PDK state and records simulation decks, outputs, and run summaries.",
+    commands: ["OP", "DC", "AC", "Transient", "Noise", "Corners"]
+  },
+  {
+    id: "ic-pdk",
+    suite: "ic",
+    label: "PDK Manager",
+    stage: "pdk",
+    panel: "pdk",
+    description: "Process design kit registration, model files, corners, layer maps, DRC/LVS decks, PEX resources, and technology notes.",
+    outputs: "Feeds schematic models, IC layout layers, SPICE decks, extraction, DRC, LVS, and signoff.",
+    commands: ["Import PDK", "SKY130", "Models", "Corners", "Layers"]
+  },
+  {
+    id: "ic-extraction",
+    suite: "ic",
+    label: "Extraction And Signoff",
+    stage: "ic-layout",
+    panel: "checks",
+    description: "Quantus-style extraction planning, LVS setup, DRC markers, parasitic reports, noise decks, power integrity, and signoff checklist.",
+    outputs: "Consumes IC layout and PDK state; feeds corrected layout, extracted simulation, and signoff records.",
+    commands: ["DRC", "LVS", "PEX", "Noise", "Power", "Signoff"]
+  },
+  {
+    id: "ic-math",
+    suite: "ic",
+    label: "IC Math Calculator",
+    stage: "math",
+    panel: "math",
+    description: "gm/Id sizing, MOS W/L planning, current mirrors, gain, bandwidth, noise, offset, mismatch, PLL, and amplifier calculations.",
+    outputs: "Feeds schematic sizing, IC layout matching constraints, ADE corners, and design intent.",
+    commands: ["gm/Id", "W/L", "Noise", "Mismatch", "PLL"]
+  },
+  {
+    id: "ic-marketplace",
+    suite: "ic",
+    label: "IC Marketplace",
+    stage: "libraries",
+    panel: "libraries",
+    description: "Project-local import area for PDK cells, SKY130 devices, LTspice primitives, vendor models, and reusable analog macros.",
+    outputs: "Feeds schematic libraries, PDK libraries, device parameters, and simulation models.",
+    commands: ["PDK cells", "SKY130", "LTspice", "Vendor models"]
+  }
+];
 const analogMixedPanelIds = ["backend", "netlist", "simulation", "math", "layout", "checks", "objects", "nets", "sources", "libraries", "pdk", "gerber", "notes"];
 function analogMixedSuiteById(suiteId = "") {
   return analogMixedSuites[suiteId] || analogMixedSuites.ic;
+}
+
+function analogMixedDesignToolsForSuite(suiteId = "ic") {
+  const suite = analogMixedSuiteById(suiteId);
+  return analogMixedDesignToolCatalog.filter((tool) => tool.suite === suite.id);
+}
+
+function analogMixedDesignToolById(toolId = "") {
+  return analogMixedDesignToolCatalog.find((tool) => tool.id === toolId) || null;
 }
 
 function analogMixedStageById(stageId = "") {
@@ -2567,6 +2732,9 @@ function analogMixedDefaultState() {
     activeStage: "schematic",
     activePanel: "netlist",
     activeToolWindow: "",
+    toolHubOpen: true,
+    activeHubSuite: "ic",
+    activeDesignTool: "",
     libraryCollapsed: false,
     inspectorCollapsed: false,
     selectedComponentId: "",
@@ -2707,6 +2875,9 @@ function normalizeAnalogMixedWorkspace(project) {
     workspace.activePanel = analogMixedSuiteById(workspace.activeSuite).panels[0] || "netlist";
   }
   workspace.activeToolWindow = ["drc", "netlist", "spice"].includes(workspace.activeToolWindow) ? workspace.activeToolWindow : "";
+  workspace.toolHubOpen = workspace.toolHubOpen !== false;
+  workspace.activeHubSuite = analogMixedSuites[workspace.activeHubSuite] ? workspace.activeHubSuite : workspace.activeSuite;
+  workspace.activeDesignTool = analogMixedDesignToolById(workspace.activeDesignTool) ? workspace.activeDesignTool : "";
   workspace.libraryCollapsed = Boolean(workspace.libraryCollapsed);
   workspace.inspectorCollapsed = Boolean(workspace.inspectorCollapsed);
   workspace.libraryFilter = String(workspace.libraryFilter || "");
@@ -3418,9 +3589,9 @@ function activeAnalogMixedProject() {
 }
 
 function analogMixedGridSize(workspace) {
-  if (workspace?.grid === "coarse") return 40;
-  if (workspace?.grid === "medium") return 20;
-  return 10;
+  if (workspace?.grid === "coarse") return 32;
+  if (workspace?.grid === "medium") return 16;
+  return 8;
 }
 
 function analogMixedPointFromEvent(event, workspace) {
@@ -5642,6 +5813,7 @@ function analogMixedRecordStageAction(action = "") {
 }
 
 function analogMixedHandleStageCommand(action = "") {
+  if (action === "hub") return analogMixedOpenToolHub();
   if (action === "save") return saveAnalogMixedWorkspace();
   const project = activeAnalogMixedProject();
   const workspace = project ? normalizeAnalogMixedWorkspace(project) : null;
@@ -6683,7 +6855,7 @@ function analogMixedCanvasMarkup(workspace) {
     : "";
   const empty = workspace.components.length || workspace.wires.length || workspace.labels.length || workspace.junctions.length || workspace.noConnects.length || workspace.probes.length
     ? ""
-    : `<g class="am-empty-hint"><rect x="380" y="300" width="640" height="150" rx="12" /><text x="420" y="350">Analog/Mixed-Signal schematic canvas</text><text x="420" y="390">Choose a library part or press R, C, S, D, W, J, X, B, L, N, O.</text></g>`;
+    : `<g class="am-empty-hint"><rect x="472" y="332" width="456" height="92" rx="8" /><text x="500" y="370">Schematic canvas</text><text x="500" y="400">Choose a part, wire with W, or use the menus.</text></g>`;
   return `
     <defs>
       <marker id="am-arrow" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
@@ -6709,12 +6881,14 @@ function analogMixedMenuGroups(workspace) {
   const isIcSuite = suite.id === "ic";
   const suiteFlowItems = isIcSuite
     ? [
-        { label: "IC Schematic Editor", action: "stage:schematic:netlist" },
-        { label: "IC Symbol Editor", action: "stage:symbol:libraries" },
-        { label: "IC Layout Suite", action: "stage:ic-layout:layout" },
-        { label: "ADE / SPICE cockpit", action: "stage:simulation:simulation" },
-        { label: "PDK manager", action: "stage:pdk:pdk" },
-        { label: "Device libraries", action: "stage:libraries:libraries" },
+        { label: "IC Schematic Editor", action: "design-tool:ic-schematic" },
+        { label: "IC Symbol Editor", action: "design-tool:ic-symbol" },
+        { label: "IC Layout Suite", action: "design-tool:ic-layout" },
+        { label: "ADE / SPICE cockpit", action: "design-tool:ic-ade" },
+        { label: "PDK manager", action: "design-tool:ic-pdk" },
+        { label: "Extraction and signoff", action: "design-tool:ic-extraction" },
+        { label: "IC math calculator", action: "design-tool:ic-math" },
+        { label: "IC marketplace", action: "design-tool:ic-marketplace" },
         { label: "Design intent", action: "ic-intent" },
         { label: "MOS sizing table", action: "ic-sizing" },
         { label: "gm/Id sizing", action: "ic-gmid" },
@@ -6725,13 +6899,13 @@ function analogMixedMenuGroups(workspace) {
         { label: "Signoff checklist", action: "ic-signoff" }
       ]
     : [
-        { label: "Board Schematic", action: "stage:schematic:netlist" },
-        { label: "Board Symbol Editor", action: "stage:symbol:libraries" },
-        { label: "Footprint Editor", action: "stage:footprint:libraries" },
-        { label: "PCB Layout", action: "stage:pcb:layout" },
-        { label: "Board 3D View", action: "stage:3d-view:layout" },
-        { label: "Manufacturing Gerber", action: "stage:gerber:gerber" },
-        { label: "Board Libraries", action: "stage:libraries:libraries" },
+        { label: "Board Schematic Editor", action: "design-tool:pcb-schematic" },
+        { label: "Board Symbol Editor", action: "design-tool:pcb-symbol" },
+        { label: "Footprint Editor", action: "design-tool:pcb-footprint" },
+        { label: "PCB Editor", action: "design-tool:pcb-editor" },
+        { label: "Gerber Viewer", action: "design-tool:pcb-gerber" },
+        { label: "PCB math calculator", action: "design-tool:pcb-math" },
+        { label: "PCB marketplace", action: "design-tool:pcb-marketplace" },
         { label: "Apply KiCad template", action: "apply-kicad-template" },
         { label: "Assign footprints", action: "pcb-sync" },
         { label: "Route planner", action: "route-plan" },
@@ -6741,6 +6915,7 @@ function analogMixedMenuGroups(workspace) {
       ];
   const quickActionItems = isIcSuite
     ? [
+        { id: "hub", label: "Tools" },
         { id: "save", label: "Save" },
         { id: "backend-analyze", label: "Analyze" },
         { id: "netlist", label: "Netlist" },
@@ -6749,6 +6924,7 @@ function analogMixedMenuGroups(workspace) {
         { id: "fit", label: `${Math.round(workspace.zoom * 100)}%` }
       ]
     : [
+        { id: "hub", label: "Tools" },
         { id: "save", label: "Save" },
         { id: "pcb-sync", label: "Sync" },
         { id: "netlist", label: "Netlist" },
@@ -6760,6 +6936,7 @@ function analogMixedMenuGroups(workspace) {
     {
       label: "File",
       items: [
+        { label: "Tool launcher", action: "hub" },
         { label: "Save workspace", action: "save" },
         { label: "Analyze workspace", action: "backend-analyze" },
         { label: isIcSuite ? "Export IC SPICE netlist" : "Export PCB netlist", action: "netlist" },
@@ -6769,8 +6946,8 @@ function analogMixedMenuGroups(workspace) {
     {
       label: "Suite",
       items: [
-        { label: "Open IC Design Suite", action: "suite:ic" },
-        { label: "Open PCB Design Suite", action: "suite:pcb" },
+        { label: "Show IC Design Suite tools", action: "suite:ic" },
+        { label: "Show PCB Design Suite tools", action: "suite:pcb" },
         { label: "Refresh suite tools", action: "backend-analyze" }
       ]
     },
@@ -7433,12 +7610,96 @@ function analogMixedRenderBottom(workspace) {
   analogMixedOutput.innerHTML = analogMixedOutputPanel(workspace);
 }
 
+function analogMixedRenderToolHub(project = {}, workspace = {}) {
+  if (!analogMixedToolHub) return;
+  const activeSuite = analogMixedSuiteById(workspace.activeHubSuite || workspace.activeSuite);
+  const suiteCards = Object.values(analogMixedSuites).map((suite) => {
+    const tools = analogMixedDesignToolsForSuite(suite.id);
+    const expanded = activeSuite.id === suite.id;
+    return `
+      <article class="analog-mixed-suite-card ${expanded ? "is-expanded" : ""}">
+        <button type="button" class="analog-mixed-suite-card-head" data-am-hub-suite="${escapeHtml(suite.id)}" aria-expanded="${expanded ? "true" : "false"}">
+          <span>
+            <strong>${escapeHtml(suite.label)}</strong>
+            <small>${suite.id === "ic" ? "Transistor, PDK, layout, ADE, extraction, signoff" : "Schematic, footprints, board, 3D, Gerber, marketplace"}</small>
+          </span>
+          <em>${tools.length} tools</em>
+        </button>
+        <div class="analog-mixed-suite-tool-list">
+          ${tools.map((tool) => `
+            <button type="button" class="analog-mixed-tool-card ${workspace.activeDesignTool === tool.id ? "is-active" : ""}" data-am-design-tool="${escapeHtml(tool.id)}">
+              <strong>${escapeHtml(tool.label)}</strong>
+              <span>${escapeHtml(tool.description)}</span>
+              <small>${escapeHtml(tool.outputs)}</small>
+              <i>${tool.commands.map((command) => `<b>${escapeHtml(command)}</b>`).join("")}</i>
+            </button>
+          `).join("")}
+        </div>
+      </article>
+    `;
+  }).join("");
+  analogMixedToolHub.innerHTML = `
+    <div class="analog-mixed-tool-hub-head">
+      <div>
+        <p class="eyebrow">Design Tool Launcher</p>
+        <h3>${escapeHtml(project.title || "Project")}</h3>
+      </div>
+      <p>Choose a suite, then open the exact tool you want. Each tool opens its own AM design window with the relevant stage, menus, library, inspector, output panels, and backend handoff.</p>
+    </div>
+    <div class="analog-mixed-suite-grid">${suiteCards}</div>
+  `;
+}
+
+function analogMixedOpenToolHub(suiteId = "") {
+  const project = activeAnalogMixedProject();
+  if (!project) return;
+  const workspace = normalizeAnalogMixedWorkspace(project);
+  const suite = analogMixedSetSuite(workspace, suiteId || workspace.activeSuite || "ic");
+  workspace.activeHubSuite = suite.id;
+  workspace.toolHubOpen = true;
+  workspace.activeDesignTool = "";
+  workspace.activeToolWindow = "";
+  analogMixedClearActiveWireRoute();
+  markDraftNeedsSave();
+  scheduleAutosave();
+  renderAnalogMixedWorkspace();
+  analogMixedSetStatus(`${suite.label} tools shown.`);
+}
+
+function analogMixedOpenDesignTool(toolId = "") {
+  const project = activeAnalogMixedProject();
+  const tool = analogMixedDesignToolById(toolId);
+  if (!project || !tool) return;
+  const workspace = normalizeAnalogMixedWorkspace(project);
+  analogMixedSetSuite(workspace, tool.suite, { preferredStage: tool.stage });
+  workspace.activeHubSuite = tool.suite;
+  workspace.toolHubOpen = false;
+  workspace.activeDesignTool = tool.id;
+  workspace.activeStage = tool.stage;
+  workspace.activePanel = tool.panel;
+  workspace.activeToolWindow = tool.toolWindow || "";
+  if (tool.id === "pcb-editor") workspace.show3dPreview = false;
+  if (tool.id === "pcb-gerber") analogMixedPrepareGerberReport();
+  if (tool.id === "ic-extraction") analogMixedRunChecks("all");
+  analogMixedClearActiveWireRoute();
+  markDraftNeedsSave();
+  scheduleAutosave();
+  renderAnalogMixedWorkspace();
+  analogMixedSetStatus(`${tool.label} opened in ${analogMixedSuiteById(tool.suite).label}.`);
+}
+
 function renderAnalogMixedWorkspace() {
   if (!analogMixedDialog?.open) return;
   const project = activeAnalogMixedProject();
   if (!project) return;
   const workspace = normalizeAnalogMixedWorkspace(project);
-  if (analogMixedTitle) analogMixedTitle.textContent = `${project.title || "Project"} - AM Design Lab`;
+  const activeDesignTool = analogMixedDesignToolById(workspace.activeDesignTool);
+  if (analogMixedTitle) analogMixedTitle.textContent = workspace.toolHubOpen
+    ? `${project.title || "Project"} - AM Tool Launcher`
+    : `${project.title || "Project"} - ${activeDesignTool?.label || "AM Design Lab"}`;
+  analogMixedDialog.classList.toggle("is-hub-open", workspace.toolHubOpen);
+  analogMixedLayout?.classList.toggle("is-hub-open", workspace.toolHubOpen);
+  analogMixedBottom?.classList.toggle("is-hub-open", workspace.toolHubOpen);
   analogMixedDialog.classList.toggle("is-library-collapsed", workspace.libraryCollapsed);
   analogMixedDialog.classList.toggle("is-inspector-collapsed", workspace.inspectorCollapsed);
   if (analogMixedSuite && analogMixedSuite.value !== workspace.activeSuite) analogMixedSuite.value = workspace.activeSuite;
@@ -7448,6 +7709,7 @@ function renderAnalogMixedWorkspace() {
   if (analogMixedSnap) analogMixedSnap.checked = workspace.snap;
   if (analogMixedFilter && document.activeElement !== analogMixedFilter) analogMixedFilter.value = workspace.libraryFilter;
   if (analogMixedMenuBar) analogMixedMenuBar.innerHTML = analogMixedMenuGroups(workspace);
+  analogMixedRenderToolHub(project, workspace);
   analogMixedRenderToolRail(workspace);
   analogMixedRenderLibrary(workspace);
   analogMixedRenderStageTabs(workspace);
@@ -7468,11 +7730,15 @@ function openAnalogMixedWorkspace(projectId = selectedProjectId) {
   }
   activeAnalogMixedProjectId = project.id;
   selectedProjectId = project.id;
-  normalizeAnalogMixedWorkspace(project);
+  const workspace = normalizeAnalogMixedWorkspace(project);
+  workspace.toolHubOpen = true;
+  workspace.activeHubSuite = workspace.activeSuite || "ic";
+  workspace.activeDesignTool = "";
+  workspace.activeToolWindow = "";
   document.body.classList.add("analog-mixed-open");
   analogMixedDialog.showModal();
   renderAnalogMixedWorkspace();
-  analogMixedSetStatus("Analog/Mixed-Signal workspace ready. W wire, J junction, X no-connect, B probe, L label, N net, R/C/S/D/G parts.");
+  analogMixedSetStatus("Choose IC Design Suite or PCB Design Suite, then open a design tool.");
 }
 
 function saveAnalogMixedWorkspace() {
@@ -8024,6 +8290,8 @@ function analogMixedOpenStage(stageId = "schematic", panelId = "") {
   if (!project) return;
   const workspace = normalizeAnalogMixedWorkspace(project);
   analogMixedOpenStageWithinSuite(workspace, analogMixedStages.some((stage) => stage.id === stageId) ? stageId : "schematic", panelId);
+  workspace.toolHubOpen = false;
+  workspace.activeDesignTool = "";
   analogMixedClearActiveWireRoute();
   analogMixedLayoutMeasureStart = null;
   markDraftNeedsSave();
@@ -8096,6 +8364,14 @@ async function analogMixedHandleMenuAction(action = "") {
   const workspace = normalizeAnalogMixedWorkspace(project);
   const clean = String(action || "").trim();
   if (!clean) return;
+  if (clean === "hub") {
+    analogMixedOpenToolHub(workspace.activeSuite || "ic");
+    return;
+  }
+  if (clean.startsWith("design-tool:")) {
+    analogMixedOpenDesignTool(clean.replace("design-tool:", ""));
+    return;
+  }
   if (clean.startsWith("stage:")) {
     const [, stageId = "schematic", panelId = ""] = clean.split(":");
     analogMixedOpenStage(stageId, panelId);
@@ -8104,11 +8380,15 @@ async function analogMixedHandleMenuAction(action = "") {
   if (clean.startsWith("suite:")) {
     const [, suiteId = "ic"] = clean.split(":");
     const suite = analogMixedSetSuite(workspace, suiteId);
+    workspace.activeHubSuite = suite.id;
+    workspace.toolHubOpen = true;
+    workspace.activeDesignTool = "";
+    workspace.activeToolWindow = "";
     analogMixedClearActiveWireRoute();
     markDraftNeedsSave();
     scheduleAutosave();
     renderAnalogMixedWorkspace();
-    analogMixedSetStatus(`${suite.label} opened.`);
+    analogMixedSetStatus(`${suite.label} tools shown.`);
     return;
   }
   if (clean.startsWith("tool:")) {
@@ -9520,7 +9800,9 @@ function openAnalogMixedCommand(stage = "schematic") {
   openAnalogMixedWorkspace(project.id);
   const workspace = normalizeAnalogMixedWorkspace(project);
   const normalizedStage = analogMixedStages.some((item) => item.id === stage) ? stage : "schematic";
-  workspace.activeStage = normalizedStage;
+  analogMixedOpenStageWithinSuite(workspace, normalizedStage);
+  workspace.toolHubOpen = false;
+  workspace.activeDesignTool = "";
   workspace.activePanel = normalizedStage === "schematic" ? "netlist" : normalizedStage === "simulation" ? "simulation" : normalizedStage === "pdk" ? "pdk" : "layout";
   markDraftNeedsSave();
   scheduleAutosave();
@@ -9613,14 +9895,19 @@ function builderAppCommandGroups() {
     {
       label: "AM",
       items: [
-        { label: "Open AM workspace", action: "am-open", disabled: !hasProject },
-        { label: "Schematic editor", action: "am-schematic", disabled: !hasProject },
-        { label: "Symbol editor", action: "am-symbol", disabled: !hasProject },
-        { label: "Footprint editor", action: "am-footprint", disabled: !hasProject },
-        { label: "PCB editor", action: "am-pcb", disabled: !hasProject },
-        { label: "IC layout editor", action: "am-ic-layout", disabled: !hasProject },
-        { label: "Simulation lab", action: "am-simulation", disabled: !hasProject },
-        { label: "PDK and libraries", action: "am-pdk", disabled: !hasProject },
+        { label: "Open AM tool launcher", action: "am-open", disabled: !hasProject },
+        { label: "PCB tool launcher", action: "am-pcb-suite", disabled: !hasProject },
+        { label: "IC tool launcher", action: "am-ic-suite", disabled: !hasProject },
+        { separator: true },
+        { label: "PCB schematic editor", action: "am-tool-pcb-schematic", disabled: !hasProject },
+        { label: "PCB footprint editor", action: "am-tool-pcb-footprint", disabled: !hasProject },
+        { label: "PCB editor", action: "am-tool-pcb-editor", disabled: !hasProject },
+        { label: "Gerber viewer", action: "am-tool-pcb-gerber", disabled: !hasProject },
+        { separator: true },
+        { label: "IC schematic editor", action: "am-tool-ic-schematic", disabled: !hasProject },
+        { label: "IC layout suite", action: "am-tool-ic-layout", disabled: !hasProject },
+        { label: "ADE / SPICE cockpit", action: "am-tool-ic-ade", disabled: !hasProject },
+        { label: "PDK manager", action: "am-tool-ic-pdk", disabled: !hasProject },
         { separator: true },
         { label: "Import supplier component", action: "am-import-supplier", disabled: !hasProject },
         { label: "Check AM tools", action: "am-tool-status", disabled: !hasProject }
@@ -9798,28 +10085,33 @@ async function handleBuilderAppCommand(action = "") {
     "code-install-tools": "install-tools",
     "code-synthesis-diagram": "view-synthesis-diagram"
   };
-  const analogMixedActions = {
-    "am-open": "schematic",
-    "am-schematic": "schematic",
-    "am-symbol": "symbol",
-    "am-footprint": "footprint",
-    "am-pcb": "pcb",
-    "am-ic-layout": "ic-layout",
-    "am-simulation": "simulation",
-    "am-pdk": "pdk"
-  };
-  if (analogMixedActions[action]) {
-    openAnalogMixedCommand(analogMixedActions[action]);
+  if (action === "am-open") {
+    const project = requireSelectedProject();
+    if (project) openAnalogMixedWorkspace(project.id);
     return;
   }
-  if (action === "am-import-supplier") {
-    openAnalogMixedCommand("libraries");
-    analogMixedImportSupplierComponent("DigiKey");
+  if (action === "am-pcb-suite" || action === "am-ic-suite") {
+    const project = requireSelectedProject();
+    if (!project) return;
+    openAnalogMixedWorkspace(project.id);
+    analogMixedOpenToolHub(action === "am-pcb-suite" ? "pcb" : "ic");
     return;
   }
   if (action === "am-tool-status") {
     openAnalogMixedCommand("pdk");
     await analogMixedRefreshPdkStatus();
+    return;
+  }
+  if (action.startsWith("am-tool-")) {
+    const project = requireSelectedProject();
+    if (!project) return;
+    openAnalogMixedWorkspace(project.id);
+    analogMixedOpenDesignTool(action.replace("am-tool-", ""));
+    return;
+  }
+  if (action === "am-import-supplier") {
+    openAnalogMixedCommand("libraries");
+    analogMixedImportSupplierComponent("DigiKey");
     return;
   }
   if (compileActions[action]) {
@@ -27844,6 +28136,24 @@ analogMixedDialog?.addEventListener("click", (event) => {
     if (action === "run-spice") return analogMixedRunSpiceSimulation(workspace.toolWindows.spice.analysis || "op");
     if (action === "plan-spice") return analogMixedPrepareSpiceSimulationPlan(workspace.toolWindows.spice.analysis || "tran");
   }
+  const hubSuite = event.target.closest("[data-am-hub-suite]");
+  if (hubSuite) {
+    const suite = analogMixedSetSuite(workspace, hubSuite.dataset.amHubSuite || "ic");
+    workspace.activeHubSuite = suite.id;
+    workspace.toolHubOpen = true;
+    workspace.activeDesignTool = "";
+    workspace.activeToolWindow = "";
+    markDraftNeedsSave();
+    scheduleAutosave();
+    renderAnalogMixedWorkspace();
+    analogMixedSetStatus(`${suite.label} tools expanded.`);
+    return;
+  }
+  const designTool = event.target.closest("[data-am-design-tool]");
+  if (designTool) {
+    analogMixedOpenDesignTool(designTool.dataset.amDesignTool || "");
+    return;
+  }
   const paneToggle = event.target.closest("[data-am-pane-toggle]");
   if (paneToggle) {
     const pane = paneToggle.dataset.amPaneToggle || "";
@@ -27883,6 +28193,8 @@ analogMixedDialog?.addEventListener("click", (event) => {
   const stageButton = event.target.closest("[data-am-stage]");
   if (stageButton) {
     analogMixedOpenStageWithinSuite(workspace, stageButton.dataset.amStage || "schematic");
+    workspace.toolHubOpen = false;
+    workspace.activeDesignTool = "";
     analogMixedClearActiveWireRoute();
     markDraftNeedsSave();
     scheduleAutosave();
