@@ -16164,6 +16164,23 @@ body[data-builder-theme] .selection-text-preview {
   font-size: 18px;
 }
 
+.am-symbol .am-symbol-ic-package {
+  fill: #eef8ff;
+  stroke: #0f5b7a;
+  stroke-width: 2.2;
+}
+
+.am-symbol .am-symbol-package-notch {
+  fill: none;
+  stroke: #0f5b7a;
+  stroke-width: 2;
+}
+
+.am-symbol .am-symbol-package-text {
+  fill: #31516f;
+  font: 800 10px Consolas, "Courier New", monospace;
+}
+
 .am-symbol .am-symbol-label {
   font-size: 17px;
 }
@@ -16697,13 +16714,71 @@ body[data-builder-theme] .selection-text-preview {
 
 .am-layout-layer-chip text {
   fill: #f8fafc;
-  font-size: 12px;
+  font-size: 10px;
   pointer-events: none;
 }
 
 .am-layout-layer-chip.is-active rect {
   stroke: #ffffff !important;
   stroke-width: 3;
+}
+
+.am-layout-layer-chip.is-hidden-layer {
+  opacity: 0.32;
+}
+
+.analog-mixed-ic-layer-pair {
+  display: inline-flex;
+  align-items: stretch;
+  min-height: 24px;
+}
+
+.analog-mixed-ic-layer-pair.is-hidden-layer {
+  opacity: 0.55;
+}
+
+.analog-mixed-ic-layer-checkbox {
+  display: inline-grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border: 1px solid rgba(186, 230, 253, 0.32);
+  background: rgba(15, 23, 42, 0.78);
+  cursor: pointer;
+}
+
+.analog-mixed-ic-layer-checkbox input {
+  width: 11px;
+  height: 11px;
+  margin: 0;
+  accent-color: #38bdf8;
+}
+
+.analog-mixed-ic-layer-eye {
+  min-width: 26px;
+  height: 24px;
+  padding: 0 5px;
+  border: 1px solid rgba(186, 230, 253, 0.32);
+  border-radius: 5px;
+  background: rgba(15, 23, 42, 0.78);
+  color: #dff7ff;
+  font: 900 0.65rem/1 Arial, sans-serif;
+}
+
+.analog-mixed-ic-layer-eye:hover,
+.analog-mixed-ic-layer-eye:focus-visible {
+  background: #d4f3ff;
+  color: #082f49;
+}
+
+.am-layout-layer-legend-item text {
+  fill: #dbeafe;
+  font-size: 10px;
+  font-weight: 850;
+}
+
+.am-layout-layer-legend-item.is-hidden-layer {
+  opacity: 0.42;
 }
 
 .am-layout-device {
@@ -16778,6 +16853,11 @@ body[data-builder-theme] .selection-text-preview {
   stroke: #8b5cf6;
 }
 
+.am-layout-pwell {
+  fill: rgba(14, 165, 233, 0.16);
+  stroke: #0ea5e9;
+}
+
 .am-layout-diff {
   fill: rgba(34, 197, 94, 0.28);
   stroke: #22c55e;
@@ -16801,6 +16881,11 @@ body[data-builder-theme] .selection-text-preview {
 .am-layout-metal2 {
   fill: rgba(253, 224, 71, 0.2);
   stroke: #fde047;
+}
+
+.am-layout-metal3 {
+  fill: rgba(251, 113, 133, 0.2);
+  stroke: #fb7185;
 }
 
 .am-layout-tap {
@@ -16838,7 +16923,6 @@ body[data-builder-theme] .selection-text-preview {
   stroke-width: 7;
   stroke-linecap: square;
   stroke-linejoin: miter;
-  marker-end: url("#am-layout-arrow");
 }
 
 .am-layout-route-preview polyline {

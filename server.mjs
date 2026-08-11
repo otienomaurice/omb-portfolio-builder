@@ -5003,7 +5003,7 @@ function analogMixedNeedsPdkModels(workspace = {}) {
 
 function analogMixedServerLayoutLayerForComponent(component = {}, workspace = {}) {
   const item = analogMixedServerComponentLibraryItem(component, workspace);
-  const descriptor = [item.symbolKind, item.category, component.type, component.modelName].join(" ").toLowerCase();
+  const descriptor = [item.symbolKind, item.category, component.type, component.modelName, component.modelKey, component.layoutCell, component.xschemSymbol, item.modelName, item.modelKey, item.layoutCell].join(" ").toLowerCase();
   if (/pmos|pfet|nwell/.test(descriptor)) return "nwell";
   if (/mos|fet|bjt|diode|switch|sky130/.test(descriptor)) return "diff";
   if (/resistor|poly/.test(descriptor)) return "poly";
@@ -5011,14 +5011,45 @@ function analogMixedServerLayoutLayerForComponent(component = {}, workspace = {}
   return "metal1";
 }
 
+function analogMixedServerLayoutKindForComponent(component = {}, workspace = {}) {
+  const item = analogMixedServerComponentLibraryItem(component, workspace);
+  const descriptor = [item.symbolKind, item.category, component.type, component.modelName, component.modelKey, component.layoutCell, component.xschemSymbol, item.modelName, item.modelKey, item.layoutCell].join(" ").toLowerCase();
+  if (/pmos|pfet/.test(descriptor)) return "pmos";
+  if (/nmos|nfet/.test(descriptor)) return "nmos";
+  if (/mos|fet|switch/.test(descriptor)) return "mos";
+  if (/mim|capacitor|cap/.test(descriptor)) return "capacitor";
+  if (/resistor|res|poly/.test(descriptor)) return "resistor";
+  if (/diode|esd/.test(descriptor)) return "diode";
+  if (/tap|well tie|substrate/.test(descriptor)) return "tap";
+  if (/opamp|amplifier|comparator|pll|adc|dac|macro|afe|controller|subckt|xschem/.test(descriptor)) return "macro";
+  if (/ground|supply|reference|vdd|vss|gnd/.test(descriptor)) return "pin";
+  return "cell";
+}
+
+function analogMixedServerLayerStackForKind(kind = "cell", component = {}, workspace = {}) {
+  const item = analogMixedServerComponentLibraryItem(component, workspace);
+  if (kind === "pmos") return ["nwell", "diff", "tap", "poly", "licon", "li1", "mcon", "metal1", "via", "metal2"];
+  if (kind === "nmos" || kind === "mos") return ["pwell", "diff", "tap", "poly", "licon", "li1", "mcon", "metal1", "via", "metal2"];
+  if (kind === "capacitor") return ["metal1", "via", "metal2", "via2", "metal3"];
+  if (kind === "resistor") return ["poly", "licon", "li1", "mcon", "metal1"];
+  if (kind === "diode") return ["nwell", "diff", "tap", "licon", "li1", "mcon", "metal1"];
+  if (kind === "tap") return ["nwell", "pwell", "tap", "licon", "li1", "mcon", "metal1"];
+  if (kind === "pin") return ["metal1"];
+  return (component.layoutCell || item.layoutCell || component.xschemSymbol || item.xschemSymbol)
+    ? ["nwell", "diff", "poly", "li1", "metal1", "metal2"]
+    : ["li1", "metal1"];
+}
+
 function analogMixedServerIcObjectFromComponent(component = {}, index = 0, workspace = {}) {
   const item = analogMixedServerComponentLibraryItem(component, workspace);
+  const kind = analogMixedServerLayoutKindForComponent(component, workspace);
   const descriptor = String(item.symbolKind || component.type || "").toLowerCase();
-  const isMos = /mos|fet|switch/.test(descriptor);
-  const isCap = /capacitor|mim/.test(descriptor);
-  const isRes = /resistor/.test(descriptor);
-  const width = isMos ? 170 : isCap ? 150 : isRes ? 210 : 180;
-  const height = isMos ? 96 : isCap ? 130 : isRes ? 74 : 110;
+  const isMos = ["pmos", "nmos", "mos"].includes(kind) || /mos|fet|switch/.test(descriptor);
+  const isCap = kind === "capacitor" || /capacitor|mim/.test(descriptor);
+  const isRes = kind === "resistor" || /resistor/.test(descriptor);
+  const isMacro = kind === "macro";
+  const width = isMos ? 190 : isCap ? 156 : isRes ? 212 : isMacro ? 240 : 180;
+  const height = isMos ? 112 : isCap ? 132 : isRes ? 78 : isMacro ? 142 : 110;
   const schematicX = Number(component.x);
   const schematicY = Number(component.y);
   return {
@@ -5028,12 +5059,26 @@ function analogMixedServerIcObjectFromComponent(component = {}, index = 0, works
     type: component.type || item.id,
     modelName: component.modelName || item.modelName || component.type || "",
     symbolKind: item.symbolKind || component.type || "device",
+    layoutKind: kind,
     layer: analogMixedServerLayoutLayerForComponent(component, workspace),
+    layerStack: analogMixedServerLayerStackForKind(kind, component, workspace),
     x: Math.round(Number.isFinite(schematicX) && schematicX > 0 ? 115 + (schematicX / 1400) * 1040 : 170 + (index % 4) * 260),
     y: Math.round(Number.isFinite(schematicY) && schematicY > 0 ? 140 + (schematicY / 820) * 500 : 150 + Math.floor(index / 4) * 165),
     width,
     height,
     pins: item.pins || [],
+    pdkCell: component.layoutCell || item.layoutCell || component.modelName || item.modelName || component.type || "",
+    layoutCell: component.layoutCell || item.layoutCell || component.modelName || item.modelName || component.type || "",
+    layoutView: component.layoutView || item.layoutView || "layout",
+    xschemSymbol: component.xschemSymbol || item.xschemSymbol || "",
+    xschemPath: component.xschemPath || item.xschemPath || "",
+    footprint: component.footprint || item.footprint || "",
+    packageName: component.packageName || item.packageName || "",
+    supplier: component.supplier || item.supplier || "",
+    manufacturer: component.manufacturer || item.manufacturer || "",
+    mpn: component.mpn || item.mpn || "",
+    pdk: component.pdk || item.pdk || "",
+    pdkVariant: component.pdkVariant || item.pdkVariant || "",
     parameters: component.parameters || {}
   };
 }
@@ -5088,13 +5133,18 @@ function analogMixedRubyString(value = "") {
 function analogMixedKLayoutLayerNumbers() {
   return {
     nwell: [64, 20],
+    pwell: [64, 44],
     diff: [65, 20],
     tap: [65, 44],
     poly: [66, 20],
+    licon: [66, 44],
     li1: [67, 20],
-    via: [67, 44],
+    mcon: [67, 44],
+    via: [68, 44],
     metal1: [68, 20],
-    metal2: [69, 20]
+    metal2: [69, 20],
+    via2: [69, 44],
+    metal3: [70, 20]
   };
 }
 
@@ -5107,13 +5157,22 @@ function analogMixedKLayoutRuby(projectTitle = "Project", workspaceInput = {}, o
   const layerLines = Object.entries(layerNumbers).map(([name, pair]) => `${name} = layout.layer(${pair[0]}, ${pair[1]})`).join("\n");
   const dbuBox = (x, y, width, height) => [x, y, x + width, y + height].map((value) => Math.round(Number(value || 0) * 1000));
   const objectLines = objects.map((object) => {
-    const layer = layerNumbers[object.layer] ? object.layer : "metal1";
-    const [x1, y1, x2, y2] = dbuBox(object.x, object.y, object.width, object.height);
-    const labelX = Math.round((Number(object.x) + 6) * 1000);
-    const labelY = Math.round((Number(object.y) + 14) * 1000);
+    const stack = Array.isArray(object.layerStack) && object.layerStack.length ? object.layerStack : [object.layer || "metal1"];
+    const x = Number(object.x) || 0;
+    const y = Number(object.y) || 0;
+    const width = Number(object.width) || 120;
+    const height = Number(object.height) || 80;
+    const boxes = stack.filter((layer) => layerNumbers[layer]).map((layer, layerIndex) => {
+      const inset = Math.min(18, layerIndex * 4);
+      const [x1, y1, x2, y2] = dbuBox(x + inset, y + inset, Math.max(10, width - inset * 2), Math.max(10, height - inset * 2));
+      return `cell.shapes(${layer}).insert(RBA::Box::new(${x1}, ${y1}, ${x2}, ${y2}))`;
+    });
+    const textLayer = layerNumbers.metal1 ? "metal1" : stack.find((layer) => layerNumbers[layer]) || "metal1";
+    const labelX = Math.round((x + 6) * 1000);
+    const labelY = Math.round((y + 14) * 1000);
     return [
-      `cell.shapes(${layer}).insert(RBA::Box::new(${x1}, ${y1}, ${x2}, ${y2}))`,
-      `cell.shapes(${layer}).insert(RBA::Text::new("${analogMixedRubyString(object.label || object.type)}", RBA::Trans::new(${labelX}, ${labelY})))`
+      ...boxes,
+      `cell.shapes(${textLayer}).insert(RBA::Text::new("${analogMixedRubyString(object.label || object.type)} ${analogMixedRubyString(object.layoutCell || object.pdkCell || "")}", RBA::Trans::new(${labelX}, ${labelY})))`
     ].join("\n");
   }).join("\n");
   const routeLines = routes.map((route) => {
