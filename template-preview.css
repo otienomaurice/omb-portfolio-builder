@@ -16170,6 +16170,11 @@ body[data-builder-theme] .selection-text-preview {
   stroke-width: 2.2;
 }
 
+.am-symbol .am-symbol-manufacturer-body {
+  fill: #f8fcff;
+  stroke: #0b5f78;
+}
+
 .am-symbol .am-symbol-package-notch {
   fill: none;
   stroke: #0f5b7a;
@@ -16179,6 +16184,25 @@ body[data-builder-theme] .selection-text-preview {
 .am-symbol .am-symbol-package-text {
   fill: #31516f;
   font: 800 10px Consolas, "Courier New", monospace;
+}
+
+.am-symbol .am-manufacturer-title {
+  fill: #0b3d4f;
+  font-size: 14px;
+}
+
+.am-symbol .am-pin-label-right {
+  text-anchor: end;
+}
+
+.am-symbol .am-pin-label-top,
+.am-symbol .am-pin-label-bottom {
+  font-size: 9px;
+}
+
+.am-symbol .am-pin-number {
+  fill: #64748b;
+  font-weight: 700;
 }
 
 .am-symbol .am-symbol-label {

@@ -498,6 +498,147 @@ function analogMixedLibraryDedupeKey(item = {}) {
   ].filter(Boolean).join("|");
 }
 
+function analogMixedPinName(pin = "", fallback = "") {
+  if (pin && typeof pin === "object") return String(pin.name || pin.pin || pin.label || pin.number || fallback || "").trim();
+  return String(pin || fallback || "").trim();
+}
+
+function analogMixedInferPinSide(name = "", index = 0, total = 2) {
+  const clean = String(name || "").toUpperCase();
+  if (/^(VCC|VDD|V\+|VP|PVDD|AVDD|DVDD|VIN|VBAT|BOOT|EN|ENABLE|RESET|RST|CLK|OSC|XTAL|REF)$/.test(clean)) return "top";
+  if (/^(GND|AGND|DGND|PGND|VSS|V-|VN|EP|PAD|THERMAL)$/.test(clean)) return "bottom";
+  if (/(OUT|OUTPUT|SW|LX|PHASE|DRV|GATE|SCL|SDA|MISO|TX|TXD|DO|Q|Y|FB)/.test(clean)) return "right";
+  if (/(IN|INPUT|CS|SENSE|COMP|SYNC|SS|RT|MODE|MOSI|RX|RXD|DI|D|A|B)/.test(clean)) return "left";
+  return index < Math.ceil(total / 2) ? "left" : "right";
+}
+
+function analogMixedNormalizeManufacturerPin(pin = {}, index = 0, total = 2) {
+  const name = analogMixedPinName(pin, `${index + 1}`) || `${index + 1}`;
+  const number = pin && typeof pin === "object" ? String(pin.number || pin.num || index + 1) : String(index + 1);
+  const side = pin && typeof pin === "object" && pin.side ? String(pin.side).toLowerCase() : analogMixedInferPinSide(name, index, total);
+  return {
+    name,
+    pin: name,
+    number,
+    side: ["left", "right", "top", "bottom"].includes(side) ? side : analogMixedInferPinSide(name, index, total),
+    direction: pin && typeof pin === "object" ? String(pin.direction || pin.type || "") : "",
+    description: pin && typeof pin === "object" ? String(pin.description || pin.function || "") : ""
+  };
+}
+
+function analogMixedNormalizeManufacturerView(view = {}, pins = [], item = {}) {
+  const sourcePins = Array.isArray(view?.pins) && view.pins.length ? view.pins : pins;
+  const normalizedPins = sourcePins
+    .map((pin, index) => analogMixedNormalizeManufacturerPin(pin, index, sourcePins.length))
+    .filter((pin) => pin.name);
+  const rawFields = Array.isArray(view?.fields) ? view.fields : [];
+  return {
+    source: String(view?.source || item.supplier || item.vendor || item.source || "manufacturer"),
+    style: String(view?.style || "manufacturer"),
+    title: String(view?.title || item.mpn || item.modelName || item.label || item.symbol || "component"),
+    subtitle: String(view?.subtitle || item.manufacturer || item.vendor || item.source || ""),
+    packageName: String(view?.packageName || item.packageName || item.footprint || ""),
+    datasheetUrl: String(view?.datasheetUrl || item.datasheetUrl || ""),
+    productUrl: String(view?.productUrl || item.productUrl || ""),
+    imageUrl: String(view?.imageUrl || item.imageUrl || ""),
+    pins: normalizedPins,
+    fields: rawFields
+      .map((field) => ({
+        label: String(field?.label || field?.name || "").trim(),
+        value: String(field?.value || field?.text || "").trim()
+      }))
+      .filter((field) => field.label || field.value)
+  };
+}
+
+function analogMixedPinGroupsFromManufacturerView(view = {}) {
+  const pins = Array.isArray(view?.pins) ? view.pins : [];
+  const groups = { left: [], right: [], top: [], bottom: [] };
+  pins.forEach((pin, index) => {
+    const normalized = analogMixedNormalizeManufacturerPin(pin, index, pins.length);
+    groups[groups[normalized.side] ? normalized.side : "left"].push(normalized);
+  });
+  if (!groups.left.length && !groups.right.length && pins.length) {
+    const midpoint = Math.ceil(pins.length / 2);
+    groups.left = pins.slice(0, midpoint).map((pin, index) => analogMixedNormalizeManufacturerPin(pin, index, pins.length));
+    groups.right = pins.slice(midpoint).map((pin, index) => analogMixedNormalizeManufacturerPin(pin, midpoint + index, pins.length));
+  }
+  return groups;
+}
+
+function analogMixedManufacturerViewMetrics(view = {}) {
+  const groups = analogMixedPinGroupsFromManufacturerView(view);
+  const verticalPins = Math.max(groups.left.length, groups.right.length, 2);
+  const horizontalPins = Math.max(groups.top.length, groups.bottom.length, 1);
+  const titleWidth = Math.max(120, String(view.title || "").length * 8, String(view.packageName || "").length * 7);
+  const bodyWidth = Math.max(150, Math.min(360, Math.max(titleWidth, 104 + horizontalPins * 28)));
+  const bodyHeight = Math.max(92, Math.min(320, 42 + verticalPins * 24));
+  return {
+    groups,
+    bodyWidth,
+    bodyHeight,
+    bodyLeft: -Math.round(bodyWidth / 2),
+    bodyRight: Math.round(bodyWidth / 2),
+    bodyTop: -Math.round(bodyHeight / 2),
+    bodyBottom: Math.round(bodyHeight / 2)
+  };
+}
+
+function analogMixedManufacturerViewPinLayout(view = {}) {
+  const metrics = analogMixedManufacturerViewMetrics(view);
+  const layoutFor = (pinList, side) => pinList.map((pin, index) => {
+    if (side === "top" || side === "bottom") {
+      const span = metrics.bodyWidth - 44;
+      const x = pinList.length <= 1 ? 0 : -span / 2 + (span / Math.max(1, pinList.length - 1)) * index;
+      return {
+        pin: pin.name,
+        number: pin.number,
+        side,
+        x: Math.round(x),
+        y: side === "top" ? metrics.bodyTop - 28 : metrics.bodyBottom + 28
+      };
+    }
+    const span = metrics.bodyHeight - 44;
+    const y = pinList.length <= 1 ? 0 : -span / 2 + (span / Math.max(1, pinList.length - 1)) * index;
+    return {
+      pin: pin.name,
+      number: pin.number,
+      side,
+      x: side === "left" ? metrics.bodyLeft - 30 : metrics.bodyRight + 30,
+      y: Math.round(y)
+    };
+  });
+  return [
+    ...layoutFor(metrics.groups.left, "left"),
+    ...layoutFor(metrics.groups.right, "right"),
+    ...layoutFor(metrics.groups.top, "top"),
+    ...layoutFor(metrics.groups.bottom, "bottom")
+  ];
+}
+
+function analogMixedShouldUseManufacturerView(item = {}) {
+  const view = item.manufacturerView || item.schematicView || {};
+  const pins = Array.isArray(view.pins) ? view.pins : [];
+  if (!pins.length) return false;
+  const kind = String(item.symbolKind || item.tool || "").toLowerCase();
+  const simpleDeviceKinds = new Set([
+    "resistor", "variable-resistor", "potentiometer", "capacitor", "polar-capacitor", "variable-capacitor",
+    "inductor", "coupled-inductor", "transformer", "ferrite-bead", "crystal", "fuse",
+    "diode", "zener-diode", "schottky-diode", "led", "photodiode", "varactor", "tvs",
+    "ground", "analog-ground", "chassis-ground", "vdd", "vss"
+  ]);
+  if (simpleDeviceKinds.has(kind) && pins.length <= 3) return false;
+  return Boolean(
+    item.ecadSource ||
+    item.datasheetUrl ||
+    item.productUrl ||
+    item.imageUrl ||
+    item.vendorMetadata?.vendorPartNumber ||
+    /digikey|mouser|manufacturer|supplier|texas|microchip|analog|adi|stmicro|onsemi|nxp|infineon|ti/i.test(`${item.supplier || ""} ${item.vendor || ""} ${item.source || ""}`) ||
+    ["macro", "manufacturer-ic", "vendor-ic", "controller", "afe", "opamp", "comparator", "connector", "digital-block", "adc", "dac"].includes(kind)
+  );
+}
+
 function analogMixedNormalizeLibraryRecord(item = {}, fallbackIndex = 0) {
   const rawId = String(item.id || item.modelName || item.label || `pdk-symbol-${fallbackIndex + 1}`);
   const normalized = {
@@ -509,7 +650,7 @@ function analogMixedNormalizeLibraryRecord(item = {}, fallbackIndex = 0) {
     symbolKind: String(item.symbolKind || "macro"),
     spicePrefix: String(item.spicePrefix || "X").slice(0, 3) || "X",
     value: String(item.value || item.modelName || item.label || "pdk device"),
-    pins: Array.isArray(item.pins) && item.pins.length ? item.pins.map(String) : ["1", "2"],
+    pins: Array.isArray(item.pins) && item.pins.length ? item.pins.map((pin, pinIndex) => analogMixedPinName(pin, `${pinIndex + 1}`)).filter(Boolean) : ["1", "2"],
     modes: Array.isArray(item.modes) && item.modes.length ? item.modes : analogMixedIcMixedModes,
     domains: Array.isArray(item.domains) && item.domains.length ? item.domains : analogMixedAllDomains,
     source: String(item.source || item.pdk || "PDK"),
@@ -521,6 +662,14 @@ function analogMixedNormalizeLibraryRecord(item = {}, fallbackIndex = 0) {
     pdkVariant: String(item.pdkVariant || ""),
     modelName: String(item.modelName || ""),
     modelKey: String(item.modelKey || item.modelName || ""),
+    datasheetUrl: String(item.datasheetUrl || ""),
+    productUrl: String(item.productUrl || ""),
+    imageUrl: String(item.imageUrl || ""),
+    description: String(item.description || ""),
+    manufacturerView: analogMixedNormalizeManufacturerView(item.manufacturerView || item.schematicView || {}, item.pins || [], item),
+    schematicView: analogMixedNormalizeManufacturerView(item.schematicView || item.manufacturerView || {}, item.pins || [], item),
+    vendorMetadata: item.vendorMetadata && typeof item.vendorMetadata === "object" ? item.vendorMetadata : {},
+    ecadSource: String(item.ecadSource || ""),
     xschemSymbol: String(item.xschemSymbol || ""),
     xschemPath: String(item.xschemPath || ""),
     xschemFormat: String(item.xschemFormat || ""),
@@ -1155,7 +1304,7 @@ const analogMixedMenuSpecs = [
   {
     label: "Libraries",
     sections: [
-      { title: "Device sources", items: [["SKY130 devices", "import-sky130"], ["LTspice primitives", "import-ltspice"], ["Texas Instruments shells", "import-texas"], ["KiCad PCB parts", "import-kicad"], ["DigiKey component", "import-digikey"], ["Mouser component", "import-mouser"], ["Manufacturer component", "import-manufacturer"]] },
+      { title: "Device sources", items: [["SKY130 devices", "import-sky130"], ["LTspice primitives", "import-ltspice"], ["Texas Instruments shells", "import-texas"], ["KiCad PCB parts", "import-kicad"], ["DigiKey web import", "import-digikey"], ["Mouser web import", "import-mouser"], ["Downloaded ECAD / models", "import-local-models"], ["Manual manufacturer part", "import-manufacturer"], ["Vendor API status", "vendor-status"]] },
       { title: "Model handling", items: [["Resolve schematic models", "op:resolve-schematic-models"], ["Resolve footprints", "op:resolve-footprints"], ["Resolve layout cells", "op:resolve-layout-cells"], ["Resolve 3D models", "op:resolve-3d-models"], ["Deduplicate symbols", "op:dedupe-symbols"]] },
       { title: "Library views", items: [["Symbols", "symbols"], ["Footprints", "footprints"], ["Local component library", "local-library"], ["Component guide", "help-components"]] }
     ]
@@ -3523,7 +3672,7 @@ function normalizeAnalogMixedWorkspace(project) {
       symbolKind: String(item?.symbolKind || "macro"),
       spicePrefix: String(item?.spicePrefix || item?.prefix || "X").slice(0, 3) || "X",
       value: String(item?.value || item?.mpn || "vendor model"),
-      pins: Array.isArray(item?.pins) && item.pins.length ? item.pins.map(String) : ["1", "2"],
+      pins: Array.isArray(item?.pins) && item.pins.length ? item.pins.map((pin, pinIndex) => analogMixedPinName(pin, `${pinIndex + 1}`)).filter(Boolean) : ["1", "2"],
       modes: Array.isArray(item?.modes) && item.modes.length ? item.modes : analogMixedAllModes,
       domains: Array.isArray(item?.domains) && item.domains.length ? item.domains : analogMixedAllDomains,
       source: String(item?.source || item?.supplier || "Supplier"),
@@ -3535,6 +3684,14 @@ function normalizeAnalogMixedWorkspace(project) {
       pdkVariant: String(item?.pdkVariant || ""),
       modelName: String(item?.modelName || item?.mpn || ""),
       modelKey: String(item?.modelKey || item?.modelName || item?.mpn || ""),
+      datasheetUrl: String(item?.datasheetUrl || ""),
+      productUrl: String(item?.productUrl || ""),
+      imageUrl: String(item?.imageUrl || ""),
+      description: String(item?.description || ""),
+      manufacturerView: analogMixedNormalizeManufacturerView(item?.manufacturerView || item?.schematicView || {}, item?.pins || [], item || {}),
+      schematicView: analogMixedNormalizeManufacturerView(item?.schematicView || item?.manufacturerView || {}, item?.pins || [], item || {}),
+      vendorMetadata: item?.vendorMetadata && typeof item.vendorMetadata === "object" ? item.vendorMetadata : {},
+      ecadSource: String(item?.ecadSource || ""),
       xschemSymbol: String(item?.xschemSymbol || ""),
       xschemPath: String(item?.xschemPath || ""),
       xschemFormat: String(item?.xschemFormat || ""),
@@ -4367,6 +4524,10 @@ function analogMixedPinLayout(component = {}) {
   const item = analogMixedLibraryItem(component.type);
   const pins = Array.isArray(item.pins) && item.pins.length ? item.pins : ["1", "2"];
   const kind = item.symbolKind || item.tool || "macro";
+  if (analogMixedShouldUseManufacturerView(item)) {
+    const view = analogMixedNormalizeManufacturerView(item.manufacturerView || item.schematicView || {}, pins, item);
+    return analogMixedManufacturerViewPinLayout(view);
+  }
   if (["resistor", "variable-resistor", "capacitor", "polar-capacitor", "variable-capacitor", "inductor", "ferrite-bead", "crystal", "fuse", "diode", "zener-diode", "schottky-diode", "led", "photodiode", "varactor", "tvs"].includes(kind)) {
     return pins.slice(0, 2).map((pin, index) => ({
       pin: String(pin),
@@ -4654,7 +4815,11 @@ function analogMixedAvailableComponents(workspace) {
     const domains = Array.isArray(item.domains) ? item.domains : analogMixedAllDomains;
     const modeMatch = modes.includes(workspace.mode);
     const domainMatch = domains.includes(workspace.focus);
-    const filterMatch = !filter || [item.label, item.category, item.symbol, item.value, item.source, item.modelName, item.modelKey, item.xschemSymbol, item.layoutCell, item.footprint, item.packageName].join(" ").toLowerCase().includes(filter);
+    const filterMatch = !filter || [
+      item.label, item.category, item.symbol, item.value, item.source, item.supplier, item.manufacturer, item.mpn,
+      item.modelName, item.modelKey, item.description, item.datasheetUrl, item.productUrl, item.xschemSymbol,
+      item.layoutCell, item.footprint, item.packageName
+    ].join(" ").toLowerCase().includes(filter);
     return modeMatch && domainMatch && filterMatch;
   });
 }
@@ -5922,7 +6087,196 @@ function analogMixedSupplierDefaults(kind = "macro") {
   return { tool: "macro", symbolKind: "macro", spicePrefix: "X", symbol: "X", pins: ["1", "2"], value: "vendor model" };
 }
 
-function analogMixedImportSupplierComponent(defaultSupplier = "DigiKey") {
+function analogMixedVendorComponentKind(record = {}) {
+  const text = [
+    record.kind, record.category, record.description, record.label, record.mpn, record.manufacturer,
+    record.packageName, record.footprint
+  ].join(" ").toLowerCase();
+  if (text.includes("microcontroller") || text.includes("mcu") || text.includes("processor")) return "controller";
+  if (text.includes("fpga") || text.includes("cpld") || text.includes("logic")) return "digital-block";
+  if (text.includes("buck") || text.includes("boost") || text.includes("regulator") || text.includes("controller")) return "controller";
+  if (text.includes("op amp") || text.includes("opamp") || text.includes("operational amplifier")) return "op amp";
+  if (text.includes("comparator")) return "comparator";
+  if (text.includes("adc")) return "adc";
+  if (text.includes("dac")) return "dac";
+  if (text.includes("connector") || text.includes("header")) return "connector";
+  if (text.includes("resistor")) return "resistor";
+  if (text.includes("capacitor")) return "capacitor";
+  if (text.includes("inductor") || text.includes("ferrite")) return "inductor";
+  if (text.includes("diode") || text.includes("led") || text.includes("tvs")) return "diode";
+  if (text.includes("mosfet") || text.includes("transistor") || text.includes("fet")) return "mos";
+  return "macro";
+}
+
+function analogMixedInferVendorPins(record = {}, defaults = analogMixedSupplierDefaults("macro")) {
+  const explicitPins = Array.isArray(record.pins) ? record.pins : Array.isArray(record.manufacturerView?.pins) ? record.manufacturerView.pins : [];
+  if (explicitPins.length) return explicitPins.map((pin, index) => analogMixedNormalizeManufacturerPin(pin, index, explicitPins.length));
+  const text = [record.category, record.description, record.label, record.mpn].join(" ").toLowerCase();
+  if (text.includes("op amp") || text.includes("opamp") || text.includes("operational amplifier")) {
+    return ["IN+", "IN-", "V+", "V-", "OUT"].map((pin, index, list) => analogMixedNormalizeManufacturerPin(pin, index, list.length));
+  }
+  if (text.includes("buck") || text.includes("boost") || text.includes("regulator")) {
+    return ["VIN", "SW", "BOOT", "FB", "COMP", "EN", "GND"].map((pin, index, list) => analogMixedNormalizeManufacturerPin(pin, index, list.length));
+  }
+  if (text.includes("microcontroller") || text.includes("mcu")) {
+    return ["VDD", "VSS", "NRST", "OSC_IN", "OSC_OUT", "PA0", "PA1", "PB0", "PB1", "SWDIO", "SWCLK"].map((pin, index, list) => analogMixedNormalizeManufacturerPin(pin, index, list.length));
+  }
+  const pinCount = Number(record.pinCount || record.vendorMetadata?.pinCount || record.parameters?.pinCount || 0);
+  if (pinCount > 0 && pinCount <= 160) {
+    return Array.from({ length: pinCount }, (_, index) => analogMixedNormalizeManufacturerPin(`${index + 1}`, index, pinCount));
+  }
+  return defaults.pins.map((pin, index, list) => analogMixedNormalizeManufacturerPin(pin, index, list.length));
+}
+
+function analogMixedNormalizeVendorComponentRecord(record = {}, defaultSupplier = "Supplier") {
+  const supplier = String(record.supplier || record.vendor || record.source || defaultSupplier || "Supplier");
+  const mpn = String(record.mpn || record.manufacturerPartNumber || record.modelName || record.label || "vendor-component").trim();
+  const manufacturer = String(record.manufacturer || record.mfr || "").trim();
+  const kind = analogMixedVendorComponentKind(record);
+  const defaults = analogMixedSupplierDefaults(kind);
+  const pins = analogMixedInferVendorPins(record, defaults);
+  const id = slugify(record.id || `${supplier}-${manufacturer}-${mpn}`) || `supplier-${Date.now()}`;
+  const packageName = String(record.packageName || record.package || record.footprint || record.vendorMetadata?.packageName || "");
+  const description = String(record.description || record.summary || record.vendorMetadata?.description || "");
+  const component = {
+    id,
+    label: mpn,
+    category: String(record.category || `${supplier} ${kind}`.trim()),
+    symbol: String(record.symbol || defaults.symbol),
+    tool: String(record.tool || defaults.tool),
+    symbolKind: String(record.symbolKind || (["controller", "adc", "dac", "digital-block"].includes(kind) ? kind : defaults.symbolKind)),
+    spicePrefix: String(record.spicePrefix || defaults.spicePrefix).slice(0, 3) || "X",
+    value: String(record.value || mpn),
+    pins,
+    modes: Array.isArray(record.modes) && record.modes.length ? record.modes : analogMixedAllModes,
+    domains: Array.isArray(record.domains) && record.domains.length ? record.domains : analogMixedAllDomains,
+    source: supplier,
+    supplier,
+    manufacturer,
+    mpn,
+    vendor: supplier,
+    modelName: String(record.modelName || mpn),
+    modelKey: String(record.modelKey || mpn),
+    datasheetUrl: String(record.datasheetUrl || ""),
+    productUrl: String(record.productUrl || ""),
+    imageUrl: String(record.imageUrl || ""),
+    description,
+    footprint: String(record.footprint || packageName),
+    packageName,
+    deviceLevel: true,
+    ecadSource: String(record.ecadSource || "vendor-api"),
+    vendorMetadata: record.vendorMetadata && typeof record.vendorMetadata === "object" ? record.vendorMetadata : {},
+    parameters: {
+      source: supplier,
+      manufacturer,
+      mpn,
+      packageName,
+      description,
+      ...(record.parameters && typeof record.parameters === "object" ? record.parameters : {})
+    }
+  };
+  component.manufacturerView = analogMixedNormalizeManufacturerView(record.manufacturerView || record.schematicView || {}, pins, component);
+  component.schematicView = analogMixedNormalizeManufacturerView(record.schematicView || record.manufacturerView || {}, pins, component);
+  return analogMixedNormalizeLibraryRecord(component);
+}
+
+function analogMixedRegisterSupplierComponent(workspace, component = {}, sourceLabel = "Supplier") {
+  const normalized = analogMixedNormalizeLibraryRecord(component);
+  workspace.supplierComponents = Array.isArray(workspace.supplierComponents) ? workspace.supplierComponents : [];
+  const existingIndex = workspace.supplierComponents.findIndex((item) => item.id === normalized.id || analogMixedLibraryDedupeKey(item) === normalized.dedupeKey);
+  if (existingIndex >= 0) workspace.supplierComponents[existingIndex] = { ...workspace.supplierComponents[existingIndex], ...normalized };
+  else workspace.supplierComponents.push(normalized);
+  workspace.importedDeviceIds = Array.isArray(workspace.importedDeviceIds) ? workspace.importedDeviceIds : [];
+  if (!workspace.importedDeviceIds.includes(normalized.id)) workspace.importedDeviceIds.push(normalized.id);
+  analogMixedRegisterLibraryItems([normalized]);
+  workspace.selectedLibraryId = normalized.id;
+  workspace.activeTool = normalized.tool || "macro";
+  workspace.activeStage = "libraries";
+  workspace.activePanel = "libraries";
+  workspace.importHistory = Array.isArray(workspace.importHistory) ? workspace.importHistory : [];
+  workspace.importHistory.unshift({
+    source: normalized.source || sourceLabel,
+    label: normalized.label,
+    count: 1,
+    importedAt: new Date().toLocaleString()
+  });
+  workspace.importHistory = workspace.importHistory.slice(0, 30);
+  workspace.libraryReport = [
+    `${normalized.label} imported`,
+    "",
+    `Source: ${normalized.source || sourceLabel}`,
+    normalized.manufacturer ? `Manufacturer: ${normalized.manufacturer}` : "",
+    normalized.mpn ? `Manufacturer part number: ${normalized.mpn}` : "",
+    normalized.packageName ? `Package/footprint: ${normalized.packageName}` : "",
+    normalized.datasheetUrl ? `Datasheet: ${normalized.datasheetUrl}` : "",
+    normalized.productUrl ? `Product page: ${normalized.productUrl}` : "",
+    `Pins: ${(normalized.manufacturerView?.pins || normalized.pins || []).map((pin) => analogMixedPinName(pin)).join(", ") || "not specified"}`,
+    "",
+    "The schematic canvas will draw this part with its vendor/manufacturer pin map when enough pin metadata is available."
+  ].filter(Boolean).join("\n");
+  return normalized;
+}
+
+async function analogMixedImportVendorComponent(defaultSupplier = "DigiKey") {
+  const project = activeAnalogMixedProject();
+  if (!project) return;
+  const workspace = normalizeAnalogMixedWorkspace(project);
+  const supplier = String(defaultSupplier || "DigiKey");
+  const query = String(window.prompt(`${supplier} part search. Enter a manufacturer part number, keyword, or vendor part number.`, "") || "").trim();
+  if (!query) return;
+  analogMixedSetStatus(`Searching ${supplier} for ${query}...`);
+  try {
+    const response = await fetch("/api/analog-mixed/vendor-search", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ supplier, query, limit: 10 })
+    });
+    const payload = await response.json();
+    if (!payload.ok || !Array.isArray(payload.results) || !payload.results.length) {
+      workspace.libraryReport = [
+        `${supplier} web import did not return a component`,
+        "",
+        payload.message || payload.error || "No matching API result was available.",
+        "",
+        "Use Libraries > Downloaded model / ECAD files for parts downloaded from supplier pages, or continue with manual component entry."
+      ].join("\n");
+      renderAnalogMixedWorkspace();
+      analogMixedSetStatus(payload.message || `${supplier} search did not find a usable component.`);
+      return analogMixedImportManualSupplierComponent(supplier);
+    }
+    const choices = payload.results.slice(0, 10).map((item, index) => {
+      const title = [item.mpn || item.label, item.manufacturer, item.packageName].filter(Boolean).join(" | ");
+      return `${index + 1}. ${title}`;
+    }).join("\n");
+    const selectedText = String(window.prompt(`Select ${supplier} result number:\n\n${choices}`, "1") || "1").trim();
+    const selectedIndex = Math.max(0, Math.min(payload.results.length - 1, (Number(selectedText) || 1) - 1));
+    const component = analogMixedNormalizeVendorComponentRecord(payload.results[selectedIndex], supplier);
+    const registered = analogMixedRegisterSupplierComponent(workspace, component, supplier);
+    markDraftNeedsSave();
+    scheduleAutosave();
+    renderAnalogMixedWorkspace();
+    analogMixedSetStatus(`${registered.label} imported from ${supplier}.`);
+  } catch (error) {
+    workspace.libraryReport = [
+      `${supplier} web import failed`,
+      "",
+      error.message || "The vendor API request could not be completed.",
+      "",
+      "Downloaded model and manual component import are still available."
+    ].join("\n");
+    renderAnalogMixedWorkspace();
+    analogMixedSetStatus(`${supplier} import failed; manual import opened.`);
+    analogMixedImportManualSupplierComponent(supplier);
+  }
+}
+
+async function analogMixedImportSupplierComponent(defaultSupplier = "DigiKey") {
+  const supplier = String(defaultSupplier || "Supplier");
+  if (/^(digikey|mouser)$/i.test(supplier)) return await analogMixedImportVendorComponent(supplier);
+  return analogMixedImportManualSupplierComponent(supplier);
+}
+
+function analogMixedImportManualSupplierComponent(defaultSupplier = "DigiKey") {
   const project = activeAnalogMixedProject();
   if (!project) return;
   const workspace = normalizeAnalogMixedWorkspace(project);
@@ -5958,26 +6312,29 @@ function analogMixedImportSupplierComponent(defaultSupplier = "DigiKey") {
     footprint,
     packageName: footprint,
     deviceLevel: true,
+    ecadSource: "manual-entry",
+    manufacturerView: analogMixedNormalizeManufacturerView({
+      source: supplier,
+      title: mpn,
+      subtitle: manufacturer || supplier,
+      packageName: footprint,
+      pins: (pins.length ? pins : defaults.pins).map((pin, index, list) => analogMixedNormalizeManufacturerPin(pin, index, list.length))
+    }, pins.length ? pins : defaults.pins, { supplier, manufacturer, mpn, packageName: footprint }),
     parameters: {
       source: supplier,
       mpn,
       ...(footprint ? { footprint } : {})
     }
   };
-  workspace.supplierComponents = Array.isArray(workspace.supplierComponents) ? workspace.supplierComponents : [];
-  workspace.supplierComponents.push(component);
-  if (!workspace.importedDeviceIds.includes(component.id)) workspace.importedDeviceIds.push(component.id);
-  if (!analogMixedDeviceCatalog.some((item) => item.id === component.id)) analogMixedDeviceCatalog.push(component);
-  workspace.selectedLibraryId = component.id;
-  workspace.activeTool = component.tool || "macro";
+  const registered = analogMixedRegisterSupplierComponent(workspace, component, supplier);
   workspace.activeStage = "libraries";
   workspace.activePanel = "libraries";
   workspace.libraryReport = [
     `${supplier} component imported`,
     "",
-    `${component.label} is now a real selectable library entry.`,
+    `${registered.label} is now a real selectable library entry.`,
     `Kind: ${kind || component.symbolKind}`,
-    `Pins: ${component.pins.join(", ")}`,
+    `Pins: ${(registered.pins || []).map((pin) => analogMixedPinName(pin)).join(", ")}`,
     footprint ? `Footprint/package: ${footprint}` : "Footprint/package: not set",
     "",
     "Place it from the Library, then edit value, model, package, and device parameters in the Inspector."
@@ -5985,12 +6342,121 @@ function analogMixedImportSupplierComponent(defaultSupplier = "DigiKey") {
   markDraftNeedsSave();
   scheduleAutosave();
   renderAnalogMixedWorkspace();
-  analogMixedSetStatus(`${component.label} imported from ${supplier}.`);
+  analogMixedSetStatus(`${registered.label} imported from ${supplier}.`);
+}
+
+function analogMixedTryParseJson(text = "") {
+  try {
+    return JSON.parse(String(text || ""));
+  } catch {
+    return null;
+  }
+}
+
+function analogMixedFirstPresent(...values) {
+  return values.find((value) => String(value ?? "").trim()) ?? "";
+}
+
+function analogMixedFlattenObjectStrings(source = {}, prefix = "", output = {}) {
+  if (!source || typeof source !== "object") return output;
+  Object.entries(source).forEach(([key, value]) => {
+    const pathKey = prefix ? `${prefix}.${key}` : key;
+    if (value && typeof value === "object" && !Array.isArray(value)) analogMixedFlattenObjectStrings(value, pathKey, output);
+    else if (Array.isArray(value)) output[pathKey] = value.map((item) => typeof item === "object" ? JSON.stringify(item) : String(item ?? "")).join(", ");
+    else output[pathKey] = String(value ?? "");
+  });
+  return output;
+}
+
+function analogMixedPinsFromDelimitedText(text = "") {
+  const rows = String(text || "").split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const header = rows[0]?.split(/,|\t|;/).map((cell) => cell.trim().toLowerCase()) || [];
+  const nameIndex = header.findIndex((cell) => /pin.?name|signal|net|function|name/.test(cell));
+  const numberIndex = header.findIndex((cell) => /pin.?number|number|num|pad/.test(cell));
+  if (nameIndex < 0 && numberIndex < 0) return [];
+  return rows.slice(1, 200).map((line, index) => {
+    const cells = line.split(/,|\t|;/).map((cell) => cell.trim().replace(/^"|"$/g, ""));
+    const name = cells[nameIndex] || cells[numberIndex] || `${index + 1}`;
+    return {
+      name,
+      number: cells[numberIndex] || `${index + 1}`,
+      description: cells.find((cell, cellIndex) => cellIndex !== nameIndex && cellIndex !== numberIndex && cell) || ""
+    };
+  }).filter((pin) => pin.name);
+}
+
+function analogMixedPinsFromKicadSymbol(text = "") {
+  const pins = [];
+  const pinRegex = /\(pin\s+([^\s)]+)[\s\S]*?\(number\s+"([^"]+)"\)[\s\S]*?\(name\s+"([^"]*)"\)/g;
+  let match;
+  while ((match = pinRegex.exec(String(text || ""))) && pins.length < 240) {
+    pins.push({ name: match[3] || match[2], number: match[2], direction: match[1] });
+  }
+  if (pins.length) return pins;
+  const legacyRegex = /^\s*X\s+([^ ]+)\s+(-?\d+)\s+(-?\d+)\s+\d+\s+[LRUD]\s+\d+\s+\d+\s+\d+\s+([A-Za-z0-9_~+\-/]+)/gm;
+  while ((match = legacyRegex.exec(String(text || ""))) && pins.length < 240) {
+    pins.push({ name: match[1], number: match[4] || String(pins.length + 1) });
+  }
+  return pins;
+}
+
+function analogMixedPinsFromLtspiceAsy(text = "") {
+  const pins = [];
+  const lines = String(text || "").split(/\r?\n/);
+  let pendingPin = null;
+  lines.forEach((line) => {
+    const clean = line.trim();
+    if (clean.startsWith("PIN ")) {
+      pendingPin = { name: `${pins.length + 1}`, number: `${pins.length + 1}` };
+      pins.push(pendingPin);
+    }
+    const attrMatch = clean.match(/^PINATTR\s+(PinName|SpiceOrder|Description)\s+(.+)$/i);
+    if (attrMatch && pendingPin) {
+      if (/PinName/i.test(attrMatch[1])) pendingPin.name = attrMatch[2].trim();
+      if (/SpiceOrder/i.test(attrMatch[1])) pendingPin.number = attrMatch[2].trim();
+      if (/Description/i.test(attrMatch[1])) pendingPin.description = attrMatch[2].trim();
+    }
+  });
+  return pins.filter((pin) => pin.name);
+}
+
+function analogMixedRecordFromJsonComponent(json = {}, fileName = "", index = 0) {
+  const source = Array.isArray(json) ? json[0] || {} : json;
+  if (!source || typeof source !== "object") return null;
+  const flat = analogMixedFlattenObjectStrings(source);
+  const pins = Array.isArray(source.pins) ? source.pins :
+    Array.isArray(source.Pins) ? source.Pins :
+      Array.isArray(source.pinout) ? source.pinout :
+        Array.isArray(source.Pinout) ? source.Pinout : [];
+  const mpn = analogMixedFirstPresent(
+    source.mpn, source.MPN, source.manufacturerPartNumber, source.ManufacturerPartNumber,
+    source.name, source.Name, source.partNumber, source.PartNumber, flat["part.manufacturerPartNumber"], fileName.replace(/\.[^.]+$/, "")
+  );
+  return {
+    id: `local-json-${slugify(mpn)}-${Date.now()}-${index}`,
+    label: String(mpn),
+    mpn: String(mpn),
+    manufacturer: String(analogMixedFirstPresent(source.manufacturer, source.Manufacturer, source.mfr, source.Mfr, flat["manufacturer.name"])),
+    supplier: String(analogMixedFirstPresent(source.supplier, source.Supplier, source.vendor, source.Vendor, "Downloaded file")),
+    source: "Downloaded file",
+    category: String(analogMixedFirstPresent(source.category, source.Category, source.type, source.Type, "downloaded ECAD component")),
+    description: String(analogMixedFirstPresent(source.description, source.Description, source.summary, source.Summary)),
+    packageName: String(analogMixedFirstPresent(source.packageName, source.package, source.Package, source.footprint, source.Footprint)),
+    footprint: String(analogMixedFirstPresent(source.footprint, source.Footprint, source.packageName, source.package)),
+    datasheetUrl: String(analogMixedFirstPresent(source.datasheetUrl, source.DatasheetUrl, source.datasheet, source.Datasheet)),
+    productUrl: String(analogMixedFirstPresent(source.productUrl, source.ProductUrl, source.url, source.Url)),
+    imageUrl: String(analogMixedFirstPresent(source.imageUrl, source.ImageUrl, source.image, source.Image)),
+    pins,
+    ecadSource: fileName,
+    vendorMetadata: { fileName, flattened: flat }
+  };
 }
 
 function analogMixedComponentFromLocalFile(file = {}, text = "", index = 0) {
   const fileName = String(file.name || `imported-model-${index + 1}.lib`);
   const extension = fileName.split(".").pop()?.toLowerCase() || "txt";
+  const jsonRecord = extension === "json" ? analogMixedRecordFromJsonComponent(analogMixedTryParseJson(text), fileName, index) : null;
+  if (jsonRecord) return analogMixedNormalizeVendorComponentRecord(jsonRecord, "Downloaded file");
   const subckt = String(text || "").match(/^\s*\.subckt\s+([^\s]+)\s+(.+)$/im);
   const model = String(text || "").match(/^\s*\.model\s+([^\s]+)\s+([^\s]+)/im);
   const rawName = subckt?.[1] || model?.[1] || fileName.replace(/\.[^.]+$/, "");
@@ -6003,9 +6469,25 @@ function analogMixedComponentFromLocalFile(file = {}, text = "", index = 0) {
             modelKind.includes("res") ? "resistor" :
               modelKind.includes("cap") ? "capacitor" : "macro"
   );
-  const pins = subckt?.[2]
+  const parsedPins = extension === "kicad_sym" || extension === "kicad_mod" || extension === "lib"
+    ? analogMixedPinsFromKicadSymbol(text)
+    : extension === "asy"
+      ? analogMixedPinsFromLtspiceAsy(text)
+      : ["csv", "tsv"].includes(extension)
+        ? analogMixedPinsFromDelimitedText(text)
+        : [];
+  const pins = parsedPins.length
+    ? parsedPins
+    : subckt?.[2]
     ? subckt[2].trim().split(/\s+/).filter(Boolean).slice(0, 24)
     : defaults.pins;
+  const manufacturerView = analogMixedNormalizeManufacturerView({
+    source: extension === "asy" ? "LTspice symbol" : extension.includes("kicad") ? "KiCad symbol" : "Downloaded file",
+    title: rawName,
+    subtitle: fileName,
+    packageName: extension.includes("kicad") ? fileName : "",
+    pins
+  }, pins, { supplier: "Local", mpn: rawName, packageName: fileName });
   const id = `local-${slugify(rawName)}-${Date.now()}-${index}`;
   return {
     id,
@@ -6027,6 +6509,10 @@ function analogMixedComponentFromLocalFile(file = {}, text = "", index = 0) {
     modelName: rawName,
     fileName,
     modelText: String(text || ""),
+    description: extension === "asy" ? "LTspice symbol file" : extension.includes("kicad") ? "KiCad component library file" : "Downloaded model or ECAD file",
+    manufacturerView,
+    schematicView: manufacturerView,
+    ecadSource: fileName,
     footprint: extension.includes("kicad") ? fileName : "",
     packageName: extension.includes("kicad") ? "KiCad library" : "model",
     deviceLevel: true,
@@ -6034,7 +6520,7 @@ function analogMixedComponentFromLocalFile(file = {}, text = "", index = 0) {
       sourceFile: fileName,
       fileType: extension,
       bytes: String(file.size || text.length || 0),
-      parsedAs: subckt ? "subcircuit" : model ? "model" : "library reference"
+      parsedAs: parsedPins.length ? "symbol pinout" : subckt ? "subcircuit" : model ? "model" : "library reference"
     }
   };
 }
@@ -6049,7 +6535,8 @@ function analogMixedImportLocalModelFiles() {
   input.accept = [
     ".spice", ".sp", ".cir", ".lib", ".model", ".subckt",
     ".asy", ".kicad_sym", ".kicad_mod", ".kicad_sch", ".kicad_pcb",
-    ".ckt", ".net", ".txt", ".json"
+    ".ckt", ".net", ".txt", ".json", ".csv", ".tsv", ".xml",
+    ".bxl", ".epw", ".step", ".stp", ".wrl", ".obj"
   ].join(",");
   input.addEventListener("change", async () => {
     const files = Array.from(input.files || []);
@@ -6066,9 +6553,7 @@ function analogMixedImportLocalModelFiles() {
     }
     workspace.supplierComponents = Array.isArray(workspace.supplierComponents) ? workspace.supplierComponents : [];
     imported.forEach((item) => {
-      workspace.supplierComponents.push(item);
-      if (!workspace.importedDeviceIds.includes(item.id)) workspace.importedDeviceIds.push(item.id);
-      if (!analogMixedDeviceCatalog.some((device) => device.id === item.id)) analogMixedDeviceCatalog.push(item);
+      analogMixedRegisterSupplierComponent(workspace, item, "Downloaded file");
     });
     workspace.importHistory.unshift({
       source: "local-files",
@@ -6091,6 +6576,35 @@ function analogMixedImportLocalModelFiles() {
     analogMixedSetStatus(`Imported ${imported.length} local model/library file${imported.length === 1 ? "" : "s"}.`);
   }, { once: true });
   input.click();
+}
+
+async function analogMixedRefreshVendorStatus() {
+  const project = activeAnalogMixedProject();
+  if (!project) return;
+  const workspace = normalizeAnalogMixedWorkspace(project);
+  try {
+    const response = await fetch("/api/analog-mixed/vendor-status");
+    const payload = await response.json();
+    const vendors = payload.vendors || {};
+    workspace.libraryReport = [
+      "Vendor API status",
+      "",
+      `DigiKey: ${vendors.digikey?.configured ? `configured (${vendors.digikey.auth})` : "not configured"}`,
+      `Mouser: ${vendors.mouser?.configured ? `configured (${vendors.mouser.auth})` : "not configured"}`,
+      "",
+      payload.message || "Vendor credentials stay on the local backend.",
+      "",
+      "If an API is not configured, use Downloaded ECAD / models or Manual manufacturer part."
+    ].join("\n");
+    workspace.activeStage = "libraries";
+    workspace.activePanel = "libraries";
+    renderAnalogMixedWorkspace();
+    analogMixedSetStatus("Vendor API status refreshed.");
+  } catch (error) {
+    workspace.libraryReport = `Vendor API status could not be read.\n\n${error.message || error}`;
+    renderAnalogMixedWorkspace();
+    analogMixedSetStatus("Vendor API status failed.");
+  }
 }
 
 function analogMixedImportDeviceSource(sourceId = "sky130") {
@@ -7149,6 +7663,41 @@ function analogMixedGroundSymbol(kind = "ground") {
 
 function analogMixedBoardIcPackageSymbol(kind = "macro", libraryItem = {}) {
   const pins = Array.isArray(libraryItem.pins) && libraryItem.pins.length ? libraryItem.pins : ["1", "2", "3", "4"];
+  if (analogMixedShouldUseManufacturerView(libraryItem)) {
+    const view = analogMixedNormalizeManufacturerView(libraryItem.manufacturerView || libraryItem.schematicView || {}, pins, libraryItem);
+    const metrics = analogMixedManufacturerViewMetrics(view);
+    const pinRows = (pinList, side) => pinList.map((pin, index) => {
+      const label = escapeHtml(pin.name);
+      const pinNo = pin.number && pin.number !== pin.name ? `<tspan class="am-pin-number">${escapeHtml(pin.number)}</tspan> ` : "";
+      if (side === "top" || side === "bottom") {
+        const span = metrics.bodyWidth - 44;
+        const x = pinList.length <= 1 ? 0 : -span / 2 + (span / Math.max(1, pinList.length - 1)) * index;
+        const y1 = side === "top" ? metrics.bodyTop - 26 : metrics.bodyBottom;
+        const y2 = side === "top" ? metrics.bodyTop : metrics.bodyBottom + 26;
+        const textY = side === "top" ? metrics.bodyTop + 16 : metrics.bodyBottom - 8;
+        return `<line x1="${Math.round(x)}" y1="${y1}" x2="${Math.round(x)}" y2="${y2}" /><text class="am-pin-label am-pin-label-${side}" x="${Math.round(x - 20)}" y="${textY}">${pinNo}${label}</text>`;
+      }
+      const span = metrics.bodyHeight - 44;
+      const y = pinList.length <= 1 ? 0 : -span / 2 + (span / Math.max(1, pinList.length - 1)) * index;
+      return side === "left"
+        ? `<line x1="${metrics.bodyLeft - 30}" y1="${Math.round(y)}" x2="${metrics.bodyLeft}" y2="${Math.round(y)}" /><text class="am-pin-label" x="${metrics.bodyLeft + 8}" y="${Math.round(y) + 5}">${pinNo}${label}</text>`
+        : `<line x1="${metrics.bodyRight}" y1="${Math.round(y)}" x2="${metrics.bodyRight + 30}" y2="${Math.round(y)}" /><text class="am-pin-label am-pin-label-right" x="${metrics.bodyRight - 8}" y="${Math.round(y) + 5}">${pinNo}${label}</text>`;
+    }).join("");
+    const title = view.title || libraryItem.mpn || libraryItem.modelName || libraryItem.label || libraryItem.symbol || "IC";
+    const subtitle = view.subtitle || libraryItem.manufacturer || libraryItem.source || "";
+    const packageText = view.packageName || libraryItem.packageName || libraryItem.footprint || "";
+    return `
+      <rect class="am-symbol-soft-fill am-symbol-ic-package am-symbol-manufacturer-body" x="${metrics.bodyLeft}" y="${metrics.bodyTop}" width="${metrics.bodyWidth}" height="${metrics.bodyHeight}" rx="5" />
+      <path class="am-symbol-package-notch" d="M -16 ${metrics.bodyTop} A 16 16 0 0 0 16 ${metrics.bodyTop}" />
+      ${pinRows(metrics.groups.left, "left")}
+      ${pinRows(metrics.groups.right, "right")}
+      ${pinRows(metrics.groups.top, "top")}
+      ${pinRows(metrics.groups.bottom, "bottom")}
+      <text class="am-block-mark am-manufacturer-title" x="${metrics.bodyLeft + 16}" y="${Math.max(metrics.bodyTop + 28, -8)}">${escapeHtml(title).slice(0, 42)}</text>
+      ${subtitle ? `<text class="am-symbol-package-text" x="${metrics.bodyLeft + 16}" y="${Math.max(metrics.bodyTop + 50, 14)}">${escapeHtml(subtitle).slice(0, 48)}</text>` : ""}
+      ${packageText ? `<text class="am-symbol-package-text" x="${metrics.bodyLeft + 16}" y="${metrics.bodyBottom - 14}">${escapeHtml(packageText).slice(0, 48)}</text>` : ""}
+    `;
+  }
   const leftPins = pins.slice(0, Math.ceil(pins.length / 2));
   const rightPins = pins.slice(Math.ceil(pins.length / 2));
   const bodyHeight = Math.max(84, Math.min(168, 34 + Math.max(leftPins.length, rightPins.length) * 22));
@@ -7225,6 +7774,7 @@ function analogMixedMacroSymbol(kind = "macro", libraryItem = {}) {
 
 function analogMixedSymbolBody(component = {}, libraryItem = {}) {
   const kind = libraryItem.symbolKind || libraryItem.tool || "macro";
+  if (analogMixedShouldUseManufacturerView(libraryItem)) return analogMixedBoardIcPackageSymbol(kind, libraryItem);
   if (["resistor", "variable-resistor", "potentiometer", "capacitor", "polar-capacitor", "variable-capacitor", "inductor", "coupled-inductor", "transformer", "ferrite-bead", "crystal", "fuse"].includes(kind)) return analogMixedPassiveSymbol(kind);
   if (["diode", "zener-diode", "schottky-diode", "led", "photodiode", "varactor", "tvs"].includes(kind)) return analogMixedDiodeSymbol(kind);
   if (["nmos", "pmos", "nmos-body", "pmos-body", "depletion-nmos", "power-switch", "igbt"].includes(kind)) return analogMixedMosfetSymbol(kind === "power-switch" || kind === "igbt" ? "nmos-body" : kind);
@@ -9845,6 +10395,7 @@ async function analogMixedHandleMenuAction(action = "") {
   if (clean === "import-digikey") return await analogMixedImportSupplierComponent("DigiKey");
   if (clean === "import-mouser") return await analogMixedImportSupplierComponent("Mouser");
   if (clean === "import-manufacturer") return await analogMixedImportSupplierComponent("Manufacturer");
+  if (clean === "vendor-status") return await analogMixedRefreshVendorStatus();
   if (clean === "import-sky130") return analogMixedImportDeviceSource("sky130");
   if (clean === "import-ltspice") return analogMixedImportDeviceSource("ltspice");
   if (clean === "import-texas") return analogMixedImportDeviceSource("texas");
@@ -11517,7 +12068,7 @@ async function handleBuilderAppCommand(action = "") {
   }
   if (action === "am-import-supplier") {
     openAnalogMixedCommand("libraries");
-    analogMixedImportSupplierComponent("DigiKey");
+    await analogMixedImportSupplierComponent("DigiKey");
     return;
   }
   if (compileActions[action]) {

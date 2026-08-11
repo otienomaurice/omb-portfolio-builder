@@ -3936,12 +3936,18 @@ function analogMixedServerSymbolDedupeKey(item = {}) {
 function analogMixedServerNormalizeSymbol(item = {}, index = 0) {
   const rawId = String(item.id || item.modelName || item.modelKey || item.label || `server-symbol-${index + 1}`);
   const id = safeSegment(rawId, `server-symbol-${index + 1}`).toLowerCase();
-  const pins = Array.isArray(item.pins) && item.pins.length ? item.pins.map((pin) => String(pin || "").trim()).filter(Boolean) : ["1", "2"];
+  const pins = Array.isArray(item.pins) && item.pins.length
+    ? item.pins.map((pin, pinIndex) => {
+      if (pin && typeof pin === "object") return String(pin.name || pin.pin || pin.label || pin.number || pinIndex + 1).trim();
+      return String(pin || "").trim();
+    }).filter(Boolean)
+    : ["1", "2"];
   const normalized = {
     id,
     label: String(item.label || item.modelName || item.modelKey || rawId),
     category: String(item.category || item.source || item.pdk || "device"),
     symbol: String(item.symbol || item.spicePrefix || "X").slice(0, 12) || "X",
+    tool: String(item.tool || "macro"),
     spicePrefix: String(item.spicePrefix || "X").slice(0, 3) || "X",
     symbolKind: String(item.symbolKind || "macro"),
     pins,
@@ -3951,6 +3957,17 @@ function analogMixedServerNormalizeSymbol(item = {}, index = 0) {
     pdk: String(item.pdk || ""),
     pdkVariant: String(item.pdkVariant || ""),
     vendor: String(item.vendor || ""),
+    supplier: String(item.supplier || item.vendor || item.source || ""),
+    manufacturer: String(item.manufacturer || ""),
+    mpn: String(item.mpn || item.modelName || ""),
+    datasheetUrl: String(item.datasheetUrl || ""),
+    productUrl: String(item.productUrl || ""),
+    imageUrl: String(item.imageUrl || ""),
+    description: String(item.description || ""),
+    manufacturerView: item.manufacturerView && typeof item.manufacturerView === "object" ? item.manufacturerView : {},
+    schematicView: item.schematicView && typeof item.schematicView === "object" ? item.schematicView : {},
+    vendorMetadata: item.vendorMetadata && typeof item.vendorMetadata === "object" ? item.vendorMetadata : {},
+    ecadSource: String(item.ecadSource || ""),
     modelName: String(item.modelName || ""),
     modelKey: String(item.modelKey || item.modelName || ""),
     xschemSymbol: String(item.xschemSymbol || ""),
@@ -3966,6 +3983,290 @@ function analogMixedServerNormalizeSymbol(item = {}, index = 0) {
   };
   normalized.dedupeKey = analogMixedServerSymbolDedupeKey(normalized);
   return normalized;
+}
+
+function analogMixedVendorCredentials() {
+  return {
+    mouser: {
+      configured: Boolean(process.env.MOUSER_SEARCH_API_KEY || process.env.MOUSER_PART_API_KEY || process.env.MOUSER_API_KEY),
+      apiKey: process.env.MOUSER_SEARCH_API_KEY || process.env.MOUSER_PART_API_KEY || process.env.MOUSER_API_KEY || ""
+    },
+    digikey: {
+      configured: Boolean(process.env.DIGIKEY_ACCESS_TOKEN || (process.env.DIGIKEY_CLIENT_ID && process.env.DIGIKEY_CLIENT_SECRET)),
+      accessToken: process.env.DIGIKEY_ACCESS_TOKEN || "",
+      clientId: process.env.DIGIKEY_CLIENT_ID || "",
+      clientSecret: process.env.DIGIKEY_CLIENT_SECRET || ""
+    }
+  };
+}
+
+async function fetchJsonWithTimeout(url, options = {}, timeoutMs = 12000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, { ...options, signal: controller.signal });
+    const text = await response.text();
+    let json = {};
+    try {
+      json = text ? JSON.parse(text) : {};
+    } catch {
+      json = { raw: text };
+    }
+    if (!response.ok) {
+      const message = json?.Message || json?.message || json?.error_description || json?.error || `${response.status} ${response.statusText}`;
+      throw new Error(String(message));
+    }
+    return json;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function analogMixedVendorValue(...values) {
+  return values.find((value) => String(value ?? "").trim()) ?? "";
+}
+
+function analogMixedVendorText(value = "") {
+  if (value && typeof value === "object") {
+    if ("Value" in value) return String(value.Value || "");
+    if ("Name" in value) return String(value.Name || "");
+    if ("ProductDescription" in value) return String(value.ProductDescription || "");
+    return JSON.stringify(value);
+  }
+  return String(value ?? "");
+}
+
+function analogMixedVendorInferKind(record = {}) {
+  const text = [
+    record.category, record.description, record.mpn, record.manufacturer, record.packageName
+  ].join(" ").toLowerCase();
+  if (text.includes("microcontroller") || text.includes("mcu") || text.includes("processor")) return "controller";
+  if (text.includes("fpga") || text.includes("cpld") || text.includes("logic")) return "digital-block";
+  if (text.includes("buck") || text.includes("boost") || text.includes("regulator")) return "controller";
+  if (text.includes("operational amplifier") || text.includes("op amp") || text.includes("opamp")) return "opamp";
+  if (text.includes("comparator")) return "comparator";
+  if (text.includes("adc")) return "adc";
+  if (text.includes("dac")) return "dac";
+  if (text.includes("connector") || text.includes("header")) return "connector";
+  if (text.includes("resistor")) return "resistor";
+  if (text.includes("capacitor")) return "capacitor";
+  if (text.includes("inductor") || text.includes("ferrite")) return "inductor";
+  if (text.includes("diode") || text.includes("led") || text.includes("tvs")) return "diode";
+  if (text.includes("mosfet") || text.includes("transistor") || text.includes("fet")) return "nmos-body";
+  return "macro";
+}
+
+function analogMixedVendorDefaults(kind = "macro") {
+  const clean = String(kind || "macro").toLowerCase();
+  if (clean.includes("resistor")) return { tool: "resistor", symbolKind: "resistor", spicePrefix: "R", symbol: "R", pins: ["1", "2"] };
+  if (clean.includes("capacitor")) return { tool: "capacitor", symbolKind: "capacitor", spicePrefix: "C", symbol: "C", pins: ["1", "2"] };
+  if (clean.includes("inductor")) return { tool: "inductor", symbolKind: "inductor", spicePrefix: "L", symbol: "L", pins: ["1", "2"] };
+  if (clean.includes("diode")) return { tool: "diode", symbolKind: "diode", spicePrefix: "D", symbol: "D", pins: ["A", "K"] };
+  if (clean.includes("opamp") || clean.includes("comparator")) return { tool: "macro", symbolKind: clean.includes("comparator") ? "comparator" : "opamp", spicePrefix: "X", symbol: "AMP", pins: ["IN+", "IN-", "V+", "V-", "OUT"] };
+  if (clean.includes("controller")) return { tool: "macro", symbolKind: "controller", spicePrefix: "X", symbol: "CTRL", pins: ["VIN", "SW", "BOOT", "FB", "COMP", "EN", "GND"] };
+  if (clean.includes("connector")) return { tool: "macro", symbolKind: "connector", spicePrefix: "J", symbol: "J", pins: ["1", "2"] };
+  if (clean.includes("digital")) return { tool: "macro", symbolKind: "digital-block", spicePrefix: "X", symbol: "IC", pins: ["VDD", "GND", "CLK", "RST", "IO0", "IO1"] };
+  if (clean.includes("mos")) return { tool: "semiconductor", symbolKind: "nmos-body", spicePrefix: "M", symbol: "M", pins: ["D", "G", "S", "B"] };
+  return { tool: "macro", symbolKind: "macro", spicePrefix: "X", symbol: "IC", pins: ["1", "2"] };
+}
+
+function analogMixedVendorPinSide(name = "", index = 0, total = 2) {
+  const clean = String(name || "").toUpperCase();
+  if (/^(VCC|VDD|V\+|PVDD|AVDD|DVDD|VIN|VBAT|BOOT|EN|RESET|RST|CLK|OSC|XTAL|REF)$/.test(clean)) return "top";
+  if (/^(GND|AGND|DGND|PGND|VSS|V-|EP|PAD|THERMAL)$/.test(clean)) return "bottom";
+  if (/(OUT|OUTPUT|SW|LX|PHASE|DRV|GATE|SCL|SDA|MISO|TX|TXD|DO|Q|Y|FB)/.test(clean)) return "right";
+  if (/(IN|INPUT|CS|SENSE|COMP|SYNC|SS|RT|MODE|MOSI|RX|RXD|DI|D|A|B)/.test(clean)) return "left";
+  return index < Math.ceil(total / 2) ? "left" : "right";
+}
+
+function analogMixedVendorPins(record = {}, defaults = analogMixedVendorDefaults()) {
+  const explicit = Array.isArray(record.pins) && record.pins.length ? record.pins : [];
+  let pinNames = explicit.map((pin, index) => {
+    if (pin && typeof pin === "object") return String(pin.name || pin.pin || pin.label || pin.number || index + 1);
+    return String(pin || index + 1);
+  }).filter(Boolean);
+  const text = [record.category, record.description, record.mpn].join(" ").toLowerCase();
+  if (!pinNames.length && (text.includes("op amp") || text.includes("operational amplifier") || text.includes("opamp"))) pinNames = ["IN+", "IN-", "V+", "V-", "OUT"];
+  if (!pinNames.length && (text.includes("buck") || text.includes("boost") || text.includes("regulator"))) pinNames = ["VIN", "SW", "BOOT", "FB", "COMP", "EN", "GND"];
+  const pinCount = Number(record.pinCount || record.vendorMetadata?.pinCount || 0);
+  if (!pinNames.length && pinCount > 0 && pinCount <= 160) pinNames = Array.from({ length: pinCount }, (_, index) => `${index + 1}`);
+  if (!pinNames.length) pinNames = defaults.pins;
+  return pinNames.map((pin, index) => ({
+    name: String(pin),
+    number: explicit[index]?.number ? String(explicit[index].number) : String(index + 1),
+    side: analogMixedVendorPinSide(pin, index, pinNames.length)
+  }));
+}
+
+function analogMixedVendorManufacturerView(record = {}, defaults = analogMixedVendorDefaults()) {
+  const pins = analogMixedVendorPins(record, defaults);
+  return {
+    source: record.supplier || record.vendor || "Vendor",
+    style: "manufacturer",
+    title: record.mpn || record.label || "component",
+    subtitle: record.manufacturer || "",
+    packageName: record.packageName || record.footprint || "",
+    datasheetUrl: record.datasheetUrl || "",
+    productUrl: record.productUrl || "",
+    imageUrl: record.imageUrl || "",
+    pins,
+    fields: [
+      { label: "Category", value: record.category || "" },
+      { label: "Description", value: record.description || "" },
+      { label: "Availability", value: record.vendorMetadata?.availability || "" },
+      { label: "Lifecycle", value: record.vendorMetadata?.lifecycle || "" }
+    ].filter((field) => field.value)
+  };
+}
+
+function analogMixedNormalizeVendorApiPart(raw = {}, supplier = "Vendor", index = 0) {
+  const isMouser = /mouser/i.test(supplier);
+  const manufacturer = isMouser
+    ? analogMixedVendorText(analogMixedVendorValue(raw.Manufacturer, raw.ManufacturerName))
+    : analogMixedVendorText(analogMixedVendorValue(raw.Manufacturer, raw.ManufacturerName, raw.ManufacturerNameText));
+  const mpn = analogMixedVendorText(analogMixedVendorValue(raw.ManufacturerPartNumber, raw.ManufacturerProductNumber, raw.MfrPartNumber, raw.PartNumber));
+  const vendorPartNumber = analogMixedVendorText(analogMixedVendorValue(raw.MouserPartNumber, raw.DigiKeyProductNumber, raw.SupplierPartNumber));
+  const description = analogMixedVendorText(analogMixedVendorValue(raw.Description?.ProductDescription, raw.Description, raw.ProductDescription));
+  const category = analogMixedVendorText(analogMixedVendorValue(raw.Category?.Name, raw.Category, raw.ProductCategory));
+  const packageName = analogMixedVendorText(analogMixedVendorValue(raw.PackageType?.Name, raw.PackageType, raw.PackageCase, raw.ProductStatus));
+  const pinCountParam = Array.isArray(raw.Parameters)
+    ? raw.Parameters.find((parameter) => /number of pins|pin count|pins/i.test(`${parameter.ParameterText || parameter.Parameter || parameter.Name || ""}`))
+    : null;
+  const pinCount = Number(analogMixedVendorText(analogMixedVendorValue(raw.PinCount, raw.NumberOfPins, pinCountParam?.ValueText, pinCountParam?.Value))) || 0;
+  const record = {
+    id: `${supplier}-${mpn || vendorPartNumber || index}`,
+    label: mpn || vendorPartNumber || `Vendor part ${index + 1}`,
+    supplier,
+    vendor: supplier,
+    manufacturer,
+    mpn: mpn || vendorPartNumber || `part-${index + 1}`,
+    category,
+    description,
+    packageName,
+    footprint: packageName,
+    pinCount,
+    datasheetUrl: analogMixedVendorText(analogMixedVendorValue(raw.DatasheetUrl, raw.PrimaryDatasheet, raw.DatasheetURL)),
+    productUrl: analogMixedVendorText(analogMixedVendorValue(raw.ProductDetailUrl, raw.ProductUrl, raw.ProductURL)),
+    imageUrl: analogMixedVendorText(analogMixedVendorValue(raw.ImagePath, raw.PhotoUrl, raw.ImageUrl)),
+    vendorMetadata: {
+      vendorPartNumber,
+      availability: analogMixedVendorText(analogMixedVendorValue(raw.Availability, raw.QuantityAvailable, raw.Stock)),
+      lifecycle: analogMixedVendorText(analogMixedVendorValue(raw.LifecycleStatus, raw.ProductStatus)),
+      pricing: raw.PriceBreaks || raw.StandardPricing || [],
+      raw
+    }
+  };
+  const kind = analogMixedVendorInferKind(record);
+  const defaults = analogMixedVendorDefaults(kind);
+  return analogMixedServerNormalizeSymbol({
+    ...record,
+    symbol: defaults.symbol,
+    tool: defaults.tool,
+    symbolKind: defaults.symbolKind,
+    spicePrefix: defaults.spicePrefix,
+    value: record.mpn,
+    pins: analogMixedVendorPins(record, defaults),
+    manufacturerView: analogMixedVendorManufacturerView(record, defaults),
+    schematicView: analogMixedVendorManufacturerView(record, defaults),
+    ecadSource: "vendor-api",
+    modes: ["ic", "board", "mixed"],
+    domains: ["pll", "amplifier", "dcdc"]
+  }, index);
+}
+
+async function analogMixedSearchMouser(query = "", limit = 10) {
+  const credentials = analogMixedVendorCredentials().mouser;
+  if (!credentials.configured) {
+    return { ok: true, configured: false, supplier: "Mouser", results: [], message: "Mouser API key is not configured. Set MOUSER_SEARCH_API_KEY or MOUSER_API_KEY to enable Mouser web import." };
+  }
+  const url = `https://api.mouser.com/api/v1/search/keyword?apiKey=${encodeURIComponent(credentials.apiKey)}`;
+  const body = {
+    SearchByKeywordRequest: {
+      keyword: query,
+      records: Math.max(1, Math.min(50, Number(limit) || 10)),
+      startingRecord: 0,
+      searchOptions: "None",
+      searchWithYourSignUpLanguage: "en-US"
+    }
+  };
+  const json = await fetchJsonWithTimeout(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
+  const parts = Array.isArray(json?.SearchResults?.Parts) ? json.SearchResults.Parts : [];
+  return {
+    ok: true,
+    configured: true,
+    supplier: "Mouser",
+    results: parts.slice(0, limit).map((part, index) => analogMixedNormalizeVendorApiPart(part, "Mouser", index)),
+    message: parts.length ? `Found ${parts.length} Mouser part${parts.length === 1 ? "" : "s"}.` : "No Mouser parts matched that search."
+  };
+}
+
+let analogMixedDigiKeyTokenCache = { token: "", expiresAt: 0 };
+
+async function analogMixedDigiKeyToken() {
+  const credentials = analogMixedVendorCredentials().digikey;
+  if (credentials.accessToken) return credentials.accessToken;
+  if (!credentials.clientId || !credentials.clientSecret) return "";
+  if (analogMixedDigiKeyTokenCache.token && Date.now() < analogMixedDigiKeyTokenCache.expiresAt) return analogMixedDigiKeyTokenCache.token;
+  const auth = Buffer.from(`${credentials.clientId}:${credentials.clientSecret}`).toString("base64");
+  const json = await fetchJsonWithTimeout("https://api.digikey.com/v1/oauth2/token", {
+    method: "POST",
+    headers: {
+      Authorization: `Basic ${auth}`,
+      "Content-Type": "application/x-www-form-urlencoded"
+    },
+    body: "grant_type=client_credentials"
+  });
+  const token = String(json.access_token || "");
+  const expiresIn = Number(json.expires_in) || 600;
+  analogMixedDigiKeyTokenCache = { token, expiresAt: Date.now() + Math.max(60, expiresIn - 60) * 1000 };
+  return token;
+}
+
+async function analogMixedSearchDigiKey(query = "", limit = 10) {
+  const credentials = analogMixedVendorCredentials().digikey;
+  if (!credentials.configured) {
+    return { ok: true, configured: false, supplier: "DigiKey", results: [], message: "DigiKey credentials are not configured. Set DIGIKEY_ACCESS_TOKEN or DIGIKEY_CLIENT_ID and DIGIKEY_CLIENT_SECRET to enable DigiKey web import." };
+  }
+  const token = await analogMixedDigiKeyToken();
+  if (!token) {
+    return { ok: true, configured: false, supplier: "DigiKey", results: [], message: "DigiKey authorization token could not be created. Recheck DigiKey API credentials." };
+  }
+  const json = await fetchJsonWithTimeout("https://api.digikey.com/products/v4/search/keyword", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "X-DIGIKEY-Client-Id": credentials.clientId || process.env.DIGIKEY_CLIENT_ID || "",
+      "Content-Type": "application/json",
+      "X-DIGIKEY-Locale-Site": "US",
+      "X-DIGIKEY-Locale-Language": "en",
+      "X-DIGIKEY-Locale-Currency": "USD"
+    },
+    body: JSON.stringify({
+      Keywords: query,
+      Limit: Math.max(1, Math.min(50, Number(limit) || 10)),
+      Offset: 0
+    })
+  });
+  const products = Array.isArray(json?.Products) ? json.Products : Array.isArray(json?.products) ? json.products : [];
+  return {
+    ok: true,
+    configured: true,
+    supplier: "DigiKey",
+    results: products.slice(0, limit).map((part, index) => analogMixedNormalizeVendorApiPart(part, "DigiKey", index)),
+    message: products.length ? `Found ${products.length} DigiKey part${products.length === 1 ? "" : "s"}.` : "No DigiKey parts matched that search."
+  };
+}
+
+async function analogMixedSearchVendorParts(supplier = "DigiKey", query = "", limit = 10) {
+  const cleanSupplier = /mouser/i.test(supplier) ? "Mouser" : "DigiKey";
+  if (!String(query || "").trim()) return { ok: false, supplier: cleanSupplier, results: [], message: "Enter a part number or keyword before searching." };
+  return cleanSupplier === "Mouser"
+    ? await analogMixedSearchMouser(query, limit)
+    : await analogMixedSearchDigiKey(query, limit);
 }
 
 function analogMixedServerWorkspaceSymbols(workspace = {}) {
@@ -4019,7 +4320,18 @@ function analogMixedServerComponentLibraryItem(component = {}, workspace = {}) {
     layoutCell: component.layoutCell || libraryItem.layoutCell,
     layoutView: component.layoutView || libraryItem.layoutView,
     footprint: component.footprint || libraryItem.footprint,
-    packageName: component.packageName || libraryItem.packageName
+    packageName: component.packageName || libraryItem.packageName,
+    supplier: component.supplier || libraryItem.supplier,
+    manufacturer: component.manufacturer || libraryItem.manufacturer,
+    mpn: component.mpn || libraryItem.mpn,
+    datasheetUrl: component.datasheetUrl || libraryItem.datasheetUrl,
+    productUrl: component.productUrl || libraryItem.productUrl,
+    imageUrl: component.imageUrl || libraryItem.imageUrl,
+    description: component.description || libraryItem.description,
+    manufacturerView: component.manufacturerView || libraryItem.manufacturerView,
+    schematicView: component.schematicView || libraryItem.schematicView,
+    vendorMetadata: component.vendorMetadata || libraryItem.vendorMetadata,
+    ecadSource: component.ecadSource || libraryItem.ecadSource
   });
 }
 
@@ -7276,6 +7588,29 @@ async function handleApi(request, response, url) {
     return true;
   }
 
+  if (request.method === "GET" && url.pathname === "/api/analog-mixed/vendor-status") {
+    if (!isLocalRequest(request)) {
+      sendJson(response, 403, { error: "Analog/Mixed-Signal vendor import details are only available from this computer." });
+      return true;
+    }
+    const credentials = analogMixedVendorCredentials();
+    sendJson(response, 200, {
+      ok: true,
+      vendors: {
+        mouser: {
+          configured: credentials.mouser.configured,
+          auth: credentials.mouser.configured ? "api-key" : "missing"
+        },
+        digikey: {
+          configured: credentials.digikey.configured,
+          auth: credentials.digikey.accessToken ? "access-token" : credentials.digikey.configured ? "client-credentials" : "missing"
+        }
+      },
+      message: "Vendor searches use server-side credentials. Browser code never receives API keys."
+    });
+    return true;
+  }
+
   if (request.method === "GET" && url.pathname === "/api/analog-mixed/pdk-symbol-library") {
     if (!isLocalRequest(request)) {
       sendJson(response, 403, { error: "Analog/Mixed-Signal PDK library details are only available from this computer." });
@@ -7334,6 +7669,17 @@ async function handleApi(request, response, url) {
       sendJson(response, 200, { ok: true, pdk });
     } catch (error) {
       sendJson(response, 400, { ok: false, error: error.message || "IC PDK folder could not be imported." });
+    }
+    return true;
+  }
+
+  if (url.pathname === "/api/analog-mixed/vendor-search") {
+    try {
+      const body = await readRequestJson(request);
+      const result = await analogMixedSearchVendorParts(body.supplier || "DigiKey", body.query || "", body.limit || 10);
+      sendJson(response, 200, result);
+    } catch (error) {
+      sendJson(response, 400, { ok: false, results: [], error: error.message || "Vendor search could not be completed." });
     }
     return true;
   }
