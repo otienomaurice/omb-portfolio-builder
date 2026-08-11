@@ -3925,12 +3925,102 @@ const analogMixedServerImportedSymbols = [
   ["kicad-testpoint", "KiCad test point", "kicad interface", "X", "connector", ["1"], "KiCad", "TestPoint"]
 ].map(([id, label, category, spicePrefix, symbolKind, pins, source, modelName]) => ({ id, label, category, spicePrefix, symbolKind, pins, source, modelName, deviceLevel: true }));
 
-function analogMixedServerLibraryItem(id = "") {
-  return analogMixedServerAllSymbols().find((item) => item.id === id) || analogMixedServerSymbols[0];
+function analogMixedServerSymbolDedupeKey(item = {}) {
+  return [
+    String(item.pdk || item.source || item.vendor || "").toLowerCase(),
+    String(item.modelName || item.modelKey || item.xschemSymbol || item.id || "").toLowerCase(),
+    String(item.symbolKind || item.spicePrefix || "").toLowerCase()
+  ].filter(Boolean).join("|");
 }
 
-function analogMixedServerAllSymbols() {
-  return [...analogMixedServerSymbols, ...analogMixedServerImportedSymbols];
+function analogMixedServerNormalizeSymbol(item = {}, index = 0) {
+  const rawId = String(item.id || item.modelName || item.modelKey || item.label || `server-symbol-${index + 1}`);
+  const id = safeSegment(rawId, `server-symbol-${index + 1}`).toLowerCase();
+  const pins = Array.isArray(item.pins) && item.pins.length ? item.pins.map((pin) => String(pin || "").trim()).filter(Boolean) : ["1", "2"];
+  const normalized = {
+    id,
+    label: String(item.label || item.modelName || item.modelKey || rawId),
+    category: String(item.category || item.source || item.pdk || "device"),
+    symbol: String(item.symbol || item.spicePrefix || "X").slice(0, 12) || "X",
+    spicePrefix: String(item.spicePrefix || "X").slice(0, 3) || "X",
+    symbolKind: String(item.symbolKind || "macro"),
+    pins,
+    modes: Array.isArray(item.modes) && item.modes.length ? item.modes.map(String) : [],
+    domains: Array.isArray(item.domains) && item.domains.length ? item.domains.map(String) : [],
+    source: String(item.source || item.pdk || ""),
+    pdk: String(item.pdk || ""),
+    pdkVariant: String(item.pdkVariant || ""),
+    vendor: String(item.vendor || ""),
+    modelName: String(item.modelName || ""),
+    modelKey: String(item.modelKey || item.modelName || ""),
+    xschemSymbol: String(item.xschemSymbol || ""),
+    xschemPath: String(item.xschemPath || ""),
+    xschemFormat: String(item.xschemFormat || ""),
+    xschemLvsFormat: String(item.xschemLvsFormat || ""),
+    layoutCell: String(item.layoutCell || item.modelName || item.modelKey || ""),
+    layoutView: String(item.layoutView || "layout"),
+    footprint: String(item.footprint || item.layoutCell || ""),
+    packageName: String(item.packageName || item.layoutView || "layout"),
+    deviceLevel: item.deviceLevel !== false,
+    parameters: item.parameters && typeof item.parameters === "object" ? item.parameters : {}
+  };
+  normalized.dedupeKey = analogMixedServerSymbolDedupeKey(normalized);
+  return normalized;
+}
+
+function analogMixedServerWorkspaceSymbols(workspace = {}) {
+  const symbols = [
+    ...(Array.isArray(workspace.pdkLibraryItems) ? workspace.pdkLibraryItems : []),
+    ...(Array.isArray(workspace.supplierComponents) ? workspace.supplierComponents : [])
+  ].map(analogMixedServerNormalizeSymbol);
+  const seenIds = new Set();
+  const seenKeys = new Set();
+  return symbols.filter((item) => {
+    const key = analogMixedServerSymbolDedupeKey(item);
+    if (seenIds.has(item.id) || (key && seenKeys.has(key))) return false;
+    seenIds.add(item.id);
+    if (key) seenKeys.add(key);
+    return true;
+  });
+}
+
+function analogMixedServerAllSymbols(extraSymbols = []) {
+  const seenIds = new Set();
+  const seenKeys = new Set();
+  return [...analogMixedServerSymbols, ...analogMixedServerImportedSymbols, ...(Array.isArray(extraSymbols) ? extraSymbols : [])]
+    .map(analogMixedServerNormalizeSymbol)
+    .filter((item) => {
+      const key = analogMixedServerSymbolDedupeKey(item);
+      if (seenIds.has(item.id) || (key && seenKeys.has(key))) return false;
+      seenIds.add(item.id);
+      if (key) seenKeys.add(key);
+      return true;
+    });
+}
+
+function analogMixedServerLibraryItem(id = "", workspace = null) {
+  const extra = workspace ? analogMixedServerWorkspaceSymbols(workspace) : [];
+  return analogMixedServerAllSymbols(extra).find((item) => item.id === id) || analogMixedServerSymbols[0];
+}
+
+function analogMixedServerComponentLibraryItem(component = {}, workspace = {}) {
+  const libraryItem = analogMixedServerLibraryItem(component.type, workspace);
+  return analogMixedServerNormalizeSymbol({
+    ...libraryItem,
+    pdk: component.pdk || libraryItem.pdk,
+    pdkVariant: component.pdkVariant || libraryItem.pdkVariant,
+    vendor: component.vendor || libraryItem.vendor,
+    modelName: component.modelName || libraryItem.modelName,
+    modelKey: component.modelKey || libraryItem.modelKey || component.modelName || libraryItem.modelName,
+    xschemSymbol: component.xschemSymbol || libraryItem.xschemSymbol,
+    xschemPath: component.xschemPath || libraryItem.xschemPath,
+    xschemFormat: component.xschemFormat || libraryItem.xschemFormat,
+    xschemLvsFormat: component.xschemLvsFormat || libraryItem.xschemLvsFormat,
+    layoutCell: component.layoutCell || libraryItem.layoutCell,
+    layoutView: component.layoutView || libraryItem.layoutView,
+    footprint: component.footprint || libraryItem.footprint,
+    packageName: component.packageName || libraryItem.packageName
+  });
 }
 
 function normalizeAnalogMixedServerWorkspace(workspace = {}) {
@@ -3949,8 +4039,16 @@ function normalizeAnalogMixedServerWorkspace(workspace = {}) {
       notes: String(component.notes || ""),
       source: String(component.source || ""),
       pdk: String(component.pdk || ""),
+      pdkVariant: String(component.pdkVariant || ""),
       vendor: String(component.vendor || ""),
       modelName: String(component.modelName || ""),
+      modelKey: String(component.modelKey || component.modelName || ""),
+      xschemSymbol: String(component.xschemSymbol || ""),
+      xschemPath: String(component.xschemPath || ""),
+      xschemFormat: String(component.xschemFormat || ""),
+      xschemLvsFormat: String(component.xschemLvsFormat || ""),
+      layoutCell: String(component.layoutCell || ""),
+      layoutView: String(component.layoutView || ""),
       footprint: String(component.footprint || ""),
       packageName: String(component.packageName || ""),
       deviceLevel: Boolean(component.deviceLevel),
@@ -3989,6 +4087,8 @@ function normalizeAnalogMixedServerWorkspace(workspace = {}) {
     })) : [],
     activePdk: String(source.activePdk || source.stageData?.["ic-layout"]?.pdk || source.stageData?.["ic-layout"]?.pdkImport?.variant || source.stageData?.pdk?.importedPdk?.variant || source.stageData?.pdk?.importedPdk?.family || "generic-educational-pdk"),
     activeVendorSource: String(source.activeVendorSource || ""),
+    pdkLibraryItems: Array.isArray(source.pdkLibraryItems) ? source.pdkLibraryItems.map(analogMixedServerNormalizeSymbol) : [],
+    supplierComponents: Array.isArray(source.supplierComponents) ? source.supplierComponents.map(analogMixedServerNormalizeSymbol) : [],
     stageData: source.stageData && typeof source.stageData === "object" ? source.stageData : {},
     parameters: source.parameters && typeof source.parameters === "object" ? source.parameters : {}
   };
@@ -4033,14 +4133,67 @@ function analogMixedServerNodeNames(workspace, component, index, pins) {
   return nodes;
 }
 
+function analogMixedServerReferenceName(component = {}, item = {}, index = 0) {
+  const prefix = String(item.spicePrefix || "X").trim() || "X";
+  const raw = safeSegment(component.label || item.parameters?.name || `${prefix}${index + 1}`, `${prefix}${index + 1}`);
+  const body = raw.toUpperCase().startsWith(prefix.toUpperCase()) && raw.length > prefix.length ? raw.slice(prefix.length) : raw;
+  return `${prefix}${body || index + 1}`;
+}
+
+function analogMixedServerRenderXschemFormat(format = "", workspace = {}, component = {}, item = {}, nodes = [], index = 0) {
+  const prefix = String(component.spicePrefix || item.spicePrefix || "X").trim() || "X";
+  const rawName = safeSegment(component.label || item.parameters?.name || `${prefix}${index + 1}`, `${prefix}${index + 1}`);
+  const nameToken = rawName.toUpperCase().startsWith(prefix.toUpperCase()) && rawName.length > prefix.length ? rawName.slice(prefix.length) : rawName;
+  const modelName = String(component.modelName || item.modelName || component.modelKey || item.modelKey || component.type || "model");
+  const modelKey = String(component.modelKey || item.modelKey || modelName.replace(/^sky130_fd_pr__/i, "") || component.type || "model");
+  const params = {
+    ...(item.parameters && typeof item.parameters === "object" ? item.parameters : {}),
+    ...(component.parameters && typeof component.parameters === "object" ? component.parameters : {})
+  };
+  const lookup = new Map();
+  Object.entries(params).forEach(([key, value]) => {
+    lookup.set(String(key), analogMixedServerValue(value, ""));
+    lookup.set(String(key).toLowerCase(), analogMixedServerValue(value, ""));
+    lookup.set(String(key).toUpperCase(), analogMixedServerValue(value, ""));
+  });
+  const replacements = {
+    spiceprefix: prefix,
+    name: nameToken,
+    pinlist: nodes.slice(0, item.pins.length || nodes.length).join(" "),
+    model: modelKey,
+    symname: item.xschemSymbol || item.id || component.type || "symbol"
+  };
+  let rendered = String(format || "")
+    .replace(/\\"/g, "\"")
+    .replace(/\\n/g, "\n")
+    .replace(/@([A-Za-z0-9_#:.]+)/g, (match, token) => {
+      if (Object.prototype.hasOwnProperty.call(replacements, token)) return replacements[token];
+      if (lookup.has(token)) return lookup.get(token);
+      const cleanToken = String(token).replace(/^#\d+:/, "");
+      return lookup.get(cleanToken) || lookup.get(cleanToken.toLowerCase()) || match;
+    })
+    .replace(/[ \t]+$/gm, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+  if (!rendered) return "";
+  if (!rendered.includes(nodes[0] || "") && nodes.length) {
+    rendered = `${analogMixedServerReferenceName(component, item, index)} ${nodes.join(" ")} ${modelName} ${analogMixedServerParamSuffix(params)}`;
+  }
+  return `${rendered} ; ${item.label}${item.xschemSymbol ? ` xschem=${item.xschemSymbol}` : ""}`;
+}
+
 function analogMixedServerComponentLine(workspace, component, index) {
-  const item = analogMixedServerLibraryItem(component.type);
+  const item = analogMixedServerComponentLibraryItem(component, workspace);
   if (item.spicePrefix === "0") return `* ${component.label || item.label}: reference node ${item.label}`;
   const prefix = item.spicePrefix || "X";
-  const reference = `${prefix}${String(component.label || index + 1).replace(/^[A-Za-z]+/, "") || index + 1}`;
+  const reference = analogMixedServerReferenceName(component, item, index);
   const nodes = analogMixedServerNodeNames(workspace, component, index, item.pins);
-  const modelName = safeSegment(component.modelName || item.modelName || component.type, "model");
+  const modelName = safeSegment(component.modelName || item.modelName || item.modelKey || component.type, "model");
   const parameterSuffix = analogMixedServerParamSuffix(component.parameters);
+  if (item.xschemFormat || item.xschemLvsFormat) {
+    const xschemLine = analogMixedServerRenderXschemFormat(item.xschemFormat || item.xschemLvsFormat, workspace, component, item, nodes, index);
+    if (xschemLine) return xschemLine;
+  }
   if (prefix === "M") return `${reference} ${nodes.slice(0, 4).join(" ")} ${modelName} ${parameterSuffix || `W_L=${analogMixedServerValue(component.value, "unsized")}`} ; ${item.label}${component.source ? ` (${component.source})` : ""}`;
   if (prefix === "Q" || prefix === "J" || prefix === "D") return `${reference} ${nodes.slice(0, item.pins.length).join(" ")} ${modelName} ${parameterSuffix || analogMixedServerValue(component.value)} ; ${item.label}${component.source ? ` (${component.source})` : ""}`;
   if (prefix === "V" || prefix === "I") return `${reference} ${nodes[0] || `n${index + 1}`} ${nodes[1] || "0"} ${analogMixedServerSourceValue(component.value, prefix === "V" ? "DC 1" : "DC 1m")} ; ${item.label}`;
@@ -4076,7 +4229,7 @@ function analogMixedServerCheckReport(projectTitle = "Project", workspaceInput =
   const issues = [];
   const refCounts = new Map();
   workspace.components.forEach((component) => {
-    const item = analogMixedServerLibraryItem(component.type);
+    const item = analogMixedServerComponentLibraryItem(component, workspace);
     const ref = String(component.label || "").trim();
     if (!ref) issues.push({ severity: "warning", message: `${item.label} has no reference designator.` });
     if (ref) refCounts.set(ref, (refCounts.get(ref) || 0) + 1);
@@ -4094,7 +4247,7 @@ function analogMixedServerCheckReport(projectTitle = "Project", workspaceInput =
   if (workspace.noConnects.length) issues.push({ severity: "info", message: `${workspace.noConnects.length} intentionally open node marker${workspace.noConnects.length === 1 ? "" : "s"} present.` });
   if (workspace.probes.length && !workspace.wires.length) issues.push({ severity: "info", message: "Probe markers exist, but no wires are drawn yet." });
   if (workspace.mode !== "board" && !workspace.stageData?.pdk?.modelFiles?.length) issues.push({ severity: "info", message: "No PDK model files are registered for IC-level simulation yet." });
-  if (!workspace.components.some((component) => analogMixedServerLibraryItem(component.type).category === "reference")) issues.push({ severity: "info", message: "No explicit ground or supply reference symbol has been placed." });
+  if (!workspace.components.some((component) => analogMixedServerComponentLibraryItem(component, workspace).category === "reference")) issues.push({ severity: "info", message: "No explicit ground or supply reference symbol has been placed." });
   const title = `AM backend DRC/ERC report for ${projectTitle || "Project"}`;
   return {
     issues,
@@ -4112,7 +4265,7 @@ function analogMixedAnalyzeWorkspace(projectTitle = "Project", workspaceInput = 
   const categoryCounts = {};
   const symbolCounts = {};
   workspace.components.forEach((component) => {
-    const item = analogMixedServerLibraryItem(component.type);
+    const item = analogMixedServerComponentLibraryItem(component, workspace);
     categoryCounts[item.category] = (categoryCounts[item.category] || 0) + 1;
     symbolCounts[item.symbolKind] = (symbolCounts[item.symbolKind] || 0) + 1;
   });
@@ -4150,7 +4303,7 @@ function analogMixedAnalyzeWorkspace(projectTitle = "Project", workspaceInput = 
     issues: checks.issues,
     categoryCounts,
     symbolCounts,
-    symbolLibrary: analogMixedServerAllSymbols()
+    symbolLibrary: analogMixedServerAllSymbols(analogMixedServerWorkspaceSymbols(workspace))
   };
 }
 
@@ -4206,8 +4359,8 @@ function analogMixedServerIcDeviceRole(component = {}, item = analogMixedServerL
   return "layout cell";
 }
 
-function analogMixedServerIcSizingRow(component = {}, index = 0) {
-  const item = analogMixedServerLibraryItem(component.type);
+function analogMixedServerIcSizingRow(component = {}, index = 0, workspace = {}) {
+  const item = analogMixedServerComponentLibraryItem(component, workspace);
   const params = component.parameters && typeof component.parameters === "object" ? component.parameters : {};
   const role = analogMixedServerIcDeviceRole(component, item);
   return {
@@ -4229,7 +4382,8 @@ function analogMixedServerIcSizingRow(component = {}, index = 0) {
 }
 
 function analogMixedServerIcSizingRows(workspace = {}) {
-  return normalizeAnalogMixedServerWorkspace(workspace).components.map((component, index) => analogMixedServerIcSizingRow(component, index));
+  const normalized = normalizeAnalogMixedServerWorkspace(workspace);
+  return normalized.components.map((component, index) => analogMixedServerIcSizingRow(component, index, normalized));
 }
 
 function analogMixedServerIcCornerSetups(workspace = {}) {
@@ -4331,7 +4485,7 @@ function analogMixedServerIcReportMarkdown(projectTitle = "Project", intent = {}
 
 function analogMixedSpiceAnalysisLines(kind = "op", workspace = {}) {
   const voltageSource = (workspace.components || []).find((component, index) => {
-    const item = analogMixedServerLibraryItem(component.type);
+    const item = analogMixedServerComponentLibraryItem(component, workspace);
     return item.spicePrefix === "V" || /^v/i.test(component.label || "") || index === 0;
   });
   const sourceRef = voltageSource ? `V${String(voltageSource.label || "1").replace(/^[A-Za-z]+/, "") || "1"}` : "V1";
@@ -4436,6 +4590,7 @@ function analogMixedClassifyPdkFiles(scan = {}) {
   const folders = Array.isArray(scan.folders) ? scan.folders : [];
   const unique = (items) => [...new Set(items.filter(Boolean).map((item) => path.resolve(item)))];
   const modelFiles = unique(files.filter((file) => /\.(?:spice|sp|cir|lib|model|scs)$/i.test(file) || /models?|corners?|ngspice|spectre/i.test(file)));
+  const xschemSymbolFiles = unique(files.filter((file) => /\.sym$/i.test(file) && /xschem/i.test(file)));
   const techFiles = unique(files.filter((file) => /\.(?:tech|tf|tcl|lyt|lyp|lef|tlef|magicrc)$/i.test(file) || /libs\.tech|tech|drc|lvs|magic|klayout|netgen/i.test(file)));
   const layerFiles = unique(files.filter((file) => /\.(?:map|lyp|lyt|tf|tech)$/i.test(file) || /layer|layermap|layers|gds.*map|lef.*map/i.test(file)));
   const layoutFiles = unique(files.filter((file) => /\.(?:gds|gdsii|lef|tlef|mag|maglef)$/i.test(file)));
@@ -4448,11 +4603,214 @@ function analogMixedClassifyPdkFiles(scan = {}) {
     .flatMap((name) => ["tt", "ss", "ff", "sf", "fs", "mc", "typ", "slow", "fast"].filter((corner) => new RegExp(`(?:^|[_\\-.])${corner}(?:[_\\-.]|$)`, "i").test(name)));
   return {
     modelFiles,
+    xschemSymbolFiles,
     techFiles,
     layerFiles,
     layoutFiles,
     libraries,
     corners: [...new Set(corners.length ? corners : ["tt"])]
+  };
+}
+
+function analogMixedExtractXschemKernel(text = "") {
+  const source = String(text || "");
+  const start = source.search(/(?:^|\n)K\s*\{/);
+  if (start < 0) return "";
+  const open = source.indexOf("{", start);
+  if (open < 0) return "";
+  let depth = 0;
+  let inQuote = false;
+  let escaped = false;
+  for (let index = open; index < source.length; index += 1) {
+    const char = source[index];
+    if (inQuote) {
+      if (escaped) {
+        escaped = false;
+      } else if (char === "\\") {
+        escaped = true;
+      } else if (char === "\"") {
+        inQuote = false;
+      }
+      continue;
+    }
+    if (char === "\"") {
+      inQuote = true;
+      continue;
+    }
+    if (char === "{") depth += 1;
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(open + 1, index);
+    }
+  }
+  return "";
+}
+
+function analogMixedDecodeXschemValue(value = "") {
+  return String(value || "")
+    .replace(/\\"/g, "\"")
+    .replace(/\\\\/g, "\\")
+    .replace(/\\n/g, "\n")
+    .trim();
+}
+
+function analogMixedXschemAttribute(kernel = "", name = "") {
+  const quoted = new RegExp(`${name}\\s*=\\s*"((?:\\\\.|[^"\\\\])*)"`, "m").exec(kernel);
+  if (quoted) return analogMixedDecodeXschemValue(quoted[1]);
+  const bare = new RegExp(`${name}\\s*=\\s*([^\\s\\n]+)`, "m").exec(kernel);
+  return bare ? analogMixedDecodeXschemValue(bare[1]) : "";
+}
+
+function analogMixedParseXschemTemplate(template = "") {
+  const parameters = {};
+  const source = String(template || "").replace(/\r/g, "\n");
+  const regex = /([A-Za-z_][A-Za-z0-9_]*)\s*=\s*("(?:\\.|[^"\\])*"|[^\s]+)/g;
+  let match;
+  while ((match = regex.exec(source))) {
+    const key = match[1];
+    let value = match[2] || "";
+    if (value.startsWith("\"") && value.endsWith("\"")) value = value.slice(1, -1);
+    parameters[key] = analogMixedDecodeXschemValue(value);
+  }
+  return parameters;
+}
+
+function analogMixedParseXschemPins(text = "") {
+  const pins = [];
+  const seen = new Set();
+  for (const match of String(text || "").matchAll(/^B\s+\d+\s+[-0-9.\s]+\{([^}]*)\}/gm)) {
+    const attrs = match[1] || "";
+    const name = analogMixedXschemAttribute(attrs, "name");
+    if (!name || seen.has(name)) continue;
+    seen.add(name);
+    pins.push(name);
+  }
+  return pins;
+}
+
+function analogMixedInferXschemKind(name = "", type = "", model = "") {
+  const descriptor = [name, type, model].join(" ").toLowerCase();
+  if (/pfet|pmos/.test(descriptor)) return { category: "sky130 mosfet", symbolKind: "pmos-body", symbol: "M" };
+  if (/nfet|nmos/.test(descriptor)) return { category: "sky130 mosfet", symbolKind: "nmos-body", symbol: "M" };
+  if (/res|resistor/.test(descriptor)) return { category: "sky130 passive", symbolKind: "resistor", symbol: "R" };
+  if (/cap|capacitor|mim|varactor/.test(descriptor)) return { category: "sky130 passive", symbolKind: "capacitor", symbol: "C" };
+  if (/diode|dnp|pw2nd/.test(descriptor)) return { category: "sky130 diode", symbolKind: "diode", symbol: "D" };
+  if (/bjt|npn|pnp/.test(descriptor)) return { category: "sky130 bipolar", symbolKind: /pnp/.test(descriptor) ? "pnp" : "npn", symbol: "Q" };
+  if (/vsource|isource|source/.test(descriptor)) return { category: "pdk stimulus", symbolKind: "voltage-source", symbol: "V" };
+  return { category: "sky130 macro", symbolKind: "macro", symbol: "X" };
+}
+
+function analogMixedHumanizeXschemName(name = "") {
+  return String(name || "device")
+    .replace(/\.sym$/i, "")
+    .replace(/^sky130_fd_pr__/, "")
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+async function analogMixedParseXschemSymbolFile(file = "", pdk = {}) {
+  const text = await readFile(file, "utf8");
+  const kernel = analogMixedExtractXschemKernel(text);
+  if (!kernel) return null;
+  const xschemSymbol = path.basename(file, ".sym");
+  const template = analogMixedXschemAttribute(kernel, "template");
+  const parameters = analogMixedParseXschemTemplate(template);
+  const modelKey = String(parameters.model || xschemSymbol).replace(/^sky130_fd_pr__/, "");
+  const kind = analogMixedInferXschemKind(xschemSymbol, analogMixedXschemAttribute(kernel, "type"), modelKey);
+  const spicePrefix = String(parameters.spiceprefix || kind.symbol || "X").slice(0, 3) || "X";
+  const pins = analogMixedParseXschemPins(text);
+  if (!pins.length) return null;
+  const family = pdk.family || "custom-ic-pdk";
+  const id = safeSegment(`${family}-${xschemSymbol}`, `pdk-${xschemSymbol}`).toLowerCase();
+  const variant = pdk.variant || path.basename(pdk.path || "") || pdk.family || "pdk";
+  const modelName = family === "sky130" && !modelKey.startsWith("sky130_fd_pr__") ? `sky130_fd_pr__${modelKey}` : modelKey;
+  return {
+    id,
+    label: `${String(variant).toUpperCase()} ${analogMixedHumanizeXschemName(xschemSymbol)}`,
+    category: kind.category,
+    symbol: kind.symbol,
+    tool: kind.symbolKind,
+    symbolKind: kind.symbolKind,
+    spicePrefix,
+    value: Object.entries(parameters).filter(([key]) => !["name", "model", "spiceprefix"].includes(key.toLowerCase())).slice(0, 4).map(([key, value]) => `${key}=${value}`).join(" ") || modelKey,
+    pins,
+    modes: ["ic", "mixed"],
+    domains: ["pll", "amplifier", "dcdc"],
+    source: "Xschem PDK",
+    supplier: "PDK",
+    manufacturer: family,
+    mpn: modelKey,
+    vendor: family,
+    pdk: family,
+    pdkVariant: variant,
+    modelName,
+    modelKey,
+    xschemSymbol,
+    xschemPath: file,
+    xschemFormat: analogMixedXschemAttribute(kernel, "format"),
+    xschemLvsFormat: analogMixedXschemAttribute(kernel, "lvs_format"),
+    layoutCell: modelKey,
+    layoutView: "layout",
+    footprint: `${modelKey}:layout`,
+    packageName: "IC layout cell",
+    deviceLevel: true,
+    parameters
+  };
+}
+
+async function analogMixedBuildPdkSymbolLibrary(pdkName = "sky130", pdkPath = "") {
+  const status = pdkPath ? await analogMixedPdkStatus(pdkName, pdkPath) : await analogMixedPdkStatus(pdkName);
+  const pdk = status.pdk || {};
+  if (!pdk.available || !pdk.path) return { ...status, symbols: [], xschemRoot: "" };
+  const xschemRootCandidates = [
+    path.join(pdk.path, "libs.tech", "xschem"),
+    path.join(pdk.path, "libs.ref"),
+    path.join(pdk.path, "xschem")
+  ];
+  const xschemSymbolFiles = [];
+  for (const rootCandidate of xschemRootCandidates) {
+    if (!(await pathExists(rootCandidate))) continue;
+    const scan = await analogMixedScanPdkFiles(rootCandidate, { maxDepth: 6, maxFiles: 12000 });
+    xschemSymbolFiles.push(...analogMixedClassifyPdkFiles(scan).xschemSymbolFiles);
+  }
+  if (!xschemSymbolFiles.length) {
+    const scan = await analogMixedScanPdkFiles(pdk.path, { maxDepth: 8, maxFiles: 12000 });
+    xschemSymbolFiles.push(...analogMixedClassifyPdkFiles(scan).xschemSymbolFiles);
+  }
+  const uniqueSymbolFiles = [...new Set(xschemSymbolFiles.map((file) => path.resolve(file)))];
+  const preferred = uniqueSymbolFiles
+    .filter((file) => /sky130_fd_pr/i.test(file))
+    .sort((a, b) => path.basename(a).localeCompare(path.basename(b)));
+  const fallback = uniqueSymbolFiles
+    .filter((file) => !/sky130_fd_pr/i.test(file))
+    .sort((a, b) => path.basename(a).localeCompare(path.basename(b)));
+  const parsed = [];
+  for (const file of [...preferred, ...fallback].slice(0, 1000)) {
+    try {
+      const symbol = await analogMixedParseXschemSymbolFile(file, pdk);
+      if (symbol) parsed.push(symbol);
+    } catch {
+      // Individual symbol parse failures should not block the whole PDK library.
+    }
+  }
+  const seenIds = new Set();
+  const seenKeys = new Set();
+  const symbols = parsed.map(analogMixedServerNormalizeSymbol).filter((item) => {
+    const key = analogMixedServerSymbolDedupeKey(item);
+    if (seenIds.has(item.id) || (key && seenKeys.has(key))) return false;
+    seenIds.add(item.id);
+    if (key) seenKeys.add(key);
+    return true;
+  });
+  return {
+    ...status,
+    pdk: {
+      ...pdk,
+      xschemSymbolFiles: uniqueSymbolFiles,
+      xschemSymbolCount: symbols.length
+    },
+    symbols,
+    xschemRoot: xschemRootCandidates.find((folder) => uniqueSymbolFiles.some((file) => file.startsWith(path.resolve(folder)))) || path.dirname(path.dirname(uniqueSymbolFiles[0] || ""))
   };
 }
 
@@ -4626,7 +4984,7 @@ async function analogMixedPdkStatus(pdkName = "sky130", pdkPath = "") {
 function analogMixedNeedsPdkModels(workspace = {}) {
   const normalized = normalizeAnalogMixedServerWorkspace(workspace);
   return normalized.components.some((component) => {
-    const item = analogMixedServerLibraryItem(component.type);
+    const item = analogMixedServerComponentLibraryItem(component, normalized);
     const descriptor = [
       component.type,
       component.source,
@@ -4643,8 +5001,8 @@ function analogMixedNeedsPdkModels(workspace = {}) {
   });
 }
 
-function analogMixedServerLayoutLayerForComponent(component = {}) {
-  const item = analogMixedServerLibraryItem(component.type);
+function analogMixedServerLayoutLayerForComponent(component = {}, workspace = {}) {
+  const item = analogMixedServerComponentLibraryItem(component, workspace);
   const descriptor = [item.symbolKind, item.category, component.type, component.modelName].join(" ").toLowerCase();
   if (/pmos|pfet|nwell/.test(descriptor)) return "nwell";
   if (/mos|fet|bjt|diode|switch|sky130/.test(descriptor)) return "diff";
@@ -4653,8 +5011,8 @@ function analogMixedServerLayoutLayerForComponent(component = {}) {
   return "metal1";
 }
 
-function analogMixedServerIcObjectFromComponent(component = {}, index = 0) {
-  const item = analogMixedServerLibraryItem(component.type);
+function analogMixedServerIcObjectFromComponent(component = {}, index = 0, workspace = {}) {
+  const item = analogMixedServerComponentLibraryItem(component, workspace);
   const descriptor = String(item.symbolKind || component.type || "").toLowerCase();
   const isMos = /mos|fet|switch/.test(descriptor);
   const isCap = /capacitor|mim/.test(descriptor);
@@ -4670,7 +5028,7 @@ function analogMixedServerIcObjectFromComponent(component = {}, index = 0) {
     type: component.type || item.id,
     modelName: component.modelName || item.modelName || component.type || "",
     symbolKind: item.symbolKind || component.type || "device",
-    layer: analogMixedServerLayoutLayerForComponent(component),
+    layer: analogMixedServerLayoutLayerForComponent(component, workspace),
     x: Math.round(Number.isFinite(schematicX) && schematicX > 0 ? 115 + (schematicX / 1400) * 1040 : 170 + (index % 4) * 260),
     y: Math.round(Number.isFinite(schematicY) && schematicY > 0 ? 140 + (schematicY / 820) * 500 : 150 + Math.floor(index / 4) * 165),
     width,
@@ -4681,7 +5039,8 @@ function analogMixedServerIcObjectFromComponent(component = {}, index = 0) {
 }
 
 function analogMixedServerIcObjects(workspace = {}) {
-  return normalizeAnalogMixedServerWorkspace(workspace).components.map((component, index) => analogMixedServerIcObjectFromComponent(component, index));
+  const normalized = normalizeAnalogMixedServerWorkspace(workspace);
+  return normalized.components.map((component, index) => analogMixedServerIcObjectFromComponent(component, index, normalized));
 }
 
 function analogMixedServerLayoutPinPoint(object = {}, pin = "", pinIndex = 0, pinCount = 2) {
@@ -4786,7 +5145,7 @@ function analogMixedServerProbeNode(workspaceInput = {}) {
 
 function analogMixedServerInputSourceReference(workspaceInput = {}) {
   const workspace = normalizeAnalogMixedServerWorkspace(workspaceInput);
-  const index = workspace.components.findIndex((component) => analogMixedServerLibraryItem(component.type).spicePrefix === "V");
+  const index = workspace.components.findIndex((component) => analogMixedServerComponentLibraryItem(component, workspace).spicePrefix === "V");
   if (index < 0) return "V1";
   const label = String(workspace.components[index].label || `V${index + 1}`).replace(/^[^0-9A-Za-z]+/, "");
   return /^v/i.test(label) ? label : `V${label || index + 1}`;
@@ -5014,15 +5373,15 @@ async function analogMixedBuildIcLayoutArtifacts(projectTitle = "Project", works
   return summary;
 }
 
-function analogMixedServerPcbFootprintFromComponent(component = {}, index = 0) {
-  const item = analogMixedServerLibraryItem(component.type);
+function analogMixedServerPcbFootprintFromComponent(component = {}, index = 0, workspace = {}) {
+  const item = analogMixedServerComponentLibraryItem(component, workspace);
   const padCount = Math.max(2, (item.pins || []).length || (/opamp|controller|mcu|fpga|connector/i.test(item.symbolKind || "") ? 8 : 2));
   return {
     id: `pcb-${component.id || index + 1}`,
     ref: component.label || `${item.spicePrefix}${index + 1}`,
     value: component.value || "",
     footprint: component.footprint || item.footprint || "Package:Generic",
-    packageName: component.packageName || "generic",
+    packageName: component.packageName || item.packageName || "generic",
     x: Math.round(20 + (Number(component.x) || 100) / 12),
     y: Math.round(20 + (Number(component.y) || 100) / 12),
     rotation: Number(component.rotation) || 0,
@@ -5035,7 +5394,7 @@ async function analogMixedBuildPcbArtifacts(projectTitle = "Project", workspaceI
   const runRoot = resolveInsideCompileRoot(".omb-am-pcb", safeSegment(projectTitle || "project"));
   await mkdir(runRoot, { recursive: true });
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-  const footprints = workspace.components.map((component, index) => analogMixedServerPcbFootprintFromComponent(component, index));
+  const footprints = workspace.components.map((component, index) => analogMixedServerPcbFootprintFromComponent(component, index, workspace));
   const netlist = analogMixedServerNetlist(projectTitle, workspace);
   const netlistPath = path.join(runRoot, `pcb-netlist-${stamp}.cir`);
   const placementPath = path.join(runRoot, `placement-${stamp}.csv`);
@@ -5101,7 +5460,7 @@ function analogMixedLiteSimulation(projectTitle = "Project", workspaceInput = {}
   const nodeVoltages = { "0": 0 };
   const sources = [];
   workspace.components.forEach((component, index) => {
-    const item = analogMixedServerLibraryItem(component.type);
+    const item = analogMixedServerComponentLibraryItem(component, workspace);
     if (item.spicePrefix === "V") {
       const nodes = analogMixedServerNodeNames(workspace, component, index, item.pins);
       const value = analogMixedParseSpiceNumber(component.value, 1);
@@ -5111,7 +5470,7 @@ function analogMixedLiteSimulation(projectTitle = "Project", workspaceInput = {}
     }
   });
   const deviceEstimates = workspace.components.map((component, index) => {
-    const item = analogMixedServerLibraryItem(component.type);
+    const item = analogMixedServerComponentLibraryItem(component, workspace);
     return {
       reference: component.label || `${item.spicePrefix}${index + 1}`,
       kind: item.label,
@@ -5208,8 +5567,8 @@ async function analogMixedRunSpice(projectTitle = "Project", workspaceInput = {}
       sweep: [],
       deviceEstimates: normalizeAnalogMixedServerWorkspace(workspaceInput).components.map((component, index) => ({
         reference: component.label || `X${index + 1}`,
-        kind: analogMixedServerLibraryItem(component.type).label,
-        model: component.modelName || analogMixedServerLibraryItem(component.type).modelName || component.type
+        kind: analogMixedServerComponentLibraryItem(component, normalizeAnalogMixedServerWorkspace(workspaceInput)).label,
+        model: component.modelName || analogMixedServerComponentLibraryItem(component, normalizeAnalogMixedServerWorkspace(workspaceInput)).modelName || component.type
       }))
     };
   }
@@ -6855,6 +7214,26 @@ async function handleApi(request, response, url) {
     const status = await analogMixedPdkStatus(url.searchParams.get("pdk") || "sky130", url.searchParams.get("path") || "");
     status.programmingEngines = await analogMixedProgrammingEngineStatus();
     sendJson(response, 200, { ok: true, status });
+    return true;
+  }
+
+  if (request.method === "GET" && url.pathname === "/api/analog-mixed/pdk-symbol-library") {
+    if (!isLocalRequest(request)) {
+      sendJson(response, 403, { error: "Analog/Mixed-Signal PDK library details are only available from this computer." });
+      return true;
+    }
+    try {
+      const library = await analogMixedBuildPdkSymbolLibrary(url.searchParams.get("pdk") || "sky130", url.searchParams.get("path") || "");
+      sendJson(response, 200, {
+        ok: true,
+        pdk: library.pdk,
+        tools: library.tools,
+        symbols: library.symbols,
+        xschemRoot: library.xschemRoot
+      });
+    } catch (error) {
+      sendJson(response, 400, { ok: false, error: error.message || "PDK/Xschem symbol library could not be loaded." });
+    }
     return true;
   }
 

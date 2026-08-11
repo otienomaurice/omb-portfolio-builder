@@ -490,6 +490,84 @@ const analogMixedDeviceImportSources = {
   }
 };
 const analogMixedDeviceCatalog = Object.values(analogMixedDeviceImportSources).flatMap((source) => source.devices);
+function analogMixedLibraryDedupeKey(item = {}) {
+  return [
+    String(item.pdk || item.source || item.vendor || "").toLowerCase(),
+    String(item.modelName || item.modelKey || item.xschemSymbol || item.id || "").toLowerCase(),
+    String(item.symbolKind || item.spicePrefix || "").toLowerCase()
+  ].filter(Boolean).join("|");
+}
+
+function analogMixedNormalizeLibraryRecord(item = {}, fallbackIndex = 0) {
+  const rawId = String(item.id || item.modelName || item.label || `pdk-symbol-${fallbackIndex + 1}`);
+  const normalized = {
+    id: slugify(rawId) || `pdk-symbol-${fallbackIndex + 1}`,
+    label: String(item.label || item.modelName || rawId),
+    category: String(item.category || item.source || "pdk symbol"),
+    symbol: String(item.symbol || item.spicePrefix || "X").slice(0, 12) || "X",
+    tool: String(item.tool || "semiconductor"),
+    symbolKind: String(item.symbolKind || "macro"),
+    spicePrefix: String(item.spicePrefix || "X").slice(0, 3) || "X",
+    value: String(item.value || item.modelName || item.label || "pdk device"),
+    pins: Array.isArray(item.pins) && item.pins.length ? item.pins.map(String) : ["1", "2"],
+    modes: Array.isArray(item.modes) && item.modes.length ? item.modes : analogMixedIcMixedModes,
+    domains: Array.isArray(item.domains) && item.domains.length ? item.domains : analogMixedAllDomains,
+    source: String(item.source || item.pdk || "PDK"),
+    supplier: String(item.supplier || item.source || item.pdk || "PDK"),
+    manufacturer: String(item.manufacturer || item.source || ""),
+    mpn: String(item.mpn || item.modelName || ""),
+    vendor: String(item.vendor || item.source || ""),
+    pdk: String(item.pdk || ""),
+    pdkVariant: String(item.pdkVariant || ""),
+    modelName: String(item.modelName || ""),
+    modelKey: String(item.modelKey || item.modelName || ""),
+    xschemSymbol: String(item.xschemSymbol || ""),
+    xschemPath: String(item.xschemPath || ""),
+    xschemFormat: String(item.xschemFormat || ""),
+    xschemLvsFormat: String(item.xschemLvsFormat || ""),
+    layoutCell: String(item.layoutCell || item.modelName || ""),
+    layoutView: String(item.layoutView || "layout"),
+    footprint: String(item.footprint || item.layoutCell || ""),
+    packageName: String(item.packageName || item.layoutView || "layout"),
+    deviceLevel: item.deviceLevel !== false,
+    parameters: item.parameters && typeof item.parameters === "object" ? item.parameters : {}
+  };
+  normalized.dedupeKey = analogMixedLibraryDedupeKey(normalized);
+  return normalized;
+}
+
+function analogMixedRegisterLibraryItems(items = []) {
+  const records = (Array.isArray(items) ? items : []).map(analogMixedNormalizeLibraryRecord).filter((item) => item.id && item.label);
+  const existingById = new Map(analogMixedDeviceCatalog.map((item, index) => [item.id, index]));
+  const existingKeys = new Map(analogMixedDeviceCatalog.map((item, index) => [analogMixedLibraryDedupeKey(item), index]).filter(([key]) => key));
+  const registered = [];
+  records.forEach((item) => {
+    const idIndex = existingById.get(item.id);
+    const keyIndex = existingKeys.get(item.dedupeKey);
+    const replaceIndex = Number.isInteger(idIndex) ? idIndex : keyIndex;
+    if (Number.isInteger(replaceIndex)) {
+      analogMixedDeviceCatalog[replaceIndex] = { ...analogMixedDeviceCatalog[replaceIndex], ...item };
+    } else {
+      analogMixedDeviceCatalog.push(item);
+      existingById.set(item.id, analogMixedDeviceCatalog.length - 1);
+      if (item.dedupeKey) existingKeys.set(item.dedupeKey, analogMixedDeviceCatalog.length - 1);
+    }
+    registered.push(item);
+  });
+  return registered;
+}
+
+function analogMixedDedupeLibraryItems(items = []) {
+  const seenIds = new Set();
+  const seenKeys = new Set();
+  return (Array.isArray(items) ? items : []).map(analogMixedNormalizeLibraryRecord).filter((item) => {
+    const key = analogMixedLibraryDedupeKey(item);
+    if (seenIds.has(item.id) || (key && seenKeys.has(key))) return false;
+    seenIds.add(item.id);
+    if (key) seenKeys.add(key);
+    return true;
+  });
+}
 const analogMixedStages = [
   { id: "schematic", label: "Schematic", description: "Graphical transistor, gate, passive, and macro-level design canvas." },
   { id: "symbol", label: "Symbol", description: "Reusable symbols, ports, labels, pins, and block interfaces." },
@@ -2751,6 +2829,7 @@ function analogMixedDefaultState() {
     importedDeviceIds: [],
     importHistory: [],
     supplierComponents: [],
+    pdkLibraryItems: [],
     components: [],
     wires: [],
     junctions: [],
@@ -2917,7 +2996,16 @@ function normalizeAnalogMixedWorkspace(project) {
       manufacturer: String(item?.manufacturer || ""),
       mpn: String(item?.mpn || item?.value || ""),
       vendor: String(item?.vendor || item?.supplier || ""),
+      pdk: String(item?.pdk || ""),
+      pdkVariant: String(item?.pdkVariant || ""),
       modelName: String(item?.modelName || item?.mpn || ""),
+      modelKey: String(item?.modelKey || item?.modelName || item?.mpn || ""),
+      xschemSymbol: String(item?.xschemSymbol || ""),
+      xschemPath: String(item?.xschemPath || ""),
+      xschemFormat: String(item?.xschemFormat || ""),
+      xschemLvsFormat: String(item?.xschemLvsFormat || ""),
+      layoutCell: String(item?.layoutCell || item?.modelName || ""),
+      layoutView: String(item?.layoutView || ""),
       fileName: String(item?.fileName || ""),
       modelText: String(item?.modelText || ""),
       footprint: String(item?.footprint || ""),
@@ -2926,9 +3014,11 @@ function normalizeAnalogMixedWorkspace(project) {
       parameters: item?.parameters && typeof item.parameters === "object" ? item.parameters : {}
     })).filter((item) => item.id && item.label)
     : [];
+  workspace.pdkLibraryItems = analogMixedDedupeLibraryItems(workspace.pdkLibraryItems || []);
   workspace.supplierComponents.forEach((item) => {
     if (!analogMixedDeviceCatalog.some((device) => device.id === item.id)) analogMixedDeviceCatalog.push(item);
   });
+  analogMixedRegisterLibraryItems(workspace.pdkLibraryItems);
   workspace.selectedComponentId = String(workspace.selectedComponentId || "");
   workspace.selectedWireId = String(workspace.selectedWireId || "");
   workspace.selectedLibraryId = analogMixedLibraryItemsForWorkspace(workspace).some((item) => item.id === workspace.selectedLibraryId)
@@ -2951,7 +3041,15 @@ function normalizeAnalogMixedWorkspace(project) {
       source: String(component.source || libraryItem.source || "local"),
       pdk: String(component.pdk || libraryItem.pdk || ""),
       vendor: String(component.vendor || libraryItem.vendor || ""),
+      pdkVariant: String(component.pdkVariant || libraryItem.pdkVariant || ""),
       modelName: String(component.modelName || libraryItem.modelName || ""),
+      modelKey: String(component.modelKey || libraryItem.modelKey || component.modelName || libraryItem.modelName || ""),
+      xschemSymbol: String(component.xschemSymbol || libraryItem.xschemSymbol || ""),
+      xschemPath: String(component.xschemPath || libraryItem.xschemPath || ""),
+      xschemFormat: String(component.xschemFormat || libraryItem.xschemFormat || ""),
+      xschemLvsFormat: String(component.xschemLvsFormat || libraryItem.xschemLvsFormat || ""),
+      layoutCell: String(component.layoutCell || libraryItem.layoutCell || libraryItem.modelName || ""),
+      layoutView: String(component.layoutView || libraryItem.layoutView || "layout"),
       footprint: String(component.footprint || libraryItem.footprint || ""),
       packageName: String(component.packageName || libraryItem.packageName || ""),
       supplier: String(component.supplier || libraryItem.supplier || ""),
@@ -3880,14 +3978,19 @@ function analogMixedLibraryForActivePlacement(workspace = {}) {
 function analogMixedLibraryItemsForWorkspace(workspace) {
   const imported = new Set(Array.isArray(workspace?.importedDeviceIds) ? workspace.importedDeviceIds : []);
   const supplierItems = Array.isArray(workspace?.supplierComponents) ? workspace.supplierComponents : [];
+  const pdkItems = Array.isArray(workspace?.pdkLibraryItems) ? workspace.pdkLibraryItems : [];
   const seen = new Set();
+  const seenKeys = new Set();
   return [
     ...analogMixedComponentLibrary,
     ...analogMixedDeviceCatalog.filter((item) => imported.has(item.id)),
+    ...pdkItems,
     ...supplierItems
   ].filter((item) => {
-    if (!item?.id || seen.has(item.id)) return false;
+    const key = analogMixedLibraryDedupeKey(item);
+    if (!item?.id || seen.has(item.id) || (key && seenKeys.has(key))) return false;
     seen.add(item.id);
+    if (key) seenKeys.add(key);
     return true;
   });
 }
@@ -3904,7 +4007,7 @@ function analogMixedAvailableComponents(workspace) {
     const domains = Array.isArray(item.domains) ? item.domains : analogMixedAllDomains;
     const modeMatch = modes.includes(workspace.mode);
     const domainMatch = domains.includes(workspace.focus);
-    const filterMatch = !filter || [item.label, item.category, item.symbol, item.value, item.source, item.modelName, item.footprint, item.packageName].join(" ").toLowerCase().includes(filter);
+    const filterMatch = !filter || [item.label, item.category, item.symbol, item.value, item.source, item.modelName, item.modelKey, item.xschemSymbol, item.layoutCell, item.footprint, item.packageName].join(" ").toLowerCase().includes(filter);
     return modeMatch && domainMatch && filterMatch;
   });
 }
@@ -4137,11 +4240,19 @@ function analogMixedAddComponent(project, libraryId, point = {}) {
     notes: "",
     source: libraryItem.source || "local",
     pdk: libraryItem.pdk || "",
+    pdkVariant: libraryItem.pdkVariant || "",
     vendor: libraryItem.vendor || "",
     supplier: libraryItem.supplier || "",
     manufacturer: libraryItem.manufacturer || "",
     mpn: libraryItem.mpn || "",
     modelName: libraryItem.modelName || "",
+    modelKey: libraryItem.modelKey || libraryItem.modelName || "",
+    xschemSymbol: libraryItem.xschemSymbol || "",
+    xschemPath: libraryItem.xschemPath || "",
+    xschemFormat: libraryItem.xschemFormat || "",
+    xschemLvsFormat: libraryItem.xschemLvsFormat || "",
+    layoutCell: libraryItem.layoutCell || libraryItem.modelName || "",
+    layoutView: libraryItem.layoutView || "layout",
     footprint: libraryItem.footprint || "",
     packageName: libraryItem.packageName || "",
     deviceLevel: Boolean(libraryItem.deviceLevel),
@@ -4198,11 +4309,19 @@ function analogMixedAddIcLayoutDevice(project, libraryId, point = {}) {
     notes: "",
     source: libraryItem.source || "local",
     pdk: libraryItem.pdk || workspace.activePdk || "",
+    pdkVariant: libraryItem.pdkVariant || "",
     vendor: libraryItem.vendor || "",
     supplier: libraryItem.supplier || "",
     manufacturer: libraryItem.manufacturer || "",
     mpn: libraryItem.mpn || "",
     modelName: libraryItem.modelName || "",
+    modelKey: libraryItem.modelKey || libraryItem.modelName || "",
+    xschemSymbol: libraryItem.xschemSymbol || "",
+    xschemPath: libraryItem.xschemPath || "",
+    xschemFormat: libraryItem.xschemFormat || "",
+    xschemLvsFormat: libraryItem.xschemLvsFormat || "",
+    layoutCell: libraryItem.layoutCell || libraryItem.modelName || "",
+    layoutView: libraryItem.layoutView || "layout",
     footprint: libraryItem.footprint || "",
     packageName: libraryItem.packageName || "",
     deviceLevel: true,
@@ -5215,6 +5334,85 @@ async function analogMixedImportPdkFolder() {
     workspace.activePanel = "pdk";
     renderAnalogMixedWorkspace();
     analogMixedSetStatus("PDK import failed.");
+    return false;
+  }
+}
+
+async function analogMixedImportPdkSymbols() {
+  const project = activeAnalogMixedProject();
+  if (!project) return false;
+  const workspace = normalizeAnalogMixedWorkspace(project);
+  analogMixedSetSuite(workspace, "ic", { preferredStage: "libraries" });
+  const importedPath = workspace.stageData?.pdk?.importedPdk?.path || workspace.stageData?.["ic-layout"]?.pdkImport?.path || "";
+  try {
+    const query = new URLSearchParams({ pdk: workspace.activePdk || "sky130" });
+    if (importedPath) query.set("path", importedPath);
+    const response = await fetch(`/api/analog-mixed/pdk-symbol-library?${query.toString()}`);
+    const data = await response.json();
+    if (!response.ok || !data.ok) throw new Error(data.error || "PDK symbol library could not be loaded.");
+    const pdk = data.pdk || {};
+    const symbols = analogMixedDedupeLibraryItems(data.symbols || []);
+    if (!symbols.length) throw new Error("No device-level Xschem symbols were found in that PDK.");
+    const registered = analogMixedRegisterLibraryItems(symbols);
+    workspace.pdkLibraryItems = analogMixedDedupeLibraryItems([...(workspace.pdkLibraryItems || []), ...registered]);
+    const imported = new Set(workspace.importedDeviceIds || []);
+    registered.forEach((item) => imported.add(item.id));
+    workspace.importedDeviceIds = [...imported];
+    workspace.importHistory.unshift({
+      source: "pdk-xschem",
+      label: `${pdk.variant || pdk.family || workspace.activePdk || "PDK"} Xschem symbols`,
+      count: registered.length,
+      importedAt: new Date().toLocaleString()
+    });
+    workspace.importHistory = workspace.importHistory.slice(0, 30);
+    workspace.stageData.pdk = workspace.stageData.pdk && typeof workspace.stageData.pdk === "object" ? workspace.stageData.pdk : {};
+    if (pdk.path) workspace.stageData.pdk.importedPdk = pdk;
+    workspace.stageData.pdk.xschemSymbols = registered.map((item) => ({
+      id: item.id,
+      label: item.label,
+      modelName: item.modelName,
+      symbol: item.xschemSymbol,
+      path: item.xschemPath,
+      layoutCell: item.layoutCell
+    }));
+    workspace.activePdk = pdk.variant || pdk.family || workspace.activePdk || "sky130";
+    const layoutData = analogMixedNormalizeIcLayout(workspace);
+    layoutData.pdk = workspace.activePdk;
+    if (pdk.path) layoutData.pdkImport = pdk;
+    workspace.stageData["ic-layout"] = layoutData;
+    workspace.selectedLibraryId = registered[0]?.id || workspace.selectedLibraryId;
+    workspace.libraryFilter = "sky130";
+    workspace.activeStage = "libraries";
+    workspace.activePanel = "libraries";
+    workspace.libraryReport = [
+      `PDK/Xschem library synchronized: ${pdk.variant || pdk.family || workspace.activePdk || "IC PDK"}`,
+      "",
+      `Symbols added: ${registered.length}`,
+      `PDK root: ${pdk.path || importedPath || "auto-detected"}`,
+      `Xschem source: ${data.xschemRoot || "libs.tech/xschem"}`,
+      "",
+      "The imported entries are deduplicated by PDK, model name, and device kind. They keep their Xschem SPICE format, LVS format, model key, pin order, and layout cell name so the AM schematic, netlist generator, and IC layout handoff can speak the same device language.",
+      "",
+      "First device entries:",
+      ...registered.slice(0, 20).map((item) => `- ${item.label} | pins ${item.pins.join(", ")} | ${item.modelName || item.modelKey || item.id} | layout ${item.layoutCell || "not named"}`)
+    ].join("\n");
+    markDraftNeedsSave();
+    scheduleAutosave();
+    renderAnalogMixedWorkspace();
+    analogMixedSetStatus(`Loaded ${registered.length} PDK/Xschem symbols without duplicate device records.`);
+    return true;
+  } catch (error) {
+    workspace.libraryReport = [
+      "PDK/Xschem symbol import failed.",
+      "",
+      error.message || "The local backend could not parse the PDK symbol library.",
+      "",
+      "Use Import > IC PDK folder if the PDK is not in the default AppData, Volare, PDK_ROOT, or SKY130_PDK_ROOT locations."
+    ].join("\n");
+    workspace.activeStage = "libraries";
+    workspace.activePanel = "libraries";
+    renderAnalogMixedWorkspace();
+    analogMixedSetStatus("PDK/Xschem symbols were not imported.");
     return false;
   }
 }
@@ -6886,6 +7084,7 @@ function analogMixedMenuGroups(workspace) {
         { label: "IC Layout Suite", action: "design-tool:ic-layout" },
         { label: "ADE / SPICE cockpit", action: "design-tool:ic-ade" },
         { label: "PDK manager", action: "design-tool:ic-pdk" },
+        { label: "Load PDK/Xschem symbols", action: "import-pdk-symbols" },
         { label: "Extraction and signoff", action: "design-tool:ic-extraction" },
         { label: "IC math calculator", action: "design-tool:ic-math" },
         { label: "IC marketplace", action: "design-tool:ic-marketplace" },
@@ -6988,6 +7187,7 @@ function analogMixedMenuGroups(workspace) {
         { label: "Mouser component", action: "import-mouser" },
         { label: "Manufacturer component", action: "import-manufacturer" },
         { label: "IC PDK folder", action: "pdk-import" },
+        { label: "PDK/Xschem symbols", action: "import-pdk-symbols" },
         { label: "SKY130 devices", action: "import-sky130" },
         { label: "LTspice primitives", action: "import-ltspice" },
         { label: "Texas Instruments shells", action: "import-texas" },
@@ -7109,7 +7309,7 @@ function analogMixedRenderLibrary(workspace) {
         <span class="analog-mixed-library-copy">
           <strong>${escapeHtml(item.label)}</strong>
           <span>${escapeHtml(item.category)} | ${escapeHtml(item.value)}</span>
-          ${(item.source || item.modelName || item.footprint) ? `<small>${escapeHtml([item.source, item.modelName, item.footprint || item.packageName].filter(Boolean).join(" | "))}</small>` : ""}
+          ${(item.source || item.modelName || item.xschemSymbol || item.footprint) ? `<small>${escapeHtml([item.source, item.modelName, item.xschemSymbol, item.layoutCell || item.footprint || item.packageName].filter(Boolean).join(" | "))}</small>` : ""}
         </span>
       </button>
       <button type="button" class="analog-mixed-library-place" data-am-library-place="${escapeHtml(item.id)}" title="Place ${escapeHtml(item.label)}">+</button>
@@ -7251,6 +7451,9 @@ function analogMixedRenderInspector(workspace) {
         <label><span>Reference</span><input type="text" value="${escapeHtml(selected.label)}" data-am-component-field="label" /></label>
         <label><span>Value / sizing</span><input type="text" value="${escapeHtml(selected.value)}" data-am-component-field="value" /></label>
         <label><span>Model</span><input type="text" value="${escapeHtml(selected.modelName || libraryItem.modelName || "")}" data-am-component-field="modelName" /></label>
+        <label><span>Model key</span><input type="text" value="${escapeHtml(selected.modelKey || libraryItem.modelKey || selected.modelName || libraryItem.modelName || "")}" data-am-component-field="modelKey" /></label>
+        <label><span>Xschem symbol</span><input type="text" value="${escapeHtml(selected.xschemSymbol || libraryItem.xschemSymbol || "")}" data-am-component-field="xschemSymbol" /></label>
+        <label><span>Layout cell</span><input type="text" value="${escapeHtml(selected.layoutCell || libraryItem.layoutCell || "")}" data-am-component-field="layoutCell" /></label>
         <label><span>Footprint</span><input type="text" value="${escapeHtml(selected.footprint || libraryItem.footprint || "")}" data-am-component-field="footprint" /></label>
         <label><span>Package</span><input type="text" value="${escapeHtml(selected.packageName || libraryItem.packageName || "")}" data-am-component-field="packageName" /></label>
         <div class="analog-mixed-inspector-subtitle">Device parameters</div>
@@ -7891,6 +8094,25 @@ function analogMixedRunCalculations() {
   const workspace = normalizeAnalogMixedWorkspace(project);
   const params = workspace.parameters[workspace.focus] || {};
   const domain = analogMixedDomains[workspace.focus];
+  const parsedNumber = (value, fallback = 0) => {
+    const raw = String(value ?? "").trim();
+    const match = raw.match(/[-+]?\d*\.?\d+(?:e[-+]?\d+)?\s*(meg|g|k|m|u|n|p|f)?/i);
+    if (!match) return fallback;
+    const base = Number(match[0].replace(/[a-z]+/ig, ""));
+    const suffix = String(match[1] || "").toLowerCase();
+    const scale = suffix === "g" ? 1e9 : suffix === "meg" ? 1e6 : suffix === "k" ? 1e3 : suffix === "m" ? 1e-3 : suffix === "u" ? 1e-6 : suffix === "n" ? 1e-9 : suffix === "p" ? 1e-12 : suffix === "f" ? 1e-15 : 1;
+    return Number.isFinite(base) ? base * scale : fallback;
+  };
+  const componentRows = workspace.components.map((component, index) => {
+    const item = analogMixedLibraryItem(component.type);
+    const parameters = component.parameters || {};
+    const sizing = ["W", "w", "L", "l", "nf", "m", "mult", "area", "perimeter", "resistance", "capacitance"]
+      .map((key) => parameters[key] ? `${key}=${parameters[key]}` : "")
+      .filter(Boolean)
+      .join(", ");
+    return `- ${component.label || `${item.symbol}${index + 1}`}: ${item.label}; model ${component.modelName || item.modelName || component.type}; ${sizing || component.value || item.value || "no sizing yet"}${component.xschemSymbol || item.xschemSymbol ? `; Xschem ${component.xschemSymbol || item.xschemSymbol}` : ""}`;
+  });
+  const pdkRows = (workspace.pdkLibraryItems || []).slice(0, 16).map((item) => `- ${item.label}: pins ${item.pins.join(", ")}; model ${item.modelName || item.modelKey}; layout ${item.layoutCell || "not linked"}`);
   const lines = [
     `${domain.label} calculation workspace`,
     "",
@@ -7902,12 +8124,55 @@ function analogMixedRunCalculations() {
     lines.push(`- ${key.replace(/([A-Z])/g, " $1")}: ${value}`);
   });
   if (workspace.focus === "pll") {
-    lines.push("", "Next PLL math hooks: loop bandwidth check, damping factor, charge-pump current versus loop-filter impedance, VCO gain sensitivity, divider ratio sanity, jitter budget.");
+    const reference = parsedNumber(params.referenceFrequency || params.inputFrequency || "10Meg", 10e6);
+    const output = parsedNumber(params.outputFrequency || params.targetFrequency || "100Meg", 100e6);
+    const divider = reference ? Math.max(1, Math.round(output / reference)) : 1;
+    lines.push(
+      "",
+      "PLL / clocking worksheet:",
+      `- Estimated divider ratio N = fout / fref = ${divider}.`,
+      "- Loop bandwidth should usually stay well below the reference frequency, often around fref/10 to fref/20 for a first-pass design.",
+      "- Charge-pump current, loop-filter impedance, and VCO gain should be solved together because they set damping, lock time, and peaking.",
+      "- Jitter budgeting should split reference jitter, divider noise, phase detector/charge pump noise, loop filter noise, and VCO phase noise."
+    );
   } else if (workspace.focus === "amplifier") {
-    lines.push("", "Next amplifier math hooks: small-signal gm/ro gain, pole-zero estimate, compensation capacitor sizing, phase-margin estimate, noise contribution, slew-rate check.");
+    const bandwidth = parsedNumber(params.bandwidth || params.gbw || "10Meg", 10e6);
+    const loadCap = parsedNumber(params.loadCap || params.compensationCap || "1p", 1e-12);
+    const bias = parsedNumber(params.biasCurrent || params.current || "100u", 100e-6);
+    const slew = loadCap ? bias / loadCap : 0;
+    lines.push(
+      "",
+      "Amplifier worksheet:",
+      "- First-pass gain uses Av approximately equal to gm times the effective output resistance. Cascoding, active loads, and output swing decide how much of that theoretical gain survives.",
+      "- Unity-gain bandwidth is approximately gm / (2*pi*Cc) for a Miller-compensated one-pole dominant amplifier.",
+      `- With Cc/load estimate ${params.loadCap || params.compensationCap || "1p"} and bias ${params.biasCurrent || params.current || "100u"}, slew-rate estimate is about ${Number.isFinite(slew) ? `${slew.toExponential(3)} V/s` : "not available"}.`,
+      `- For target bandwidth ${params.bandwidth || params.gbw || "10Meg"}, the required input-pair gm is roughly 2*pi*BW*Cc = ${(2 * Math.PI * bandwidth * loadCap).toExponential(3)} S.`,
+      "- Noise review should separate input-pair thermal noise, flicker noise, resistor noise, current-source noise, and output-load noise."
+    );
   } else {
-    lines.push("", "Next DC-DC math hooks: duty cycle, inductor ripple current, capacitor ripple voltage, switch RMS current, compensation target, loss and thermal estimates.");
+    const vin = parsedNumber(params.inputVoltage || params.vin || "12", 12);
+    const vout = parsedNumber(params.outputVoltage || params.vout || "5", 5);
+    const fsw = parsedNumber(params.switchingFrequency || params.fsw || "500k", 500e3);
+    const inductance = parsedNumber(params.inductance || "10u", 10e-6);
+    const duty = vin ? vout / vin : 0;
+    const ripple = inductance && fsw ? ((vin - vout) * duty) / (inductance * fsw) : 0;
+    lines.push(
+      "",
+      "DC-DC / power worksheet:",
+      `- Buck duty estimate D = Vout/Vin = ${Number.isFinite(duty) ? duty.toFixed(3) : "not available"}.`,
+      `- Inductor ripple estimate Delta I = (Vin - Vout) * D / (L * fsw) = ${Number.isFinite(ripple) ? `${ripple.toExponential(3)} A` : "not available"}.`,
+      "- Compensation should be planned from power-stage pole, ESR zero, target crossover, and load range.",
+      "- Thermal review should include high-side switch loss, low-side conduction or diode loss, inductor copper/core loss, sense resistor loss, and copper spreading."
+    );
   }
+  lines.push(
+    "",
+    "Placed-device sizing and PDK awareness:",
+    ...(componentRows.length ? componentRows : ["- No devices placed yet. Place PDK, board, or local-library parts to populate this sizing table."]),
+    "",
+    "Synchronized PDK library sample:",
+    ...(pdkRows.length ? pdkRows : ["- No parsed PDK/Xschem symbols have been loaded yet. Use Import > PDK/Xschem symbols."])
+  );
   workspace.mathReport = lines.join("\n");
   workspace.simulationPlan = [
     `Simulation queue for ${domain.label}`,
@@ -8435,6 +8700,7 @@ async function analogMixedHandleMenuAction(action = "") {
   if (clean === "clean-floating-labels") return analogMixedCleanFloatingLabels();
   if (clean === "pdk-status") return await analogMixedRefreshPdkStatus(workspace.activePdk || workspace.stageData?.pdk?.importedPdk?.variant || "sky130");
   if (clean === "pdk-import") return await analogMixedImportPdkFolder();
+  if (clean === "import-pdk-symbols") return await analogMixedImportPdkSymbols();
   if (clean === "import-local-models") return await analogMixedImportLocalModelFiles();
   if (clean === "import-supplier") return await analogMixedImportSupplierComponent("Supplier");
   if (clean === "import-digikey") return await analogMixedImportSupplierComponent("DigiKey");
