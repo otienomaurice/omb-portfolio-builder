@@ -6006,7 +6006,30 @@ async function analogMixedSpiceDeck(projectTitle = "Project", workspaceInput = {
   ].join("\n");
 }
 
-function analogMixedLiteSimulation(projectTitle = "Project", workspaceInput = {}, kind = "op", deck = "") {
+function analogMixedExternalSpiceReadiness(workspaceInput = {}, deck = "") {
+  const workspace = normalizeAnalogMixedServerWorkspace(workspaceInput);
+  const components = Array.isArray(workspace.components) ? workspace.components : [];
+  const prefixes = components.map((component, index) =>
+    analogMixedServerComponentLibraryItem(component, workspace).spicePrefix || component.spicePrefix || `X${index + 1}`
+  );
+  const hasReference = components.some((component, index) => {
+    const item = analogMixedServerComponentLibraryItem(component, workspace);
+    return item.spicePrefix === "0" || /(^|\b)(gnd|ground|vss|0)(\b|$)/i.test(`${component.label || ""} ${item.label || ""} ${component.value || ""}`);
+  }) || /\s0(?:\s|$)/.test(deck);
+  const hasSource = prefixes.some((prefix) => ["V", "I"].includes(String(prefix || "").toUpperCase()))
+    || /^[VI][\w.$-]*\s+\S+\s+\S+\s+/im.test(deck);
+  const hasDevice = prefixes.some((prefix) => !["0", "V", "I"].includes(String(prefix || "").toUpperCase()));
+  const hasEnd = /^\s*\.end\s*$/im.test(deck);
+  const issues = [];
+  if (components.length < 2) issues.push("Place at least two schematic devices before launching an external SPICE engine.");
+  if (!hasReference) issues.push("Add a ground/reference node so the solver has a 0 V reference.");
+  if (!hasSource) issues.push("Add a voltage or current source so an operating point, sweep, or transient run has an excitation.");
+  if (!hasDevice) issues.push("Add at least one non-source circuit device such as a resistor, capacitor, MOSFET, diode, or subcircuit.");
+  if (!hasEnd) issues.push("The generated deck is missing a final .end statement.");
+  return { ok: issues.length === 0, issues };
+}
+
+function analogMixedLiteSimulation(projectTitle = "Project", workspaceInput = {}, kind = "op", deck = "", options = {}) {
   const workspace = normalizeAnalogMixedServerWorkspace(workspaceInput);
   const nodeVoltages = { "0": 0 };
   const sources = [];
@@ -6033,6 +6056,15 @@ function analogMixedLiteSimulation(projectTitle = "Project", workspaceInput = {}
   const sweep = kind === "dc"
     ? Array.from({ length: 11 }, (_, step) => ({ input: step * 0.5, output: step * 0.5 }))
     : [];
+  const preflightLines = Array.isArray(options.preflightIssues) && options.preflightIssues.length
+    ? [
+        "",
+        "External SPICE preflight:",
+        ...options.preflightIssues.map((issue) => `- ${issue}`),
+        "",
+        "No external simulator was launched for this request, so the app did not open ngspice or any native SPICE window."
+      ]
+    : [];
   const report = [
     `SPICE simulation report for ${projectTitle || "Project"}`,
     "",
@@ -6044,6 +6076,7 @@ function analogMixedLiteSimulation(projectTitle = "Project", workspaceInput = {}
     `Analysis requested: ${kind.toUpperCase()}`,
     `Schematic devices: ${workspace.components.length}`,
     `Sources detected: ${sources.length}`,
+    ...preflightLines,
     "",
     "Estimated node voltages:",
     ...Object.entries(nodeVoltages).map(([node, value]) => `- ${node}: ${value} V`),
@@ -6069,6 +6102,12 @@ function analogMixedLiteSimulation(projectTitle = "Project", workspaceInput = {}
 async function analogMixedRunSpice(projectTitle = "Project", workspaceInput = {}, kind = "op") {
   const cleanKind = ["op", "dc", "ac", "tran"].includes(kind) ? kind : "op";
   const deck = await analogMixedSpiceDeck(projectTitle, workspaceInput, cleanKind);
+  const readiness = analogMixedExternalSpiceReadiness(workspaceInput, deck);
+  if (!readiness.ok) {
+    return analogMixedLiteSimulation(projectTitle, workspaceInput, cleanKind, deck, {
+      preflightIssues: readiness.issues
+    });
+  }
   const engineCandidates = [
     { id: "ngspice", label: "ngspice", usesLogFile: true, args: (deckPath, outputPath) => ["-b", "-o", outputPath, deckPath] },
     { id: "xyce", label: "Xyce", args: (deckPath) => [deckPath] }

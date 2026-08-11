@@ -1,6 +1,6 @@
 {
   "name": "omb-portfolio-builder",
-  "version": "0.3.17",
+  "version": "0.3.18",
   "private": false,
   "author": "Maurice Otieno",
   "description": "Standalone Windows desktop application for building and publishing portfolio websites.",
