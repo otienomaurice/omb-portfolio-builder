@@ -991,6 +991,451 @@ const analogMixedIcWorkflowLanes = [
   { id: "quantus-extraction", label: "Quantus Lane", action: "ic-pex", summary: "RC parasitic extraction planning and extracted-view feedback into simulation." },
   { id: "voltus-xfi", label: "Voltus-XFi Lane", action: "ic-power", summary: "Power-grid integrity, current-density, and electromigration analysis planning." }
 ];
+const analogMixedOperationVerbs = [
+  ["create", "Create"],
+  ["open", "Open"],
+  ["save", "Save"],
+  ["save-as", "Save as"],
+  ["import", "Import"],
+  ["export", "Export"],
+  ["delete", "Delete"],
+  ["duplicate", "Duplicate"],
+  ["rename", "Rename"],
+  ["copy", "Copy"],
+  ["paste", "Paste"],
+  ["move", "Move"],
+  ["rotate", "Rotate"],
+  ["mirror", "Mirror"],
+  ["align", "Align"],
+  ["distribute", "Distribute"],
+  ["fit", "Fit"],
+  ["zoom", "Zoom"],
+  ["pan", "Pan"],
+  ["measure", "Measure"],
+  ["annotate", "Annotate"],
+  ["probe", "Probe"],
+  ["inspect", "Inspect"],
+  ["validate", "Validate"],
+  ["run", "Run"],
+  ["simulate", "Simulate"],
+  ["sweep", "Sweep"],
+  ["extract", "Extract"],
+  ["netlist", "Netlist"],
+  ["generate", "Generate"],
+  ["sync", "Sync"],
+  ["assign", "Assign"],
+  ["map", "Map"],
+  ["resolve", "Resolve"],
+  ["archive", "Archive"]
+];
+const analogMixedOperationTargets = [
+  ["project", "project"],
+  ["suite", "suite"],
+  ["schematic", "schematic"],
+  ["symbol", "symbol"],
+  ["pin", "pin"],
+  ["port", "port"],
+  ["wire", "wire"],
+  ["net", "net"],
+  ["label", "label"],
+  ["junction", "junction"],
+  ["probe", "probe"],
+  ["component", "component"],
+  ["parameter", "parameter"],
+  ["model", "model"],
+  ["spice-model", "SPICE model"],
+  ["pdk-cell", "PDK cell"],
+  ["xschem-symbol", "Xschem symbol"],
+  ["footprint", "footprint"],
+  ["3d-model", "3D model"],
+  ["package", "package"],
+  ["pcb", "PCB"],
+  ["board-outline", "board outline"],
+  ["pad", "pad"],
+  ["via", "via"],
+  ["trace", "trace"],
+  ["zone", "zone"],
+  ["gerber", "Gerber"],
+  ["bom", "BOM"],
+  ["assembly", "assembly"],
+  ["ic-layout", "IC layout"],
+  ["device", "device"],
+  ["mos", "MOS device"],
+  ["resistor", "resistor"],
+  ["capacitor", "capacitor"],
+  ["diode", "diode"],
+  ["tap", "tap"],
+  ["guard-ring", "guard ring"],
+  ["matching-group", "matching group"],
+  ["route", "route"],
+  ["layer", "layer"],
+  ["marker", "marker"],
+  ["drc", "DRC"],
+  ["erc", "ERC"],
+  ["lvs", "LVS"],
+  ["pex", "PEX"],
+  ["noise", "noise"],
+  ["corner", "corner"],
+  ["sweep", "sweep"],
+  ["netlist", "netlist"],
+  ["report", "report"],
+  ["artifact", "artifact"]
+];
+const analogMixedOperationScopes = [
+  ["selection", "selection"],
+  ["current-stage", "current stage"],
+  ["active-suite", "active suite"],
+  ["schematic", "schematic"],
+  ["pcb", "PCB"],
+  ["ic", "IC"],
+  ["pdk", "PDK"],
+  ["library", "library"],
+  ["workspace", "workspace"],
+  ["project", "project"]
+];
+const analogMixedOperationFormats = [
+  ["native", "native"],
+  ["json", "JSON"],
+  ["csv", "CSV"],
+  ["spice", "SPICE"],
+  ["spectre", "Spectre-style"],
+  ["verilog-ams", "Verilog-AMS"],
+  ["kicad", "KiCad"],
+  ["xschem", "Xschem"],
+  ["gds", "GDS"],
+  ["oas", "OASIS"],
+  ["lef", "LEF"],
+  ["def", "DEF"],
+  ["gerber", "Gerber"],
+  ["step", "STEP"],
+  ["wrl", "WRL"],
+  ["pdf", "PDF"]
+];
+const analogMixedMenuSpecs = [
+  {
+    label: "File",
+    sections: [
+      { title: "Workspace", items: [["Tool launcher", "hub"], ["Save workspace", "save"], ["Open command palette", "command-palette"], ["Design report", "print-report"]] },
+      { title: "Import", items: [["Local SPICE/KiCad files", "import-local-models"], ["Supplier component", "import-supplier"], ["IC PDK folder", "pdk-import"], ["PDK/Xschem symbols", "import-pdk-symbols"], ["Download linked 3D models", "op:download-3d-model-library"]] },
+      { title: "Export", items: [["Export active netlist", "netlist"], ["Export IC layout artifacts", "layout-export"], ["Export PCB package", "pcb-export"], ["Export Gerber package", "gerber"], ["Export 3D model manifest", "op:export-3d-model-manifest"]] }
+    ]
+  },
+  {
+    label: "Edit",
+    sections: [
+      { title: "History", items: [["Undo", "undo"], ["Redo", "redo"]] },
+      { title: "Selection", items: [["Duplicate selected", "op:duplicate-selection"], ["Delete selected", "delete-selected"], ["Rename selected", "op:rename-selection"], ["Edit selected values", "op:edit-selection-values"]] },
+      { title: "Transform", items: [["Rotate 90", "rotate-selected"], ["Mirror selected", "mirror-selected"], ["Align to grid", "op:align-selection-grid"], ["Distribute devices", "op:distribute-selection"]] }
+    ]
+  },
+  {
+    label: "View",
+    sections: [
+      { title: "Canvas", items: [["Zoom in", "zoom-in"], ["Zoom out", "zoom-out"], ["Fit canvas", "fit"], ["Toggle grid", "toggle-grid"], ["Toggle library", "toggle-library"], ["Toggle inspector", "toggle-inspector"]] },
+      { title: "Windows", items: [["DRC / ERC window", "drc"], ["Netlist window", "open-netlist-window"], ["SPICE window", "open-spice-window"], ["3D package viewer", "stage:3d-view:layout"], ["Operation browser", "command-palette"]] },
+      { title: "Visibility", items: [["Show all IC layers", "op:show-all-layers"], ["Hide non-active layers", "op:hide-nonactive-layers"], ["Show device labels", "layout-labels"], ["Open layer visibility panel", "op:layer-visibility-panel"]] }
+    ]
+  },
+  {
+    label: "Suite",
+    sections: [
+      { title: "Launcher", items: [["Show IC Design Suite tools", "suite:ic"], ["Show PCB Design Suite tools", "suite:pcb"], ["Refresh suite tools", "backend-analyze"]] },
+      { title: "IC Flow", items: [["IC Schematic Editor", "design-tool:ic-schematic"], ["IC Symbol Editor", "design-tool:ic-symbol"], ["IC Layout Suite", "design-tool:ic-layout"], ["ADE / SPICE cockpit", "design-tool:ic-ade"], ["PDK manager", "design-tool:ic-pdk"], ["Extraction and signoff", "design-tool:ic-extraction"], ["IC math calculator", "design-tool:ic-math"], ["IC marketplace", "design-tool:ic-marketplace"]] },
+      { title: "PCB Flow", items: [["Board Schematic Editor", "design-tool:pcb-schematic"], ["Board Symbol Editor", "design-tool:pcb-symbol"], ["Footprint Editor", "design-tool:pcb-footprint"], ["PCB Editor", "design-tool:pcb-editor"], ["Gerber Viewer", "design-tool:pcb-gerber"], ["PCB math calculator", "design-tool:pcb-math"], ["PCB marketplace", "design-tool:pcb-marketplace"]] }
+    ]
+  },
+  {
+    label: "Design",
+    sections: [
+      { title: "Stages", items: [["Schematic capture", "stage:schematic:netlist"], ["Symbol editor", "stage:symbol:libraries"], ["Footprint editor", "stage:footprint:libraries"], ["PCB layout", "stage:pcb:layout"], ["IC layout", "stage:ic-layout:layout"], ["Math workspace", "stage:math:math"], ["Library manager", "stage:libraries:libraries"]] },
+      { title: "Placement", items: [["Select", "tool:select"], ["Place selected library part", "place-selected-library"], ["Wire", "tool:wire"], ["Junction", "tool:junction"], ["Probe", "tool:probe"], ["No-connect", "tool:no-connect"], ["Label", "tool:label"], ["Net name", "tool:net"]] },
+      { title: "Common parts", items: [["Resistor", "tool:resistor:resistor"], ["Capacitor", "tool:capacitor:capacitor"], ["Inductor", "tool:inductor:inductor"], ["MOSFET", "tool:semiconductor:nmos"], ["Diode", "tool:diode:diode"], ["Ground", "tool:ground:ground"]] }
+    ]
+  },
+  {
+    label: "Libraries",
+    sections: [
+      { title: "Device sources", items: [["SKY130 devices", "import-sky130"], ["LTspice primitives", "import-ltspice"], ["Texas Instruments shells", "import-texas"], ["KiCad PCB parts", "import-kicad"], ["DigiKey component", "import-digikey"], ["Mouser component", "import-mouser"], ["Manufacturer component", "import-manufacturer"]] },
+      { title: "Model handling", items: [["Resolve schematic models", "op:resolve-schematic-models"], ["Resolve footprints", "op:resolve-footprints"], ["Resolve layout cells", "op:resolve-layout-cells"], ["Resolve 3D models", "op:resolve-3d-models"], ["Deduplicate symbols", "op:dedupe-symbols"]] },
+      { title: "Library views", items: [["Symbols", "symbols"], ["Footprints", "footprints"], ["Local component library", "local-library"], ["Component guide", "help-components"]] }
+    ]
+  },
+  {
+    label: "Checks",
+    sections: [
+      { title: "Electrical", items: [["Run ERC", "erc"], ["Run DRC", "drc"], ["Analyze DRC + ERC", "backend-analyze"], ["Connectivity audit", "op:connectivity-audit"], ["Pin direction audit", "op:pin-direction-audit"]] },
+      { title: "IC signoff", items: [["LVS setup", "lvs"], ["Parasitic extraction", "ic-pex"], ["Noise deck", "ic-noise-run"], ["Power integrity", "ic-power"], ["Signoff checklist", "ic-signoff"], ["PDK status", "pdk-status"]] },
+      { title: "Cleanup", items: [["Clean generated labels", "clean-floating-labels"], ["Find floating nets", "op:find-floating-nets"], ["Find duplicate references", "op:find-duplicate-references"], ["Find missing models", "op:find-missing-models"]] }
+    ]
+  },
+  {
+    label: "Simulate",
+    sections: [
+      { title: "SPICE", items: [["Open SPICE cockpit", "stage:simulation:simulation"], ["Operating point", "spice-op"], ["DC sweep", "spice-dc"], ["AC analysis", "spice-ac"], ["Transient", "spice-tran"], ["Noise extraction", "ic-noise-run"], ["Monte Carlo / corners", "corners"], ["Complex IC analysis", "ic-complex"]] },
+      { title: "ADE", items: [["Corner setup", "ic-corners"], ["gm/Id sizing", "ic-gmid"], ["MOS sizing table", "ic-sizing"], ["Design intent", "ic-intent"], ["Generate PDK netlist", "ic-netlist"]] }
+    ]
+  },
+  {
+    label: "Layout",
+    sections: [
+      { title: "IC tools", items: [["Layout select", "layout-tool:select"], ["Place selected device", "layout-tool:device"], ["Route active layer", "layout-tool:route"], ["Via/contact", "layout-tool:via"], ["Measure geometry", "layout-tool:measure"], ["Guard-ring planner", "layout-guard"], ["Common-centroid planner", "matching"]] },
+      { title: "Layers", items: [["NWELL", "layout-nwell"], ["PWELL", "layout-pwell"], ["DIFF", "layout-diff"], ["TAP", "layout-tap"], ["POLY", "layout-poly"], ["LI1", "layout-li1"], ["M1", "layout-metal1"], ["M2", "layout-metal2"], ["M3", "layout-metal3"]] },
+      { title: "Board", items: [["Apply KiCad template", "apply-kicad-template"], ["Footprint assignment", "pcb-sync"], ["Route planner", "route-plan"], ["Board rules", "board-rules"], ["Gerber package", "gerber"], ["Board 3D view", "view-3d"]] }
+    ]
+  },
+  {
+    label: "3D",
+    sections: [
+      { title: "Physical view", items: [["Open 3D package viewer", "stage:3d-view:layout"], ["Fit 3D view", "fit"], ["Rotate view", "rotate-3d"], ["Exploded view", "explode-3d"], ["Measure height", "measure-3d"], ["Clearance check", "clearance-3d"]] },
+      { title: "Models", items: [["Resolve 3D models", "op:resolve-3d-models"], ["Download linked 3D models", "op:download-3d-model-library"], ["Assign KiCad STEP model", "op:assign-kicad-step"], ["Assign package height", "op:assign-package-height"], ["Export model manifest", "op:export-3d-model-manifest"]] }
+    ]
+  },
+  {
+    label: "Help",
+    sections: [
+      { title: "Guides", items: [["Keyboard shortcuts", "help-shortcuts"], ["Component guide", "help-components"], ["AM roadmap", "help-roadmap"], ["Operation browser", "command-palette"]] }
+    ]
+  }
+];
+let analogMixedGeneratedOperationCatalog = null;
+function analogMixedOperationCatalog() {
+  if (analogMixedGeneratedOperationCatalog) return analogMixedGeneratedOperationCatalog;
+  const explicit = analogMixedMenuSpecs.flatMap((menu) => menu.sections.flatMap((section) => section.items.map(([label, action]) => ({
+    id: action,
+    label,
+    menu: menu.label,
+    section: section.title,
+    stage: "",
+    scope: "",
+    format: "",
+    connected: !String(action).startsWith("op:")
+  }))));
+  const generated = [];
+  analogMixedOperationVerbs.forEach(([verb, verbLabel]) => {
+    analogMixedOperationTargets.forEach(([target, targetLabel]) => {
+      analogMixedOperationScopes.forEach(([scope, scopeLabel]) => {
+        generated.push({
+          id: `op:${verb}-${target}-${scope}`,
+          label: `${verbLabel} ${targetLabel} in ${scopeLabel}`,
+          menu: analogMixedOperationMenuForTarget(target),
+          section: analogMixedOperationSectionForVerb(verb),
+          stage: analogMixedOperationStageForTarget(target),
+          scope,
+          format: "",
+          connected: true
+        });
+      });
+      if (["import", "export", "save-as", "generate", "netlist"].includes(verb)) {
+        analogMixedOperationFormats.forEach(([format, formatLabel]) => {
+          generated.push({
+            id: `op:${verb}-${target}-${format}`,
+            label: `${verbLabel} ${targetLabel} as ${formatLabel}`,
+            menu: verb === "import" ? "Import" : "File",
+            section: formatLabel,
+            stage: analogMixedOperationStageForTarget(target),
+            scope: "workspace",
+            format,
+            connected: true
+          });
+        });
+      }
+    });
+  });
+  const byId = new Map();
+  [...explicit, ...generated].forEach((operation) => {
+    if (!operation.id || byId.has(operation.id)) return;
+    byId.set(operation.id, operation);
+  });
+  analogMixedGeneratedOperationCatalog = [...byId.values()];
+  return analogMixedGeneratedOperationCatalog;
+}
+
+function analogMixedOperationMenuForTarget(target = "") {
+  if (/pdk|xschem|model|library|component|footprint|3d/.test(target)) return "Libraries";
+  if (/drc|erc|lvs|pex|noise|corner|sweep/.test(target)) return "Checks";
+  if (/pcb|board|pad|via|trace|zone|gerber|bom|assembly/.test(target)) return "Layout";
+  if (/ic|mos|tap|guard|matching|layer|route|device/.test(target)) return "Layout";
+  if (/schematic|symbol|wire|net|label|junction|probe|pin|port/.test(target)) return "Design";
+  return "File";
+}
+
+function analogMixedOperationSectionForVerb(verb = "") {
+  if (["import", "export", "save", "save-as", "archive"].includes(verb)) return "File operations";
+  if (["delete", "duplicate", "rename", "copy", "paste", "move", "rotate", "mirror", "align", "distribute"].includes(verb)) return "Edit operations";
+  if (["fit", "zoom", "pan", "measure", "inspect", "annotate"].includes(verb)) return "View operations";
+  if (["run", "simulate", "sweep", "extract", "netlist", "generate", "sync", "resolve", "validate"].includes(verb)) return "Engineering operations";
+  return "Workspace operations";
+}
+
+function analogMixedOperationStageForTarget(target = "") {
+  if (/3d/.test(target)) return "3d-view";
+  if (/pcb|board|pad|via|trace|zone/.test(target)) return "pcb";
+  if (/gerber|bom|assembly/.test(target)) return "gerber";
+  if (/ic|mos|tap|guard|matching|route|layer|pex|lvs/.test(target)) return "ic-layout";
+  if (/pdk|xschem/.test(target)) return "pdk";
+  if (/model|library|component|footprint/.test(target)) return "libraries";
+  if (/noise|corner|sweep/.test(target)) return "simulation";
+  if (/symbol|pin|port/.test(target)) return "symbol";
+  return "schematic";
+}
+
+function analogMixedOperationCatalogFiltered(workspace = {}) {
+  const settings = workspace.toolWindows?.operations || analogMixedDefaultState().toolWindows.operations;
+  const filter = String(settings.filter || workspace.operationPaletteFilter || "").trim().toLowerCase();
+  const menu = String(settings.menu || "all").toLowerCase();
+  const limit = Math.max(30, Math.min(300, Number(settings.limit) || 120));
+  return analogMixedOperationCatalog()
+    .filter((operation) => {
+      if (menu !== "all" && String(operation.menu || "").toLowerCase() !== menu) return false;
+      if (!filter) return true;
+      return [operation.label, operation.id, operation.menu, operation.section, operation.stage, operation.scope, operation.format]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase()
+        .includes(filter);
+    })
+    .slice(0, limit);
+}
+
+function analogMixedLogOperation(workspace = {}, operation = {}, result = "") {
+  workspace.operationLog = Array.isArray(workspace.operationLog) ? workspace.operationLog : [];
+  workspace.operationLog.unshift({
+    id: operation.id || "operation",
+    label: operation.label || operation.id || "Operation",
+    menu: operation.menu || "Tools",
+    section: operation.section || "Workspace",
+    stage: operation.stage || workspace.activeStage || "schematic",
+    scope: operation.scope || "workspace",
+    format: operation.format || "",
+    result: result || "Applied",
+    at: new Date().toLocaleString()
+  });
+  workspace.operationLog = workspace.operationLog.slice(0, 120);
+}
+
+function analogMixedOpenOperationWindow(menu = "all") {
+  const project = activeAnalogMixedProject();
+  if (!project) return;
+  const workspace = normalizeAnalogMixedWorkspace(project);
+  workspace.activeToolWindow = "operations";
+  workspace.toolWindows.operations.menu = menu || workspace.toolWindows.operations.menu || "all";
+  markDraftNeedsSave();
+  scheduleAutosave();
+  renderAnalogMixedWorkspace();
+  analogMixedSetStatus(`${analogMixedOperationCatalog().length} AM operations are available.`);
+}
+
+function analogMixedStageReportField(stage = "") {
+  if (stage === "pcb") return "pcbPlan";
+  if (stage === "ic-layout") return "icLayoutPlan";
+  if (stage === "libraries") return "libraryReport";
+  if (stage === "checks") return "checkReport";
+  if (stage === "simulation") return "simulationPlan";
+  if (stage === "math") return "mathReport";
+  return "backendReport";
+}
+
+function analogMixedOperationReportLine(operation = {}) {
+  const pieces = [
+    operation.label || operation.id || "AM operation",
+    operation.stage ? `stage=${operation.stage}` : "",
+    operation.scope ? `scope=${operation.scope}` : "",
+    operation.format ? `format=${operation.format}` : ""
+  ].filter(Boolean);
+  return `* ${pieces.join(" | ")}`;
+}
+
+function analogMixedExecuteOperation(operationId = "") {
+  const project = activeAnalogMixedProject();
+  if (!project) return;
+  const workspace = normalizeAnalogMixedWorkspace(project);
+  const operation = analogMixedOperationCatalog().find((item) => item.id === operationId) || {
+    id: operationId,
+    label: operationId.replace(/^op:/, "").replace(/-/g, " "),
+    menu: "Tools",
+    section: "Operation",
+    stage: workspace.activeStage,
+    scope: "workspace",
+    format: ""
+  };
+  const clean = String(operation.id || "");
+  if (!clean.startsWith("op:")) return analogMixedHandleMenuAction(clean);
+
+  if (clean.includes("resolve-3d-models") || clean.includes("assign-kicad-step") || clean.includes("assign-package-height")) {
+    const manifest = analogMixedResolve3dManifest(workspace);
+    workspace.stageData["3d-view"] = {
+      ...(workspace.stageData["3d-view"] || {}),
+      modelManifest: manifest,
+      resolvedAt: new Date().toLocaleString()
+    };
+    workspace.show3dPreview = true;
+    workspace.activeStage = "3d-view";
+    workspace.activePanel = "layout";
+    analogMixedLogOperation(workspace, operation, `Resolved ${manifest.length} package model records`);
+  } else if (clean.includes("download-3d-model-library")) {
+    const manifest = analogMixedResolve3dManifest(workspace);
+    workspace.stageData["3d-view"] = {
+      ...(workspace.stageData["3d-view"] || {}),
+      modelManifest: manifest,
+      downloadQueue: manifest.filter((item) => item.modelUrl).map((item) => item.modelUrl),
+      resolvedAt: new Date().toLocaleString()
+    };
+    workspace.libraryReport = [
+      `3D model download queue prepared with ${manifest.filter((item) => item.modelUrl).length} linked package models.`,
+      "The queue uses public KiCad-style package model names when a known package footprint is present.",
+      workspace.libraryReport || ""
+    ].filter(Boolean).join("\n\n");
+    workspace.activePanel = "libraries";
+    analogMixedLogOperation(workspace, operation, "3D model download queue prepared");
+  } else if (clean.includes("export-3d-model-manifest")) {
+    const manifest = analogMixedResolve3dManifest(workspace);
+    workspace.gerberReport = [
+      "3D model manifest",
+      ...manifest.map((item) => `${item.reference}: ${item.packageName} | ${item.shape} | ${item.modelUrl || "local parametric renderer"}`)
+    ].join("\n");
+    workspace.activePanel = "gerber";
+    analogMixedLogOperation(workspace, operation, `Exported ${manifest.length} model manifest rows`);
+  } else if (clean.includes("dedupe-symbols") || clean.includes("find-duplicate-references")) {
+    const before = workspace.components.length;
+    const seen = new Set();
+    workspace.components = workspace.components.filter((component) => {
+      const key = [component.label, component.type, component.modelName].filter(Boolean).join("|").toLowerCase();
+      if (!key || !seen.has(key)) {
+        if (key) seen.add(key);
+        return true;
+      }
+      return false;
+    });
+    analogMixedLogOperation(workspace, operation, `Removed ${before - workspace.components.length} duplicate component entries`);
+  } else if (clean.includes("show-all-layers") || clean.includes("hide-nonactive-layers") || clean.includes("layer-visibility")) {
+    const layoutData = analogMixedNormalizeIcLayout(workspace);
+    if (clean.includes("show-all-layers")) {
+      layoutData.visibleLayers = analogMixedIcLayoutLayers.map((layer) => layer.id);
+    } else if (clean.includes("hide-nonactive-layers")) {
+      layoutData.visibleLayers = [layoutData.activeLayer || "metal1", "labels"];
+    }
+    workspace.stageData["ic-layout"] = layoutData;
+    workspace.activeStage = "ic-layout";
+    workspace.activePanel = "layout";
+    analogMixedLogOperation(workspace, operation, "Layer visibility updated");
+  } else if (clean.includes("find-floating-nets") || clean.includes("connectivity-audit") || clean.includes("pin-direction-audit") || clean.includes("find-missing-models")) {
+    analogMixedRunChecks(clean.includes("pin") ? "erc" : "drc");
+    analogMixedLogOperation(workspace, operation, "Check window refreshed");
+  } else {
+    const stage = operation.stage && operation.stage !== "checks" ? operation.stage : workspace.activeStage;
+    if (stage && analogMixedStages.some((item) => item.id === stage)) workspace.activeStage = stage;
+    const field = analogMixedStageReportField(operation.stage);
+    workspace[field] = [analogMixedOperationReportLine(operation), workspace[field] || ""].filter(Boolean).join("\n");
+    analogMixedLogOperation(workspace, operation, "Recorded in workspace operation log");
+  }
+
+  workspace.activeToolWindow = workspace.activeToolWindow || "operations";
+  markDraftNeedsSave();
+  scheduleAutosave();
+  renderAnalogMixedWorkspace();
+  analogMixedSetStatus(`${operation.label || operation.id} completed.`);
+}
+
 let activeAnalogMixedProjectId = "";
 let analogMixedWireStart = null;
 let analogMixedWirePreview = null;
@@ -2868,6 +3313,7 @@ function analogMixedDefaultState() {
     activeStage: "schematic",
     activePanel: "netlist",
     activeToolWindow: "",
+    operationPaletteFilter: "",
     toolHubOpen: true,
     activeHubSuite: "ic",
     activeDesignTool: "",
@@ -2886,6 +3332,7 @@ function analogMixedDefaultState() {
     activeVendorSource: "local-library",
     importedDeviceIds: [],
     importHistory: [],
+    operationLog: [],
     undoStack: [],
     redoStack: [],
     supplierComponents: [],
@@ -2932,6 +3379,18 @@ function analogMixedDefaultState() {
         corner: "typical",
         includePdk: true,
         showPlot: true
+      },
+      operations: {
+        filter: "",
+        menu: "all",
+        limit: 120
+      },
+      physical3d: {
+        view: "isometric",
+        showModels: true,
+        showHeights: true,
+        showFootprints: true,
+        showClearance: true
       }
     },
     stageData: {
@@ -3013,7 +3472,8 @@ function normalizeAnalogMixedWorkspace(project) {
   if (!analogMixedSuiteById(workspace.activeSuite).panels.includes(workspace.activePanel)) {
     workspace.activePanel = analogMixedSuiteById(workspace.activeSuite).panels[0] || "netlist";
   }
-  workspace.activeToolWindow = ["drc", "netlist", "spice"].includes(workspace.activeToolWindow) ? workspace.activeToolWindow : "";
+  workspace.activeToolWindow = ["drc", "netlist", "spice", "operations", "physical3d"].includes(workspace.activeToolWindow) ? workspace.activeToolWindow : "";
+  workspace.operationPaletteFilter = String(workspace.operationPaletteFilter || workspace.toolWindows?.operations?.filter || "");
   workspace.toolHubOpen = workspace.toolHubOpen !== false;
   workspace.activeHubSuite = analogMixedSuites[workspace.activeHubSuite] ? workspace.activeHubSuite : workspace.activeSuite;
   workspace.activeDesignTool = analogMixedDesignToolById(workspace.activeDesignTool) ? workspace.activeDesignTool : "";
@@ -3037,6 +3497,19 @@ function normalizeAnalogMixedWorkspace(project) {
       count: Math.max(0, Number(item?.count) || 0),
       importedAt: String(item?.importedAt || "")
     })).filter((item) => item.source || item.label)
+    : [];
+  workspace.operationLog = Array.isArray(workspace.operationLog)
+    ? workspace.operationLog.map((item) => ({
+      id: String(item?.id || ""),
+      label: String(item?.label || item?.id || "Operation"),
+      menu: String(item?.menu || ""),
+      section: String(item?.section || ""),
+      stage: String(item?.stage || ""),
+      scope: String(item?.scope || ""),
+      format: String(item?.format || ""),
+      result: String(item?.result || ""),
+      at: String(item?.at || "")
+    })).filter((item) => item.id || item.label).slice(0, 120)
     : [];
   workspace.undoStack = Array.isArray(workspace.undoStack) ? workspace.undoStack.filter((item) => item && typeof item === "object").slice(-50) : [];
   workspace.redoStack = Array.isArray(workspace.redoStack) ? workspace.redoStack.filter((item) => item && typeof item === "object").slice(-50) : [];
@@ -3208,6 +3681,16 @@ function normalizeAnalogMixedWorkspace(project) {
   workspace.toolWindows.spice.corner = ["typical", "ff", "ss", "fs", "sf", "custom"].includes(workspace.toolWindows.spice.corner) ? workspace.toolWindows.spice.corner : "typical";
   workspace.toolWindows.spice.includePdk = workspace.toolWindows.spice.includePdk !== false;
   workspace.toolWindows.spice.showPlot = workspace.toolWindows.spice.showPlot !== false;
+  workspace.toolWindows.operations = { ...defaultToolWindows.operations, ...(workspace.toolWindows.operations || {}) };
+  workspace.toolWindows.operations.filter = String(workspace.toolWindows.operations.filter || workspace.operationPaletteFilter || "");
+  workspace.toolWindows.operations.menu = String(workspace.toolWindows.operations.menu || "all");
+  workspace.toolWindows.operations.limit = Math.max(30, Math.min(300, Number(workspace.toolWindows.operations.limit) || 120));
+  workspace.operationPaletteFilter = workspace.toolWindows.operations.filter;
+  workspace.toolWindows.physical3d = { ...defaultToolWindows.physical3d, ...(workspace.toolWindows.physical3d || {}) };
+  workspace.toolWindows.physical3d.view = ["isometric", "top", "side", "front", "exploded"].includes(workspace.toolWindows.physical3d.view) ? workspace.toolWindows.physical3d.view : "isometric";
+  ["showModels", "showHeights", "showFootprints", "showClearance"].forEach((key) => {
+    workspace.toolWindows.physical3d[key] = workspace.toolWindows.physical3d[key] !== false;
+  });
   workspace.stageData = workspace.stageData && typeof workspace.stageData === "object" ? workspace.stageData : {};
   const stageDefaults = analogMixedDefaultState().stageData;
   Object.entries(stageDefaults).forEach(([stage, value]) => {
@@ -6433,6 +6916,29 @@ function analogMixedHandleStageCommand(action = "") {
   if (action === "save") return saveAnalogMixedWorkspace();
   const project = activeAnalogMixedProject();
   const workspace = project ? normalizeAnalogMixedWorkspace(project) : null;
+  if (action === "command-palette") return analogMixedOpenOperationWindow();
+  if (action === "open-netlist-window") {
+    if (!workspace) return;
+    workspace.activeToolWindow = "netlist";
+    renderAnalogMixedWorkspace();
+    analogMixedSetStatus("Netlist window opened.");
+    return;
+  }
+  if (action === "open-spice-window") {
+    if (!workspace) return;
+    workspace.activeToolWindow = "spice";
+    renderAnalogMixedWorkspace();
+    analogMixedSetStatus("SPICE simulation window opened.");
+    return;
+  }
+  if (action === "open-3d-window" || action === "physical3d") {
+    if (!workspace) return;
+    workspace.activeToolWindow = "physical3d";
+    renderAnalogMixedWorkspace();
+    analogMixedSetStatus("3D package model window opened.");
+    return;
+  }
+  if (String(action).startsWith("op:")) return analogMixedExecuteOperation(action);
   if (action === "drc") return analogMixedRunChecks("drc");
   if (action === "erc") return analogMixedRunChecks("erc");
   if (workspace?.activeStage === "pcb" && ["pcb-sync", "pcb-export", "board-rules", "route-plan", "gerber"].includes(action)) {
@@ -6457,6 +6963,14 @@ function analogMixedHandleStageCommand(action = "") {
     scheduleAutosave();
     renderAnalogMixedWorkspace();
     analogMixedSetStatus("3D physical planning stage opened.");
+    return;
+  }
+  if (["rotate-3d", "explode-3d", "measure-3d", "clearance-3d"].includes(action)) {
+    if (!workspace) return;
+    workspace.activeStage = "3d-view";
+    workspace.activePanel = "layout";
+    workspace.toolWindows.physical3d.view = action === "explode-3d" ? "exploded" : workspace.toolWindows.physical3d.view;
+    analogMixedExecuteOperation(`op:${action.replace("3d", "3d-model")}-current-stage`);
     return;
   }
   if (action === "pan") return analogMixedSetTool("pan");
@@ -6739,57 +7253,214 @@ function analogMixedComponentSymbol(component = {}, selected = false, options = 
   </g>`;
 }
 
-function analogMixed3dStageMarkup(workspace, stage, domain) {
-  const componentCount = Math.max(1, workspace.components.length);
-  const parts = workspace.components.slice(0, 10);
-  const placed = parts.map((component, index) => {
-    const x = 360 + (index % 5) * 145;
-    const y = 330 + Math.floor(index / 5) * 120;
-    const libraryItem = analogMixedLibraryItem(component.type);
-    const height = libraryItem.category.includes("power") ? 62 : libraryItem.tool === "macro" ? 50 : 34;
-    return `
-      <g class="am-3d-part" data-am-component="${escapeHtml(component.id)}">
-        <polygon points="${x},${y} ${x + 88},${y - 20} ${x + 132},${y + 8} ${x + 44},${y + 28}" />
-        <polygon points="${x},${y} ${x + 44},${y + 28} ${x + 44},${y + 28 + height} ${x},${y + height}" />
-        <polygon points="${x + 44},${y + 28} ${x + 132},${y + 8} ${x + 132},${y + 8 + height} ${x + 44},${y + 28 + height}" />
-        <text x="${x + 10}" y="${y + 18}">${escapeHtml(component.label || libraryItem.symbol)}</text>
-      </g>
+function analogMixedKiCad3dModelUrl(footprint = "") {
+  const clean = String(footprint || "");
+  const [library = "", rawName = ""] = clean.split(":");
+  const name = rawName || library;
+  if (!name) return "";
+  const modelLibrary = {
+    Resistor_SMD: "Resistor_SMD.3dshapes",
+    Capacitor_SMD: "Capacitor_SMD.3dshapes",
+    Inductor_SMD: "Inductor_SMD.3dshapes",
+    Package_TO_SOT_SMD: "Package_TO_SOT_SMD.3dshapes",
+    Package_SO: "Package_SO.3dshapes",
+    TestPoint: "TestPoint.3dshapes"
+  }[library];
+  if (!modelLibrary) return "";
+  const safeName = name.replace(/[^\w.+-]/g, "_");
+  return `https://gitlab.com/kicad/libraries/kicad-packages3D/-/raw/master/${modelLibrary}/${safeName}.wrl`;
+}
+
+function analogMixed3dPackageRecord(component = {}, index = 0) {
+  const libraryItem = analogMixedLibraryItem(component.type);
+  const footprint = String(component.footprint || libraryItem.footprint || "");
+  const packageName = String(component.packageName || libraryItem.packageName || footprint || "parametric");
+  const text = [component.type, libraryItem.symbolKind, libraryItem.category, libraryItem.tool, footprint, packageName, libraryItem.label].join(" ").toLowerCase();
+  let shape = "module";
+  let width = 118;
+  let depth = 74;
+  let height = 30;
+  let color = "#e5edf7";
+  let accent = "#64748b";
+  if (/0603|0402|0805|resistor|capacitor|ferrite/.test(text)) {
+    shape = /capacitor/.test(text) ? "chip-capacitor" : "chip-resistor";
+    width = 92;
+    depth = 44;
+    height = 18;
+    color = /capacitor/.test(text) ? "#dbeafe" : "#f7f3df";
+    accent = "#94a3b8";
+  }
+  if (/diode|led|schottky|zener|tvs/.test(text)) {
+    shape = "diode-package";
+    width = 94;
+    depth = 42;
+    height = 20;
+    color = "#f8fafc";
+    accent = "#111827";
+  }
+  if (/inductor|magnetic|shielded/.test(text)) {
+    shape = "shielded-inductor";
+    width = 118;
+    depth = 98;
+    height = 54;
+    color = "#1f2937";
+    accent = "#94a3b8";
+  }
+  if (/sot-23|sot23/.test(text)) {
+    shape = "sot";
+    width = 96;
+    depth = 72;
+    height = 28;
+    color = "#111827";
+    accent = "#d1d5db";
+  }
+  if (/soic|powerpad|qfn|bga|package_so/.test(text)) {
+    shape = /powerpad/.test(text) ? "power-ic" : "soic";
+    width = /powerpad/.test(text) ? 132 : 124;
+    depth = /powerpad/.test(text) ? 92 : 82;
+    height = /powerpad/.test(text) ? 34 : 30;
+    color = "#111827";
+    accent = "#cbd5e1";
+  }
+  if (/testpoint|pad|connector|header/.test(text)) {
+    shape = /connector|header/.test(text) ? "connector" : "testpoint";
+    width = /connector|header/.test(text) ? 126 : 64;
+    depth = /connector|header/.test(text) ? 48 : 58;
+    height = /connector|header/.test(text) ? 42 : 10;
+    color = /connector|header/.test(text) ? "#f3f4f6" : "#facc15";
+    accent = "#92400e";
+  }
+  if (/sky130|ic layout|layout device|mimcap|poly resistor|nfet|pfet/.test(text)) {
+    shape = /mimcap|capacitor/.test(text) ? "ic-capacitor" : /res/.test(text) ? "ic-resistor" : "ic-device";
+    width = 118;
+    depth = 72;
+    height = 12;
+    color = "#67e8f9";
+    accent = "#c084fc";
+  }
+  const boardX = 240 + (index % 5) * 184;
+  const boardY = 410 + Math.floor(index / 5) * 126;
+  return {
+    id: component.id || `part-${index + 1}`,
+    reference: component.label || `${libraryItem.symbol || "X"}${index + 1}`,
+    value: component.value || libraryItem.value || "",
+    shape,
+    width,
+    depth,
+    height,
+    color,
+    accent,
+    x: boardX,
+    y: boardY,
+    footprint,
+    packageName,
+    source: component.source || libraryItem.source || "local",
+    modelUrl: analogMixedKiCad3dModelUrl(footprint)
+  };
+}
+
+function analogMixedResolve3dManifest(workspace = {}) {
+  return (Array.isArray(workspace.components) ? workspace.components : []).map((component, index) => analogMixed3dPackageRecord(component, index));
+}
+
+function analogMixed3dBlock(record = {}, innerTop = "") {
+  const { x, y, width, depth, height, color, accent } = record;
+  return `
+    <polygon class="am-3d-top" points="${x},${y} ${x + width},${y - depth * 0.22} ${x + width + depth * 0.55},${y + depth * 0.14} ${x + depth * 0.55},${y + depth * 0.38}" style="--am-part:${escapeHtml(color)}; --am-accent:${escapeHtml(accent)}" />
+    <polygon class="am-3d-left" points="${x},${y} ${x + depth * 0.55},${y + depth * 0.38} ${x + depth * 0.55},${y + depth * 0.38 + height} ${x},${y + height}" style="--am-part:${escapeHtml(color)}; --am-accent:${escapeHtml(accent)}" />
+    <polygon class="am-3d-right" points="${x + depth * 0.55},${y + depth * 0.38} ${x + width + depth * 0.55},${y + depth * 0.14} ${x + width + depth * 0.55},${y + depth * 0.14 + height} ${x + depth * 0.55},${y + depth * 0.38 + height}" style="--am-part:${escapeHtml(color)}; --am-accent:${escapeHtml(accent)}" />
+    ${innerTop}
+  `;
+}
+
+function analogMixed3dPartMarkup(record = {}) {
+  const { x, y, width, depth, height, reference, value, shape, accent } = record;
+  const labelY = y + depth * 0.38 + height + 22;
+  let details = "";
+  if (shape === "chip-resistor" || shape === "chip-capacitor" || shape === "diode-package") {
+    details = `
+      <polygon class="am-3d-metal" points="${x + 4},${y + 2} ${x + 24},${y - 2} ${x + 48},${y + 14} ${x + 28},${y + 20}" />
+      <polygon class="am-3d-metal" points="${x + width - 28},${y - depth * 0.2 + 7} ${x + width - 6},${y - depth * 0.2 + 2} ${x + width + depth * 0.42},${y + depth * 0.12} ${x + width + depth * 0.24},${y + depth * 0.2}" />
+      ${shape === "diode-package" ? `<line class="am-3d-mark" x1="${x + width * 0.72}" y1="${y - 12}" x2="${x + width * 0.82}" y2="${y + 20}" />` : ""}
     `;
-  }).join("");
-  const emptyParts = parts.length ? "" : `
+  } else if (shape === "shielded-inductor") {
+    details = `
+      <path class="am-3d-coil" d="M ${x + 24} ${y + 10} c 16 -18 34 -18 50 0 s 34 18 50 0" />
+      <path class="am-3d-coil" d="M ${x + 24} ${y + 26} c 16 -18 34 -18 50 0 s 34 18 50 0" />
+    `;
+  } else if (shape === "soic" || shape === "sot" || shape === "power-ic") {
+    const pins = Array.from({ length: shape === "sot" ? 6 : 8 }, (_, index) => {
+      const left = index < (shape === "sot" ? 3 : 4);
+      const n = left ? index : index - (shape === "sot" ? 3 : 4);
+      const px = left ? x - 14 : x + width + depth * 0.55 + 4;
+      const py = y + 18 + n * 16;
+      return `<rect class="am-3d-pin" x="${px}" y="${py}" width="22" height="5" rx="1" />`;
+    }).join("");
+    details = `${pins}<circle class="am-3d-pin-dot" cx="${x + 18}" cy="${y + 8}" r="5" />`;
+  } else if (shape === "testpoint") {
+    details = `<ellipse class="am-3d-pad" cx="${x + 44}" cy="${y + 16}" rx="26" ry="12" />`;
+  } else if (shape === "connector") {
+    details = Array.from({ length: 4 }, (_, index) => `<rect class="am-3d-pin" x="${x + 18 + index * 24}" y="${y + 14}" width="10" height="34" rx="2" />`).join("");
+  } else if (/ic-/.test(shape)) {
+    details = `
+      <rect class="am-3d-layer am-3d-layer-diff" x="${x + 20}" y="${y + 8}" width="${width - 40}" height="12" rx="2" />
+      <rect class="am-3d-layer am-3d-layer-poly" x="${x + 38}" y="${y - 4}" width="10" height="38" rx="2" />
+      <rect class="am-3d-layer am-3d-layer-metal" x="${x + 16}" y="${y + 28}" width="${width - 32}" height="7" rx="1" />
+    `;
+  }
+  return `
+    <g class="am-3d-part am-3d-${escapeHtml(shape)}" data-am-component="${escapeHtml(record.id)}">
+      ${analogMixed3dBlock(record, details)}
+      <text class="am-3d-ref" x="${x + 4}" y="${labelY}">${escapeHtml(reference)}</text>
+      ${value ? `<text class="am-3d-val" x="${x + 4}" y="${labelY + 18}">${escapeHtml(value)}</text>` : ""}
+      <title>${escapeHtml([reference, record.packageName, record.footprint, record.modelUrl].filter(Boolean).join(" | "))}</title>
+    </g>
+  `;
+}
+
+function analogMixed3dStageMarkup(workspace, stage, domain) {
+  const manifest = analogMixedResolve3dManifest(workspace).slice(0, 18);
+  workspace.stageData["3d-view"] = {
+    ...(workspace.stageData["3d-view"] || {}),
+    modelManifest: manifest,
+    resolvedAt: workspace.stageData?.["3d-view"]?.resolvedAt || new Date().toLocaleString()
+  };
+  const componentCount = workspace.components.length;
+  const placed = manifest.map((record) => analogMixed3dPartMarkup(record)).join("");
+  const emptyParts = manifest.length ? "" : `
     <g class="am-3d-empty">
-      <text x="455" y="396">Place schematic parts first, then use this stage for board/package/IC physical planning.</text>
+      <text x="420" y="394">Place device-level schematic parts or import a KiCad/SKY130/TI library to populate the physical view.</text>
     </g>
   `;
   const checkSummary = [
     `${componentCount} placed object${componentCount === 1 ? "" : "s"}`,
-    workspace.mode === "ic" ? "IC height/proximity planning" : "Board package and clearance planning",
-    workspace.show3dPreview ? "3D overlay enabled" : "3D overlay ready"
+    `${manifest.filter((item) => item.modelUrl).length} linked KiCad model record${manifest.filter((item) => item.modelUrl).length === 1 ? "" : "s"}`,
+    `${new Set(manifest.map((item) => item.shape)).size || 0} package/device shape class${new Set(manifest.map((item) => item.shape)).size === 1 ? "" : "es"}`
   ];
   return `
     <g class="am-3d-scene">
-      <rect x="62" y="54" width="1276" height="694" rx="16" />
-      <text x="98" y="106">${escapeHtml(stage.label)} - ${escapeHtml(domain.label)}</text>
-      <text x="98" y="142">${escapeHtml(stage.description)}</text>
+      <rect x="50" y="48" width="1298" height="706" rx="12" />
+      <text x="78" y="88">${escapeHtml(stage.label)} - ${escapeHtml(domain.label)}</text>
+      <text x="78" y="116">${escapeHtml(stage.description)}</text>
       <g class="am-3d-board">
-        <polygon points="220,470 865,315 1190,520 535,684" />
-        <polygon points="220,470 535,684 535,724 220,510" />
-        <polygon points="535,684 1190,520 1190,560 535,724" />
-        <text x="260" y="512">${workspace.mode === "ic" ? "IC floorplan / package reference" : "PCB / module physical reference"}</text>
+        <polygon points="186,500 850,330 1246,552 584,725" />
+        <polygon points="186,500 584,725 584,750 186,526" />
+        <polygon points="584,725 1246,552 1246,577 584,750" />
+        <text x="230" y="540">${workspace.mode === "ic" ? "IC floorplan / package reference" : "PCB / module physical reference"}</text>
       </g>
       ${placed}
       ${emptyParts}
       <g class="am-3d-side-panel">
-        <rect x="88" y="196" width="260" height="178" rx="10" />
-        <text x="112" y="235">3D controls planned</text>
-        <text x="112" y="272">rotate | pan | zoom | measure</text>
-        <text x="112" y="304">clearance | stackup | explode</text>
-        <text x="112" y="336">backend engines after GUI</text>
+        <rect x="78" y="148" width="250" height="168" rx="8" />
+        <text x="100" y="184">3D model controls</text>
+        <text x="100" y="218">fit | rotate | explode | measure</text>
+        <text x="100" y="248">clearance | height | package map</text>
+        <text x="100" y="278">open 3D menu for model operations</text>
       </g>
       <g class="am-3d-side-panel">
-        <rect x="990" y="166" width="300" height="182" rx="10" />
-        <text x="1015" y="205">Readiness</text>
-        ${checkSummary.map((line, index) => `<text x="1015" y="${242 + index * 32}">${escapeHtml(line)}</text>`).join("")}
+        <rect x="1000" y="146" width="300" height="170" rx="8" />
+        <text x="1022" y="182">Physical model index</text>
+        ${checkSummary.map((line, index) => `<text x="1022" y="${218 + index * 30}">${escapeHtml(line)}</text>`).join("")}
       </g>
     </g>
   `;
@@ -7551,45 +8222,11 @@ function analogMixedCanvasMarkup(workspace) {
 function analogMixedMenuGroups(workspace) {
   const suite = analogMixedSuiteById(workspace.activeSuite);
   const isIcSuite = suite.id === "ic";
-  const suiteFlowItems = isIcSuite
-    ? [
-        { label: "IC Schematic Editor", action: "design-tool:ic-schematic" },
-        { label: "IC Symbol Editor", action: "design-tool:ic-symbol" },
-        { label: "IC Layout Suite", action: "design-tool:ic-layout" },
-        { label: "ADE / SPICE cockpit", action: "design-tool:ic-ade" },
-        { label: "PDK manager", action: "design-tool:ic-pdk" },
-        { label: "Load PDK/Xschem symbols", action: "import-pdk-symbols" },
-        { label: "Extraction and signoff", action: "design-tool:ic-extraction" },
-        { label: "IC math calculator", action: "design-tool:ic-math" },
-        { label: "IC marketplace", action: "design-tool:ic-marketplace" },
-        { label: "Design intent", action: "ic-intent" },
-        { label: "MOS sizing table", action: "ic-sizing" },
-        { label: "gm/Id sizing", action: "ic-gmid" },
-        { label: "PVT corners", action: "ic-corners" },
-        { label: "PDK netlist", action: "ic-netlist" },
-        { label: "Parasitic extraction", action: "ic-pex" },
-        { label: "LVS setup", action: "lvs" },
-        { label: "Signoff checklist", action: "ic-signoff" }
-      ]
-    : [
-        { label: "Board Schematic Editor", action: "design-tool:pcb-schematic" },
-        { label: "Board Symbol Editor", action: "design-tool:pcb-symbol" },
-        { label: "Footprint Editor", action: "design-tool:pcb-footprint" },
-        { label: "PCB Editor", action: "design-tool:pcb-editor" },
-        { label: "Gerber Viewer", action: "design-tool:pcb-gerber" },
-        { label: "PCB math calculator", action: "design-tool:pcb-math" },
-        { label: "PCB marketplace", action: "design-tool:pcb-marketplace" },
-        { label: "Apply KiCad template", action: "apply-kicad-template" },
-        { label: "Assign footprints", action: "pcb-sync" },
-        { label: "Route planner", action: "route-plan" },
-        { label: "Board rules", action: "board-rules" },
-        { label: "Export PCB package", action: "pcb-export" },
-        { label: "Gerber package", action: "gerber" }
-      ];
   const quickActionItems = isIcSuite
     ? [
         { id: "hub", label: "Tools" },
         { id: "save", label: "Save" },
+        { id: "command-palette", label: `${analogMixedOperationCatalog().length} ops` },
         { id: "backend-analyze", label: "Analyze" },
         { id: "netlist", label: "Netlist" },
         { id: "spice-op", label: "SPICE" },
@@ -7599,160 +8236,24 @@ function analogMixedMenuGroups(workspace) {
     : [
         { id: "hub", label: "Tools" },
         { id: "save", label: "Save" },
+        { id: "command-palette", label: `${analogMixedOperationCatalog().length} ops` },
         { id: "pcb-sync", label: "Sync" },
         { id: "netlist", label: "Netlist" },
         { id: "drc", label: "DRC" },
         { id: "gerber", label: "Gerber" },
         { id: "fit", label: `${Math.round(workspace.zoom * 100)}%` }
       ];
-  const menuGroups = [
-    {
-      label: "File",
-      items: [
-        { label: "Tool launcher", action: "hub" },
-        { label: "Save workspace", action: "save" },
-        { label: "Analyze workspace", action: "backend-analyze" },
-        { label: isIcSuite ? "Export IC SPICE netlist" : "Export PCB netlist", action: "netlist" },
-        { label: "Design report", action: "print-report" }
-      ]
-    },
-    {
-      label: "Suite",
-      items: [
-        { label: "Show IC Design Suite tools", action: "suite:ic" },
-        { label: "Show PCB Design Suite tools", action: "suite:pcb" },
-        { label: "Refresh suite tools", action: "backend-analyze" }
-      ]
-    },
-    {
-      label: isIcSuite ? "IC Flow" : "PCB Flow",
-      items: suiteFlowItems
-    },
-    {
-      label: "Design",
-      items: [
-        { label: "Schematic capture", action: "stage:schematic:netlist" },
-        { label: "Symbol editor", action: "stage:symbol:libraries" },
-        { label: "Math workspace", action: "stage:math:math" },
-        { label: "Simulation lab", action: "stage:simulation:simulation" },
-        { label: "Library manager", action: "stage:libraries:libraries" }
-      ]
-    },
-    {
-      label: "Place",
-      items: [
-        { label: "Select", action: "tool:select" },
-        { label: "Pan", action: "tool:pan" },
-        { label: "Place selected library part", action: "place-selected-library" },
-        { label: "Wire", action: "tool:wire" },
-        { label: "Junction", action: "tool:junction" },
-        { label: "Probe", action: "tool:probe" },
-        { label: "No-connect", action: "tool:no-connect" },
-        { label: "Label", action: "tool:label" },
-        { label: "Net name", action: "tool:net" }
-      ]
-    },
-    {
-      label: "Import",
-      items: [
-        { label: "Local SPICE/KiCad files", action: "import-local-models" },
-        { label: "Supplier component", action: "import-supplier" },
-        { label: "DigiKey component", action: "import-digikey" },
-        { label: "Mouser component", action: "import-mouser" },
-        { label: "Manufacturer component", action: "import-manufacturer" },
-        { label: "IC PDK folder", action: "pdk-import" },
-        { label: "PDK/Xschem symbols", action: "import-pdk-symbols" },
-        { label: "SKY130 devices", action: "import-sky130" },
-        { label: "LTspice primitives", action: "import-ltspice" },
-        { label: "Texas Instruments shells", action: "import-texas" },
-        { label: "KiCad PCB parts", action: "import-kicad" }
-      ]
-    },
-    {
-      label: "Checks",
-      items: [
-        { label: "Open DRC window", action: "drc" },
-        { label: "Open ERC window", action: "erc" },
-        { label: "Analyze DRC + ERC", action: "backend-analyze" },
-        { label: "PDK status", action: "pdk-status" },
-        { label: "Clean generated labels", action: "clean-floating-labels" }
-      ]
-    },
-    {
-      label: "Simulate",
-      items: [
-        { label: "Open SPICE cockpit", action: "stage:simulation:simulation" },
-        { label: "Operating point", action: "spice-op" },
-        { label: "DC sweep", action: "spice-dc" },
-        { label: "AC analysis", action: "spice-ac" },
-        { label: "Transient", action: "spice-tran" },
-        { label: "Noise extraction", action: "ic-noise-run" },
-        { label: "Monte Carlo / corners", action: "corners" },
-        { label: "Complex IC analysis", action: "ic-complex" }
-      ]
-    },
-    {
-      label: "IC",
-      items: [
-        { label: "Transistor-level canvas", action: "stage:ic-layout:layout" },
-        { label: "Layout select", action: "layout-tool:select" },
-        { label: "Place selected device", action: "layout-tool:device" },
-        { label: "Route active layer", action: "layout-tool:route" },
-        { label: "Via/contact", action: "layout-tool:via" },
-        { label: "Measure geometry", action: "layout-tool:measure" },
-        { label: "Layer DIFF", action: "layout-diff" },
-        { label: "Layer POLY", action: "layout-poly" },
-        { label: "Layer M1", action: "layout-metal1" },
-        { label: "Layer M2", action: "layout-metal2" },
-        { label: "Virtuoso-style flow", action: "layout-sync" },
-        { label: "Design intent", action: "ic-intent" },
-        { label: "MOS sizing table", action: "ic-sizing" },
-        { label: "gm/Id sizing", action: "ic-gmid" },
-        { label: "Corner setup", action: "ic-corners" },
-        { label: "Generate PDK netlist", action: "ic-netlist" },
-        { label: "Parasitic extraction", action: "ic-pex" },
-        { label: "Power integrity", action: "ic-power" },
-        { label: "Common-centroid planner", action: "matching" },
-        { label: "Guard-ring planner", action: "layout-guard" },
-        { label: "LVS plan", action: "lvs" },
-        { label: "Signoff checklist", action: "ic-signoff" }
-      ]
-    },
-    {
-      label: "PCB",
-      items: [
-        { label: "Board schematic", action: "stage:pcb:layout" },
-        { label: "Apply KiCad template", action: "apply-kicad-template" },
-        { label: "Footprint assignment", action: "pcb-sync" },
-        { label: "PCB DRC rules", action: "board-rules" },
-        { label: "Route planner", action: "route-plan" },
-        { label: "Gerber package", action: "gerber" },
-        { label: "Board 3D handoff", action: "view-3d" }
-      ]
-    },
-    {
-      label: "View",
-      items: [
-        { label: "Zoom in", action: "zoom-in" },
-        { label: "Zoom out", action: "zoom-out" },
-        { label: "Fit canvas", action: "fit" },
-        { label: "Toggle grid", action: "toggle-grid" },
-        { label: "Toggle library", action: "toggle-library" },
-        { label: "Toggle inspector", action: "toggle-inspector" }
-      ]
-    },
-    {
-      label: "Help",
-      items: [
-        { label: "Keyboard shortcuts", action: "help-shortcuts" },
-        { label: "Component guide", action: "help-components" },
-        { label: "AM roadmap", action: "help-roadmap" }
-      ]
-    }
-  ].map((group) => `
-    <div class="analog-mixed-menu">
+  const menuGroups = analogMixedMenuSpecs.map((group) => `
+    <div class="analog-mixed-menu ${group.sections.length > 2 ? "is-wide" : ""}">
       <button type="button">${escapeHtml(group.label)}</button>
-      <div>${group.items.map((item) => `<button type="button" data-am-menu-action="${escapeHtml(item.action)}">${escapeHtml(item.label)}</button>`).join("")}</div>
+      <div class="analog-mixed-menu-dropdown">
+        ${group.sections.map((section) => `
+          <section class="analog-mixed-menu-section">
+            <strong>${escapeHtml(section.title)}</strong>
+            ${section.items.map(([label, action]) => `<button type="button" data-am-menu-action="${escapeHtml(action)}">${escapeHtml(label)}</button>`).join("")}
+          </section>
+        `).join("")}
+      </div>
     </div>
   `).join("");
   const quickActions = quickActionItems.map((item) => `<button type="button" data-am-stage-command="${escapeHtml(item.id)}">${escapeHtml(item.label)}</button>`).join("");
@@ -8291,6 +8792,82 @@ function analogMixedRenderSpiceWindow(workspace = {}) {
   `;
 }
 
+function analogMixedRenderOperationsWindow(workspace = {}) {
+  const settings = workspace.toolWindows.operations;
+  const catalog = analogMixedOperationCatalog();
+  const rows = analogMixedOperationCatalogFiltered(workspace);
+  const menus = ["all", ...Array.from(new Set(catalog.map((operation) => operation.menu).filter(Boolean)))];
+  return `
+    <section class="analog-mixed-tool-window is-operations" role="dialog" aria-label="AM operation browser">
+      <header>${analogMixedToolWindowHeader("AM Operation Browser", `${rows.length} shown / ${catalog.length} registered`)}</header>
+      <div class="analog-mixed-operation-controls">
+        <label><span>Menu</span><select data-am-operation-menu>
+          ${menus.map((menu) => `<option value="${escapeHtml(menu)}" ${settings.menu === menu ? "selected" : ""}>${escapeHtml(menu === "all" ? "All menus" : menu)}</option>`).join("")}
+        </select></label>
+        <label><span>Filter</span><input type="search" value="${escapeHtml(settings.filter || "")}" placeholder="import, netlist, pdk, 3d, lvs..." data-am-operation-filter /></label>
+        <label><span>Rows</span><select data-am-operation-limit>
+          ${[60, 120, 180, 240, 300].map((limit) => `<option value="${limit}" ${Number(settings.limit) === limit ? "selected" : ""}>${limit}</option>`).join("")}
+        </select></label>
+      </div>
+      <div class="analog-mixed-operation-shell">
+        <div class="analog-mixed-operation-list">
+          ${rows.map((operation) => `
+            <button type="button" class="analog-mixed-operation-row" data-am-operation-run="${escapeHtml(operation.id)}">
+              <strong>${escapeHtml(operation.label)}</strong>
+              <span>${escapeHtml([operation.menu, operation.section, operation.stage || "workspace", operation.scope, operation.format].filter(Boolean).join(" / "))}</span>
+            </button>
+          `).join("") || `<p class="analog-mixed-muted">No operations match the current filter.</p>`}
+        </div>
+        <aside class="analog-mixed-operation-log">
+          <strong>Recent operations</strong>
+          ${(workspace.operationLog || []).slice(0, 12).map((item) => `
+            <div>
+              <span>${escapeHtml(item.label || item.id)}</span>
+              <small>${escapeHtml([item.result, item.at].filter(Boolean).join(" - "))}</small>
+            </div>
+          `).join("") || `<p class="analog-mixed-muted">Operations appear here after you run them.</p>`}
+        </aside>
+      </div>
+    </section>
+  `;
+}
+
+function analogMixedRenderPhysical3dWindow(workspace = {}) {
+  const settings = workspace.toolWindows.physical3d;
+  const manifest = analogMixedResolve3dManifest(workspace);
+  return `
+    <section class="analog-mixed-tool-window is-physical3d" role="dialog" aria-label="3D package model viewer">
+      <header>${analogMixedToolWindowHeader("3D Package / Footprint Models", `${manifest.length} package records`)}</header>
+      <div class="analog-mixed-tool-window-controls">
+        <label><span>View</span><select data-am-physical3d-setting="view">
+          ${[
+            ["isometric", "Isometric"],
+            ["top", "Top"],
+            ["side", "Side"],
+            ["front", "Front"],
+            ["exploded", "Exploded"]
+          ].map(([value, label]) => `<option value="${value}" ${settings.view === value ? "selected" : ""}>${label}</option>`).join("")}
+        </select></label>
+        ${["showModels", "showFootprints", "showHeights", "showClearance"].map((key) => `
+          <label class="analog-mixed-tool-check"><input type="checkbox" data-am-physical3d-setting="${escapeHtml(key)}" ${settings[key] ? "checked" : ""} /><span>${escapeHtml(key.replace(/^show/, ""))}</span></label>
+        `).join("")}
+        <button type="button" data-am-operation-run="op:resolve-3d-models">Resolve models</button>
+        <button type="button" data-am-operation-run="op:export-3d-model-manifest">Export manifest</button>
+      </div>
+      <div class="analog-mixed-3d-model-list">
+        ${manifest.length ? manifest.map((item) => `
+          <div class="analog-mixed-3d-model-row">
+            <strong>${escapeHtml(item.reference)}</strong>
+            <span>${escapeHtml(item.packageName)}</span>
+            <small>${escapeHtml(item.footprint || item.shape)}</small>
+            <em>${escapeHtml(item.modelUrl ? "linked model" : "parametric model")}</em>
+          </div>
+        `).join("") : `<p class="analog-mixed-muted">Place or import components to populate package models.</p>`}
+      </div>
+    </section>
+  `;
+}
+
 function analogMixedRenderToolWindow(workspace) {
   if (!analogMixedToolWindowLayer) return;
   if (workspace.activeToolWindow === "drc") {
@@ -8299,6 +8876,10 @@ function analogMixedRenderToolWindow(workspace) {
     analogMixedToolWindowLayer.innerHTML = analogMixedRenderNetlistWindow(workspace);
   } else if (workspace.activeToolWindow === "spice") {
     analogMixedToolWindowLayer.innerHTML = analogMixedRenderSpiceWindow(workspace);
+  } else if (workspace.activeToolWindow === "operations") {
+    analogMixedToolWindowLayer.innerHTML = analogMixedRenderOperationsWindow(workspace);
+  } else if (workspace.activeToolWindow === "physical3d") {
+    analogMixedToolWindowLayer.innerHTML = analogMixedRenderPhysical3dWindow(workspace);
   } else {
     analogMixedToolWindowLayer.innerHTML = "";
   }
@@ -9192,6 +9773,34 @@ async function analogMixedHandleMenuAction(action = "") {
   }
   if (clean.startsWith("layout-tool:")) {
     analogMixedSetIcLayoutTool(clean.replace("layout-tool:", ""));
+    return;
+  }
+  if (clean.startsWith("op:")) return analogMixedExecuteOperation(clean);
+  if (clean === "command-palette") return analogMixedOpenOperationWindow();
+  if (clean === "open-netlist-window") {
+    workspace.activeToolWindow = "netlist";
+    renderAnalogMixedWorkspace();
+    analogMixedSetStatus("Netlist window opened.");
+    return;
+  }
+  if (clean === "open-spice-window") {
+    workspace.activeToolWindow = "spice";
+    renderAnalogMixedWorkspace();
+    analogMixedSetStatus("SPICE simulation window opened.");
+    return;
+  }
+  if (clean === "view-3d" || clean === "open-3d-window" || clean === "rotate-3d" || clean === "explode-3d" || clean === "measure-3d" || clean === "clearance-3d") {
+    analogMixedSetSuite(workspace, "pcb", { preferredStage: "3d-view" });
+    workspace.activeStage = "3d-view";
+    workspace.activePanel = "layout";
+    workspace.show3dPreview = true;
+    if (clean === "explode-3d") workspace.toolWindows.physical3d.view = "exploded";
+    if (clean === "measure-3d") workspace.toolWindows.physical3d.showHeights = true;
+    if (clean === "clearance-3d") workspace.toolWindows.physical3d.showClearance = true;
+    markDraftNeedsSave();
+    scheduleAutosave();
+    renderAnalogMixedWorkspace();
+    analogMixedSetStatus("3D package and footprint view opened.");
     return;
   }
   if (clean === "place-selected-library") return analogMixedArmLibraryPlacement(workspace.selectedLibraryId);
@@ -28933,6 +29542,11 @@ analogMixedDialog?.addEventListener("click", (event) => {
     if (action === "run-spice") return analogMixedRunSpiceSimulation(workspace.toolWindows.spice.analysis || "op");
     if (action === "plan-spice") return analogMixedPrepareSpiceSimulationPlan(workspace.toolWindows.spice.analysis || "tran");
   }
+  const operationRun = event.target.closest("[data-am-operation-run]");
+  if (operationRun) {
+    analogMixedExecuteOperation(operationRun.dataset.amOperationRun || "");
+    return;
+  }
   const hubSuite = event.target.closest("[data-am-hub-suite]");
   if (hubSuite) {
     const suite = analogMixedSetSuite(workspace, hubSuite.dataset.amHubSuite || "ic");
@@ -29172,6 +29786,14 @@ analogMixedDialog?.addEventListener("input", (event) => {
     markDraftNeedsSave();
     scheduleAutosave();
   }
+  if (event.target.dataset.amOperationFilter !== undefined) {
+    workspace.toolWindows.operations.filter = event.target.value || "";
+    workspace.operationPaletteFilter = workspace.toolWindows.operations.filter;
+    markDraftNeedsSave();
+    scheduleAutosave();
+    renderAnalogMixedWorkspace();
+    return;
+  }
 });
 analogMixedDialog?.addEventListener("change", async (event) => {
   const project = activeAnalogMixedProject();
@@ -29206,6 +29828,28 @@ analogMixedDialog?.addEventListener("change", async (event) => {
   if (workspace && event.target.dataset.amSpiceSetting) {
     const key = event.target.dataset.amSpiceSetting;
     workspace.toolWindows.spice[key] = event.target.type === "checkbox" ? event.target.checked : event.target.value;
+    markDraftNeedsSave();
+    scheduleAutosave();
+    renderAnalogMixedWorkspace();
+    return;
+  }
+  if (workspace && event.target.dataset.amOperationMenu !== undefined) {
+    workspace.toolWindows.operations.menu = event.target.value || "all";
+    markDraftNeedsSave();
+    scheduleAutosave();
+    renderAnalogMixedWorkspace();
+    return;
+  }
+  if (workspace && event.target.dataset.amOperationLimit !== undefined) {
+    workspace.toolWindows.operations.limit = Math.max(30, Math.min(300, Number(event.target.value) || 120));
+    markDraftNeedsSave();
+    scheduleAutosave();
+    renderAnalogMixedWorkspace();
+    return;
+  }
+  if (workspace && event.target.dataset.amPhysical3dSetting) {
+    const key = event.target.dataset.amPhysical3dSetting;
+    workspace.toolWindows.physical3d[key] = event.target.type === "checkbox" ? event.target.checked : event.target.value;
     markDraftNeedsSave();
     scheduleAutosave();
     renderAnalogMixedWorkspace();

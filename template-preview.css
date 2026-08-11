@@ -17326,6 +17326,27 @@ body[data-builder-theme="dark"].template-preview-page .analog-mixed-launch {
   padding: 4px;
 }
 
+.analog-mixed-menu.is-wide > .analog-mixed-menu-dropdown {
+  min-width: 430px;
+  grid-template-columns: repeat(2, minmax(180px, 1fr));
+}
+
+.analog-mixed-menu-section {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.analog-mixed-menu-section strong {
+  display: block;
+  margin: 2px 4px;
+  color: #77d7ff;
+  font-size: 0.58rem;
+  font-weight: 950;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
 .analog-mixed-menu div button {
   min-height: 24px;
   padding: 0 8px;
@@ -17418,6 +17439,217 @@ body[data-builder-theme="dark"].template-preview-page .analog-mixed-launch {
 .analog-mixed-inspector textarea {
   min-height: 26px;
   font-size: 0.7rem;
+}
+
+.analog-mixed-tool-window.is-operations,
+.analog-mixed-tool-window.is-physical3d {
+  inset: 38px 28px auto auto;
+  width: min(920px, calc(100vw - 68px));
+  max-height: min(680px, calc(100vh - 92px));
+}
+
+.analog-mixed-operation-controls {
+  display: grid;
+  grid-template-columns: minmax(130px, 0.2fr) minmax(220px, 1fr) minmax(90px, 0.12fr);
+  gap: 6px;
+  padding: 6px;
+  border-bottom: 1px solid #25435f;
+  background: #0b1725;
+}
+
+.analog-mixed-operation-controls label,
+.analog-mixed-tool-window-controls label {
+  min-width: 0;
+}
+
+.analog-mixed-operation-controls span {
+  display: block;
+  margin-bottom: 2px;
+  color: #7fb9d8;
+  font-size: 0.58rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.analog-mixed-operation-controls input,
+.analog-mixed-operation-controls select {
+  width: 100%;
+  min-height: 26px;
+  border: 1px solid #2b4965;
+  color: #f2fbff;
+  background: #101f30;
+  font: inherit;
+  font-size: 0.7rem;
+}
+
+.analog-mixed-operation-shell {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(210px, 0.32fr);
+  min-height: 0;
+}
+
+.analog-mixed-operation-list {
+  display: grid;
+  align-content: start;
+  max-height: 500px;
+  overflow: auto;
+  padding: 4px;
+  background: #07111d;
+}
+
+.analog-mixed-operation-row {
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  min-height: 34px;
+  padding: 4px 8px;
+  border: 0;
+  border-bottom: 1px solid #18344d;
+  color: #eef9ff;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.analog-mixed-operation-row:hover,
+.analog-mixed-operation-row:focus-visible {
+  color: #ffffff;
+  background: #075985;
+}
+
+.analog-mixed-operation-row strong {
+  font-size: 0.72rem;
+}
+
+.analog-mixed-operation-row span,
+.analog-mixed-operation-log small {
+  color: #9fc5dc;
+  font-size: 0.62rem;
+}
+
+.analog-mixed-operation-log {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  max-height: 500px;
+  overflow: auto;
+  padding: 8px;
+  border-left: 1px solid #25435f;
+  background: #0b1725;
+}
+
+.analog-mixed-operation-log > strong {
+  color: #77d7ff;
+  font-size: 0.65rem;
+  text-transform: uppercase;
+}
+
+.analog-mixed-operation-log div {
+  display: grid;
+  gap: 2px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid #18344d;
+}
+
+.analog-mixed-operation-log span {
+  color: #eef9ff;
+  font-size: 0.68rem;
+  font-weight: 800;
+}
+
+.analog-mixed-3d-model-list {
+  display: grid;
+  align-content: start;
+  max-height: 520px;
+  overflow: auto;
+  padding: 6px;
+  background: #07111d;
+}
+
+.analog-mixed-3d-model-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.2fr) minmax(110px, 0.16fr) minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  min-height: 30px;
+  padding: 3px 8px;
+  border-bottom: 1px solid #18344d;
+  color: #edfaff;
+  font-size: 0.68rem;
+}
+
+.analog-mixed-3d-model-row:hover {
+  background: #075985;
+}
+
+.analog-mixed-3d-model-row small,
+.analog-mixed-3d-model-row em {
+  color: #a7cde4;
+}
+
+.am-3d-part .am-3d-top {
+  fill: var(--am-part, #e5edf7) !important;
+  stroke: var(--am-accent, #64748b) !important;
+  stroke-width: 1.5 !important;
+}
+
+.am-3d-part .am-3d-left {
+  fill: color-mix(in srgb, var(--am-part, #e5edf7) 72%, #020617 28%) !important;
+  stroke: var(--am-accent, #64748b) !important;
+  stroke-width: 1.2 !important;
+}
+
+.am-3d-part .am-3d-right {
+  fill: color-mix(in srgb, var(--am-part, #e5edf7) 55%, #020617 45%) !important;
+  stroke: var(--am-accent, #64748b) !important;
+  stroke-width: 1.2 !important;
+}
+
+.am-3d-metal,
+.am-3d-pin {
+  fill: #cbd5e1;
+  stroke: #64748b;
+  stroke-width: 1;
+}
+
+.am-3d-mark {
+  stroke: #111827;
+  stroke-width: 5;
+}
+
+.am-3d-coil {
+  fill: none;
+  stroke: #e5e7eb;
+  stroke-width: 4;
+}
+
+.am-3d-pin-dot,
+.am-3d-pad {
+  fill: #fbbf24;
+  stroke: #92400e;
+  stroke-width: 1.2;
+}
+
+.am-3d-layer-diff {
+  fill: #34d399;
+}
+
+.am-3d-layer-poly {
+  fill: #f87171;
+}
+
+.am-3d-layer-metal {
+  fill: #60a5fa;
+}
+
+.am-3d-ref {
+  fill: #e0f2fe !important;
+  font: 900 12px Arial, sans-serif !important;
+}
+
+.am-3d-val {
+  fill: #bae6fd !important;
+  font: 700 10px Arial, sans-serif !important;
 }
 
 .analog-mixed-library-select {
