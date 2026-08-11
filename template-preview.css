@@ -16017,12 +16017,18 @@ body[data-builder-theme] .selection-text-preview {
   fill: #78350f;
 }
 
-.am-wire polyline,
+.am-wire polyline {
+  fill: none;
+  stroke: #0f766e;
+  stroke-width: 3;
+  marker-end: none;
+}
+
 .am-stage-arrow {
   fill: none;
   stroke: #0f766e;
   stroke-width: 3;
-  marker-end: url(#am-arrow);
+  marker-end: url(#am-layout-arrow);
 }
 
 .am-wire-preview {
@@ -16030,7 +16036,7 @@ body[data-builder-theme] .selection-text-preview {
   stroke: #f59e0b;
   stroke-width: 3;
   stroke-dasharray: 10 7;
-  marker-end: url(#am-arrow);
+  marker-end: none;
 }
 
 .am-wire text {
