@@ -1015,6 +1015,8 @@ const analogMixedStageCommandRegistry = {
     { id: "save", label: "Save", hint: "Save this AM workspace" },
     { id: "backend-analyze", label: "Analyze", hint: "Run the local AM backend analyzer" },
     { id: "netlist", label: "Netlist", hint: "Generate a SPICE-style netlist scaffold" },
+    { id: "net-explorer", label: "Nets", hint: "Open the net explorer for schematic, PCB, and IC connectivity" },
+    { id: "design-rules", label: "Rules", hint: "Open the design rule manager" },
     { id: "drc", label: "DRC", hint: "Check schematic/design-rule readiness" },
     { id: "erc", label: "ERC", hint: "Check electrical-rule readiness" },
     { id: "fit", label: "Fit", hint: "Fit the schematic canvas" },
@@ -1039,8 +1041,10 @@ const analogMixedStageCommandRegistry = {
     { id: "pcb-sync", label: "Sync PCB", hint: "Create or refresh PCB footprints from schematic components" },
     { id: "pcb-bom", label: "BOM", hint: "Generate the board bill of materials" },
     { id: "pcb-ratsnest", label: "Ratsnest", hint: "Show unrouted schematic connectivity" },
+    { id: "net-explorer", label: "Nets", hint: "Inspect board and schematic net handoff" },
     { id: "pcb-net-naming", label: "Net names", hint: "Review and normalize PCB net naming" },
     { id: "pcb-diff-pairs", label: "Diff pairs", hint: "Detect and set up differential pairs" },
+    { id: "design-rules", label: "Rules", hint: "Open board rule manager" },
     { id: "board-rules", label: "Rules", hint: "Create PCB DRC/manufacturing notes" },
     { id: "route-plan", label: "Route", hint: "Plan routing/power loops" },
     { id: "pcb-route-optimize", label: "Optimize", hint: "Optimize track classes and high-current paths" },
@@ -1052,6 +1056,7 @@ const analogMixedStageCommandRegistry = {
     { id: "save", label: "Save", hint: "Save IC layout stage" },
     { id: "layout-sync", label: "Sync", hint: "Create or refresh layout devices from schematic components" },
     { id: "ic-netlist", label: "Netlist", hint: "Generate a PDK-included SPICE netlist" },
+    { id: "net-explorer", label: "Nets", hint: "Inspect IC, PCB, and schematic net continuity" },
     { id: "ic-intent", label: "Intent", hint: "Refresh topology, targets, PDK lane, and layout priorities" },
     { id: "ic-sizing", label: "Sizing", hint: "Build a device sizing and gm/Id planning table" },
     { id: "ic-corners", label: "Corners", hint: "Build process, voltage, and temperature corner setup" },
@@ -1072,6 +1077,7 @@ const analogMixedStageCommandRegistry = {
     { id: "ic-bandwidth", label: "Bandwidth", hint: "Infer dominant-pole and RC-limited bandwidth" },
     { id: "ic-area", label: "Area", hint: "Estimate and optimize layout/core area" },
     { id: "ic-complex", label: "Complex", hint: "Generate the full advanced IC analysis plan" },
+    { id: "design-rules", label: "Rules", hint: "Open IC/PDK design rule manager" },
     { id: "extract", label: "Extract", hint: "Prepare extraction/PEX artifacts" },
     { id: "lvs", label: "LVS", hint: "Prepare Netgen LVS artifacts" },
     { id: "drc", label: "DRC", hint: "Prepare/run PDK layout-rule checks" },
@@ -1294,7 +1300,7 @@ const analogMixedMenuSpecs = [
     label: "View",
     sections: [
       { title: "Canvas", items: [["Zoom in", "zoom-in"], ["Zoom out", "zoom-out"], ["Fit canvas", "fit"], ["Toggle grid", "toggle-grid"], ["Toggle library", "toggle-library"], ["Toggle inspector", "toggle-inspector"]] },
-      { title: "Windows", items: [["DRC / ERC window", "drc"], ["Netlist window", "open-netlist-window"], ["SPICE window", "open-spice-window"], ["3D package viewer", "stage:3d-view:layout"], ["Operation browser", "command-palette"]] },
+      { title: "Windows", items: [["Net explorer", "open-net-explorer-window"], ["Design rule manager", "open-design-rules-window"], ["DRC / ERC window", "drc"], ["Netlist window", "open-netlist-window"], ["SPICE window", "open-spice-window"], ["3D package viewer", "stage:3d-view:layout"], ["Operation browser", "command-palette"]] },
       { title: "IC analysis views", items: [["IC analysis cockpit", "open-ic-analysis-window"], ["Parasitics view", "ic-analysis-parasitics"], ["Power view", "ic-analysis-power"], ["Bandwidth view", "ic-analysis-bandwidth"], ["Area view", "ic-analysis-area"]] },
       { title: "Visibility", items: [["Show all IC layers", "op:show-all-layers"], ["Hide non-active layers", "op:hide-nonactive-layers"], ["Show device labels", "layout-labels"], ["Open layer visibility panel", "op:layer-visibility-panel"]] }
     ]
@@ -1326,8 +1332,8 @@ const analogMixedMenuSpecs = [
   {
     label: "Checks",
     sections: [
-      { title: "Electrical", items: [["Run ERC", "erc"], ["Run DRC", "drc"], ["Analyze DRC + ERC", "backend-analyze"], ["Connectivity audit", "op:connectivity-audit"], ["Pin direction audit", "op:pin-direction-audit"]] },
-      { title: "IC signoff", items: [["IC analysis cockpit", "open-ic-analysis-window"], ["LVS setup", "lvs"], ["Parasitic extraction", "ic-pex"], ["Power calculation", "ic-power"], ["Bandwidth inference", "ic-bandwidth"], ["Area optimizer", "ic-area"], ["Noise deck", "ic-noise-run"], ["Signoff checklist", "ic-signoff"], ["PDK status", "pdk-status"]] },
+      { title: "Electrical", items: [["Net explorer", "open-net-explorer-window"], ["Design rule manager", "open-design-rules-window"], ["Run ERC", "erc"], ["Run DRC", "drc"], ["Analyze DRC + ERC", "backend-analyze"], ["Connectivity audit", "op:connectivity-audit"], ["Pin direction audit", "op:pin-direction-audit"]] },
+      { title: "IC signoff", items: [["IC analysis cockpit", "open-ic-analysis-window"], ["IC rule manager", "ic-rule-manager"], ["LVS setup", "lvs"], ["Parasitic extraction", "ic-pex"], ["Power calculation", "ic-power"], ["Bandwidth inference", "ic-bandwidth"], ["Area optimizer", "ic-area"], ["Noise deck", "ic-noise-run"], ["Signoff checklist", "ic-signoff"], ["PDK status", "pdk-status"]] },
       { title: "Cleanup", items: [["Clean generated labels", "clean-floating-labels"], ["Find floating nets", "op:find-floating-nets"], ["Find duplicate references", "op:find-duplicate-references"], ["Find missing models", "op:find-missing-models"]] }
     ]
   },
@@ -1343,7 +1349,7 @@ const analogMixedMenuSpecs = [
     sections: [
       { title: "IC tools", items: [["Layout select", "layout-tool:select"], ["Place selected device", "layout-tool:device"], ["Route active layer", "layout-tool:route"], ["Via/contact", "layout-tool:via"], ["Measure geometry", "layout-tool:measure"], ["Guard-ring planner", "layout-guard"], ["Common-centroid planner", "matching"]] },
       { title: "Layers", items: [["NWELL", "layout-nwell"], ["PWELL", "layout-pwell"], ["DIFF", "layout-diff"], ["TAP", "layout-tap"], ["POLY", "layout-poly"], ["LI1", "layout-li1"], ["M1", "layout-metal1"], ["M2", "layout-metal2"], ["M3", "layout-metal3"]] },
-      { title: "Board", items: [["Apply KiCad template", "apply-kicad-template"], ["Footprint assignment", "pcb-sync"], ["Ratsnest", "pcb-ratsnest"], ["Net naming", "pcb-net-naming"], ["Differential pairs", "pcb-diff-pairs"], ["Track optimizer", "pcb-route-optimize"], ["Board rules", "board-rules"], ["BOM", "pcb-bom"], ["Gerber package", "gerber"], ["Board 3D view", "view-3d"]] }
+      { title: "Board", items: [["Apply KiCad template", "apply-kicad-template"], ["Footprint assignment", "pcb-sync"], ["Ratsnest", "pcb-ratsnest"], ["Net explorer", "open-net-explorer-window"], ["Net naming", "pcb-net-naming"], ["Differential pairs", "pcb-diff-pairs"], ["Track optimizer", "pcb-route-optimize"], ["Board rule manager", "pcb-rule-manager"], ["Board rules", "board-rules"], ["BOM", "pcb-bom"], ["Gerber package", "gerber"], ["Board 3D view", "view-3d"]] }
     ]
   },
   {
@@ -3548,6 +3554,22 @@ function analogMixedDefaultState() {
         menu: "all",
         limit: 120
       },
+      netExplorer: {
+        view: "all",
+        filter: "",
+        showSchematic: true,
+        showPcb: true,
+        showIc: true,
+        showRisks: true
+      },
+      designRules: {
+        domain: "auto",
+        view: "summary",
+        showPcb: true,
+        showIc: true,
+        showWarnings: true,
+        showInfo: true
+      },
       icAnalysis: {
         view: "overview",
         showParasitics: true,
@@ -3645,7 +3667,7 @@ function normalizeAnalogMixedWorkspace(project) {
   if (!analogMixedSuiteById(workspace.activeSuite).panels.includes(workspace.activePanel)) {
     workspace.activePanel = analogMixedSuiteById(workspace.activeSuite).panels[0] || "netlist";
   }
-  workspace.activeToolWindow = ["drc", "netlist", "spice", "operations", "icAnalysis", "physical3d"].includes(workspace.activeToolWindow) ? workspace.activeToolWindow : "";
+  workspace.activeToolWindow = ["drc", "netlist", "spice", "operations", "netExplorer", "designRules", "icAnalysis", "physical3d"].includes(workspace.activeToolWindow) ? workspace.activeToolWindow : "";
   workspace.operationPaletteFilter = String(workspace.operationPaletteFilter || workspace.toolWindows?.operations?.filter || "");
   workspace.toolHubOpen = workspace.toolHubOpen !== false;
   workspace.activeHubSuite = analogMixedSuites[workspace.activeHubSuite] ? workspace.activeHubSuite : workspace.activeSuite;
@@ -3867,6 +3889,18 @@ function normalizeAnalogMixedWorkspace(project) {
   workspace.toolWindows.operations.menu = String(workspace.toolWindows.operations.menu || "all");
   workspace.toolWindows.operations.limit = Math.max(30, Math.min(300, Number(workspace.toolWindows.operations.limit) || 120));
   workspace.operationPaletteFilter = workspace.toolWindows.operations.filter;
+  workspace.toolWindows.netExplorer = { ...defaultToolWindows.netExplorer, ...(workspace.toolWindows.netExplorer || {}) };
+  workspace.toolWindows.netExplorer.view = ["all", "power", "sensitive", "floating", "differential"].includes(workspace.toolWindows.netExplorer.view) ? workspace.toolWindows.netExplorer.view : "all";
+  workspace.toolWindows.netExplorer.filter = String(workspace.toolWindows.netExplorer.filter || "");
+  ["showSchematic", "showPcb", "showIc", "showRisks"].forEach((key) => {
+    workspace.toolWindows.netExplorer[key] = workspace.toolWindows.netExplorer[key] !== false;
+  });
+  workspace.toolWindows.designRules = { ...defaultToolWindows.designRules, ...(workspace.toolWindows.designRules || {}) };
+  workspace.toolWindows.designRules.domain = ["auto", "pcb", "ic", "mixed"].includes(workspace.toolWindows.designRules.domain) ? workspace.toolWindows.designRules.domain : "auto";
+  workspace.toolWindows.designRules.view = ["summary", "clearance", "connectivity", "manufacturing", "signoff"].includes(workspace.toolWindows.designRules.view) ? workspace.toolWindows.designRules.view : "summary";
+  ["showPcb", "showIc", "showWarnings", "showInfo"].forEach((key) => {
+    workspace.toolWindows.designRules[key] = workspace.toolWindows.designRules[key] !== false;
+  });
   workspace.toolWindows.icAnalysis = { ...defaultToolWindows.icAnalysis, ...(workspace.toolWindows.icAnalysis || {}) };
   workspace.toolWindows.icAnalysis.view = ["overview", "parasitics", "power", "bandwidth", "area", "recommendations"].includes(workspace.toolWindows.icAnalysis.view) ? workspace.toolWindows.icAnalysis.view : "overview";
   ["showParasitics", "showPower", "showBandwidth", "showArea", "showRecommendations"].forEach((key) => {
@@ -4472,6 +4506,178 @@ function analogMixedIcAnalysisReport(metrics = {}, workspace = {}) {
     "",
     "Recommendations:",
     ...((metrics.recommendations || []).length ? metrics.recommendations.map((line) => `- ${line}`) : ["- Place devices, wire nets, and sync layout to populate recommendations."])
+  ].join("\n");
+}
+
+function analogMixedEndpointName(ref = {}, workspace = {}) {
+  if (!ref || typeof ref !== "object") return "loose point";
+  if (ref.type === "pin") {
+    const component = (workspace.components || []).find((item) => item.id === ref.componentId);
+    const label = component?.label || component?.type || ref.componentId || "component";
+    return `${label}.${ref.pin || "pin"}`;
+  }
+  return "canvas point";
+}
+
+function analogMixedNetRiskTags(name = "", endpoints = 0) {
+  const clean = String(name || "");
+  const tags = [];
+  if (!clean || /^net[_-]?\d+$/i.test(clean)) tags.push("auto name");
+  if (endpoints < 2) tags.push("floating");
+  if (/vdd|vcc|vin|vout|gnd|vss|sw|power|pwr|boot/i.test(clean)) tags.push("power");
+  if (/fb|sense|ref|clk|xtal|osc|diff|in[+-]?$|out[+-]?$/i.test(clean)) tags.push("sensitive");
+  if (/(?:[_-]?(p|n|plus|minus)|[+-])$/i.test(clean)) tags.push("differential");
+  return [...new Set(tags)];
+}
+
+function analogMixedBuildNetExplorerRows(workspace = {}) {
+  const pcbData = analogMixedNormalizePcbLayout(workspace);
+  const icLayout = analogMixedNormalizeIcLayout(workspace);
+  const pcbRoutes = Array.isArray(pcbData.boardRoutes) ? pcbData.boardRoutes : [];
+  const icRoutes = Array.isArray(icLayout.layoutRoutes) ? icLayout.layoutRoutes : [];
+  const pcbByWire = new Map(pcbRoutes.map((route) => [route.sourceWireId || route.id, route]));
+  const icByWire = new Map(icRoutes.map((route) => [route.sourceWireId || route.id, route]));
+  const rows = (Array.isArray(workspace.wires) ? workspace.wires : []).map((wire, index) => {
+    const name = String(wire.name || `net_${index + 1}`);
+    const pinEndpoints = [wire.startRef, wire.endRef].filter((ref) => ref?.type === "pin").length;
+    const pcbRoute = pcbByWire.get(wire.id) || pcbRoutes.find((route) => route.name === name);
+    const icRoute = icByWire.get(wire.id) || icRoutes.find((route) => route.name === name);
+    const schematicLength = analogMixedRouteLength({ points: analogMixedWirePoints(wire) }) / 10;
+    const risks = analogMixedNetRiskTags(name, pinEndpoints);
+    return {
+      id: wire.id || `net-${index + 1}`,
+      name,
+      source: "schematic",
+      from: analogMixedEndpointName(wire.startRef, workspace),
+      to: analogMixedEndpointName(wire.endRef, workspace),
+      endpoints: pinEndpoints,
+      schematicLengthUm: schematicLength,
+      pcbLayer: pcbRoute?.layer || "not routed",
+      pcbLengthUm: pcbRoute ? analogMixedRouteLength(pcbRoute) / 10 : 0,
+      icLayer: icRoute?.layer ? analogMixedLayoutLayerById(icRoute.layer).label : "not routed",
+      icLengthUm: icRoute ? analogMixedRouteLength(icRoute) / 10 : 0,
+      risks
+    };
+  });
+  pcbRoutes.forEach((route, index) => {
+    const name = String(route.name || `pcb_route_${index + 1}`);
+    if (rows.some((row) => row.name === name && row.pcbLayer !== "not routed")) return;
+    rows.push({
+      id: route.id || `pcb-route-${index + 1}`,
+      name,
+      source: "pcb",
+      from: route.from || "board route",
+      to: route.to || "board route",
+      endpoints: 0,
+      schematicLengthUm: 0,
+      pcbLayer: route.layer || "F.Cu",
+      pcbLengthUm: analogMixedRouteLength(route) / 10,
+      icLayer: "not routed",
+      icLengthUm: 0,
+      risks: analogMixedNetRiskTags(name, 2)
+    });
+  });
+  icRoutes.forEach((route, index) => {
+    const name = String(route.name || `ic_route_${index + 1}`);
+    if (rows.some((row) => row.name === name && row.icLayer !== "not routed")) return;
+    rows.push({
+      id: route.id || `ic-route-${index + 1}`,
+      name,
+      source: "ic-layout",
+      from: analogMixedEndpointName(route.startRef, workspace),
+      to: analogMixedEndpointName(route.endRef, workspace),
+      endpoints: 0,
+      schematicLengthUm: 0,
+      pcbLayer: "not routed",
+      pcbLengthUm: 0,
+      icLayer: route.layer ? analogMixedLayoutLayerById(route.layer).label : "metal",
+      icLengthUm: analogMixedRouteLength(route) / 10,
+      risks: analogMixedNetRiskTags(name, 2)
+    });
+  });
+  return rows.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function analogMixedNetExplorerVisibleRows(workspace = {}) {
+  const settings = workspace.toolWindows?.netExplorer || analogMixedDefaultState().toolWindows.netExplorer;
+  const filter = String(settings.filter || "").trim().toLowerCase();
+  return analogMixedBuildNetExplorerRows(workspace).filter((row) => {
+    if (!settings.showSchematic && row.source === "schematic") return false;
+    if (!settings.showPcb && row.pcbLayer !== "not routed") return false;
+    if (!settings.showIc && row.icLayer !== "not routed") return false;
+    if (!settings.showRisks && row.risks.length) return false;
+    if (settings.view === "power" && !row.risks.includes("power")) return false;
+    if (settings.view === "sensitive" && !row.risks.includes("sensitive")) return false;
+    if (settings.view === "floating" && !row.risks.includes("floating")) return false;
+    if (settings.view === "differential" && !row.risks.includes("differential")) return false;
+    if (!filter) return true;
+    return [row.name, row.source, row.from, row.to, row.pcbLayer, row.icLayer, row.risks.join(" ")].join(" ").toLowerCase().includes(filter);
+  });
+}
+
+function analogMixedBuildDesignRuleRows(workspace = {}) {
+  const pcbData = analogMixedNormalizePcbLayout(workspace);
+  const icLayout = analogMixedNormalizeIcLayout(workspace);
+  const nets = analogMixedBuildNetExplorerRows(workspace);
+  const metrics = analogMixedIcAnalysisMetrics(workspace);
+  const rows = [];
+  const push = (domain, category, rule, setting, status = "info", detail = "") => {
+    rows.push({ domain, category, rule, setting, status, detail });
+  };
+  const floating = nets.filter((row) => row.risks.includes("floating"));
+  const powerNets = nets.filter((row) => row.risks.includes("power"));
+  const sensitive = nets.filter((row) => row.risks.includes("sensitive"));
+  const diffPairs = Array.isArray(pcbData.differentialPairs) && pcbData.differentialPairs.length
+    ? pcbData.differentialPairs
+    : analogMixedBuildPcbDifferentialPairs(workspace, pcbData);
+  push("Mixed", "Connectivity", "All intentional nets should resolve to named endpoints", `${floating.length} floating / review net(s)`, floating.length ? "warning" : "ok", floating.map((row) => row.name).join(", "));
+  push("Mixed", "Naming", "Power, reference, clock, and differential nets should use stable names", `${nets.filter((row) => row.risks.includes("auto name")).length} auto-name net(s)`, nets.some((row) => row.risks.includes("auto name")) ? "warning" : "ok", "Use Net names before PCB or IC handoff.");
+  push("PCB", "Clearance", "Copper clearance rule", "6 mil educational default", "info", "Replace with the board house rule before fabrication.");
+  push("PCB", "Track width", "High-current nets need wider tracks", `${powerNets.length} power/switching net(s) detected`, powerNets.length ? "warning" : "info", powerNets.map((row) => row.name).join(", "));
+  push("PCB", "Differential", "Differential routes stay paired, same layer, matched length", `${diffPairs.length} pair(s) detected`, diffPairs.length ? "ok" : "info", diffPairs.map((pair) => `${pair.name}: ${analogMixedFormatMetric(pair.lengthDeltaUm, "um")} delta`).join("; "));
+  push("PCB", "Sensitive routing", "Feedback, reference, clock, and oscillator routes should avoid switching loops", `${sensitive.length} sensitive net(s)`, sensitive.length ? "warning" : "info", sensitive.map((row) => row.name).join(", "));
+  (Array.isArray(pcbData.rules) ? pcbData.rules : []).slice(0, 12).forEach((rule, index) => {
+    push("PCB", "Saved rule", `Board rule ${index + 1}`, String(rule), "info", "Stored in the PCB stage.");
+  });
+  const visibleLayers = (icLayout.layers || []).filter((layer) => layer.visible !== false);
+  push("IC", "PDK", "Active PDK must match model, extraction, and layout layers", icLayout.pdk || workspace.activePdk || "generic", /sky130|gf180|pdk/i.test(icLayout.pdk || "") ? "ok" : "info", "Import a local PDK folder for foundry-style rule checks.");
+  push("IC", "Layer visibility", "Only visible layers are audited in the layout canvas", `${visibleLayers.length}/${(icLayout.layers || []).length} visible`, visibleLayers.length ? "ok" : "warning", visibleLayers.map((layer) => layer.label || layer.id).join(", "));
+  push("IC", "Guard rings", "Sensitive analog devices should have guard-ring planning", `${(icLayout.guardRings || []).length} guard ring(s)`, (icLayout.guardRings || []).length ? "ok" : "warning", "Guard rings are especially useful around input pairs, references, oscillators, and substrate-noise paths.");
+  push("IC", "Matching", "Matched devices need constraint groups and symmetric routing", `${(icLayout.constraintGroups || []).length} group(s)`, (icLayout.constraintGroups || []).length ? "ok" : "warning", "Use Match for current mirrors, differential pairs, resistor ladders, and capacitor arrays.");
+  push("IC", "Parasitics", "Long routed analog nets should be extracted before trusting simulation", `${analogMixedFormatMetric(metrics.totals?.routeLengthUm || 0, "um")} total route`, (metrics.totals?.routeLengthUm || 0) > 250 ? "warning" : "info", `Estimated route C: ${analogMixedFormatMetric(metrics.totals?.routeCapacitanceF || 0, "F")}`);
+  push("IC", "Area", "Device utilization should leave routing room without wasting excessive area", `${Math.round((Number(metrics.totals?.utilization) || 0) * 100)}% utilization`, (metrics.totals?.utilization || 0) > 0.85 ? "warning" : "info", `Core box: ${analogMixedFormatMetric(metrics.totals?.coreAreaUm2 || 0, "um^2")}`);
+  (Array.isArray(icLayout.drcMarkers) ? icLayout.drcMarkers : []).slice(0, 12).forEach((marker) => {
+    push("IC", "DRC marker", marker.message || "Layout marker", `${marker.x || 0}, ${marker.y || 0}`, marker.severity === "planned" ? "info" : marker.severity || "warning", "Stored on the IC layout stage.");
+  });
+  return rows;
+}
+
+function analogMixedDesignRuleVisibleRows(workspace = {}) {
+  const settings = workspace.toolWindows?.designRules || analogMixedDefaultState().toolWindows.designRules;
+  return analogMixedBuildDesignRuleRows(workspace).filter((row) => {
+    if (!settings.showPcb && row.domain === "PCB") return false;
+    if (!settings.showIc && row.domain === "IC") return false;
+    if (!settings.showWarnings && row.status === "warning") return false;
+    if (!settings.showInfo && row.status === "info") return false;
+    if (settings.domain === "pcb" && row.domain !== "PCB" && row.domain !== "Mixed") return false;
+    if (settings.domain === "ic" && row.domain !== "IC" && row.domain !== "Mixed") return false;
+    if (settings.view === "clearance" && !/clearance|track|layer|parasitic|routing/i.test(`${row.category} ${row.rule}`)) return false;
+    if (settings.view === "connectivity" && !/connect|name|net|differential|endpoint/i.test(`${row.category} ${row.rule}`)) return false;
+    if (settings.view === "manufacturing" && !/gerber|fabrication|board|track|pdk|layer|guard/i.test(`${row.domain} ${row.category} ${row.rule}`)) return false;
+    if (settings.view === "signoff" && !/drc|lvs|pex|pdk|parasitic|matching|area|guard|power/i.test(`${row.category} ${row.rule}`)) return false;
+    return true;
+  });
+}
+
+function analogMixedRuleReport(rows = []) {
+  return [
+    "Design rule manager report",
+    "",
+    `Rows reviewed: ${rows.length}`,
+    `Warnings: ${rows.filter((row) => row.status === "warning").length}`,
+    `OK: ${rows.filter((row) => row.status === "ok").length}`,
+    "",
+    ...rows.map((row) => `- [${row.domain} / ${row.status}] ${row.rule}: ${row.setting}${row.detail ? ` (${row.detail})` : ""}`)
   ].join("\n");
 }
 
@@ -7499,6 +7705,71 @@ function analogMixedSaveSelectedSymbolToLibrary() {
   analogMixedSetStatus("Selected symbol saved to the project library.");
 }
 
+function analogMixedOpenNetExplorer(view = "") {
+  const project = activeAnalogMixedProject();
+  if (!project) return;
+  const workspace = normalizeAnalogMixedWorkspace(project);
+  if (view && workspace.toolWindows.netExplorer) workspace.toolWindows.netExplorer.view = view;
+  workspace.activeToolWindow = "netExplorer";
+  markDraftNeedsSave();
+  scheduleAutosave();
+  renderAnalogMixedWorkspace();
+  analogMixedSetStatus("Net explorer opened.");
+}
+
+function analogMixedOpenDesignRuleManager(domain = "", view = "") {
+  const project = activeAnalogMixedProject();
+  if (!project) return;
+  const workspace = normalizeAnalogMixedWorkspace(project);
+  if (domain && workspace.toolWindows.designRules) workspace.toolWindows.designRules.domain = domain;
+  if (view && workspace.toolWindows.designRules) workspace.toolWindows.designRules.view = view;
+  workspace.activeToolWindow = "designRules";
+  markDraftNeedsSave();
+  scheduleAutosave();
+  renderAnalogMixedWorkspace();
+  analogMixedSetStatus("Design rule manager opened.");
+}
+
+function analogMixedCopyNetExplorerRows(workspace = {}) {
+  const rows = analogMixedNetExplorerVisibleRows(workspace);
+  const text = [
+    "Net explorer rows",
+    "",
+    "Net | Source | From | To | PCB | IC | Review",
+    "--- | --- | --- | --- | --- | --- | ---",
+    ...rows.map((row) => [
+      row.name,
+      row.source,
+      row.from,
+      row.to,
+      `${row.pcbLayer} ${row.pcbLengthUm ? analogMixedFormatMetric(row.pcbLengthUm, "um") : ""}`.trim(),
+      `${row.icLayer} ${row.icLengthUm ? analogMixedFormatMetric(row.icLengthUm, "um") : ""}`.trim(),
+      row.risks.join(", ") || "normal"
+    ].join(" | "))
+  ].join("\n");
+  navigator.clipboard?.writeText(text);
+  analogMixedSetStatus("Net explorer rows copied.");
+}
+
+function analogMixedRunDesignRuleAudit(workspace = {}) {
+  const rows = analogMixedDesignRuleVisibleRows(workspace);
+  workspace.checkReport = [analogMixedRuleReport(rows), workspace.checkReport || ""].filter(Boolean).join("\n\n");
+  workspace.stageData.checks = workspace.stageData.checks && typeof workspace.stageData.checks === "object" ? workspace.stageData.checks : {};
+  workspace.stageData.checks.designRuleRows = rows;
+  workspace.stageData.checks.updatedAt = new Date().toLocaleString();
+  workspace.activeToolWindow = "designRules";
+  markDraftNeedsSave();
+  scheduleAutosave();
+  renderAnalogMixedWorkspace();
+  analogMixedSetStatus("Design rule audit refreshed.");
+}
+
+function analogMixedCopyDesignRuleReport(workspace = {}) {
+  const rows = analogMixedDesignRuleVisibleRows(workspace);
+  navigator.clipboard?.writeText(analogMixedRuleReport(rows));
+  analogMixedSetStatus("Design rule report copied.");
+}
+
 async function analogMixedRecordLayoutAction(action = "") {
   const project = activeAnalogMixedProject();
   if (!project) return;
@@ -7878,6 +8149,10 @@ function analogMixedHandleStageCommand(action = "") {
   const project = activeAnalogMixedProject();
   const workspace = project ? normalizeAnalogMixedWorkspace(project) : null;
   if (action === "command-palette") return analogMixedOpenOperationWindow();
+  if (action === "open-net-explorer-window" || action === "net-explorer") return analogMixedOpenNetExplorer();
+  if (action === "open-design-rules-window" || action === "design-rules") return analogMixedOpenDesignRuleManager();
+  if (action === "ic-rule-manager") return analogMixedOpenDesignRuleManager("ic", "signoff");
+  if (action === "pcb-rule-manager") return analogMixedOpenDesignRuleManager("pcb", "manufacturing");
   if (action === "open-netlist-window") {
     if (!workspace) return;
     workspace.activeToolWindow = "netlist";
@@ -9238,6 +9513,26 @@ function analogMixedCanvasMarkup(workspace) {
 }
 
 function analogMixedMenuGroups(workspace) {
+  if (workspace.toolHubOpen) {
+    const hubSuite = analogMixedSuiteById(workspace.activeHubSuite || workspace.activeSuite || "ic");
+    const launcherActions = [
+      { id: "suite:ic", label: "IC tools" },
+      { id: "suite:pcb", label: "PCB tools" },
+      { id: "save", label: "Save" },
+      { id: "pdk-status", label: "Tool status" }
+    ];
+    const launcherButtons = launcherActions.map((item) => `
+      <button type="button" class="${item.id === `suite:${hubSuite.id}` ? "is-active" : ""}" data-am-menu-action="${escapeHtml(item.id)}">
+        ${escapeHtml(item.label)}
+      </button>
+    `).join("");
+    return `
+      <div class="analog-mixed-menu-groups analog-mixed-launcher-menu">
+        <span>${escapeHtml(hubSuite.label)} launcher</span>
+      </div>
+      <div class="analog-mixed-top-actions">${launcherButtons}</div>
+    `;
+  }
   const suite = analogMixedSuiteById(workspace.activeSuite);
   const isIcSuite = suite.id === "ic";
   const quickActionItems = isIcSuite
@@ -9850,6 +10145,102 @@ function analogMixedRenderOperationsWindow(workspace = {}) {
   `;
 }
 
+function analogMixedRenderNetExplorerWindow(workspace = {}) {
+  const settings = workspace.toolWindows.netExplorer;
+  const allRows = analogMixedBuildNetExplorerRows(workspace);
+  const rows = analogMixedNetExplorerVisibleRows(workspace);
+  const viewButtons = [
+    ["all", "All"],
+    ["power", "Power"],
+    ["sensitive", "Sensitive"],
+    ["floating", "Floating"],
+    ["differential", "Diff"]
+  ].map(([view, label]) => `<button type="button" class="${settings.view === view ? "is-active" : ""}" data-am-net-explorer-view="${view}">${label}</button>`).join("");
+  const riskCount = allRows.filter((row) => row.risks.length).length;
+  return `
+    <section class="analog-mixed-tool-window is-net-explorer" role="dialog" aria-label="Net explorer">
+      <header>${analogMixedToolWindowHeader("Net Explorer", `${rows.length} shown / ${allRows.length} nets, ${riskCount} with review tags`)}</header>
+      <div class="analog-mixed-tool-window-controls">
+        <div class="analog-mixed-analysis-view-tabs">${viewButtons}</div>
+        <label><span>Filter</span><input type="search" value="${escapeHtml(settings.filter || "")}" placeholder="net, pin, layer, source..." data-am-net-explorer-filter /></label>
+        ${["showSchematic", "showPcb", "showIc", "showRisks"].map((key) => `
+          <label class="analog-mixed-tool-check"><input type="checkbox" data-am-net-explorer-setting="${escapeHtml(key)}" ${settings[key] ? "checked" : ""} /><span>${escapeHtml(key.replace(/^show/, ""))}</span></label>
+        `).join("")}
+        <button type="button" data-am-window-action="run-net-explorer">Refresh</button>
+        <button type="button" data-am-window-action="copy-net-explorer">Copy rows</button>
+      </div>
+      <div class="analog-mixed-net-table">
+        <div class="analog-mixed-net-row is-head">
+          <strong>Net</strong><span>From</span><span>To</span><span>PCB</span><span>IC</span><span>Review</span>
+        </div>
+        ${rows.length ? rows.map((row) => `
+          <div class="analog-mixed-net-row">
+            <strong>${escapeHtml(row.name)}</strong>
+            <span>${escapeHtml(row.from)}</span>
+            <span>${escapeHtml(row.to)}</span>
+            <span>${escapeHtml(`${row.pcbLayer} ${row.pcbLengthUm ? analogMixedFormatMetric(row.pcbLengthUm, "um") : ""}`.trim())}</span>
+            <span>${escapeHtml(`${row.icLayer} ${row.icLengthUm ? analogMixedFormatMetric(row.icLengthUm, "um") : ""}`.trim())}</span>
+            <span>${escapeHtml(row.risks.join(", ") || "normal")}</span>
+          </div>
+        `).join("") : `<p class="analog-mixed-muted">No nets match the current view.</p>`}
+      </div>
+    </section>
+  `;
+}
+
+function analogMixedRenderDesignRulesWindow(workspace = {}) {
+  const settings = workspace.toolWindows.designRules;
+  const allRows = analogMixedBuildDesignRuleRows(workspace);
+  const rows = analogMixedDesignRuleVisibleRows(workspace);
+  const warningCount = allRows.filter((row) => row.status === "warning").length;
+  const viewButtons = [
+    ["summary", "Summary"],
+    ["connectivity", "Connectivity"],
+    ["clearance", "Clearance"],
+    ["manufacturing", "Manufacturing"],
+    ["signoff", "Signoff"]
+  ].map(([view, label]) => `<button type="button" class="${settings.view === view ? "is-active" : ""}" data-am-design-rule-view="${view}">${label}</button>`).join("");
+  return `
+    <section class="analog-mixed-tool-window is-design-rules" role="dialog" aria-label="Design rule manager">
+      <header>${analogMixedToolWindowHeader("Design Rule Manager", `${rows.length} shown / ${allRows.length} rules, ${warningCount} warnings`)}</header>
+      <div class="analog-mixed-tool-window-controls">
+        <div class="analog-mixed-analysis-view-tabs">${viewButtons}</div>
+        <label><span>Domain</span><select data-am-design-rule-setting="domain">
+          ${[
+            ["auto", "Auto"],
+            ["mixed", "Mixed"],
+            ["pcb", "PCB"],
+            ["ic", "IC"]
+          ].map(([value, label]) => `<option value="${value}" ${settings.domain === value ? "selected" : ""}>${label}</option>`).join("")}
+        </select></label>
+        ${["showPcb", "showIc", "showWarnings", "showInfo"].map((key) => `
+          <label class="analog-mixed-tool-check"><input type="checkbox" data-am-design-rule-setting="${escapeHtml(key)}" ${settings[key] ? "checked" : ""} /><span>${escapeHtml(key.replace(/^show/, ""))}</span></label>
+        `).join("")}
+        <button type="button" data-am-window-action="run-design-rules">Audit</button>
+        <button type="button" data-am-window-action="copy-design-rules">Copy report</button>
+      </div>
+      <div class="analog-mixed-rule-table">
+        <div class="analog-mixed-rule-row is-head">
+          <strong>Domain</strong><span>Category</span><span>Rule</span><span>Setting</span><span>Status</span><span>Detail</span>
+        </div>
+        ${rows.length ? rows.map((row) => {
+          const status = ["error", "warning", "info", "ok"].includes(row.status) ? row.status : "info";
+          return `
+            <div class="analog-mixed-rule-row is-${escapeHtml(status)}">
+              <strong>${escapeHtml(row.domain)}</strong>
+              <span>${escapeHtml(row.category)}</span>
+              <span>${escapeHtml(row.rule)}</span>
+              <span>${escapeHtml(row.setting)}</span>
+              <span>${escapeHtml(status.toUpperCase())}</span>
+              <span>${escapeHtml(row.detail || "")}</span>
+            </div>
+          `;
+        }).join("") : `<p class="analog-mixed-muted">No design rules match the current filters.</p>`}
+      </div>
+    </section>
+  `;
+}
+
 function analogMixedRenderIcAnalysisWindow(workspace = {}) {
   const settings = workspace.toolWindows.icAnalysis;
   const layoutData = analogMixedNormalizeIcLayout(workspace);
@@ -9993,6 +10384,10 @@ function analogMixedRenderToolWindow(workspace) {
     analogMixedToolWindowLayer.innerHTML = analogMixedRenderSpiceWindow(workspace);
   } else if (workspace.activeToolWindow === "operations") {
     analogMixedToolWindowLayer.innerHTML = analogMixedRenderOperationsWindow(workspace);
+  } else if (workspace.activeToolWindow === "netExplorer") {
+    analogMixedToolWindowLayer.innerHTML = analogMixedRenderNetExplorerWindow(workspace);
+  } else if (workspace.activeToolWindow === "designRules") {
+    analogMixedToolWindowLayer.innerHTML = analogMixedRenderDesignRulesWindow(workspace);
   } else if (workspace.activeToolWindow === "icAnalysis") {
     analogMixedToolWindowLayer.innerHTML = analogMixedRenderIcAnalysisWindow(workspace);
   } else if (workspace.activeToolWindow === "physical3d") {
@@ -10059,10 +10454,15 @@ function analogMixedOpenToolHub(suiteId = "") {
   workspace.toolHubOpen = true;
   workspace.activeDesignTool = "";
   workspace.activeToolWindow = "";
+  workspace.activeTool = "select";
+  workspace.zoom = 1;
+  workspace.panX = 0;
+  workspace.panY = 0;
   analogMixedClearActiveWireRoute();
   markDraftNeedsSave();
   scheduleAutosave();
   renderAnalogMixedWorkspace();
+  resetAnalogMixedLauncherViewport();
   analogMixedSetStatus(`${suite.label} tools shown.`);
 }
 
@@ -10135,10 +10535,25 @@ function openAnalogMixedWorkspace(projectId = selectedProjectId) {
   workspace.activeHubSuite = workspace.activeSuite || "ic";
   workspace.activeDesignTool = "";
   workspace.activeToolWindow = "";
+  workspace.activeTool = "select";
+  workspace.zoom = 1;
+  workspace.panX = 0;
+  workspace.panY = 0;
   document.body.classList.add("analog-mixed-open");
   analogMixedDialog.showModal();
   renderAnalogMixedWorkspace();
+  resetAnalogMixedLauncherViewport();
   analogMixedSetStatus("Choose IC Design Suite or PCB Design Suite, then open a design tool.");
+}
+
+function resetAnalogMixedLauncherViewport() {
+  requestAnimationFrame(() => {
+    [analogMixedDialog, analogMixedLayout, analogMixedToolHub].forEach((element) => {
+      if (!element) return;
+      element.scrollTop = 0;
+      element.scrollLeft = 0;
+    });
+  });
 }
 
 function saveAnalogMixedWorkspace() {
@@ -10894,6 +11309,10 @@ async function analogMixedHandleMenuAction(action = "") {
   }
   if (clean.startsWith("op:")) return analogMixedExecuteOperation(clean);
   if (clean === "command-palette") return analogMixedOpenOperationWindow();
+  if (clean === "open-net-explorer-window" || clean === "net-explorer") return analogMixedOpenNetExplorer();
+  if (clean === "open-design-rules-window" || clean === "design-rules") return analogMixedOpenDesignRuleManager();
+  if (clean === "ic-rule-manager") return analogMixedOpenDesignRuleManager("ic", "signoff");
+  if (clean === "pcb-rule-manager") return analogMixedOpenDesignRuleManager("pcb", "manufacturing");
   if (clean === "open-netlist-window") {
     workspace.activeToolWindow = "netlist";
     renderAnalogMixedWorkspace();
@@ -12336,6 +12755,7 @@ async function openCompileCodeCommand(action = "view-syntax") {
     renderAll();
   }
   await runCompileIdeAction(project, action);
+  renderBuilderAppMenuBar();
 }
 
 function openAnalogMixedCommand(stage = "schematic") {
@@ -25813,7 +26233,12 @@ async function runCompileIdeAction(project, action = "", options = {}) {
     setStatus(workspace.appendPanelOpen ? "Choose where to append the active source." : "Append chooser closed.");
     scheduleAutosave();
     renderSectionContent(project);
+    return;
   }
+  setStatus(`Digital command "${action}" is not wired yet.`);
+  addCompileMessage(project, `Digital command "${action}" did not match a supported action.`, "warning");
+  scheduleAutosave();
+  renderSectionContent(project);
 }
 
 const profileAssetDefinitions = {
@@ -30679,6 +31104,10 @@ analogMixedDialog?.addEventListener("click", (event) => {
     }
     if (action === "run-spice") return analogMixedRunSpiceSimulation(workspace.toolWindows.spice.analysis || "op");
     if (action === "plan-spice") return analogMixedPrepareSpiceSimulationPlan(workspace.toolWindows.spice.analysis || "tran");
+    if (action === "run-net-explorer") return analogMixedOpenNetExplorer(workspace.toolWindows.netExplorer.view || "all");
+    if (action === "copy-net-explorer") return analogMixedCopyNetExplorerRows(workspace);
+    if (action === "run-design-rules") return analogMixedRunDesignRuleAudit(workspace);
+    if (action === "copy-design-rules") return analogMixedCopyDesignRuleReport(workspace);
     if (action === "run-ic-analysis") return analogMixedRecordLayoutAction("ic-analysis");
     if (action === "run-ic-pex") return analogMixedRecordLayoutAction("ic-pex");
     if (action === "run-ic-power") return analogMixedRecordLayoutAction("ic-power");
@@ -30688,6 +31117,22 @@ analogMixedDialog?.addEventListener("click", (event) => {
   const icAnalysisView = event.target.closest("[data-am-ic-analysis-view]");
   if (icAnalysisView) {
     workspace.toolWindows.icAnalysis.view = icAnalysisView.dataset.amIcAnalysisView || "overview";
+    markDraftNeedsSave();
+    scheduleAutosave();
+    renderAnalogMixedWorkspace();
+    return;
+  }
+  const netExplorerView = event.target.closest("[data-am-net-explorer-view]");
+  if (netExplorerView) {
+    workspace.toolWindows.netExplorer.view = netExplorerView.dataset.amNetExplorerView || "all";
+    markDraftNeedsSave();
+    scheduleAutosave();
+    renderAnalogMixedWorkspace();
+    return;
+  }
+  const designRuleView = event.target.closest("[data-am-design-rule-view]");
+  if (designRuleView) {
+    workspace.toolWindows.designRules.view = designRuleView.dataset.amDesignRuleView || "summary";
     markDraftNeedsSave();
     scheduleAutosave();
     renderAnalogMixedWorkspace();
@@ -30945,6 +31390,13 @@ analogMixedDialog?.addEventListener("input", (event) => {
     renderAnalogMixedWorkspace();
     return;
   }
+  if (event.target.dataset.amNetExplorerFilter !== undefined) {
+    workspace.toolWindows.netExplorer.filter = event.target.value || "";
+    markDraftNeedsSave();
+    scheduleAutosave();
+    renderAnalogMixedWorkspace();
+    return;
+  }
 });
 analogMixedDialog?.addEventListener("change", async (event) => {
   const project = activeAnalogMixedProject();
@@ -30993,6 +31445,22 @@ analogMixedDialog?.addEventListener("change", async (event) => {
   }
   if (workspace && event.target.dataset.amOperationLimit !== undefined) {
     workspace.toolWindows.operations.limit = Math.max(30, Math.min(300, Number(event.target.value) || 120));
+    markDraftNeedsSave();
+    scheduleAutosave();
+    renderAnalogMixedWorkspace();
+    return;
+  }
+  if (workspace && event.target.dataset.amNetExplorerSetting) {
+    const key = event.target.dataset.amNetExplorerSetting;
+    workspace.toolWindows.netExplorer[key] = event.target.type === "checkbox" ? event.target.checked : event.target.value;
+    markDraftNeedsSave();
+    scheduleAutosave();
+    renderAnalogMixedWorkspace();
+    return;
+  }
+  if (workspace && event.target.dataset.amDesignRuleSetting) {
+    const key = event.target.dataset.amDesignRuleSetting;
+    workspace.toolWindows.designRules[key] = event.target.type === "checkbox" ? event.target.checked : event.target.value;
     markDraftNeedsSave();
     scheduleAutosave();
     renderAnalogMixedWorkspace();
