@@ -5614,6 +5614,168 @@ function analogMixedComplexAnalysisReport(projectTitle = "Project", workspaceInp
   ].join("\n");
 }
 
+function analogMixedServerRouteLength(route = {}) {
+  const points = Array.isArray(route.points) ? route.points : [];
+  return points.slice(1).reduce((sum, point, index) => {
+    const prev = points[index] || {};
+    return sum + Math.abs((Number(point.x) || 0) - (Number(prev.x) || 0)) + Math.abs((Number(point.y) || 0) - (Number(prev.y) || 0));
+  }, 0);
+}
+
+function analogMixedServerFormatMetric(value = 0, unit = "", digits = 3) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return "n/a";
+  const abs = Math.abs(number);
+  const prefixes = [
+    [1e9, "G"],
+    [1e6, "M"],
+    [1e3, "k"],
+    [1, ""],
+    [1e-3, "m"],
+    [1e-6, "u"],
+    [1e-9, "n"],
+    [1e-12, "p"],
+    [1e-15, "f"]
+  ];
+  const [scale, prefix] = prefixes.find(([candidate]) => abs >= candidate) || prefixes[prefixes.length - 1];
+  return `${(number / scale).toPrecision(digits).replace(/\.0+($|e)/, "$1")} ${prefix}${unit}`.trim();
+}
+
+function analogMixedServerIcAnalysisMetrics(workspaceInput = {}, objects = [], routes = [], sizingRows = []) {
+  const workspace = normalizeAnalogMixedServerWorkspace(workspaceInput);
+  const routeRows = (routes || []).map((route) => {
+    const lengthPx = analogMixedServerRouteLength(route);
+    const lengthUm = lengthPx / 10;
+    const resistancePerUm = route.layer === "metal3" ? 0.018 : route.layer === "metal2" ? 0.026 : route.layer === "li1" ? 0.075 : 0.045;
+    const capacitanceFfPerUm = route.layer === "metal3" ? 0.12 : route.layer === "metal2" ? 0.16 : route.layer === "li1" ? 0.24 : 0.19;
+    return {
+      id: route.id,
+      name: route.name || route.id,
+      layer: route.layer || "metal1",
+      lengthUm,
+      resistanceOhm: lengthUm * resistancePerUm,
+      capacitanceFf: lengthUm * capacitanceFfPerUm,
+      points: Array.isArray(route.points) ? route.points.length : 0
+    };
+  });
+  const sizingById = new Map((sizingRows || []).map((row) => [row.id, row]));
+  const deviceRows = (objects || []).map((object) => {
+    const sizing = sizingById.get(object.sourceComponentId) || sizingById.get(object.id) || {};
+    const params = object.parameters && typeof object.parameters === "object" ? object.parameters : {};
+    const role = sizing.role || analogMixedServerIcDeviceRole(object);
+    const areaUm2 = Math.max(1, (Number(object.width) || 0) * (Number(object.height) || 0) / 100);
+    const currentA = analogMixedParseSpiceNumber(params.id || params.current || params.biasCurrent || sizing.currentTarget || "", /mos|transistor|mirror|differential/i.test(role) ? 100e-6 : 0);
+    const capacitanceF = analogMixedParseSpiceNumber(params.c || params.capacitance || object.value || "", /capacitor/i.test(role || object.type || "") ? 1e-12 : 0);
+    const resistanceOhm = analogMixedParseSpiceNumber(params.r || params.resistance || object.value || "", /resistor/i.test(role || object.type || "") ? 1000 : 0);
+    return {
+      id: object.id,
+      reference: object.label || sizing.reference || object.id,
+      role,
+      model: object.modelName || sizing.model || object.type || "",
+      areaUm2,
+      currentA,
+      capacitanceF,
+      resistanceOhm,
+      layerStack: object.layerStack || []
+    };
+  });
+  const supplyComponent = workspace.components.find((component) => /vdd|vcc|supply|voltage/i.test([component.type, component.label, component.value].join(" ")));
+  const supplyVoltage = analogMixedParseSpiceNumber(supplyComponent?.value || workspace.parameters?.[workspace.focus]?.supply || "1.8", 1.8);
+  const routeCapF = routeRows.reduce((sum, row) => sum + row.capacitanceFf * 1e-15, 0);
+  const deviceCapF = deviceRows.reduce((sum, row) => sum + row.capacitanceF, 0);
+  const totalCapF = routeCapF + deviceCapF;
+  const routeResistance = routeRows.reduce((sum, row) => sum + row.resistanceOhm, 0);
+  const resistorResistance = deviceRows.reduce((sum, row) => sum + row.resistanceOhm, 0);
+  const effectiveResistance = Math.max(1, routeResistance + (resistorResistance || 1000));
+  const staticCurrentA = deviceRows.reduce((sum, row) => sum + row.currentA, 0) || workspace.components.length * 25e-6;
+  const frequency = analogMixedParseSpiceNumber(workspace.parameters?.[workspace.focus]?.frequency || workspace.parameters?.[workspace.focus]?.switchingFrequency || "1Meg", 1e6);
+  const staticPowerW = supplyVoltage * staticCurrentA;
+  const dynamicPowerW = totalCapF * supplyVoltage * supplyVoltage * frequency;
+  const bandwidthHz = totalCapF > 0 ? 1 / (2 * Math.PI * effectiveResistance * totalCapF) : 0;
+  const deviceAreaUm2 = deviceRows.reduce((sum, row) => sum + row.areaUm2, 0);
+  const boundingBox = objects.length
+    ? {
+      x1: Math.min(...objects.map((object) => Number(object.x) || 0)),
+      y1: Math.min(...objects.map((object) => Number(object.y) || 0)),
+      x2: Math.max(...objects.map((object) => (Number(object.x) || 0) + (Number(object.width) || 0))),
+      y2: Math.max(...objects.map((object) => (Number(object.y) || 0) + (Number(object.height) || 0)))
+    }
+    : { x1: 0, y1: 0, x2: 0, y2: 0 };
+  const coreAreaUm2 = Math.max(0, (boundingBox.x2 - boundingBox.x1) * (boundingBox.y2 - boundingBox.y1) / 100);
+  const utilization = coreAreaUm2 > 0 ? deviceAreaUm2 / coreAreaUm2 : 0;
+  const recommendations = [
+    routeRows.some((row) => row.lengthUm > 80) ? "Shorten long analog nets or move them to a wider upper metal before extracted simulation." : "",
+    totalCapF > 0 && bandwidthHz > 0 ? `Estimated dominant RC pole is ${analogMixedServerFormatMetric(bandwidthHz, "Hz")}; compare this with the intended closed-loop bandwidth.` : "",
+    utilization < 0.35 && objects.length > 2 ? "The current cell outline has spare area; compact matched devices before routing sensitive nets." : "",
+    "Keep power rails wide, add taps near sensitive devices, and review EM/IR drop with a real PDK signoff engine before tapeout."
+  ].filter(Boolean);
+  return {
+    generatedAt: new Date().toISOString(),
+    pdk: workspace.stageData?.["ic-layout"]?.pdk || workspace.activePdk || "generic",
+    routeRows,
+    deviceRows,
+    totals: {
+      routeLengthUm: routeRows.reduce((sum, row) => sum + row.lengthUm, 0),
+      routeResistanceOhm: routeResistance,
+      routeCapacitanceF: routeCapF,
+      deviceCapacitanceF: deviceCapF,
+      totalCapacitanceF: totalCapF,
+      effectiveResistanceOhm: effectiveResistance,
+      supplyVoltage,
+      staticCurrentA,
+      staticPowerW,
+      dynamicPowerW,
+      bandwidthHz,
+      deviceAreaUm2,
+      coreAreaUm2,
+      utilization
+    },
+    recommendations
+  };
+}
+
+function analogMixedServerIcAnalysisMarkdown(projectTitle = "Project", metrics = {}, action = "ic-analysis") {
+  const totals = metrics.totals || {};
+  const longestRoutes = (metrics.routeRows || []).slice().sort((a, b) => b.lengthUm - a.lengthUm).slice(0, 12);
+  return [
+    `# IC Analysis Cockpit - ${projectTitle || "Project"}`,
+    "",
+    `Action: ${action}`,
+    `PDK: ${metrics.pdk || "generic"}`,
+    `Generated: ${metrics.generatedAt || new Date().toISOString()}`,
+    "",
+    "## Parasitic Estimate",
+    "",
+    `- Route length: ${analogMixedServerFormatMetric(totals.routeLengthUm, "um")}`,
+    `- Route resistance: ${analogMixedServerFormatMetric(totals.routeResistanceOhm, "Ohm")}`,
+    `- Route capacitance: ${analogMixedServerFormatMetric(totals.routeCapacitanceF, "F")}`,
+    `- Total capacitance: ${analogMixedServerFormatMetric(totals.totalCapacitanceF, "F")}`,
+    "",
+    "## Power Estimate",
+    "",
+    `- Supply: ${analogMixedServerFormatMetric(totals.supplyVoltage, "V")}`,
+    `- Static current: ${analogMixedServerFormatMetric(totals.staticCurrentA, "A")}`,
+    `- Static power: ${analogMixedServerFormatMetric(totals.staticPowerW, "W")}`,
+    `- Dynamic power: ${analogMixedServerFormatMetric(totals.dynamicPowerW, "W")}`,
+    "",
+    "## Bandwidth And Area",
+    "",
+    `- Effective resistance: ${analogMixedServerFormatMetric(totals.effectiveResistanceOhm, "Ohm")}`,
+    `- RC bandwidth: ${analogMixedServerFormatMetric(totals.bandwidthHz, "Hz")}`,
+    `- Device area: ${analogMixedServerFormatMetric(totals.deviceAreaUm2, "um^2")}`,
+    `- Core box area: ${analogMixedServerFormatMetric(totals.coreAreaUm2, "um^2")}`,
+    `- Utilization: ${Math.round((Number(totals.utilization) || 0) * 100)}%`,
+    "",
+    "## Longest Routes",
+    "",
+    ...(longestRoutes.length ? longestRoutes.map((row) => `- ${row.name}: ${row.layer}, ${analogMixedServerFormatMetric(row.lengthUm, "um")}, R=${analogMixedServerFormatMetric(row.resistanceOhm, "Ohm")}, C=${analogMixedServerFormatMetric(row.capacitanceFf * 1e-15, "F")}`) : ["- No routes yet."]),
+    "",
+    "## Recommendations",
+    "",
+    ...((metrics.recommendations || []).length ? metrics.recommendations.map((line) => `- ${line}`) : ["- Add devices and routes, then rerun analysis."])
+  ].join("\n");
+}
+
 async function analogMixedBuildIcLayoutArtifacts(projectTitle = "Project", workspaceInput = {}, action = "layout-sync") {
   const workspace = normalizeAnalogMixedServerWorkspace(workspaceInput);
   const status = await analogMixedPdkStatusForWorkspace(workspace);
@@ -5627,6 +5789,7 @@ async function analogMixedBuildIcLayoutArtifacts(projectTitle = "Project", works
   const constraintGroups = analogMixedServerIcConstraintGroups(workspace, sizingRows);
   const designIntent = analogMixedServerIcDesignIntent(projectTitle, workspace);
   const signoffItems = analogMixedServerIcSignoffItems(workspace, objects, routes, constraintGroups, cornerSetups);
+  const icAnalysis = analogMixedServerIcAnalysisMetrics(workspace, objects, routes, sizingRows);
   const netlist = analogMixedServerNetlist(projectTitle, workspace, { includePdk: true, pdkStatus: status });
   const cellName = safeSegment(projectTitle || "am_top").replace(/-/g, "_") || "am_top";
   const gdsPath = path.join(runRoot, `ic-layout-${stamp}.gds`);
@@ -5640,6 +5803,11 @@ async function analogMixedBuildIcLayoutArtifacts(projectTitle = "Project", works
   const noiseReportPath = path.join(runRoot, `noise-report-${stamp}.txt`);
   const parasiticReportPath = path.join(runRoot, `parasitic-report-${stamp}.txt`);
   const complexAnalysisPath = path.join(runRoot, `complex-analysis-${stamp}.md`);
+  const icAnalysisPath = path.join(runRoot, `ic-analysis-${stamp}.json`);
+  const icAnalysisReportPath = path.join(runRoot, `ic-analysis-report-${stamp}.md`);
+  const powerReportPath = path.join(runRoot, `power-report-${stamp}.md`);
+  const bandwidthReportPath = path.join(runRoot, `bandwidth-report-${stamp}.md`);
+  const areaReportPath = path.join(runRoot, `area-report-${stamp}.md`);
   const intentPath = path.join(runRoot, `ic-design-intent-${stamp}.json`);
   const sizingPath = path.join(runRoot, `ic-sizing-table-${stamp}.csv`);
   const cornersPath = path.join(runRoot, `ic-corners-${stamp}.json`);
@@ -5655,6 +5823,11 @@ async function analogMixedBuildIcLayoutArtifacts(projectTitle = "Project", works
   await writeFile(cornersPath, JSON.stringify(cornerSetups, null, 2), "utf8");
   await writeFile(constraintsPath, JSON.stringify(constraintGroups, null, 2), "utf8");
   await writeFile(signoffPath, analogMixedServerIcReportMarkdown(projectTitle, designIntent, sizingRows, cornerSetups, constraintGroups, signoffItems), "utf8");
+  await writeFile(icAnalysisPath, JSON.stringify(icAnalysis, null, 2), "utf8");
+  await writeFile(icAnalysisReportPath, analogMixedServerIcAnalysisMarkdown(projectTitle, icAnalysis, action), "utf8");
+  await writeFile(powerReportPath, analogMixedServerIcAnalysisMarkdown(projectTitle, icAnalysis, "ic-power"), "utf8");
+  await writeFile(bandwidthReportPath, analogMixedServerIcAnalysisMarkdown(projectTitle, icAnalysis, "ic-bandwidth"), "utf8");
+  await writeFile(areaReportPath, analogMixedServerIcAnalysisMarkdown(projectTitle, icAnalysis, "ic-area"), "utf8");
   await writeFile(klayoutScriptPath, analogMixedKLayoutRuby(projectTitle, workspace, { objects, routes, gdsPath }), "utf8");
   await writeFile(magicScriptPath, [
     "# Auto-generated Magic DRC plan",
@@ -5688,7 +5861,7 @@ async function analogMixedBuildIcLayoutArtifacts(projectTitle = "Project", works
     const result = await runProcess(ngspice, ["-b", "-o", noiseReportPath, noiseDeckPath], { cwd: runRoot, timeoutMs: 90000, env: await compileToolPathEnvironment() });
     toolRuns.push({ tool: "ngspice-noise", executable: ngspice, ok: result.ok, exitCode: result.code, stdout: result.stdout, stderr: result.stderr, elapsedMs: result.elapsedMs });
   }
-  const files = { runRoot, netlistPath, pexNetlistPath, noiseDeckPath, noiseReportPath, parasiticReportPath, complexAnalysisPath, intentPath, sizingPath, cornersPath, constraintsPath, signoffPath, klayoutScriptPath, magicScriptPath, magicExtractScriptPath, netgenScriptPath, gdsPath, summaryPath };
+  const files = { runRoot, netlistPath, pexNetlistPath, noiseDeckPath, noiseReportPath, parasiticReportPath, complexAnalysisPath, icAnalysisPath, icAnalysisReportPath, powerReportPath, bandwidthReportPath, areaReportPath, intentPath, sizingPath, cornersPath, constraintsPath, signoffPath, klayoutScriptPath, magicScriptPath, magicExtractScriptPath, netgenScriptPath, gdsPath, summaryPath };
   await writeFile(parasiticReportPath, analogMixedParasiticReport(projectTitle, status, files, toolRuns), "utf8");
   await writeFile(complexAnalysisPath, analogMixedComplexAnalysisReport(projectTitle, workspace, status, files), "utf8");
   if (!(await pathExists(noiseReportPath))) {
@@ -5717,6 +5890,9 @@ async function analogMixedBuildIcLayoutArtifacts(projectTitle = "Project", works
   const parasiticRuns = [{ id: `pex-${Date.now()}`, createdAt: new Date().toISOString(), status: toolRuns.some((run) => run.tool === "magic-pex" && run.ok) ? "completed" : "script-generated", pdk: pdkName, scriptPath: magicExtractScriptPath, netlistPath: pexNetlistPath, reportPath: parasiticReportPath }];
   const noiseRuns = [{ id: `noise-${Date.now()}`, createdAt: new Date().toISOString(), status: toolRuns.some((run) => run.tool === "ngspice-noise" && run.ok) ? "completed" : "deck-generated", pdk: pdkName, deckPath: noiseDeckPath, reportPath: noiseReportPath }];
   const complexAnalysisRuns = [{ id: `complex-${Date.now()}`, createdAt: new Date().toISOString(), status: "generated", pdk: pdkName, reportPath: complexAnalysisPath }];
+  const icAnalysisRuns = [{ id: `ic-analysis-${Date.now()}`, createdAt: new Date().toISOString(), status: "generated", pdk: pdkName, metrics: icAnalysis, jsonPath: icAnalysisPath, reportPath: icAnalysisReportPath }];
+  const powerIntegrityRuns = [{ id: `power-${Date.now()}`, createdAt: new Date().toISOString(), status: "generated", pdk: pdkName, metrics: icAnalysis, reportPath: powerReportPath }];
+  const areaOptimizationRuns = [{ id: `area-${Date.now()}`, createdAt: new Date().toISOString(), status: "generated", pdk: pdkName, metrics: icAnalysis, reportPath: areaReportPath }];
   const summary = {
     generatedAt: new Date().toISOString(),
     action,
@@ -5735,6 +5911,10 @@ async function analogMixedBuildIcLayoutArtifacts(projectTitle = "Project", works
     parasiticRuns,
     noiseRuns,
     complexAnalysisRuns,
+    icAnalysis,
+    icAnalysisRuns,
+    powerIntegrityRuns,
+    areaOptimizationRuns,
     artifactRoot: runRoot,
     files,
     artifacts,

@@ -1024,19 +1024,26 @@ const analogMixedStageCommandRegistry = {
     { id: "save", label: "Save", hint: "Save symbol work" },
     { id: "add-pin", label: "Add pin", hint: "Plan a symbol pin/interface" },
     { id: "check-symbol", label: "Check symbol", hint: "Check symbol naming/interface notes" },
+    { id: "symbol-save-library", label: "Save symbol", hint: "Save the selected symbol into the project custom library" },
     { id: "libraries", label: "Library", hint: "Open symbol library planning" }
   ],
   footprint: [
     { id: "save", label: "Save", hint: "Save footprint work" },
     { id: "add-pad", label: "Add pad", hint: "Plan a package pad" },
     { id: "pin-map", label: "Pin map", hint: "Plan symbol-to-footprint pin mapping" },
+    { id: "footprint-rules", label: "Rules", hint: "Review footprint courtyard, paste, mask, and pin-map rules" },
     { id: "view-3d", label: "3D", hint: "Open package/board 3D planning" }
   ],
   pcb: [
     { id: "save", label: "Save", hint: "Save PCB stage" },
     { id: "pcb-sync", label: "Sync PCB", hint: "Create or refresh PCB footprints from schematic components" },
+    { id: "pcb-bom", label: "BOM", hint: "Generate the board bill of materials" },
+    { id: "pcb-ratsnest", label: "Ratsnest", hint: "Show unrouted schematic connectivity" },
+    { id: "pcb-net-naming", label: "Net names", hint: "Review and normalize PCB net naming" },
+    { id: "pcb-diff-pairs", label: "Diff pairs", hint: "Detect and set up differential pairs" },
     { id: "board-rules", label: "Rules", hint: "Create PCB DRC/manufacturing notes" },
     { id: "route-plan", label: "Route", hint: "Plan routing/power loops" },
+    { id: "pcb-route-optimize", label: "Optimize", hint: "Optimize track classes and high-current paths" },
     { id: "pcb-export", label: "Export", hint: "Write PCB placement, BOM, netlist, and handoff artifacts" },
     { id: "gerber", label: "Gerber", hint: "Prepare manufacturing outputs" },
     { id: "view-3d", label: "3D", hint: "Open board 3D planning" }
@@ -1061,6 +1068,9 @@ const analogMixedStageCommandRegistry = {
     { id: "ic-noise-run", label: "Noise run", hint: "Write and run a PDK-aware noise deck when a SPICE engine is available" },
     { id: "ic-offset", label: "Offset", hint: "Prepare offset, mismatch, and Monte Carlo notes" },
     { id: "ic-pex", label: "PEX", hint: "Generate parasitic extraction scripts and reports" },
+    { id: "ic-power", label: "Power", hint: "Estimate supply, dynamic, and routed-power risk" },
+    { id: "ic-bandwidth", label: "Bandwidth", hint: "Infer dominant-pole and RC-limited bandwidth" },
+    { id: "ic-area", label: "Area", hint: "Estimate and optimize layout/core area" },
     { id: "ic-complex", label: "Complex", hint: "Generate the full advanced IC analysis plan" },
     { id: "extract", label: "Extract", hint: "Prepare extraction/PEX artifacts" },
     { id: "lvs", label: "LVS", hint: "Prepare Netgen LVS artifacts" },
@@ -1118,6 +1128,9 @@ const analogMixedStageCommandRegistry = {
     { id: "import-ltspice", label: "LTspice", hint: "Import LTspice primitives and simulation shells" },
     { id: "import-texas", label: "TI", hint: "Import Texas Instruments editable device shells" },
     { id: "import-kicad", label: "KiCad", hint: "Import KiCad footprint-oriented PCB parts" },
+    { id: "project-libraries", label: "Project libs", hint: "View project-specific symbols and components" },
+    { id: "global-libraries", label: "Global libs", hint: "View reusable/global symbols and components" },
+    { id: "symbol-save-library", label: "Save symbol", hint: "Save selected symbol into a custom library" },
     { id: "symbols", label: "Symbols", hint: "Plan symbol library" },
     { id: "footprints", label: "Footprints", hint: "Plan footprint library" }
   ]
@@ -1282,6 +1295,7 @@ const analogMixedMenuSpecs = [
     sections: [
       { title: "Canvas", items: [["Zoom in", "zoom-in"], ["Zoom out", "zoom-out"], ["Fit canvas", "fit"], ["Toggle grid", "toggle-grid"], ["Toggle library", "toggle-library"], ["Toggle inspector", "toggle-inspector"]] },
       { title: "Windows", items: [["DRC / ERC window", "drc"], ["Netlist window", "open-netlist-window"], ["SPICE window", "open-spice-window"], ["3D package viewer", "stage:3d-view:layout"], ["Operation browser", "command-palette"]] },
+      { title: "IC analysis views", items: [["IC analysis cockpit", "open-ic-analysis-window"], ["Parasitics view", "ic-analysis-parasitics"], ["Power view", "ic-analysis-power"], ["Bandwidth view", "ic-analysis-bandwidth"], ["Area view", "ic-analysis-area"]] },
       { title: "Visibility", items: [["Show all IC layers", "op:show-all-layers"], ["Hide non-active layers", "op:hide-nonactive-layers"], ["Show device labels", "layout-labels"], ["Open layer visibility panel", "op:layer-visibility-panel"]] }
     ]
   },
@@ -1297,7 +1311,7 @@ const analogMixedMenuSpecs = [
     label: "Design",
     sections: [
       { title: "Stages", items: [["Schematic capture", "stage:schematic:netlist"], ["Symbol editor", "stage:symbol:libraries"], ["Footprint editor", "stage:footprint:libraries"], ["PCB layout", "stage:pcb:layout"], ["IC layout", "stage:ic-layout:layout"], ["Math workspace", "stage:math:math"], ["Library manager", "stage:libraries:libraries"]] },
-      { title: "Placement", items: [["Select", "tool:select"], ["Place selected library part", "place-selected-library"], ["Wire", "tool:wire"], ["Junction", "tool:junction"], ["Probe", "tool:probe"], ["No-connect", "tool:no-connect"], ["Label", "tool:label"], ["Net name", "tool:net"]] },
+      { title: "Placement", items: [["Select", "tool:select"], ["Place selected library part", "place-selected-library"], ["Wire", "tool:wire"], ["Junction", "tool:junction"], ["Probe", "tool:probe"], ["No-connect", "tool:no-connect"], ["Label", "tool:label"], ["Net name", "tool:net"], ["Differential pair", "pcb-diff-pairs"]] },
       { title: "Common parts", items: [["Resistor", "tool:resistor:resistor"], ["Capacitor", "tool:capacitor:capacitor"], ["Inductor", "tool:inductor:inductor"], ["MOSFET", "tool:semiconductor:nmos"], ["Diode", "tool:diode:diode"], ["Ground", "tool:ground:ground"]] }
     ]
   },
@@ -1306,14 +1320,14 @@ const analogMixedMenuSpecs = [
     sections: [
       { title: "Device sources", items: [["SKY130 devices", "import-sky130"], ["LTspice primitives", "import-ltspice"], ["Texas Instruments shells", "import-texas"], ["KiCad PCB parts", "import-kicad"], ["DigiKey web import", "import-digikey"], ["Mouser web import", "import-mouser"], ["Downloaded ECAD / models", "import-local-models"], ["Manual manufacturer part", "import-manufacturer"], ["Vendor API status", "vendor-status"]] },
       { title: "Model handling", items: [["Resolve schematic models", "op:resolve-schematic-models"], ["Resolve footprints", "op:resolve-footprints"], ["Resolve layout cells", "op:resolve-layout-cells"], ["Resolve 3D models", "op:resolve-3d-models"], ["Deduplicate symbols", "op:dedupe-symbols"]] },
-      { title: "Library views", items: [["Symbols", "symbols"], ["Footprints", "footprints"], ["Local component library", "local-library"], ["Component guide", "help-components"]] }
+      { title: "Library views", items: [["Symbols", "symbols"], ["Footprints", "footprints"], ["Local component library", "local-library"], ["Project libraries", "project-libraries"], ["Global libraries", "global-libraries"], ["Save selected symbol", "symbol-save-library"], ["Component guide", "help-components"]] }
     ]
   },
   {
     label: "Checks",
     sections: [
       { title: "Electrical", items: [["Run ERC", "erc"], ["Run DRC", "drc"], ["Analyze DRC + ERC", "backend-analyze"], ["Connectivity audit", "op:connectivity-audit"], ["Pin direction audit", "op:pin-direction-audit"]] },
-      { title: "IC signoff", items: [["LVS setup", "lvs"], ["Parasitic extraction", "ic-pex"], ["Noise deck", "ic-noise-run"], ["Power integrity", "ic-power"], ["Signoff checklist", "ic-signoff"], ["PDK status", "pdk-status"]] },
+      { title: "IC signoff", items: [["IC analysis cockpit", "open-ic-analysis-window"], ["LVS setup", "lvs"], ["Parasitic extraction", "ic-pex"], ["Power calculation", "ic-power"], ["Bandwidth inference", "ic-bandwidth"], ["Area optimizer", "ic-area"], ["Noise deck", "ic-noise-run"], ["Signoff checklist", "ic-signoff"], ["PDK status", "pdk-status"]] },
       { title: "Cleanup", items: [["Clean generated labels", "clean-floating-labels"], ["Find floating nets", "op:find-floating-nets"], ["Find duplicate references", "op:find-duplicate-references"], ["Find missing models", "op:find-missing-models"]] }
     ]
   },
@@ -1321,7 +1335,7 @@ const analogMixedMenuSpecs = [
     label: "Simulate",
     sections: [
       { title: "SPICE", items: [["Open SPICE cockpit", "stage:simulation:simulation"], ["Operating point", "spice-op"], ["DC sweep", "spice-dc"], ["AC analysis", "spice-ac"], ["Transient", "spice-tran"], ["Noise extraction", "ic-noise-run"], ["Monte Carlo / corners", "corners"], ["Complex IC analysis", "ic-complex"]] },
-      { title: "ADE", items: [["Corner setup", "ic-corners"], ["gm/Id sizing", "ic-gmid"], ["MOS sizing table", "ic-sizing"], ["Design intent", "ic-intent"], ["Generate PDK netlist", "ic-netlist"]] }
+      { title: "ADE", items: [["IC analysis cockpit", "open-ic-analysis-window"], ["Corner setup", "ic-corners"], ["gm/Id sizing", "ic-gmid"], ["MOS sizing table", "ic-sizing"], ["Power calculation", "ic-power"], ["Bandwidth inference", "ic-bandwidth"], ["Design intent", "ic-intent"], ["Generate PDK netlist", "ic-netlist"]] }
     ]
   },
   {
@@ -1329,7 +1343,7 @@ const analogMixedMenuSpecs = [
     sections: [
       { title: "IC tools", items: [["Layout select", "layout-tool:select"], ["Place selected device", "layout-tool:device"], ["Route active layer", "layout-tool:route"], ["Via/contact", "layout-tool:via"], ["Measure geometry", "layout-tool:measure"], ["Guard-ring planner", "layout-guard"], ["Common-centroid planner", "matching"]] },
       { title: "Layers", items: [["NWELL", "layout-nwell"], ["PWELL", "layout-pwell"], ["DIFF", "layout-diff"], ["TAP", "layout-tap"], ["POLY", "layout-poly"], ["LI1", "layout-li1"], ["M1", "layout-metal1"], ["M2", "layout-metal2"], ["M3", "layout-metal3"]] },
-      { title: "Board", items: [["Apply KiCad template", "apply-kicad-template"], ["Footprint assignment", "pcb-sync"], ["Route planner", "route-plan"], ["Board rules", "board-rules"], ["Gerber package", "gerber"], ["Board 3D view", "view-3d"]] }
+      { title: "Board", items: [["Apply KiCad template", "apply-kicad-template"], ["Footprint assignment", "pcb-sync"], ["Ratsnest", "pcb-ratsnest"], ["Net naming", "pcb-net-naming"], ["Differential pairs", "pcb-diff-pairs"], ["Track optimizer", "pcb-route-optimize"], ["Board rules", "board-rules"], ["BOM", "pcb-bom"], ["Gerber package", "gerber"], ["Board 3D view", "view-3d"]] }
     ]
   },
   {
@@ -3534,6 +3548,14 @@ function analogMixedDefaultState() {
         menu: "all",
         limit: 120
       },
+      icAnalysis: {
+        view: "overview",
+        showParasitics: true,
+        showPower: true,
+        showBandwidth: true,
+        showArea: true,
+        showRecommendations: true
+      },
       physical3d: {
         view: "isometric",
         showModels: true,
@@ -3587,6 +3609,8 @@ function analogMixedDefaultState() {
         matchingGroups: [],
         guardRings: [],
         measurements: [],
+        icAnalysisRuns: [],
+        areaOptimizationRuns: [],
         artifacts: [],
         lastBackendRun: null
       },
@@ -3596,7 +3620,7 @@ function analogMixedDefaultState() {
       checks: { kind: "drc", issues: [], updatedAt: "" },
       gerber: { outputs: [] },
       pdk: { libraries: [], modelFiles: [], processCorners: [] },
-      libraries: { componentImports: [], vendorSources: [] }
+      libraries: { componentImports: [], vendorSources: [], customSymbols: [], projectLibraries: [], globalLibraries: [] }
     }
   };
 }
@@ -3621,7 +3645,7 @@ function normalizeAnalogMixedWorkspace(project) {
   if (!analogMixedSuiteById(workspace.activeSuite).panels.includes(workspace.activePanel)) {
     workspace.activePanel = analogMixedSuiteById(workspace.activeSuite).panels[0] || "netlist";
   }
-  workspace.activeToolWindow = ["drc", "netlist", "spice", "operations", "physical3d"].includes(workspace.activeToolWindow) ? workspace.activeToolWindow : "";
+  workspace.activeToolWindow = ["drc", "netlist", "spice", "operations", "icAnalysis", "physical3d"].includes(workspace.activeToolWindow) ? workspace.activeToolWindow : "";
   workspace.operationPaletteFilter = String(workspace.operationPaletteFilter || workspace.toolWindows?.operations?.filter || "");
   workspace.toolHubOpen = workspace.toolHubOpen !== false;
   workspace.activeHubSuite = analogMixedSuites[workspace.activeHubSuite] ? workspace.activeHubSuite : workspace.activeSuite;
@@ -3843,6 +3867,11 @@ function normalizeAnalogMixedWorkspace(project) {
   workspace.toolWindows.operations.menu = String(workspace.toolWindows.operations.menu || "all");
   workspace.toolWindows.operations.limit = Math.max(30, Math.min(300, Number(workspace.toolWindows.operations.limit) || 120));
   workspace.operationPaletteFilter = workspace.toolWindows.operations.filter;
+  workspace.toolWindows.icAnalysis = { ...defaultToolWindows.icAnalysis, ...(workspace.toolWindows.icAnalysis || {}) };
+  workspace.toolWindows.icAnalysis.view = ["overview", "parasitics", "power", "bandwidth", "area", "recommendations"].includes(workspace.toolWindows.icAnalysis.view) ? workspace.toolWindows.icAnalysis.view : "overview";
+  ["showParasitics", "showPower", "showBandwidth", "showArea", "showRecommendations"].forEach((key) => {
+    workspace.toolWindows.icAnalysis[key] = workspace.toolWindows.icAnalysis[key] !== false;
+  });
   workspace.toolWindows.physical3d = { ...defaultToolWindows.physical3d, ...(workspace.toolWindows.physical3d || {}) };
   workspace.toolWindows.physical3d.view = ["isometric", "top", "side", "front", "exploded"].includes(workspace.toolWindows.physical3d.view) ? workspace.toolWindows.physical3d.view : "isometric";
   ["showModels", "showHeights", "showFootprints", "showClearance"].forEach((key) => {
@@ -3980,6 +4009,10 @@ function analogMixedNormalizePcbLayout(workspace = {}) {
   pcbData.rules = Array.isArray(pcbData.rules) ? pcbData.rules : [];
   pcbData.gerberJobs = Array.isArray(pcbData.gerberJobs) ? pcbData.gerberJobs : [];
   pcbData.fabricationOutputs = Array.isArray(pcbData.fabricationOutputs) ? pcbData.fabricationOutputs : [];
+  pcbData.bomRows = Array.isArray(pcbData.bomRows) ? pcbData.bomRows : [];
+  pcbData.ratsnest = Array.isArray(pcbData.ratsnest) ? pcbData.ratsnest : [];
+  pcbData.differentialPairs = Array.isArray(pcbData.differentialPairs) ? pcbData.differentialPairs : [];
+  pcbData.routeOptimizations = Array.isArray(pcbData.routeOptimizations) ? pcbData.routeOptimizations : [];
   workspace.stageData.pcb = pcbData;
   return pcbData;
 }
@@ -4266,6 +4299,182 @@ function analogMixedIcDesignReport(layoutData = {}, workspace = {}) {
   ].join("\n");
 }
 
+function analogMixedParseEngineeringNumber(value = "", fallback = 0) {
+  const raw = String(value || "").trim();
+  const match = raw.match(/[-+]?\d*\.?\d+(?:e[-+]?\d+)?\s*(meg|g|k|m|u|µ|n|p|f)?/i);
+  if (!match) return fallback;
+  const base = Number(match[0].replace(/[a-zµ]+/ig, ""));
+  if (!Number.isFinite(base)) return fallback;
+  const suffix = String(match[1] || "").toLowerCase();
+  const scale = suffix === "g" ? 1e9
+    : suffix === "meg" ? 1e6
+      : suffix === "k" ? 1e3
+        : suffix === "m" ? 1e-3
+          : suffix === "u" || suffix === "µ" ? 1e-6
+            : suffix === "n" ? 1e-9
+              : suffix === "p" ? 1e-12
+                : suffix === "f" ? 1e-15
+                  : 1;
+  return base * scale;
+}
+
+function analogMixedFormatMetric(value, unit = "", options = {}) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return "n/a";
+  const abs = Math.abs(number);
+  const digits = Number(options.digits ?? 3);
+  const prefixes = [
+    [1e9, "G"],
+    [1e6, "M"],
+    [1e3, "k"],
+    [1, ""],
+    [1e-3, "m"],
+    [1e-6, "u"],
+    [1e-9, "n"],
+    [1e-12, "p"],
+    [1e-15, "f"]
+  ];
+  const [scale, prefix] = prefixes.find(([candidate]) => abs >= candidate) || prefixes[prefixes.length - 1];
+  return `${(number / scale).toPrecision(digits).replace(/\.0+($|e)/, "$1")} ${prefix}${unit}`.trim();
+}
+
+function analogMixedRouteLength(route = {}) {
+  const points = Array.isArray(route.points) ? route.points : [];
+  return points.slice(1).reduce((sum, point, index) => {
+    const prev = points[index] || {};
+    return sum + Math.abs((Number(point.x) || 0) - (Number(prev.x) || 0)) + Math.abs((Number(point.y) || 0) - (Number(prev.y) || 0));
+  }, 0);
+}
+
+function analogMixedIcAnalysisMetrics(workspace = {}) {
+  const layoutData = analogMixedNormalizeIcLayout(workspace);
+  const objects = layoutData.layoutObjects || [];
+  const routes = layoutData.layoutRoutes || [];
+  const components = workspace.components || [];
+  const routeRows = routes.map((route) => {
+    const lengthPx = analogMixedRouteLength(route);
+    const lengthUm = lengthPx / 10;
+    const layer = analogMixedLayoutLayerById(route.layer);
+    const resistancePerUm = route.layer === "metal3" ? 0.018 : route.layer === "metal2" ? 0.026 : route.layer === "li1" ? 0.075 : 0.045;
+    const capacitanceFfPerUm = route.layer === "metal3" ? 0.12 : route.layer === "metal2" ? 0.16 : route.layer === "li1" ? 0.24 : 0.19;
+    return {
+      id: route.id,
+      name: route.name || route.id,
+      layer: layer.label,
+      lengthUm,
+      resistanceOhm: lengthUm * resistancePerUm,
+      capacitanceFf: lengthUm * capacitanceFfPerUm,
+      points: Array.isArray(route.points) ? route.points.length : 0
+    };
+  });
+  const deviceRows = objects.map((object) => {
+    const areaUm2 = Math.max(1, (Number(object.width) || 0) * (Number(object.height) || 0) / 100);
+    const params = object.parameters || {};
+    const current = analogMixedParseEngineeringNumber(
+      params.id || params.current || params.biasCurrent || params.currentTarget || "",
+      /mos|transistor|mirror|differential/i.test(object.deviceRole || "") ? 100e-6 : 0
+    );
+    const cap = analogMixedParseEngineeringNumber(params.c || params.capacitance || object.value || "", /capacitor/i.test(object.deviceRole || object.type || "") ? 1e-12 : 0);
+    const resistance = analogMixedParseEngineeringNumber(params.r || params.resistance || object.value || "", /resistor/i.test(object.deviceRole || object.type || "") ? 1000 : 0);
+    return {
+      id: object.id,
+      reference: object.label || object.id,
+      role: object.deviceRole || object.layoutKind || "layout cell",
+      model: object.modelName || object.layoutCell || object.type || "",
+      areaUm2,
+      currentA: current,
+      capacitanceF: cap,
+      resistanceOhm: resistance,
+      layerStack: object.layerStack || []
+    };
+  });
+  const supplyComponent = components.find((component) => /vdd|vcc|supply|voltage/i.test([component.type, component.label, component.value].join(" ")));
+  const supplyVoltage = analogMixedParseEngineeringNumber(supplyComponent?.value || workspace.parameters?.[workspace.focus]?.supply || "1.8", 1.8);
+  const routeCapF = routeRows.reduce((sum, row) => sum + row.capacitanceFf * 1e-15, 0);
+  const deviceCapF = deviceRows.reduce((sum, row) => sum + row.capacitanceF, 0);
+  const totalCapF = routeCapF + deviceCapF;
+  const routeResistance = routeRows.reduce((sum, row) => sum + row.resistanceOhm, 0);
+  const resistorResistance = deviceRows.reduce((sum, row) => sum + row.resistanceOhm, 0);
+  const effectiveResistance = Math.max(1, routeResistance + (resistorResistance || 1000));
+  const staticCurrentA = deviceRows.reduce((sum, row) => sum + row.currentA, 0) || components.length * 25e-6;
+  const frequency = analogMixedParseEngineeringNumber(workspace.parameters?.[workspace.focus]?.frequency || workspace.parameters?.[workspace.focus]?.switchingFrequency || "1Meg", 1e6);
+  const staticPowerW = supplyVoltage * staticCurrentA;
+  const dynamicPowerW = totalCapF * supplyVoltage * supplyVoltage * frequency;
+  const bandwidthHz = totalCapF > 0 ? 1 / (2 * Math.PI * effectiveResistance * totalCapF) : 0;
+  const areaUm2 = deviceRows.reduce((sum, row) => sum + row.areaUm2, 0);
+  const boundingBox = objects.length
+    ? {
+        x1: Math.min(...objects.map((object) => Number(object.x) || 0)),
+        y1: Math.min(...objects.map((object) => Number(object.y) || 0)),
+        x2: Math.max(...objects.map((object) => (Number(object.x) || 0) + (Number(object.width) || 0))),
+        y2: Math.max(...objects.map((object) => (Number(object.y) || 0) + (Number(object.height) || 0)))
+      }
+    : { x1: 0, y1: 0, x2: 0, y2: 0 };
+  const coreAreaUm2 = Math.max(0, (boundingBox.x2 - boundingBox.x1) * (boundingBox.y2 - boundingBox.y1) / 100);
+  const utilization = coreAreaUm2 > 0 ? areaUm2 / coreAreaUm2 : 0;
+  const recommendations = [
+    routeRows.length && routeRows.some((row) => row.lengthUm > 80) ? "Shorten long analog nets or raise them to a wider metal layer before extracted simulation." : "",
+    totalCapF > 0 && bandwidthHz > 0 ? `Dominant RC pole is around ${analogMixedFormatMetric(bandwidthHz, "Hz")}; compare this with the intended gain-bandwidth or loop bandwidth.` : "",
+    utilization < 0.35 && objects.length > 2 ? "Large open layout area is available; compact matched devices before routing sensitive nets." : "",
+    layoutData.constraintGroups?.length ? "Keep matching groups symmetric and route their inputs with equal layer, length, and environment." : "Add matching constraints for differential pairs, current mirrors, resistor arrays, and capacitor arrays.",
+    layoutData.guardRings?.length ? "Guard-ring regions are present; confirm taps connect to the intended quiet reference." : "Add guard rings around sensitive analog devices and substrate-noise entry points."
+  ].filter(Boolean);
+  return {
+    generatedAt: new Date().toISOString(),
+    pdk: layoutData.pdk || workspace.activePdk || "generic",
+    routeRows,
+    deviceRows,
+    totals: {
+      routeLengthUm: routeRows.reduce((sum, row) => sum + row.lengthUm, 0),
+      routeResistanceOhm: routeResistance,
+      routeCapacitanceF: routeCapF,
+      deviceCapacitanceF: deviceCapF,
+      totalCapacitanceF: totalCapF,
+      effectiveResistanceOhm: effectiveResistance,
+      supplyVoltage,
+      staticCurrentA,
+      staticPowerW,
+      dynamicPowerW,
+      bandwidthHz,
+      deviceAreaUm2: areaUm2,
+      coreAreaUm2,
+      utilization
+    },
+    recommendations
+  };
+}
+
+function analogMixedIcAnalysisReport(metrics = {}, workspace = {}) {
+  const totals = metrics.totals || {};
+  return [
+    "IC analysis cockpit report",
+    "",
+    `PDK: ${metrics.pdk || workspace.activePdk || "generic"}`,
+    `Devices: ${(metrics.deviceRows || []).length}`,
+    `Routes: ${(metrics.routeRows || []).length}`,
+    "",
+    "Parasitics:",
+    `- Total route length: ${analogMixedFormatMetric(totals.routeLengthUm, "um")}`,
+    `- Estimated route R: ${analogMixedFormatMetric(totals.routeResistanceOhm, "Ohm")}`,
+    `- Estimated route C: ${analogMixedFormatMetric(totals.routeCapacitanceF, "F")}`,
+    "",
+    "Power:",
+    `- Supply: ${analogMixedFormatMetric(totals.supplyVoltage, "V")}`,
+    `- Static current: ${analogMixedFormatMetric(totals.staticCurrentA, "A")}`,
+    `- Static power: ${analogMixedFormatMetric(totals.staticPowerW, "W")}`,
+    `- Dynamic power estimate: ${analogMixedFormatMetric(totals.dynamicPowerW, "W")}`,
+    "",
+    "Bandwidth and area:",
+    `- Dominant RC bandwidth: ${analogMixedFormatMetric(totals.bandwidthHz, "Hz")}`,
+    `- Device area: ${analogMixedFormatMetric(totals.deviceAreaUm2, "um^2")}`,
+    `- Core box area: ${analogMixedFormatMetric(totals.coreAreaUm2, "um^2")}`,
+    `- Area utilization: ${Math.round((Number(totals.utilization) || 0) * 100)}%`,
+    "",
+    "Recommendations:",
+    ...((metrics.recommendations || []).length ? metrics.recommendations.map((line) => `- ${line}`) : ["- Place devices, wire nets, and sync layout to populate recommendations."])
+  ].join("\n");
+}
+
 function analogMixedLayoutObjectFromComponent(component = {}, index = 0) {
   const libraryItem = analogMixedLibraryItem(component.type);
   const layoutKind = analogMixedLayoutKindForComponent(component, libraryItem);
@@ -4472,6 +4681,8 @@ function analogMixedNormalizeIcLayout(workspace = {}) {
   layoutData.powerIntegrityRuns = Array.isArray(layoutData.powerIntegrityRuns) ? layoutData.powerIntegrityRuns : [];
   layoutData.matchingGroups = Array.isArray(layoutData.matchingGroups) ? layoutData.matchingGroups : [];
   layoutData.guardRings = Array.isArray(layoutData.guardRings) ? layoutData.guardRings : [];
+  layoutData.icAnalysisRuns = Array.isArray(layoutData.icAnalysisRuns) ? layoutData.icAnalysisRuns : [];
+  layoutData.areaOptimizationRuns = Array.isArray(layoutData.areaOptimizationRuns) ? layoutData.areaOptimizationRuns : [];
   layoutData.measurements = Array.isArray(layoutData.measurements) ? layoutData.measurements.map((item, index) => ({
     id: String(item.id || `measure-${index + 1}`),
     label: String(item.label || `M${index + 1}`),
@@ -7003,7 +7214,8 @@ async function analogMixedRunIcLayoutBackend(action = "layout-sync", options = {
       files: artifacts.files || {},
       artifacts: Array.isArray(artifacts.artifacts) ? artifacts.artifacts : [],
       toolStatus: artifacts.toolStatus || artifacts.tools || {},
-      toolRuns: artifacts.toolRuns || []
+      toolRuns: artifacts.toolRuns || [],
+      icAnalysis: artifacts.icAnalysis || null
     };
     if (artifacts.designIntent) layoutData.designIntent = artifacts.designIntent;
     if (Array.isArray(artifacts.sizingRows)) layoutData.sizingTable = artifacts.sizingRows;
@@ -7015,6 +7227,9 @@ async function analogMixedRunIcLayoutBackend(action = "layout-sync", options = {
     if (Array.isArray(artifacts.parasiticRuns)) layoutData.parasiticRuns = artifacts.parasiticRuns;
     if (Array.isArray(artifacts.noiseRuns)) layoutData.noiseRuns = artifacts.noiseRuns;
     if (Array.isArray(artifacts.complexAnalysisRuns)) layoutData.complexAnalysisRuns = artifacts.complexAnalysisRuns;
+    if (Array.isArray(artifacts.icAnalysisRuns)) layoutData.icAnalysisRuns = artifacts.icAnalysisRuns;
+    if (Array.isArray(artifacts.powerIntegrityRuns)) layoutData.powerIntegrityRuns = artifacts.powerIntegrityRuns;
+    if (Array.isArray(artifacts.areaOptimizationRuns)) layoutData.areaOptimizationRuns = artifacts.areaOptimizationRuns;
     if (Array.isArray(artifacts.extractionRuns)) layoutData.extractionRuns = artifacts.extractionRuns;
     if (Array.isArray(artifacts.lvsRuns)) layoutData.lvsRuns = artifacts.lvsRuns;
     if (Array.isArray(artifacts.drcMarkers)) layoutData.drcMarkers = artifacts.drcMarkers;
@@ -7038,6 +7253,9 @@ async function analogMixedRunIcLayoutBackend(action = "layout-sync", options = {
       `- PEX: ${artifacts.parasiticRuns?.[0]?.status || "not run"}`,
       `- Noise: ${artifacts.noiseRuns?.[0]?.status || "not run"}`,
       `- Complex: ${artifacts.complexAnalysisRuns?.[0]?.status || "not run"}`,
+      `- IC analysis: ${artifacts.icAnalysisRuns?.[0]?.status || "not run"}`,
+      `- Power: ${artifacts.powerIntegrityRuns?.[0]?.status || "not run"}`,
+      `- Area: ${artifacts.areaOptimizationRuns?.[0]?.status || "not run"}`,
       "",
       "Tool runs:",
       ...(artifacts.toolRuns || []).length
@@ -7140,6 +7358,147 @@ async function analogMixedRunPcbBackend(action = "pcb-sync", options = {}) {
   }
 }
 
+function analogMixedBuildPcbBomRows(workspace = {}, pcbData = analogMixedNormalizePcbLayout(workspace)) {
+  return (workspace.components || []).map((component, index) => {
+    const item = analogMixedLibraryItem(component.type) || {};
+    const footprint = pcbData.footprints.find((entry) => entry.sourceComponentId === component.id) || analogMixedPcbFootprintFromComponent(component, index);
+    return {
+      id: `bom-${component.id || index + 1}`,
+      ref: component.label || footprint.ref || `${item.spicePrefix || "X"}${index + 1}`,
+      value: component.value || item.value || "",
+      manufacturer: component.manufacturer || item.manufacturer || component.supplier || item.source || "",
+      mpn: component.mpn || component.partNumber || item.partNumber || item.modelName || component.modelName || "",
+      footprint: footprint.footprint || component.footprint || item.footprint || "Package:Generic",
+      packageName: footprint.packageName || component.packageName || item.packageName || "",
+      source: component.source || item.source || item.vendor || "project",
+      quantity: 1
+    };
+  });
+}
+
+function analogMixedBuildPcbRatsnest(workspace = {}, pcbData = analogMixedNormalizePcbLayout(workspace)) {
+  const footprintBySource = new Map((pcbData.footprints || []).map((footprint) => [footprint.sourceComponentId, footprint]));
+  return (workspace.wires || []).map((wire, index) => {
+    const startFootprint = wire.startRef?.componentId ? footprintBySource.get(wire.startRef.componentId) : null;
+    const endFootprint = wire.endRef?.componentId ? footprintBySource.get(wire.endRef.componentId) : null;
+    return {
+      id: `rats-${wire.id || index + 1}`,
+      net: wire.name || `net_${index + 1}`,
+      from: startFootprint?.ref || wire.startRef?.pin || "loose endpoint",
+      to: endFootprint?.ref || wire.endRef?.pin || "loose endpoint",
+      status: startFootprint && endFootprint ? "connected footprint pair" : "needs endpoint review",
+      routeSegments: Array.isArray(wire.points) ? Math.max(0, wire.points.length - 1) : 0
+    };
+  });
+}
+
+function analogMixedBuildPcbDifferentialPairs(workspace = {}, pcbData = analogMixedNormalizePcbLayout(workspace)) {
+  const routes = pcbData.boardRoutes || [];
+  const buckets = new Map();
+  routes.forEach((route) => {
+    const name = String(route.name || "").trim();
+    const match = name.match(/^(.+?)(?:[_-]?(p|n|plus|minus)|[+-])$/i);
+    if (!match) return;
+    const base = match[1].replace(/[_-]+$/, "") || name;
+    const polarity = /^(p|plus|\+)$/i.test(match[2] || name.slice(-1)) ? "p" : "n";
+    const bucket = buckets.get(base) || {};
+    bucket[polarity] = route;
+    buckets.set(base, bucket);
+  });
+  return Array.from(buckets.entries())
+    .filter(([, pair]) => pair.p && pair.n)
+    .map(([base, pair], index) => ({
+      id: `diff-${index + 1}-${base.replace(/[^a-z0-9_-]+/ig, "_")}`,
+      name: base,
+      positive: pair.p.name,
+      negative: pair.n.name,
+      layer: pair.p.layer === pair.n.layer ? pair.p.layer : "mixed layers",
+      lengthDeltaUm: Math.abs(analogMixedRouteLength(pair.p) - analogMixedRouteLength(pair.n)) / 10,
+      rule: "route together, same layer stack, controlled spacing, matched length"
+    }));
+}
+
+function analogMixedPcbUtilityReport(title = "PCB utility", rows = [], columns = []) {
+  return [
+    title,
+    "",
+    rows.length ? columns.join(" | ") : "No rows were generated.",
+    rows.length ? columns.map(() => "---").join(" | ") : "",
+    ...rows.map((row) => columns.map((column) => String(row[column] ?? "")).join(" | "))
+  ].filter(Boolean).join("\n");
+}
+
+function analogMixedOpenLibraryView(scope = "project") {
+  const project = activeAnalogMixedProject();
+  if (!project) return;
+  const workspace = normalizeAnalogMixedWorkspace(project);
+  const libraryData = workspace.stageData.libraries || {};
+  const imports = Array.isArray(libraryData.componentImports) ? libraryData.componentImports : [];
+  const customSymbols = Array.isArray(libraryData.customSymbols) ? libraryData.customSymbols : [];
+  const projectLibraries = Array.isArray(libraryData.projectLibraries) ? libraryData.projectLibraries : [];
+  const globalLibraries = Array.isArray(libraryData.globalLibraries) ? libraryData.globalLibraries : [];
+  const title = scope === "global" ? "Global reusable libraries" : scope === "custom" ? "Project custom symbols" : "Project libraries";
+  const rows = scope === "global" ? globalLibraries : scope === "custom" ? customSymbols : [...projectLibraries, ...imports, ...customSymbols];
+  workspace.libraryReport = [
+    title,
+    "",
+    ...(rows.length ? rows.map((item, index) => `${index + 1}. ${item.label || item.name || item.id || "library item"} - ${item.source || item.scope || item.kind || "project"}`) : ["No library records are stored in this view yet."]),
+    "",
+    "Use supplier import, downloaded ECAD/model import, PDK/Xschem import, or Save selected symbol to populate reusable records."
+  ].join("\n");
+  workspace.activeStage = "libraries";
+  workspace.activePanel = "libraries";
+  markDraftNeedsSave();
+  scheduleAutosave();
+  renderAnalogMixedWorkspace();
+  analogMixedSetStatus(`${title} opened.`);
+}
+
+function analogMixedSaveSelectedSymbolToLibrary() {
+  const project = activeAnalogMixedProject();
+  if (!project) return;
+  const workspace = normalizeAnalogMixedWorkspace(project);
+  const libraryData = workspace.stageData.libraries || {};
+  libraryData.customSymbols = Array.isArray(libraryData.customSymbols) ? libraryData.customSymbols : [];
+  libraryData.projectLibraries = Array.isArray(libraryData.projectLibraries) ? libraryData.projectLibraries : [];
+  const selected = workspace.components.find((component) => component.id === workspace.selectedComponentId);
+  const selectedItem = selected ? analogMixedLibraryItem(selected.type) : analogMixedLibraryItem(workspace.selectedLibraryId);
+  const record = {
+    id: `custom-symbol-${Date.now()}`,
+    label: selected?.label || selectedItem.label || "Custom symbol",
+    source: "project custom library",
+    kind: selectedItem.symbolKind || selected?.type || "symbol",
+    value: selected?.value || selectedItem.value || "",
+    modelName: selected?.modelName || selectedItem.modelName || "",
+    footprint: selected?.footprint || selectedItem.footprint || "",
+    packageName: selected?.packageName || selectedItem.packageName || "",
+    parameters: clone(selected?.parameters || selectedItem.parameters || {}),
+    pins: clone(selectedItem.pins || []),
+    savedAt: new Date().toLocaleString()
+  };
+  libraryData.customSymbols.unshift(record);
+  libraryData.customSymbols = libraryData.customSymbols.slice(0, 120);
+  libraryData.projectLibraries.unshift({ id: record.id, label: record.label, source: record.source, savedAt: record.savedAt });
+  libraryData.projectLibraries = libraryData.projectLibraries.slice(0, 80);
+  workspace.stageData.libraries = libraryData;
+  workspace.libraryReport = [
+    `Saved ${record.label} to the project custom library.`,
+    "",
+    `Kind: ${record.kind}`,
+    `Model: ${record.modelName || "not set"}`,
+    `Footprint: ${record.footprint || "not set"}`,
+    `Pins: ${record.pins.length}`,
+    "",
+    workspace.libraryReport || ""
+  ].filter(Boolean).join("\n");
+  workspace.activeStage = "libraries";
+  workspace.activePanel = "libraries";
+  markDraftNeedsSave();
+  scheduleAutosave();
+  renderAnalogMixedWorkspace();
+  analogMixedSetStatus("Selected symbol saved to the project library.");
+}
+
 async function analogMixedRecordLayoutAction(action = "") {
   const project = activeAnalogMixedProject();
   if (!project) return;
@@ -7187,14 +7546,25 @@ async function analogMixedRecordLayoutAction(action = "") {
     layoutData.netlistRuns = layoutData.netlistRuns.slice(0, 16);
     workspace.icLayoutPlan = [`PDK-aware SPICE netlist generation requested at ${now}.`, workspace.icLayoutPlan || workspace.layoutPlan || ""].filter(Boolean).join("\n\n");
     workspace.activeToolWindow = "netlist";
+  } else if (action === "ic-analysis") {
+    const metrics = analogMixedIcAnalysisMetrics(workspace);
+    layoutData.icAnalysisRuns.unshift({ id: `ic-analysis-${Date.now()}`, createdAt: now, status: "estimated", pdk: layoutData.pdk, metrics });
+    layoutData.icAnalysisRuns = layoutData.icAnalysisRuns.slice(0, 16);
+    workspace.toolWindows.icAnalysis.view = "overview";
+    workspace.activeToolWindow = "icAnalysis";
+    workspace.icLayoutPlan = [analogMixedIcAnalysisReport(metrics, workspace), workspace.icLayoutPlan || workspace.layoutPlan || ""].filter(Boolean).join("\n\n");
   } else if (action === "ic-pex") {
+    const metrics = analogMixedIcAnalysisMetrics(workspace);
     const run = { id: `pex-${Date.now()}`, createdAt: now, status: "planned", pdk: layoutData.pdk };
     layoutData.parasiticRuns.unshift(run);
     layoutData.extractionRuns.unshift({ ...run, id: `extract-${Date.now()}` });
+    layoutData.icAnalysisRuns.unshift({ id: `ic-analysis-${Date.now()}`, createdAt: now, status: "pex-estimated", pdk: layoutData.pdk, metrics });
     layoutData.parasiticRuns = layoutData.parasiticRuns.slice(0, 16);
     layoutData.extractionRuns = layoutData.extractionRuns.slice(0, 16);
+    layoutData.icAnalysisRuns = layoutData.icAnalysisRuns.slice(0, 16);
     workspace.icLayoutPlan = [`Parasitic extraction and PEX netlist generation requested at ${now}.`, workspace.icLayoutPlan || workspace.layoutPlan || ""].filter(Boolean).join("\n\n");
-    workspace.activeToolWindow = "netlist";
+    workspace.toolWindows.icAnalysis.view = "parasitics";
+    workspace.activeToolWindow = "icAnalysis";
   } else if (action === "ic-noise-run") {
     layoutData.noiseRuns.unshift({ id: `noise-${Date.now()}`, createdAt: now, status: "planned", pdk: layoutData.pdk });
     layoutData.noiseRuns = layoutData.noiseRuns.slice(0, 16);
@@ -7205,9 +7575,30 @@ async function analogMixedRecordLayoutAction(action = "") {
     layoutData.complexAnalysisRuns = layoutData.complexAnalysisRuns.slice(0, 16);
     workspace.icLayoutPlan = [`Complex IC analysis package requested at ${now}: OP, DC, AC/noise, transient, PVT, Monte Carlo intent, LVS, DRC, and PEX handoff.`, workspace.icLayoutPlan || workspace.layoutPlan || ""].filter(Boolean).join("\n\n");
   } else if (action === "ic-power") {
-    layoutData.powerIntegrityRuns.unshift({ id: `power-${Date.now()}`, createdAt: now, status: "planned", pdk: layoutData.pdk, focus: "power-grid integrity, electromigration, current density, and IR-drop planning" });
+    const metrics = analogMixedIcAnalysisMetrics(workspace);
+    layoutData.powerIntegrityRuns.unshift({ id: `power-${Date.now()}`, createdAt: now, status: "estimated", pdk: layoutData.pdk, focus: "power-grid integrity, electromigration, current density, and IR-drop planning", metrics });
     layoutData.powerIntegrityRuns = layoutData.powerIntegrityRuns.slice(0, 16);
-    workspace.icLayoutPlan = [`Voltus-XFi-style power integrity lane requested at ${now}: plan supply rails, taps, current density, IR drop, EM margin, and substrate return paths.`, workspace.icLayoutPlan || workspace.layoutPlan || ""].filter(Boolean).join("\n\n");
+    layoutData.icAnalysisRuns.unshift({ id: `ic-analysis-${Date.now()}`, createdAt: now, status: "power-estimated", pdk: layoutData.pdk, metrics });
+    layoutData.icAnalysisRuns = layoutData.icAnalysisRuns.slice(0, 16);
+    workspace.toolWindows.icAnalysis.view = "power";
+    workspace.activeToolWindow = "icAnalysis";
+    workspace.icLayoutPlan = [`Power calculation refreshed at ${now}. Static power ${analogMixedFormatMetric(metrics.totals.staticPowerW, "W")}; dynamic power ${analogMixedFormatMetric(metrics.totals.dynamicPowerW, "W")}.`, workspace.icLayoutPlan || workspace.layoutPlan || ""].filter(Boolean).join("\n\n");
+  } else if (action === "ic-bandwidth") {
+    const metrics = analogMixedIcAnalysisMetrics(workspace);
+    layoutData.icAnalysisRuns.unshift({ id: `ic-analysis-${Date.now()}`, createdAt: now, status: "bandwidth-estimated", pdk: layoutData.pdk, metrics });
+    layoutData.icAnalysisRuns = layoutData.icAnalysisRuns.slice(0, 16);
+    workspace.toolWindows.icAnalysis.view = "bandwidth";
+    workspace.activeToolWindow = "icAnalysis";
+    workspace.icLayoutPlan = [`Bandwidth inference refreshed at ${now}. Estimated dominant RC bandwidth: ${analogMixedFormatMetric(metrics.totals.bandwidthHz, "Hz")}.`, workspace.icLayoutPlan || workspace.layoutPlan || ""].filter(Boolean).join("\n\n");
+  } else if (action === "ic-area") {
+    const metrics = analogMixedIcAnalysisMetrics(workspace);
+    layoutData.areaOptimizationRuns.unshift({ id: `area-${Date.now()}`, createdAt: now, status: "estimated", pdk: layoutData.pdk, metrics });
+    layoutData.areaOptimizationRuns = layoutData.areaOptimizationRuns.slice(0, 16);
+    layoutData.icAnalysisRuns.unshift({ id: `ic-analysis-${Date.now()}`, createdAt: now, status: "area-estimated", pdk: layoutData.pdk, metrics });
+    layoutData.icAnalysisRuns = layoutData.icAnalysisRuns.slice(0, 16);
+    workspace.toolWindows.icAnalysis.view = "area";
+    workspace.activeToolWindow = "icAnalysis";
+    workspace.icLayoutPlan = [`Area optimizer refreshed at ${now}. Device area ${analogMixedFormatMetric(metrics.totals.deviceAreaUm2, "um^2")}; utilization ${Math.round((Number(metrics.totals.utilization) || 0) * 100)}%.`, workspace.icLayoutPlan || workspace.layoutPlan || ""].filter(Boolean).join("\n\n");
   } else if (action === "lvs") {
     layoutData.lvsRuns.unshift({ id: `lvs-${Date.now()}`, createdAt: now, status: "planned", schematicDevices: workspace.components.length, layoutObjects: layoutData.layoutObjects.length });
     workspace.icLayoutPlan = [`LVS comparison planned at ${now}. Schematic devices: ${workspace.components.length}; layout objects: ${layoutData.layoutObjects.length}.`, workspace.icLayoutPlan || workspace.layoutPlan || ""].filter(Boolean).join("\n\n");
@@ -7260,7 +7651,7 @@ async function analogMixedRecordLayoutAction(action = "") {
   scheduleAutosave();
   renderAnalogMixedWorkspace();
   analogMixedSetStatus(`IC layout action completed: ${action}.`);
-  if (["layout-sync", "layout-export", "klayout", "extract", "lvs", "drc", "ic-intent", "ic-sizing", "ic-gmid", "ic-corners", "ic-noise", "ic-noise-run", "ic-offset", "ic-pex", "ic-netlist", "ic-complex", "ic-power", "ic-signoff"].includes(action)) {
+  if (["layout-sync", "layout-export", "klayout", "extract", "lvs", "drc", "ic-intent", "ic-sizing", "ic-gmid", "ic-corners", "ic-noise", "ic-noise-run", "ic-offset", "ic-pex", "ic-netlist", "ic-analysis", "ic-complex", "ic-power", "ic-bandwidth", "ic-area", "ic-signoff"].includes(action)) {
     await analogMixedRunIcLayoutBackend(action, { silent: true });
     renderAnalogMixedWorkspace();
   }
@@ -7276,6 +7667,55 @@ async function analogMixedRecordPcbAction(action = "") {
     pcbData.footprints = workspace.components.map((component, index) => analogMixedPcbFootprintFromComponent(component, index));
     pcbData.boardRoutes = analogMixedPcbRoutesFromWires(workspace, pcbData.footprints);
     workspace.pcbPlan = [`PCB resynchronized from ${workspace.components.length} schematic component${workspace.components.length === 1 ? "" : "s"} and ${workspace.wires.length} schematic net${workspace.wires.length === 1 ? "" : "s"} at ${now}.`, workspace.pcbPlan || ""].filter(Boolean).join("\n\n");
+  } else if (action === "pcb-bom") {
+    pcbData.bomRows = analogMixedBuildPcbBomRows(workspace, pcbData);
+    workspace.gerberReport = analogMixedPcbUtilityReport("PCB bill of materials", pcbData.bomRows, ["ref", "value", "manufacturer", "mpn", "footprint", "packageName", "source"]);
+    workspace.activePanel = "gerber";
+  } else if (action === "pcb-ratsnest") {
+    pcbData.ratsnest = analogMixedBuildPcbRatsnest(workspace, pcbData);
+    workspace.pcbPlan = [
+      `PCB ratsnest refreshed at ${now}.`,
+      "",
+      analogMixedPcbUtilityReport("Ratsnest connectivity", pcbData.ratsnest, ["net", "from", "to", "status", "routeSegments"]),
+      "",
+      workspace.pcbPlan || ""
+    ].filter(Boolean).join("\n");
+  } else if (action === "pcb-net-naming") {
+    workspace.wires = workspace.wires.map((wire, index) => ({
+      ...wire,
+      name: String(wire.name || "").trim() || `net_${index + 1}`
+    }));
+    pcbData.boardRoutes = analogMixedPcbRoutesFromWires(workspace, pcbData.footprints);
+    workspace.pcbPlan = [`PCB net names normalized at ${now}. ${workspace.wires.length} schematic net${workspace.wires.length === 1 ? "" : "s"} now have stable names.`, workspace.pcbPlan || ""].filter(Boolean).join("\n\n");
+  } else if (action === "pcb-diff-pairs") {
+    if (!pcbData.boardRoutes.length) pcbData.boardRoutes = analogMixedPcbRoutesFromWires(workspace, pcbData.footprints);
+    pcbData.differentialPairs = analogMixedBuildPcbDifferentialPairs(workspace, pcbData);
+    workspace.pcbPlan = [
+      `Differential-pair scan completed at ${now}.`,
+      "",
+      ...(pcbData.differentialPairs.length ? pcbData.differentialPairs.map((pair) => `${pair.name}: ${pair.positive} / ${pair.negative}; length delta ${analogMixedFormatMetric(pair.lengthDeltaUm, "um")}; ${pair.rule}`) : ["No _P/_N, plus/minus, or +/- route pair names were detected."]),
+      "",
+      workspace.pcbPlan || ""
+    ].filter(Boolean).join("\n");
+  } else if (action === "pcb-route-optimize") {
+    if (!pcbData.boardRoutes.length) pcbData.boardRoutes = analogMixedPcbRoutesFromWires(workspace, pcbData.footprints);
+    const optimization = {
+      id: `route-opt-${Date.now()}`,
+      createdAt: now,
+      highCurrentNets: pcbData.boardRoutes.filter((route) => /vin|vout|vdd|vcc|gnd|sw|power/i.test(route.name || "")).map((route) => route.name),
+      sensitiveNets: pcbData.boardRoutes.filter((route) => /fb|sense|ref|clk|xtal|in[+-]?|out/i.test(route.name || "")).map((route) => route.name),
+      recommendation: "Widen high-current nets, keep switching loops short, route differential nets as pairs, and separate sensitive analog routes from power/switching copper."
+    };
+    pcbData.routeOptimizations.unshift(optimization);
+    pcbData.routeOptimizations = pcbData.routeOptimizations.slice(0, 12);
+    workspace.pcbPlan = [
+      `PCB route optimizer refreshed at ${now}.`,
+      `High-current nets: ${optimization.highCurrentNets.join(", ") || "none detected"}`,
+      `Sensitive nets: ${optimization.sensitiveNets.join(", ") || "none detected"}`,
+      optimization.recommendation,
+      "",
+      workspace.pcbPlan || ""
+    ].filter(Boolean).join("\n");
   } else if (action === "board-rules") {
     pcbData.rules = [
       `PCB rules reviewed at ${now}`,
@@ -7292,11 +7732,18 @@ async function analogMixedRecordPcbAction(action = "") {
     pcbData.gerberJobs.unshift({ id: `gerber-${Date.now()}`, createdAt: now, status: "planned", layers: analogMixedPcbLayers.map((layer) => layer.id) });
     pcbData.gerberJobs = pcbData.gerberJobs.slice(0, 12);
     workspace.pcbPlan = [`PCB Gerber job planned at ${now}.`, workspace.pcbPlan || ""].filter(Boolean).join("\n\n");
+  } else if (action === "footprint-rules") {
+    workspace.pcbPlan = [
+      `Footprint rule review prepared at ${now}.`,
+      "Check courtyard clearance, pad-to-pin mapping, solder mask expansion, paste reduction, silkscreen overlap, 3D package height, and assembly orientation before board export.",
+      "",
+      workspace.pcbPlan || ""
+    ].filter(Boolean).join("\n");
   }
   workspace.stageData.pcb = pcbData;
   analogMixedSetSuite(workspace, "pcb", { preferredStage: "pcb" });
   workspace.activeStage = "pcb";
-  workspace.activePanel = "layout";
+  workspace.activePanel = ["pcb-bom", "gerber"].includes(action) ? "gerber" : "layout";
   markDraftNeedsSave();
   scheduleAutosave();
   renderAnalogMixedWorkspace();
@@ -7445,6 +7892,24 @@ function analogMixedHandleStageCommand(action = "") {
     analogMixedSetStatus("SPICE simulation window opened.");
     return;
   }
+  if (action === "open-ic-analysis-window" || String(action).startsWith("ic-analysis-")) {
+    if (!workspace) return;
+    const view = action === "ic-analysis-parasitics" ? "parasitics"
+      : action === "ic-analysis-power" ? "power"
+        : action === "ic-analysis-bandwidth" ? "bandwidth"
+          : action === "ic-analysis-area" ? "area"
+            : "overview";
+    analogMixedSetSuite(workspace, "ic", { preferredStage: "ic-layout" });
+    workspace.activeStage = "ic-layout";
+    workspace.activePanel = "layout";
+    workspace.activeToolWindow = "icAnalysis";
+    workspace.toolWindows.icAnalysis.view = view;
+    markDraftNeedsSave();
+    scheduleAutosave();
+    renderAnalogMixedWorkspace();
+    analogMixedSetStatus("IC analysis cockpit opened.");
+    return;
+  }
   if (action === "open-3d-window" || action === "physical3d") {
     if (!workspace) return;
     workspace.activeToolWindow = "physical3d";
@@ -7455,10 +7920,10 @@ function analogMixedHandleStageCommand(action = "") {
   if (String(action).startsWith("op:")) return analogMixedExecuteOperation(action);
   if (action === "drc") return analogMixedRunChecks("drc");
   if (action === "erc") return analogMixedRunChecks("erc");
-  if (workspace?.activeStage === "pcb" && ["pcb-sync", "pcb-export", "board-rules", "route-plan", "gerber"].includes(action)) {
+  if (workspace?.activeStage === "pcb" && ["pcb-sync", "pcb-export", "pcb-bom", "pcb-ratsnest", "pcb-net-naming", "pcb-diff-pairs", "pcb-route-optimize", "board-rules", "route-plan", "footprint-rules", "gerber"].includes(action)) {
     return analogMixedRecordPcbAction(action);
   }
-  if (workspace?.activeStage === "ic-layout" && ["layout-sync", "layout-export", "klayout", "layout-nwell", "layout-pwell", "layout-diff", "layout-tap", "layout-poly", "layout-licon", "layout-li1", "layout-mcon", "layout-metal1", "layout-via", "layout-metal2", "layout-via2", "layout-metal3", "layout-labels", "layout-contact", "layout-guard", "matching", "extract", "lvs", "drc", "ic-intent", "ic-sizing", "ic-gmid", "ic-corners", "ic-noise", "ic-noise-run", "ic-offset", "ic-pex", "ic-netlist", "ic-complex", "ic-power", "ic-signoff"].includes(action)) {
+  if (workspace?.activeStage === "ic-layout" && ["layout-sync", "layout-export", "klayout", "layout-nwell", "layout-pwell", "layout-diff", "layout-tap", "layout-poly", "layout-licon", "layout-li1", "layout-mcon", "layout-metal1", "layout-via", "layout-metal2", "layout-via2", "layout-metal3", "layout-labels", "layout-contact", "layout-guard", "matching", "extract", "lvs", "drc", "ic-intent", "ic-sizing", "ic-gmid", "ic-corners", "ic-noise", "ic-noise-run", "ic-offset", "ic-pex", "ic-netlist", "ic-analysis", "ic-complex", "ic-power", "ic-bandwidth", "ic-area", "ic-signoff"].includes(action)) {
     return analogMixedRecordLayoutAction(action);
   }
   if (action === "backend-analyze") return analogMixedRunBackendAnalysis("analysis");
@@ -7502,11 +7967,14 @@ function analogMixedHandleStageCommand(action = "") {
   if (action === "import-ltspice") return analogMixedImportDeviceSource("ltspice");
   if (action === "import-texas") return analogMixedImportDeviceSource("texas");
   if (action === "import-kicad") return analogMixedImportDeviceSource("kicad");
+  if (action === "symbol-save-library") return analogMixedSaveSelectedSymbolToLibrary();
+  if (action === "project-libraries") return analogMixedOpenLibraryView("project");
+  if (action === "global-libraries") return analogMixedOpenLibraryView("global");
   if (action === "digikey") return analogMixedPrepareLibraryReport("DigiKey");
   if (action === "mouser") return analogMixedPrepareLibraryReport("Mouser");
   if (action === "local-library") return analogMixedPrepareLibraryReport("Local component library");
-  if (action === "board-rules" || action === "route-plan" || action === "pcb-sync" || action === "pcb-export") return analogMixedRecordPcbAction(action);
-  if (["layout-sync", "layout-export", "klayout", "layout-nwell", "layout-pwell", "layout-diff", "layout-tap", "layout-poly", "layout-licon", "layout-li1", "layout-mcon", "layout-metal1", "layout-via", "layout-metal2", "layout-via2", "layout-metal3", "layout-labels", "layout-contact", "layout-guard", "matching", "extract", "lvs", "ic-intent", "ic-sizing", "ic-gmid", "ic-corners", "ic-noise", "ic-noise-run", "ic-offset", "ic-pex", "ic-netlist", "ic-complex", "ic-power", "ic-signoff"].includes(action)) return analogMixedRecordLayoutAction(action);
+  if (["board-rules", "route-plan", "pcb-sync", "pcb-export", "pcb-bom", "pcb-ratsnest", "pcb-net-naming", "pcb-diff-pairs", "pcb-route-optimize", "footprint-rules"].includes(action)) return analogMixedRecordPcbAction(action);
+  if (["layout-sync", "layout-export", "klayout", "layout-nwell", "layout-pwell", "layout-diff", "layout-tap", "layout-poly", "layout-licon", "layout-li1", "layout-mcon", "layout-metal1", "layout-via", "layout-metal2", "layout-via2", "layout-metal3", "layout-labels", "layout-contact", "layout-guard", "matching", "extract", "lvs", "ic-intent", "ic-sizing", "ic-gmid", "ic-corners", "ic-noise", "ic-noise-run", "ic-offset", "ic-pex", "ic-netlist", "ic-analysis", "ic-complex", "ic-power", "ic-bandwidth", "ic-area", "ic-signoff"].includes(action)) return analogMixedRecordLayoutAction(action);
   if (["op", "dc", "ac", "tran", "corners"].includes(action)) return analogMixedPrepareSpiceSimulationPlan(action);
   return analogMixedRecordStageAction(action);
 }
@@ -9382,6 +9850,103 @@ function analogMixedRenderOperationsWindow(workspace = {}) {
   `;
 }
 
+function analogMixedRenderIcAnalysisWindow(workspace = {}) {
+  const settings = workspace.toolWindows.icAnalysis;
+  const layoutData = analogMixedNormalizeIcLayout(workspace);
+  const latestBackend = layoutData.lastBackendRun || {};
+  const latestBackendMetrics = latestBackend.icAnalysis || layoutData.icAnalysisRuns?.[0]?.metrics || null;
+  const metrics = latestBackendMetrics || analogMixedIcAnalysisMetrics(workspace);
+  const totals = metrics.totals || {};
+  const cards = [
+    settings.showParasitics ? ["Parasitics", [
+      `Route length: ${analogMixedFormatMetric(totals.routeLengthUm, "um")}`,
+      `Route R: ${analogMixedFormatMetric(totals.routeResistanceOhm, "Ohm")}`,
+      `Route C: ${analogMixedFormatMetric(totals.routeCapacitanceF, "F")}`
+    ]] : null,
+    settings.showPower ? ["Power", [
+      `Supply: ${analogMixedFormatMetric(totals.supplyVoltage, "V")}`,
+      `Static: ${analogMixedFormatMetric(totals.staticPowerW, "W")}`,
+      `Dynamic: ${analogMixedFormatMetric(totals.dynamicPowerW, "W")}`
+    ]] : null,
+    settings.showBandwidth ? ["Bandwidth", [
+      `Effective R: ${analogMixedFormatMetric(totals.effectiveResistanceOhm, "Ohm")}`,
+      `Total C: ${analogMixedFormatMetric(totals.totalCapacitanceF, "F")}`,
+      `RC pole: ${analogMixedFormatMetric(totals.bandwidthHz, "Hz")}`
+    ]] : null,
+    settings.showArea ? ["Area", [
+      `Device area: ${analogMixedFormatMetric(totals.deviceAreaUm2, "um^2")}`,
+      `Core box: ${analogMixedFormatMetric(totals.coreAreaUm2, "um^2")}`,
+      `Utilization: ${Math.round((Number(totals.utilization) || 0) * 100)}%`
+    ]] : null
+  ].filter(Boolean);
+  const viewButtons = [
+    ["overview", "Overview"],
+    ["parasitics", "Parasitics"],
+    ["power", "Power"],
+    ["bandwidth", "Bandwidth"],
+    ["area", "Area"],
+    ["recommendations", "Recommendations"]
+  ].map(([view, label]) => `<button type="button" class="${settings.view === view ? "is-active" : ""}" data-am-ic-analysis-view="${view}">${label}</button>`).join("");
+  const activeView = settings.view || "overview";
+  const showRoutes = activeView === "overview" || activeView === "parasitics";
+  const showDevices = activeView === "overview" || activeView === "power" || activeView === "bandwidth" || activeView === "area";
+  const showRecommendations = activeView === "overview" || activeView === "recommendations";
+  const routeRows = (metrics.routeRows || []).slice(0, 18).map((row) => `
+    <div class="analog-mixed-analysis-row">
+      <strong>${escapeHtml(row.name)}</strong>
+      <span>${escapeHtml(row.layer)}</span>
+      <span>${escapeHtml(analogMixedFormatMetric(row.lengthUm, "um"))}</span>
+      <span>${escapeHtml(analogMixedFormatMetric(row.resistanceOhm, "Ohm"))}</span>
+      <span>${escapeHtml(analogMixedFormatMetric(row.capacitanceFf * 1e-15, "F"))}</span>
+    </div>
+  `).join("");
+  const deviceRows = (metrics.deviceRows || []).slice(0, 18).map((row) => `
+    <div class="analog-mixed-analysis-row">
+      <strong>${escapeHtml(row.reference)}</strong>
+      <span>${escapeHtml(row.role)}</span>
+      <span>${escapeHtml(row.model)}</span>
+      <span>${escapeHtml(analogMixedFormatMetric(row.areaUm2, "um^2"))}</span>
+      <span>${escapeHtml(analogMixedFormatMetric(row.currentA, "A"))}</span>
+    </div>
+  `).join("");
+  const recommendationRows = (metrics.recommendations || []).map((line) => `<li>${escapeHtml(line)}</li>`).join("");
+  return `
+    <section class="analog-mixed-tool-window is-ic-analysis" role="dialog" aria-label="IC analysis cockpit">
+      <header>${analogMixedToolWindowHeader("IC Analysis Cockpit", `${layoutData.pdk || workspace.activePdk || "generic"} / ${(metrics.deviceRows || []).length} devices`)}</header>
+      <div class="analog-mixed-tool-window-controls">
+        <div class="analog-mixed-analysis-view-tabs">${viewButtons}</div>
+        ${["showParasitics", "showPower", "showBandwidth", "showArea", "showRecommendations"].map((key) => `
+          <label class="analog-mixed-tool-check"><input type="checkbox" data-am-ic-analysis-setting="${escapeHtml(key)}" ${settings[key] ? "checked" : ""} /><span>${escapeHtml(key.replace(/^show/, ""))}</span></label>
+        `).join("")}
+        <button type="button" data-am-window-action="run-ic-analysis">Analyze</button>
+        <button type="button" data-am-window-action="run-ic-pex">PEX</button>
+        <button type="button" data-am-window-action="run-ic-power">Power</button>
+        <button type="button" data-am-window-action="run-ic-bandwidth">Bandwidth</button>
+        <button type="button" data-am-window-action="run-ic-area">Area</button>
+      </div>
+      <div class="analog-mixed-analysis-grid">
+        ${cards.map(([title, lines]) => `
+          <article class="analog-mixed-analysis-card">
+            <strong>${escapeHtml(title)}</strong>
+            ${lines.map((line) => `<span>${escapeHtml(line)}</span>`).join("")}
+          </article>
+        `).join("")}
+      </div>
+      <div class="analog-mixed-analysis-body">
+        ${showRoutes ? `<section>
+          <h4>Routes And Parasitics</h4>
+          <div class="analog-mixed-analysis-table">${routeRows || `<p class="analog-mixed-muted">No layout routes are available yet.</p>`}</div>
+        </section>` : ""}
+        ${showDevices ? `<section>
+          <h4>Devices, Area, And Bias</h4>
+          <div class="analog-mixed-analysis-table">${deviceRows || `<p class="analog-mixed-muted">No layout devices are available yet.</p>`}</div>
+        </section>` : ""}
+        ${settings.showRecommendations && showRecommendations ? `<section class="analog-mixed-analysis-recommendations"><h4>Recommendations</h4><ul>${recommendationRows || "<li>Sync the IC layout, place devices, and route nets to generate recommendations.</li>"}</ul></section>` : ""}
+      </div>
+    </section>
+  `;
+}
+
 function analogMixedRenderPhysical3dWindow(workspace = {}) {
   const settings = workspace.toolWindows.physical3d;
   const manifest = analogMixedResolve3dManifest(workspace);
@@ -9428,6 +9993,8 @@ function analogMixedRenderToolWindow(workspace) {
     analogMixedToolWindowLayer.innerHTML = analogMixedRenderSpiceWindow(workspace);
   } else if (workspace.activeToolWindow === "operations") {
     analogMixedToolWindowLayer.innerHTML = analogMixedRenderOperationsWindow(workspace);
+  } else if (workspace.activeToolWindow === "icAnalysis") {
+    analogMixedToolWindowLayer.innerHTML = analogMixedRenderIcAnalysisWindow(workspace);
   } else if (workspace.activeToolWindow === "physical3d") {
     analogMixedToolWindowLayer.innerHTML = analogMixedRenderPhysical3dWindow(workspace);
   } else {
@@ -10339,6 +10906,23 @@ async function analogMixedHandleMenuAction(action = "") {
     analogMixedSetStatus("SPICE simulation window opened.");
     return;
   }
+  if (clean === "open-ic-analysis-window" || clean.startsWith("ic-analysis-")) {
+    const view = clean === "ic-analysis-parasitics" ? "parasitics"
+      : clean === "ic-analysis-power" ? "power"
+        : clean === "ic-analysis-bandwidth" ? "bandwidth"
+          : clean === "ic-analysis-area" ? "area"
+            : "overview";
+    analogMixedSetSuite(workspace, "ic", { preferredStage: "ic-layout" });
+    workspace.activeStage = "ic-layout";
+    workspace.activePanel = "layout";
+    workspace.activeToolWindow = "icAnalysis";
+    workspace.toolWindows.icAnalysis.view = view;
+    markDraftNeedsSave();
+    scheduleAutosave();
+    renderAnalogMixedWorkspace();
+    analogMixedSetStatus("IC analysis cockpit opened.");
+    return;
+  }
   if (clean === "view-3d" || clean === "open-3d-window" || clean === "rotate-3d" || clean === "explode-3d" || clean === "measure-3d" || clean === "clearance-3d") {
     analogMixedSetSuite(workspace, "pcb", { preferredStage: "3d-view" });
     workspace.activeStage = "3d-view";
@@ -10401,6 +10985,9 @@ async function analogMixedHandleMenuAction(action = "") {
   if (clean === "import-texas") return analogMixedImportDeviceSource("texas");
   if (clean === "import-kicad") return analogMixedImportDeviceSource("kicad");
   if (clean === "apply-kicad-template") return analogMixedApplyKicadTemplate();
+  if (clean === "symbol-save-library") return analogMixedSaveSelectedSymbolToLibrary();
+  if (clean === "project-libraries") return analogMixedOpenLibraryView("project");
+  if (clean === "global-libraries") return analogMixedOpenLibraryView("global");
   if (clean.startsWith("spice-")) return await analogMixedRunSpiceSimulation(clean.replace("spice-", ""));
   if (clean === "corners") return analogMixedPrepareSpiceSimulationPlan("corners");
   if (clean === "print-report") {
@@ -10412,7 +10999,7 @@ async function analogMixedHandleMenuAction(action = "") {
   if (clean === "help-shortcuts") return analogMixedShowHelpTopic("shortcuts");
   if (clean === "help-components") return analogMixedShowHelpTopic("components");
   if (clean === "help-roadmap") return analogMixedShowHelpTopic("roadmap");
-  const pcbActions = new Set(["pcb-sync", "pcb-export", "board-rules", "route-plan", "gerber"]);
+  const pcbActions = new Set(["pcb-sync", "pcb-export", "pcb-bom", "pcb-ratsnest", "pcb-net-naming", "pcb-diff-pairs", "pcb-route-optimize", "board-rules", "route-plan", "footprint-rules", "gerber"]);
   if (pcbActions.has(clean)) {
     analogMixedSetSuite(workspace, "pcb", { preferredStage: "pcb" });
     workspace.activeStage = "pcb";
@@ -10427,7 +11014,7 @@ async function analogMixedHandleMenuAction(action = "") {
     "layout-licon", "layout-li1", "layout-mcon", "layout-metal1", "layout-via", "layout-metal2", "layout-via2", "layout-metal3",
     "layout-labels", "layout-contact", "layout-guard", "matching", "extract", "lvs",
     "ic-intent", "ic-sizing", "ic-gmid", "ic-corners", "ic-noise", "ic-noise-run", "ic-offset", "ic-pex", "ic-netlist",
-    "ic-complex", "ic-power", "ic-signoff"
+    "ic-analysis", "ic-complex", "ic-power", "ic-bandwidth", "ic-area", "ic-signoff"
   ]);
   if (icActions.has(clean)) {
     analogMixedSetSuite(workspace, "ic", { preferredStage: "ic-layout" });
@@ -30092,6 +30679,19 @@ analogMixedDialog?.addEventListener("click", (event) => {
     }
     if (action === "run-spice") return analogMixedRunSpiceSimulation(workspace.toolWindows.spice.analysis || "op");
     if (action === "plan-spice") return analogMixedPrepareSpiceSimulationPlan(workspace.toolWindows.spice.analysis || "tran");
+    if (action === "run-ic-analysis") return analogMixedRecordLayoutAction("ic-analysis");
+    if (action === "run-ic-pex") return analogMixedRecordLayoutAction("ic-pex");
+    if (action === "run-ic-power") return analogMixedRecordLayoutAction("ic-power");
+    if (action === "run-ic-bandwidth") return analogMixedRecordLayoutAction("ic-bandwidth");
+    if (action === "run-ic-area") return analogMixedRecordLayoutAction("ic-area");
+  }
+  const icAnalysisView = event.target.closest("[data-am-ic-analysis-view]");
+  if (icAnalysisView) {
+    workspace.toolWindows.icAnalysis.view = icAnalysisView.dataset.amIcAnalysisView || "overview";
+    markDraftNeedsSave();
+    scheduleAutosave();
+    renderAnalogMixedWorkspace();
+    return;
   }
   const operationRun = event.target.closest("[data-am-operation-run]");
   if (operationRun) {
@@ -30401,6 +31001,14 @@ analogMixedDialog?.addEventListener("change", async (event) => {
   if (workspace && event.target.dataset.amPhysical3dSetting) {
     const key = event.target.dataset.amPhysical3dSetting;
     workspace.toolWindows.physical3d[key] = event.target.type === "checkbox" ? event.target.checked : event.target.value;
+    markDraftNeedsSave();
+    scheduleAutosave();
+    renderAnalogMixedWorkspace();
+    return;
+  }
+  if (workspace && event.target.dataset.amIcAnalysisSetting) {
+    const key = event.target.dataset.amIcAnalysisSetting;
+    workspace.toolWindows.icAnalysis[key] = event.target.type === "checkbox" ? event.target.checked : event.target.value;
     markDraftNeedsSave();
     scheduleAutosave();
     renderAnalogMixedWorkspace();
