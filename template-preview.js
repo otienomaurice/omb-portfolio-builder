@@ -77,7 +77,10 @@ const projectWindowTitle = document.querySelector("#project-window-title");
 const projectWindowClose = document.querySelector("#project-window-close");
 const projectWindowDelete = document.querySelector("#project-window-delete");
 const viewProjectPreviewButton = document.querySelector("#view-project-preview");
-const analogMixedOpenButton = document.querySelector("#analog-mixed-open");
+const mainAnalogMixedOpenButton = document.querySelector("#main-am-open");
+const mainDigitalOpenButton = document.querySelector("#main-digital-open");
+const workspaceLaunchMenu = document.querySelector("#workspace-launch-menu");
+const workspaceLaunchTitle = document.querySelector("#workspace-launch-title");
 const analogMixedDialog = document.querySelector("#analog-mixed-dialog");
 const analogMixedTitle = document.querySelector("#analog-mixed-title");
 const analogMixedClose = document.querySelector("#analog-mixed-close");
@@ -1927,6 +1930,11 @@ const legacyTemplateSkins = {
 
 let catalog = { categories: [], projects: [] };
 let savedPortfolioCatalog = { categories: [], projects: [] };
+const internalWorkspaceCategoryId = "__workspace__";
+const internalWorkspaceIds = {
+  analogMixed: "workspace-analog-mixed-design-lab",
+  digital: "workspace-digital-design-lab"
+};
 let templates = [];
 let selectedProjectId = "";
 let activeSectionId = "brief";
@@ -2046,7 +2054,7 @@ function projectMatchesSearch(project, category, query) {
   return projectSearchHaystack(project, category).includes(cleanQuery);
 }
 
-function updateProjectSearchStatus(matchCount = catalog.projects.length) {
+function updateProjectSearchStatus(matchCount = portfolioProjects().length) {
   const cleanQuery = projectSearchText(projectSearchQuery);
   if (projectSearchInput && document.activeElement !== projectSearchInput) {
     projectSearchInput.value = projectSearchQuery;
@@ -2061,15 +2069,16 @@ function updateProjectSearchStatus(matchCount = catalog.projects.length) {
 }
 
 function updateBuilderWorkflow() {
-  const project = selectedProject();
+  const projects = portfolioProjects();
+  const project = publicSelectedProject();
   const savedIds = new Set((savedPortfolioCatalog.projects || []).map((item) => item.id));
-  const savedCount = (catalog.projects || []).filter((projectItem) => savedIds.has(projectItem.id)).length;
+  const savedCount = projects.filter((projectItem) => savedIds.has(projectItem.id)).length;
   const visibleSections = (catalog.siteSections || []).filter(siteSectionRenderable).length;
   if (workflowSelectedProject) {
     workflowSelectedProject.textContent = project ? project.title || "Untitled project" : "No project selected";
   }
   if (workflowTotalProjects) {
-    workflowTotalProjects.textContent = `${catalog.projects.length} project${catalog.projects.length === 1 ? "" : "s"}`;
+    workflowTotalProjects.textContent = `${projects.length} project${projects.length === 1 ? "" : "s"}`;
   }
   if (workflowSavedProjects) {
     workflowSavedProjects.textContent = `${savedCount} parsed`;
@@ -4904,13 +4913,14 @@ function analogMixedNormalizeIcLayout(workspace = {}) {
 }
 
 function activeAnalogMixedProject() {
-  return catalog.projects.find((project) => project.id === activeAnalogMixedProjectId) || selectedProject();
+  return catalog.projects.find((project) => project.id === activeAnalogMixedProjectId && isWorkspaceOnlyProject(project)) ||
+    existingWorkspaceProject("analogMixed");
 }
 
 function analogMixedGridSize(workspace) {
-  if (workspace?.grid === "coarse") return 32;
-  if (workspace?.grid === "medium") return 16;
-  return 8;
+  if (workspace?.grid === "coarse") return 24;
+  if (workspace?.grid === "medium") return 12;
+  return 4;
 }
 
 function analogMixedPointFromEvent(event, workspace) {
@@ -5262,8 +5272,10 @@ function analogMixedComponentTransform(component = {}) {
   const x = Number(component.x) || 0;
   const y = Number(component.y) || 0;
   const rotation = Number(component.rotation) || 0;
-  const mirror = component.mirrored ? " scale(-1 1)" : "";
-  return `translate(${x} ${y}) rotate(${rotation})${mirror}`;
+  const scaleX = component.mirrored ? -1 : 1;
+  const scaleY = component.flipVertical ? -1 : 1;
+  const reflect = scaleX === 1 && scaleY === 1 ? "" : ` scale(${scaleX} ${scaleY})`;
+  return `translate(${x} ${y}) rotate(${rotation})${reflect}`;
 }
 
 function analogMixedQueueRender() {
@@ -6010,8 +6022,10 @@ function analogMixedShowContextMenu(event, context = {}) {
       ["component-edit-value", "Edit value"],
       ["component-edit-model", "Edit model"],
       ["component-edit-footprint", "Edit footprint/layout"],
-      ["component-rotate", "Rotate"],
-      ["component-mirror", "Mirror"],
+      ["component-rotate", "Rotate 90"],
+      ["component-rotate-left", "Rotate -90"],
+      ["component-mirror", "Reflect horizontal"],
+      ["component-reflect-vertical", "Reflect vertical"],
       ["component-duplicate", "Duplicate"],
       ["component-delete", "Delete component"],
       ["component-copy-ref", "Copy reference"]
@@ -6129,6 +6143,7 @@ async function analogMixedHandleContextAction(action = "") {
   const mutatingActions = new Set([
     "wire-rename",
     "component-rotate",
+    "component-rotate-left",
     "layout-delete",
     "layout-route-delete"
   ]);
@@ -6155,15 +6170,16 @@ async function analogMixedHandleContextAction(action = "") {
   if (action === "component-edit-value") return analogMixedPromptSelectedComponentField("value", "Value / sizing");
   if (action === "component-edit-model") return analogMixedPromptSelectedComponentField("modelName", "Model name");
   if (action === "component-edit-footprint") return analogMixedPromptSelectedComponentField("footprint", "Footprint or layout cell");
-  if (action === "component-rotate") {
+  if (action === "component-rotate" || action === "component-rotate-left") {
     const selected = analogMixedSelectedComponent();
-    if (selected) selected.rotation = (Number(selected.rotation) + 90) % 360;
+    if (selected) selected.rotation = (Number(selected.rotation) + (action === "component-rotate-left" ? -90 : 90) + 360) % 360;
     markDraftNeedsSave();
     scheduleAutosave();
     renderAnalogMixedWorkspace();
     return;
   }
   if (action === "component-mirror") return analogMixedMirrorSelected();
+  if (action === "component-reflect-vertical") return analogMixedReflectSelectedVertical();
   if (action === "component-duplicate") {
     const selected = analogMixedSelectedComponent();
     if (selected) analogMixedAddComponent(project, selected.type, { x: selected.x + 60, y: selected.y + 60 });
@@ -6344,12 +6360,23 @@ function analogMixedSelectedComponent() {
 function analogMixedMirrorSelected() {
   const selected = analogMixedSelectedComponent();
   if (!selected) return;
-  analogMixedPushUndo("Mirror component");
+  analogMixedPushUndo("Reflect component horizontal");
   selected.mirrored = !selected.mirrored;
   markDraftNeedsSave();
   scheduleAutosave();
   renderAnalogMixedWorkspace();
-  analogMixedSetStatus(`${selected.label || "Selected component"} mirrored.`);
+  analogMixedSetStatus(`${selected.label || "Selected component"} reflected horizontally.`);
+}
+
+function analogMixedReflectSelectedVertical() {
+  const selected = analogMixedSelectedComponent();
+  if (!selected) return;
+  analogMixedPushUndo("Reflect component vertical");
+  selected.flipVertical = !selected.flipVertical;
+  markDraftNeedsSave();
+  scheduleAutosave();
+  renderAnalogMixedWorkspace();
+  analogMixedSetStatus(`${selected.label || "Selected component"} reflected vertically.`);
 }
 
 function analogMixedMoveSelected(dx = 0, dy = 0) {
@@ -10523,9 +10550,10 @@ function renderAnalogMixedWorkspace() {
 }
 
 function openAnalogMixedWorkspace(projectId = selectedProjectId) {
-  const project = catalog.projects.find((item) => item.id === projectId) || selectedProject();
+  const project = catalog.projects.find((item) => item.id === projectId && isWorkspaceOnlyProject(item)) ||
+    existingWorkspaceProject("analogMixed");
   if (!project) {
-    setStatus("Select a project before opening the Analog/Mixed-Signal workspace.");
+    setStatus("Create or import an AM workspace before opening the Analog/Mixed-Signal design suite.");
     return;
   }
   activeAnalogMixedProjectId = project.id;
@@ -12655,13 +12683,14 @@ function setBuilderZoom(value = 1, options = {}) {
 }
 
 function selectedProjectIndex() {
-  if (!catalog.projects?.length) return -1;
-  const index = catalog.projects.findIndex((project) => project.id === selectedProjectId);
+  const projects = portfolioProjects();
+  if (!projects.length) return -1;
+  const index = projects.findIndex((project) => project.id === selectedProjectId);
   return index >= 0 ? index : 0;
 }
 
 function selectProjectByOffset(offset = 0) {
-  const projects = catalog.projects || [];
+  const projects = portfolioProjects();
   if (!projects.length) {
     setStatus("Add a project before using project navigation.");
     return null;
@@ -12677,12 +12706,12 @@ function selectProjectByOffset(offset = 0) {
 }
 
 function currentProjectCategoryId() {
-  const project = selectedProject();
+  const project = publicSelectedProject();
   return project?.category || catalog.categories?.[0]?.id || "";
 }
 
 function requireSelectedProject() {
-  const project = selectedProject();
+  const project = publicSelectedProject();
   if (!project) {
     setStatus("Add or select a project first.");
     return null;
@@ -12759,8 +12788,7 @@ async function openCompileCodeCommand(action = "view-syntax") {
 }
 
 function openAnalogMixedCommand(stage = "schematic") {
-  const project = requireSelectedProject();
-  if (!project) return;
+  const project = ensureWorkspaceProject("analogMixed");
   openAnalogMixedWorkspace(project.id);
   const workspace = normalizeAnalogMixedWorkspace(project);
   const normalizedStage = analogMixedStages.some((item) => item.id === stage) ? stage : "schematic";
@@ -12774,9 +12802,13 @@ function openAnalogMixedCommand(stage = "schematic") {
 }
 
 function builderAppCommandGroups() {
-  const project = selectedProject();
+  const project = publicSelectedProject();
+  const activeProject = selectedProject();
+  const digitalWorkspace = (catalog.projects || []).find((item) => item.id === internalWorkspaceIds.digital);
+  const codeProject = activeProject?.workspaceKind === "digital" ? activeProject : (digitalWorkspace || project);
   const hasProject = Boolean(project);
-  const file = hasProject ? activeCompileFile(project) : null;
+  const hasDigitalWorkspace = Boolean(codeProject);
+  const file = codeProject ? activeCompileFile(codeProject) : null;
   const hasFile = Boolean(file);
   const hdlFile = hasFile && isHdlLanguage(file.language);
   return [
@@ -12859,34 +12891,45 @@ function builderAppCommandGroups() {
     {
       label: "AM",
       items: [
-        { label: "Open AM tool launcher", action: "am-open", disabled: !hasProject },
-        { label: "PCB tool launcher", action: "am-pcb-suite", disabled: !hasProject },
-        { label: "IC tool launcher", action: "am-ic-suite", disabled: !hasProject },
+        { label: "Open AM tool launcher", action: "am-open" },
+        { label: "Create/reset AM design", action: "am-new-design" },
+        { label: "Import AM design", action: "am-import-design" },
+        { label: "Set AM save location", action: "am-save-location" },
+        { label: "Delete AM design", action: "am-delete-design", danger: true },
         { separator: true },
-        { label: "PCB schematic editor", action: "am-tool-pcb-schematic", disabled: !hasProject },
-        { label: "PCB footprint editor", action: "am-tool-pcb-footprint", disabled: !hasProject },
-        { label: "PCB editor", action: "am-tool-pcb-editor", disabled: !hasProject },
-        { label: "Gerber viewer", action: "am-tool-pcb-gerber", disabled: !hasProject },
+        { label: "PCB tool launcher", action: "am-pcb-suite" },
+        { label: "IC tool launcher", action: "am-ic-suite" },
         { separator: true },
-        { label: "IC schematic editor", action: "am-tool-ic-schematic", disabled: !hasProject },
-        { label: "IC layout suite", action: "am-tool-ic-layout", disabled: !hasProject },
-        { label: "ADE / SPICE cockpit", action: "am-tool-ic-ade", disabled: !hasProject },
-        { label: "PDK manager", action: "am-tool-ic-pdk", disabled: !hasProject },
+        { label: "PCB schematic editor", action: "am-tool-pcb-schematic" },
+        { label: "PCB footprint editor", action: "am-tool-pcb-footprint" },
+        { label: "PCB editor", action: "am-tool-pcb-editor" },
+        { label: "Gerber viewer", action: "am-tool-pcb-gerber" },
         { separator: true },
-        { label: "Import supplier component", action: "am-import-supplier", disabled: !hasProject },
-        { label: "Check AM tools", action: "am-tool-status", disabled: !hasProject }
+        { label: "IC schematic editor", action: "am-tool-ic-schematic" },
+        { label: "IC layout suite", action: "am-tool-ic-layout" },
+        { label: "ADE / SPICE cockpit", action: "am-tool-ic-ade" },
+        { label: "PDK manager", action: "am-tool-ic-pdk" },
+        { separator: true },
+        { label: "Import supplier component", action: "am-import-supplier" },
+        { label: "Check AM tools", action: "am-tool-status" }
       ]
     },
     {
       label: "Digital",
       items: [
         { heading: "Workspace" },
-        { label: "New source file", action: "code-new-file", disabled: !hasProject },
-        { label: "New folder", action: "code-new-folder", disabled: !hasProject },
-        { label: "Import files", action: "code-import-files", disabled: !hasProject },
-        { label: "Import directory", action: "code-import-directory", disabled: !hasProject },
-        { label: "Add testbench", action: "code-testbench", disabled: !hasProject },
-        { label: "Add UVM-style testbench", action: "code-uvm-testbench", disabled: !hasProject },
+        { label: "Open Digital workspace", action: "digital-open" },
+        { label: "Create/reset Digital design", action: "digital-new-design" },
+        { label: "Import Digital design", action: "digital-import-design" },
+        { label: "Set Digital save location", action: "digital-save-location" },
+        { label: "Delete Digital design", action: "digital-delete-design", danger: true },
+        { separator: true },
+        { label: "New source file", action: "code-new-file" },
+        { label: "New folder", action: "code-new-folder" },
+        { label: "Import files", action: "code-import-files" },
+        { label: "Import directory", action: "code-import-directory" },
+        { label: "Add testbench", action: "code-testbench" },
+        { label: "Add UVM-style testbench", action: "code-uvm-testbench" },
         { separator: true },
         { heading: "Editor" },
         { label: "Save source", action: "code-save-source", disabled: !hasFile },
@@ -12908,9 +12951,9 @@ function builderAppCommandGroups() {
         { label: "Show scope", action: "code-scope", disabled: !hasFile || !hdlFile },
         { separator: true },
         { label: "Console output", action: "code-output", disabled: !hasFile },
-        { label: "Live syntax", action: "code-syntax", disabled: !hasProject },
+        { label: "Live syntax", action: "code-syntax", disabled: !hasDigitalWorkspace },
         { label: "Program input", action: "code-input", disabled: !hasFile },
-        { label: "Open PowerShell terminal", action: "code-terminal", disabled: !hasProject }
+        { label: "Open PowerShell terminal", action: "code-terminal", disabled: !hasDigitalWorkspace }
       ]
     },
     {
@@ -12922,7 +12965,7 @@ function builderAppCommandGroups() {
         { label: "System readiness", action: "system-readiness" },
         { separator: true },
         { heading: "Compiler tools" },
-        { label: "Check active toolchain", action: "code-check-tools", disabled: !hasProject },
+        { label: "Check active toolchain", action: "code-check-tools", disabled: !hasDigitalWorkspace },
         { label: "Install active toolchain", action: "code-install-tools", disabled: !hasFile },
         { label: "View synthesis diagram", action: "code-synthesis-diagram", disabled: !hasFile || !hdlFile },
         { separator: true },
@@ -13022,7 +13065,8 @@ function renderBuilderAppMenuBar() {
 
 async function handleBuilderAppCommand(action = "") {
   if (!action) return;
-  const project = selectedProject();
+  const activeProject = selectedProject();
+  const project = publicSelectedProject();
   const compileActions = {
     "code-new-file": "new-file",
     "code-new-folder": "new-folder",
@@ -13049,37 +13093,86 @@ async function handleBuilderAppCommand(action = "") {
     "code-install-tools": "install-tools",
     "code-synthesis-diagram": "view-synthesis-diagram"
   };
+  if (action === "digital-open") {
+    openDigitalWorkspaceLauncher("view-syntax");
+    return;
+  }
+  if (action === "digital-new-design") {
+    const project = resetWorkspaceProject("digital");
+    promptWorkspaceSaveLocation(project, "digital");
+    openDigitalWorkspaceLauncher("view-syntax");
+    return;
+  }
+  if (action === "digital-import-design") {
+    const project = await importWorkspaceProjectFromJson("digital");
+    if (project) await openDigitalWorkspaceLauncher("view-syntax");
+    return;
+  }
+  if (action === "digital-save-location") {
+    const project = ensureWorkspaceProject("digital");
+    promptWorkspaceSaveLocation(project, "digital");
+    return;
+  }
+  if (action === "digital-delete-design") {
+    deleteWorkspaceProject("digital");
+    return;
+  }
   if (action === "am-open") {
-    const project = requireSelectedProject();
-    if (project) openAnalogMixedWorkspace(project.id);
+    openAnalogMixedWorkspaceLauncher();
+    return;
+  }
+  if (action === "am-new-design") {
+    const project = resetWorkspaceProject("analogMixed");
+    promptWorkspaceSaveLocation(project, "analogMixed");
+    openAnalogMixedWorkspace(project.id);
+    analogMixedOpenToolHub("ic");
+    return;
+  }
+  if (action === "am-import-design") {
+    const project = await importWorkspaceProjectFromJson("analogMixed");
+    if (project) {
+      openAnalogMixedWorkspace(project.id);
+      analogMixedOpenToolHub(normalizeAnalogMixedWorkspace(project).activeHubSuite || "ic");
+    }
+    return;
+  }
+  if (action === "am-save-location") {
+    const project = ensureWorkspaceProject("analogMixed");
+    promptWorkspaceSaveLocation(project, "analogMixed");
+    return;
+  }
+  if (action === "am-delete-design") {
+    deleteWorkspaceProject("analogMixed");
     return;
   }
   if (action === "am-pcb-suite" || action === "am-ic-suite") {
-    const project = requireSelectedProject();
-    if (!project) return;
+    const project = ensureWorkspaceProject("analogMixed");
     openAnalogMixedWorkspace(project.id);
     analogMixedOpenToolHub(action === "am-pcb-suite" ? "pcb" : "ic");
     return;
   }
   if (action === "am-tool-status") {
-    openAnalogMixedCommand("pdk");
+    const project = ensureWorkspaceProject("analogMixed");
+    openAnalogMixedWorkspace(project.id);
+    analogMixedOpenStageWithinSuite(normalizeAnalogMixedWorkspace(project), "pdk");
     await analogMixedRefreshPdkStatus();
     return;
   }
   if (action.startsWith("am-tool-")) {
-    const project = requireSelectedProject();
-    if (!project) return;
+    const project = ensureWorkspaceProject("analogMixed");
     openAnalogMixedWorkspace(project.id);
     analogMixedOpenDesignTool(action.replace("am-tool-", ""));
     return;
   }
   if (action === "am-import-supplier") {
-    openAnalogMixedCommand("libraries");
+    const project = ensureWorkspaceProject("analogMixed");
+    openAnalogMixedWorkspace(project.id);
+    analogMixedOpenStageWithinSuite(normalizeAnalogMixedWorkspace(project), "libraries");
     await analogMixedImportSupplierComponent("DigiKey");
     return;
   }
   if (compileActions[action]) {
-    await openCompileCodeCommand(compileActions[action]);
+    await openDigitalWorkspaceLauncher(compileActions[action]);
     return;
   }
   if (action.startsWith("theme-light-")) {
@@ -13096,7 +13189,7 @@ async function handleBuilderAppCommand(action = "") {
   }
   if (action.startsWith("compile-theme-")) {
     setCompileTheme(action.replace("compile-theme-", ""));
-    if (project && activeSectionIsCompileCode(project)) renderSectionContent(project);
+    if (activeProject && activeSectionIsCompileCode(activeProject)) renderSectionContent(activeProject);
     renderBuilderAppMenuBar();
     return;
   }
@@ -14130,14 +14223,22 @@ async function saveSelectedProjectToPortfolio(options = {}) {
   if (settings.commitEdits !== false && !(await commitActiveProjectEdits())) return false;
   const project = selectedProject();
   if (!project) return false;
+  if (isWorkspaceOnlyProject(project)) {
+    markDraftNeedsSave();
+    scheduleAutosave();
+    refreshOpenPreviews();
+    setStatus(`${project.title || "Workspace"} saved locally. Workspace-only designs are not published until you append/export them to a portfolio project.`);
+    updateBuilderWorkflow();
+    return true;
+  }
   migrateLegacyProjectSections(project);
   ensureCompileCode(project);
   const parsedProject = parseProjectForPortfolio(project);
   syncParsedPortfolioGlobalsIntoSaved();
   const nextProjects = (savedPortfolioCatalog.projects || []).filter((item) => item.id !== project.id);
-  const workingIds = new Set((catalog.projects || []).map((item) => item.id));
+  const workingIds = new Set(portfolioProjects().map((item) => item.id));
   savedPortfolioCatalog.projects = nextProjects.filter((item) => workingIds.has(item.id));
-  const workingIndex = catalog.projects.findIndex((item) => item.id === project.id);
+  const workingIndex = portfolioProjects().findIndex((item) => item.id === project.id);
   const insertAt = Math.max(0, workingIndex);
   savedPortfolioCatalog.projects.splice(insertAt, 0, parsedProject);
   markDraftNeedsSave();
@@ -14157,7 +14258,7 @@ function deleteProjectById(projectId) {
   if (!project) return;
   catalog.projects = catalog.projects.filter((item) => item.id !== project.id);
   removeProjectFromPortfolio(project.id);
-  selectedProjectId = catalog.projects[0]?.id || "";
+  selectedProjectId = firstSelectableProjectId();
   activeSectionId = "brief";
   if (projectDialog?.open && project.id === projectWindowTitle.dataset.projectId) {
     closeDialogElement(projectDialog);
@@ -14194,7 +14295,7 @@ function ensureFallbackCategory(excludedId = "") {
 function deleteCategoryById(categoryId) {
   const category = (catalog.categories || []).find((item) => item.id === categoryId);
   if (!category) return;
-  const affectedProjects = (catalog.projects || []).filter((project) => project.category === categoryId);
+  const affectedProjects = portfolioProjects().filter((project) => project.category === categoryId);
   const fallbackId = affectedProjects.length ? ensureFallbackCategory(categoryId) : "";
   if (fallbackId) {
     affectedProjects.forEach((project) => {
@@ -14206,12 +14307,12 @@ function deleteCategoryById(categoryId) {
     ensureFallbackCategory();
   }
   savedPortfolioCatalog.categories = clone(catalog.categories || []);
-  savedPortfolioCatalog.projects = (catalog.projects || []).map((project) => parseProjectForPortfolio(project));
+  savedPortfolioCatalog.projects = portfolioProjects().map((project) => parseProjectForPortfolio(project));
   expandedCategories.delete(categoryId);
   if (fallbackId) expandedCategories.add(fallbackId);
-  selectedProjectId = selectedProjectId && catalog.projects.some((project) => project.id === selectedProjectId)
+  selectedProjectId = selectedProjectId && portfolioProjects().some((project) => project.id === selectedProjectId)
     ? selectedProjectId
-    : catalog.projects[0]?.id || "";
+    : firstSelectableProjectId();
   setStatus(affectedProjects.length
     ? `Category deleted. ${affectedProjects.length} project${affectedProjects.length === 1 ? "" : "s"} moved to Uncategorized.`
     : "Category deleted locally.");
@@ -14241,7 +14342,7 @@ function requestProjectDelete(projectId) {
 function requestCategoryDelete(categoryId) {
   const category = (catalog.categories || []).find((item) => item.id === categoryId);
   if (!category) return;
-  const projectCount = (catalog.projects || []).filter((project) => project.category === categoryId).length;
+  const projectCount = portfolioProjects().filter((project) => project.category === categoryId).length;
   openDeleteConfirm({
     title: "Delete category",
     message: projectCount
@@ -14974,7 +15075,7 @@ async function saveAllSections(options = {}) {
     migrateLegacyProjectSections(project);
     ensureCompileCode(project);
   });
-  savedPortfolioCatalog.projects = (catalog.projects || []).map((project) => parseProjectForPortfolio(project));
+  savedPortfolioCatalog.projects = portfolioProjects().map((project) => parseProjectForPortfolio(project));
   markDraftNeedsSave();
   scheduleAutosave();
   if (projectDialog?.open) closeDialogElement(projectDialog);
@@ -14985,7 +15086,7 @@ async function saveAllSections(options = {}) {
 }
 
 function selectedProject() {
-  return catalog.projects.find((project) => project.id === selectedProjectId) || catalog.projects[0];
+  return catalog.projects.find((project) => project.id === selectedProjectId) || publicSelectedProject() || catalog.projects[0];
 }
 
 function sectionWindowId(sectionId) {
@@ -16665,6 +16766,267 @@ function buildTemplateProject() {
   };
 }
 
+function isWorkspaceOnlyProject(project = {}) {
+  return Boolean(project?.workspaceOnly) || project?.category === internalWorkspaceCategoryId;
+}
+
+function portfolioProjects() {
+  return (catalog.projects || []).filter((project) => !isWorkspaceOnlyProject(project));
+}
+
+function savedPortfolioProjects() {
+  return (savedPortfolioCatalog.projects || []).filter((project) => !isWorkspaceOnlyProject(project));
+}
+
+function defaultWorkspaceProject(kind = "digital", overrides = {}) {
+  const isAnalogMixed = kind === "analogMixed";
+  const id = isAnalogMixed ? internalWorkspaceIds.analogMixed : internalWorkspaceIds.digital;
+  const title = isAnalogMixed ? "Analog / Mixed-Signal Design Lab" : "Digital Design Lab";
+  return {
+    id,
+    title,
+    category: internalWorkspaceCategoryId,
+    workspaceOnly: true,
+    workspaceKind: kind,
+    workspaceSaveLocation: "",
+    status: "Draft",
+    showStatusOnPortfolio: false,
+    summary: "",
+    summaryRich: null,
+    sections: [],
+    sectionModelVersion: 3,
+    compileCode: { files: [], directories: [], openFileIds: [], activeFileId: "", terminal: "", outputDockHeight: 170 },
+    ...overrides
+  };
+}
+
+function ensureWorkspaceProject(kind = "digital") {
+  catalog.projects = Array.isArray(catalog.projects) ? catalog.projects : [];
+  const id = kind === "analogMixed" ? internalWorkspaceIds.analogMixed : internalWorkspaceIds.digital;
+  let project = catalog.projects.find((item) => item.id === id);
+  if (!project) {
+    project = defaultWorkspaceProject(kind);
+    catalog.projects.push(project);
+  }
+  project.workspaceOnly = true;
+  project.workspaceKind = kind;
+  project.category = internalWorkspaceCategoryId;
+  project.showStatusOnPortfolio = false;
+  project.sections = Array.isArray(project.sections) ? project.sections : [];
+  if (kind === "analogMixed") {
+    project.analogMixedWorkspace = project.analogMixedWorkspace || analogMixedDefaultState();
+    const workspace = normalizeAnalogMixedWorkspace(project);
+    workspace.toolHubOpen = true;
+    workspace.activeDesignTool = workspace.activeDesignTool || "";
+  }
+  if (kind === "digital") ensureCompileCode(project);
+  return project;
+}
+
+function publicSelectedProject() {
+  const current = catalog.projects.find((project) => project.id === selectedProjectId && !isWorkspaceOnlyProject(project));
+  return current || portfolioProjects()[0] || null;
+}
+
+function firstSelectableProjectId() {
+  return publicSelectedProject()?.id || "";
+}
+
+function workspaceKindLabel(kind = "digital") {
+  return kind === "analogMixed" ? "AM" : "Digital";
+}
+
+function workspaceProjectId(kind = "digital") {
+  return kind === "analogMixed" ? internalWorkspaceIds.analogMixed : internalWorkspaceIds.digital;
+}
+
+function existingWorkspaceProject(kind = "digital") {
+  return (catalog.projects || []).find((item) => item.id === workspaceProjectId(kind) && isWorkspaceOnlyProject(item)) || null;
+}
+
+function promptWorkspaceSaveLocation(project, kind = "workspace") {
+  if (!project) return;
+  const label = kind === "analogMixed" ? "Analog / Mixed-Signal" : "Digital";
+  const current = project.workspaceSaveLocation || "";
+  const next = window.prompt(`${label} workspace save location`, current || "C:\\Users\\otien\\Documents\\OMB Workspaces");
+  if (next === null) return;
+  project.workspaceSaveLocation = String(next || "").trim();
+  markDraftNeedsSave();
+  scheduleAutosave();
+  setStatus(project.workspaceSaveLocation
+    ? `${label} workspace save location set.`
+    : `${label} workspace will stay in the default local builder workspace.`);
+}
+
+function resetWorkspaceProject(kind = "digital") {
+  const project = ensureWorkspaceProject(kind);
+  const saveLocation = project.workspaceSaveLocation || "";
+  Object.assign(project, defaultWorkspaceProject(kind, { workspaceSaveLocation: saveLocation }));
+  if (kind === "analogMixed") normalizeAnalogMixedWorkspace(project);
+  if (kind === "digital") ensureCompileCode(project);
+  markDraftNeedsSave();
+  scheduleAutosave();
+  return project;
+}
+
+function deleteWorkspaceProject(kind = "digital") {
+  const id = kind === "analogMixed" ? internalWorkspaceIds.analogMixed : internalWorkspaceIds.digital;
+  const project = catalog.projects.find((item) => item.id === id);
+  if (!project) return;
+  openDeleteConfirm({
+    title: kind === "analogMixed" ? "Delete AM design workspace" : "Delete Digital design workspace",
+    message: "Delete the current local workspace design? This does not remove portfolio projects.",
+    onConfirm: () => {
+      catalog.projects = (catalog.projects || []).filter((item) => item.id !== id);
+      if (selectedProjectId === id) selectedProjectId = firstSelectableProjectId();
+      if (kind === "analogMixed" && analogMixedDialog?.open) closeDialogElement(analogMixedDialog);
+      if (kind === "digital" && projectDialog?.open && projectWindowTitle.dataset.projectId === id) closeDialogElement(projectDialog);
+      markDraftNeedsSave();
+      scheduleAutosave();
+      renderAll();
+      setStatus("Local workspace design deleted.");
+    }
+  });
+}
+
+function importWorkspaceProjectFromJson(kind = "digital") {
+  return new Promise((resolve) => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".json,application/json";
+    input.addEventListener("change", async () => {
+      const file = input.files?.[0];
+      if (!file) {
+        resolve(null);
+        return;
+      }
+      try {
+        const parsed = JSON.parse(await file.text());
+        const project = ensureWorkspaceProject(kind);
+        const importedProject = parsed?.project && typeof parsed.project === "object" ? parsed.project : parsed;
+        const saveLocation = project.workspaceSaveLocation || "";
+        if (kind === "analogMixed") {
+          project.title = importedProject.title || project.title;
+          project.analogMixedWorkspace = clone(importedProject.analogMixedWorkspace || importedProject.workspace || parsed.analogMixedWorkspace || {});
+          normalizeAnalogMixedWorkspace(project);
+        } else {
+          project.title = importedProject.title || project.title;
+          project.compileCode = clone(importedProject.compileCode || parsed.compileCode || parsed.workspace || {});
+          ensureCompileCode(project);
+        }
+        project.workspaceSaveLocation = importedProject.workspaceSaveLocation || saveLocation;
+        project.workspaceOnly = true;
+        project.workspaceKind = kind;
+        project.category = internalWorkspaceCategoryId;
+        project.showStatusOnPortfolio = false;
+        markDraftNeedsSave();
+        scheduleAutosave();
+        setStatus(`${kind === "analogMixed" ? "AM" : "Digital"} workspace imported from ${file.name}.`);
+        resolve(project);
+      } catch (error) {
+        showBuilderError("Import failed", "The selected JSON file could not be imported.", error?.message || String(error));
+        resolve(null);
+      }
+    }, { once: true });
+    input.click();
+  });
+}
+
+function openAnalogMixedWorkspaceLauncher() {
+  const project = ensureWorkspaceProject("analogMixed");
+  selectedProjectId = firstSelectableProjectId();
+  openAnalogMixedWorkspace(project.id);
+  analogMixedOpenToolHub(normalizeAnalogMixedWorkspace(project).activeHubSuite || "ic");
+  renderBuilderAppMenuBar();
+}
+
+async function openDigitalWorkspaceLauncher(action = "view-syntax") {
+  const project = ensureWorkspaceProject("digital");
+  selectedProjectId = project.id;
+  activeSectionId = "compile-code";
+  openProjectWindow(project.id, "compile-code");
+  await runCompileIdeAction(project, action);
+  renderBuilderAppMenuBar();
+}
+
+function hideWorkspaceLaunchMenu() {
+  if (!workspaceLaunchMenu) return;
+  workspaceLaunchMenu.hidden = true;
+  workspaceLaunchMenu.dataset.kind = "";
+}
+
+function showWorkspaceLaunchMenu(kind = "digital", anchor = null) {
+  if (!workspaceLaunchMenu) {
+    if (kind === "analogMixed") openAnalogMixedWorkspaceLauncher();
+    else openDigitalWorkspaceLauncher("view-syntax");
+    return;
+  }
+  const label = workspaceKindLabel(kind);
+  const exists = Boolean(existingWorkspaceProject(kind));
+  workspaceLaunchMenu.dataset.kind = kind;
+  if (workspaceLaunchTitle) workspaceLaunchTitle.textContent = `${label} workspace`;
+  workspaceLaunchMenu.querySelectorAll("[data-workspace-launch-action]").forEach((button) => {
+    const action = button.dataset.workspaceLaunchAction || "";
+    if (action === "open") {
+      button.disabled = !exists;
+      button.textContent = exists ? "Open current workspace" : "No current workspace yet";
+    }
+    if (action === "new") button.textContent = exists ? "Create / reset design" : "Create new design";
+    if (action === "import") button.textContent = `Import ${label} design`;
+    if (action === "location") button.textContent = "Set save location";
+    if (action === "delete") {
+      button.disabled = !exists;
+      button.textContent = exists ? "Delete local design" : "Nothing to delete";
+    }
+  });
+  const rect = anchor?.getBoundingClientRect?.();
+  if (rect) {
+    workspaceLaunchMenu.style.left = `${Math.min(window.innerWidth - 260, Math.max(8, rect.left))}px`;
+    workspaceLaunchMenu.style.top = `${Math.min(window.innerHeight - 220, rect.bottom + 8)}px`;
+  }
+  workspaceLaunchMenu.hidden = false;
+}
+
+async function handleWorkspaceLaunchAction(action = "", kind = "digital") {
+  hideWorkspaceLaunchMenu();
+  if (!action) return;
+  if (action === "open") {
+    if (kind === "analogMixed") openAnalogMixedWorkspaceLauncher();
+    else await openDigitalWorkspaceLauncher("view-syntax");
+    return;
+  }
+  if (action === "new") {
+    const project = resetWorkspaceProject(kind);
+    promptWorkspaceSaveLocation(project, kind);
+    if (kind === "analogMixed") {
+      openAnalogMixedWorkspace(project.id);
+      analogMixedOpenToolHub("ic");
+    } else {
+      await openDigitalWorkspaceLauncher("view-syntax");
+    }
+    return;
+  }
+  if (action === "import") {
+    const project = await importWorkspaceProjectFromJson(kind);
+    if (!project) return;
+    if (kind === "analogMixed") {
+      openAnalogMixedWorkspace(project.id);
+      analogMixedOpenToolHub(normalizeAnalogMixedWorkspace(project).activeHubSuite || "ic");
+    } else {
+      await openDigitalWorkspaceLauncher("view-syntax");
+    }
+    return;
+  }
+  if (action === "location") {
+    const project = ensureWorkspaceProject(kind);
+    promptWorkspaceSaveLocation(project, kind);
+    return;
+  }
+  if (action === "delete") {
+    deleteWorkspaceProject(kind);
+  }
+}
+
 function insertProject(project) {
   const nextProjects = catalog.projects.filter((item) => item.id !== project.id);
   const placement = placementSelect.value;
@@ -16759,7 +17121,7 @@ function renderTree() {
   const cleanQuery = projectSearchText(projectSearchQuery);
   let matchCount = 0;
   const treeMarkup = catalog.categories.map((category) => {
-    const allCategoryProjects = catalog.projects.filter((project) => project.category === category.id);
+    const allCategoryProjects = portfolioProjects().filter((project) => project.category === category.id);
     const categoryHit = cleanQuery && projectSearchText(`${category.label} ${category.description}`).includes(cleanQuery);
     const categoryProjects = cleanQuery
       ? allCategoryProjects.filter((project) => categoryHit || projectMatchesSearch(project, category, cleanQuery))
@@ -16798,7 +17160,7 @@ function renderTree() {
       <p class="tree-empty">No project, file, tool, or section matched this search.</p>
     </section>
   `;
-  updateProjectSearchStatus(cleanQuery ? matchCount : catalog.projects.length);
+  updateProjectSearchStatus(cleanQuery ? matchCount : portfolioProjects().length);
 }
 
 function summaryWordCount(project) {
@@ -23603,7 +23965,7 @@ function buildPrintablePortfolioHtml() {
   const profile = normalizeProfile(catalog.profile || savedPortfolioCatalog.profile || {});
   const globals = parsedPortfolioGlobals();
   const siteContent = globals.siteContent || normalizeSiteContent(catalog.siteContent || {});
-  const projects = (catalog.projects || [])
+  const projects = portfolioProjects()
     .map((project) => parseProjectForPortfolio(project))
     .filter(printablePortfolioProjectHasContent);
   const categories = catalog.categories || [];
@@ -24332,7 +24694,7 @@ async function openPortfolioPreview() {
 
 function renderAll() {
   ensureSiteSections();
-  if (!selectedProjectId && catalog.projects.length) selectedProjectId = catalog.projects[0].id;
+  if (!selectedProjectId && catalog.projects.length) selectedProjectId = firstSelectableProjectId() || catalog.projects[0].id;
   const project = selectedProject();
   if (project && !sectionOptions(project).some((section) => section.id === activeSectionId)) {
     activeSectionId = "brief";
@@ -26927,7 +27289,7 @@ function catalogForSave(endpoint) {
     return {
       ...richObjectForCurrentPublishMode(savedPortfolioCatalog),
       ...parsedGlobals,
-      projects: richObjectForCurrentPublishMode(savedPortfolioCatalog.projects || [])
+      projects: richObjectForCurrentPublishMode(savedPortfolioProjects())
     };
   }
   return {
@@ -27043,7 +27405,7 @@ async function loadData() {
     profileRich: clone(catalog.profileRich || {}),
     siteContent: clone(catalog.siteContent || defaultSiteContent),
     siteContentRich: clone(catalog.siteContentRich || {}),
-    projects: (catalog.projects || []).map((project) => parseProjectForPortfolio(project)),
+    projects: portfolioProjects().map((project) => parseProjectForPortfolio(project)),
     siteSections: clone(catalog.siteSections || [])
   };
   setStatus(`Loaded ${catalogData.source} catalog. Builder controls are local-only.`);
@@ -27052,7 +27414,7 @@ async function loadData() {
 
   templateSelect.innerHTML = groupedTemplateOptions();
   refreshCategoryControls();
-  selectedProjectId = catalog.projects[0]?.id || "";
+  selectedProjectId = firstSelectableProjectId();
   expandedCategories = new Set(catalog.categories.map((category) => category.id));
   renderAll();
 }
@@ -27638,6 +28000,9 @@ categoryTitleMenu?.addEventListener("click", async (event) => {
 });
 
 document.addEventListener("click", (event) => {
+  if (!event.target.closest("#workspace-launch-menu") && !event.target.closest("#main-am-open") && !event.target.closest("#main-digital-open")) {
+    hideWorkspaceLaunchMenu();
+  }
   if (!event.target.closest(".add-project-wrap")) toggleCategoryDropdown(false);
   if (!event.target.closest("#summary-context-menu")) hideSummaryContextMenu();
   if (!event.target.closest("#project-title-menu") && !event.target.closest("#project-window-title")) {
@@ -30913,8 +31278,19 @@ builderAppMenuBar?.addEventListener("click", async (event) => {
   renderBuilderAppMenuBar();
 });
 
-analogMixedOpenButton?.addEventListener("click", () => {
-  openAnalogMixedWorkspace(selectedProjectId);
+mainAnalogMixedOpenButton?.addEventListener("click", (event) => {
+  event.stopPropagation();
+  showWorkspaceLaunchMenu("analogMixed", mainAnalogMixedOpenButton);
+});
+mainDigitalOpenButton?.addEventListener("click", (event) => {
+  event.stopPropagation();
+  showWorkspaceLaunchMenu("digital", mainDigitalOpenButton);
+});
+workspaceLaunchMenu?.addEventListener("click", async (event) => {
+  event.stopPropagation();
+  const button = event.target.closest("[data-workspace-launch-action]");
+  if (!button || button.disabled) return;
+  await handleWorkspaceLaunchAction(button.dataset.workspaceLaunchAction || "", workspaceLaunchMenu.dataset.kind || "digital");
 });
 analogMixedClose?.addEventListener("click", () => {
   saveAnalogMixedWorkspace();
