@@ -27,6 +27,16 @@
           </a>
           <div class="builder-header-actions">
               <span class="builder-save-state" id="builder-save-state" data-state="loaded">Loaded</span>
+              <button class="button secondary workspace-entry-button" id="main-am-open" type="button" title="Open Analog/Mixed-Signal design suite">AM</button>
+              <button class="button secondary workspace-entry-button" id="main-digital-open" type="button" title="Open Digital design suite">Digital</button>
+              <div class="workspace-launch-menu" id="workspace-launch-menu" hidden>
+                  <strong id="workspace-launch-title">Workspace</strong>
+                  <button type="button" data-workspace-launch-action="open">Open current workspace</button>
+                  <button type="button" data-workspace-launch-action="new">Create / reset design</button>
+                  <button type="button" data-workspace-launch-action="import">Import design</button>
+                  <button type="button" data-workspace-launch-action="location">Set save location</button>
+                  <button type="button" class="danger-control" data-workspace-launch-action="delete">Delete local design</button>
+              </div>
               <button class="button secondary light-mode-return" id="light-mode-return" type="button" aria-label="Return builder to day view" hidden>
                   <span class="light-mode-icon" aria-hidden="true"></span>
                   <span>Day view</span>
@@ -547,23 +557,24 @@
                   <details class="builder-guide-section" data-guide-section="code compile projects terminal hdl scope">
                       <summary><span class="guide-card-title">Digital Workspace</span><span class="guide-card-summary">Use the built-in IDE-style workspace for source files, folders, compiler output, terminal commands, and HDL scope viewing.</span></summary>
                       <div>
-                          <p>Digital is for local engineering work inside a project. It is separate from Add Code, which is only for polished source snippets that should appear in the public portfolio. Digital can stay empty, but when you use it, treat it like a small project workspace.</p>
+                          <p>Digital is for local engineering source work in a standalone workspace. It is separate from Add Code, which is only for polished source snippets that should appear in the public portfolio. Digital can stay empty, but when you use it, treat it like a small IDE workspace that can later append selected source into a portfolio project section.</p>
                           <p>The left explorer holds folders and source files. Drag the vertical divider beside Solution Explorer when names need more room. Imported files and imported directories appear in the tree without opening editor tabs; click a file in the tree when you want to view or edit it. The editor opens closeable file views, and the bottom output area contains Console, Messages, Terminal, Scope, Syntax, and Input so build feedback, live syntax diagnostics, and run settings stay organized instead of mixing everything into one box.</p>
                           <ol>
+                              <li>Open Digital from the main builder header or the Digital menu. Use the launch menu to open the current workspace, create or reset a workspace, import a workspace, set the save location, or delete the local workspace.</li>
                               <li>Right-click the workspace tree to add a source file, create a folder, import several files, import a directory, move selected files, delete a selected file or folder, or open that workspace location in Windows File Explorer. Compiler checks and tool installation live under the Tools menu, not in the right-click tree menu.</li>
-                              <li>Use File, Open workspace in File Explorer to open the project compile folder, or File, Reveal active source in File Explorer to select the active file in normal Windows file tools.</li>
-                              <li>Use the Project menu inside Digital for project-level actions such as saving, previewing, cleaning empty project sections, or opening the append-code destination chooser.</li>
+                              <li>Use File, Open workspace in File Explorer to open the Digital compile folder, or File, Reveal active source in File Explorer to select the active file in normal Windows file tools.</li>
+                              <li>Use Append code to project when a source file should be inserted into an existing public portfolio project section. Until you append or document it, Digital workspace content remains local builder work.</li>
                               <li>Ctrl-click files in the Solution Explorer to select several files, then right-click one of the selected files and choose Delete selected or Move selected.</li>
                               <li>Right-click a folder to delete the folder and the files contained inside it after confirmation.</li>
                               <li>Use normal keyboard editing inside editable fields, including Ctrl+V paste, right-click Paste, Ctrl+Z undo, and Ctrl+Y redo. In the code editor, blank editor space is still treated as the active insertion area.</li>
                               <li>Click Syntax to view only live background diagnostics and the active file outline. The builder checks the active file after opening it or after typing pauses, then clears old errors automatically once the source passes.</li>
                               <li>Use File details only when you need to view or edit the absolute path, source language, HDL role, file name, file type, or save status. It opens as a separate moveable, resizable window so it does not steal editor space.</li>
-                              <li>Use Save Source or Ctrl+S to write the active file into the project workspace. Use Save Source As from the File menu when you need an external copy in another location.</li>
+                              <li>Use Save Source or Ctrl+S to write the active file into the Digital workspace. Use Save Source As from the File menu when you need an external copy in another location.</li>
                               <li>Use Tools, Editor, Show or Hide line numbers when you want the code editor to display line numbers on the left. Ctrl+Alt+L toggles the same setting.</li>
                               <li>Use Beautify to clean the whole active file for C, C++, Verilog, SystemVerilog, LTspice, Java, JavaScript, Python, HTML, or support text files. Syntax coloring updates while typing, after import, and after beautify.</li>
                               <li>As you type, the builder waits briefly, runs a background syntax check, and shows line and character diagnostics in the Syntax panel without saving the file.</li>
                               <li>Use Compile to check or build the active source file.</li>
-                              <li>Use Build project when the language needs several files from the project workspace.</li>
+                              <li>Use Build project when the language needs several files from the Digital workspace.</li>
                               <li>Use Run to execute supported languages after a successful build.</li>
                               <li>Use Input beside the output tabs to open a separate moveable Program input window for stdin before running code.</li>
                               <li>Use the tiny HDL setup strip to synthesize the active file, selected design files, or all design files. Use Simulation to choose the testbench top and Constraints to attach XDC, SDC, or TCL files. Click the small HDL strip button to hide or restore those controls when you need more editor space.</li>
@@ -573,7 +584,7 @@
                               <li>After synthesis, the builder saves the Yosys netlist JSON and a DOT diagram artifact, then opens a large schematic explorer. Drag the title bar to move the window, drag any edge or corner to resize it, and use the compact tabs to inspect the design without oversized controls taking over the schematic.</li>
                               <li>Schematic nets are drawn as straight or right-angled connections, not curved graph lines. Inputs stay on the left, outputs stay on the right, logic is packed into balanced columns and rows, and arrows show the direction of signal flow whenever Yosys exposes enough connection information.</li>
                               <li>Double-click a module or synthesized cell to expand it. Repeated double-clicks reveal more detail: ports first, then child blocks or leaf-gate information, then connected nets. Double-click past the deepest level to collapse it again.</li>
-                              <li>Use the schematic explorer buttons to inspect the working tree, nets, objects, source metadata, predesigned IP blocks, and timing notes. Clicking a source shows language, HDL role, simulator, synthesis tool, detected modules, size, and path details. The IP panel can add reusable SystemVerilog blocks into the project workspace before the next synthesis run.</li>
+                              <li>Use the schematic explorer buttons to inspect the working tree, nets, objects, source metadata, predesigned IP blocks, and timing notes. Clicking a source shows language, HDL role, simulator, synthesis tool, detected modules, size, and path details. The IP panel can add reusable SystemVerilog blocks into the Digital workspace before the next synthesis run.</li>
                               <li>Use Simulate for Verilog or SystemVerilog when a testbench is present. SystemVerilog files and SystemVerilog syntax are simulated with the SystemVerilog-capable Icarus mode before the VCD waveform is opened in Scope.</li>
                               <li>Use Append code to project to place the active source into a selected project section or nested subsection as a formatted code block.</li>
                           </ol>
@@ -583,7 +594,7 @@
                               <li>Messages shows save, compile, build, append, tool-check, synthesis, and simulation progress.</li>
                               <li>Syntax is reserved for live background compiler diagnostics so regular messages remain readable.</li>
                               <li>The Tools menu is grouped into Editor, Synthesis, Simulation, and Beautifier sections so compiler installation, tool checks, line numbers, scope, input, and formatting commands are easier to find.</li>
-                              <li>Terminal opens a real Windows PowerShell application window under the current Windows user account. It starts in the project compile folder, can cd into any Windows drive or folder that user can access, and inherits the user environment and compiler tool paths.</li>
+                              <li>Terminal opens a real Windows PowerShell application window under the current Windows user account. It starts in the Digital workspace folder, can cd into any Windows drive or folder that user can access, and inherits the user environment and compiler tool paths.</li>
                               <li>Input opens stdin for the active source in a separate window so the code editor stays focused on source text.</li>
                               <li>Scope appears for Verilog/SystemVerilog and shows VCD waveforms after simulation.</li>
                               <li>Click a scrollable area before using the mouse wheel there. Solution Explorer, file tabs, editor, Console, Messages, Terminal, Syntax, and Scope each keep their own scroll behavior.</li>
@@ -596,11 +607,13 @@
                       </div>
                   </details>
                   <details class="builder-guide-section" data-guide-section="analog mixed signal am lab schematic spice pcb ic pdk gerber math simulation libraries">
-                      <summary><span class="guide-card-title">Analog/Mixed-Signal Design Lab</span><span class="guide-card-summary">Open a project-level AM workspace for schematic capture, libraries, simulations, IC/PCB planning, PDK notes, and manufacturing stages.</span></summary>
+                      <summary><span class="guide-card-title">Analog/Mixed-Signal Design Lab</span><span class="guide-card-summary">Open the standalone AM workspace for schematic capture, libraries, simulations, IC/PCB planning, PDK notes, and manufacturing stages.</span></summary>
                       <div>
-                          <p>The AM Design Lab is the beginning of the analog and mixed-signal engine inside the builder. Open a project, then use the small AM button near the project window controls to enter the AM tool launcher. The launcher starts with two clear categories: <strong>PCB Design Suite</strong> and <strong>IC Design Suite</strong>. This keeps board-level work and transistor-level IC work separated before any editor opens.</p>
+                          <p>The AM Design Lab is the beginning of the analog and mixed-signal engine inside the builder. It now opens from the main builder header and AM menu instead of from an individual portfolio project. Use the AM launch menu to open the current AM design, create or reset a local design, import a saved AM design, set the save location, or delete the local AM design. The launcher starts with two clear categories: <strong>PCB Design Suite</strong> and <strong>IC Design Suite</strong>. This keeps board-level work and transistor-level IC work separated before any editor opens.</p>
                           <p>Choose a suite, then open the individual tool you need. PCB tools include Schematic Editor, Symbol Editor, Footprint Editor, PCB Editor, Gerber Viewer, PCB Math Calculator, and PCB Marketplace. IC tools include IC Schematic Editor, IC Symbol Editor, IC Layout Suite, ADE/SPICE Cockpit, PDK Manager, Extraction And Signoff, IC Math Calculator, and IC Marketplace. Opening a tool hides the launcher and opens the correct design window, stage row, menus, library view, inspector, and backend handoff for that tool.</p>
                           <ol>
+                              <li>AM designs are local engineering workspaces. They are not published as portfolio projects unless you later export, append, or document results inside a normal portfolio project section.</li>
+                              <li>Start new AM work from Create/reset AM design or Import AM design. Set the save location before serious work so the design state is easy to find on disk.</li>
                               <li>Use the AM launcher first. Pick PCB when you are working with board schematics, footprints, PCB layout, Gerbers, board calculations, or supplier-style parts. Pick IC when you are working with transistor schematics, symbols, IC layout, PDKs, SPICE analysis, extraction, signoff, or IC device libraries.</li>
                               <li>Each tool opens into a focused design window. The PCB Schematic Editor opens schematic capture with board-oriented libraries and netlisting. The Footprint and PCB tools open package and board-planning views. The Gerber Viewer opens manufacturing handoff. The PCB Math Calculator gives trace-width, current, impedance, and board-level calculation space. PCB Marketplace is the controlled place for future supplier imports.</li>
                               <li>IC tools are kept separate. IC Schematic Editor focuses on transistor-level circuit entry. IC Symbol Editor prepares reusable cells. IC Layout Suite opens the Virtuoso-style layout lane. ADE/SPICE Cockpit opens simulation planning. PDK Manager registers process information. Extraction And Signoff collects parasitic, LVS, DRC, noise, and signoff preparation. IC Math Calculator keeps gm/Id, biasing, matching, noise, and sizing notes together.</li>
@@ -640,7 +653,7 @@
                               <li>Keep PCB and IC Layout separate. PCB generates board artifacts such as placement, BOM, PCB netlist, and Gerber-plan files. IC Layout generates PDK artifacts such as PDK-included SPICE netlists, KLayout scripts, GDS targets, Magic DRC scripts, Magic PEX scripts, Netgen LVS scripts, ngspice noise decks, parasitic reports, complex-analysis reports, and layout summaries.</li>
                               <li>Use Gerber generation plan for board manufacturing readiness. This stage tracks copper, drill, mask, silkscreen, pick-and-place, assembly, fabrication, and BOM handoff items before a real PCB backend is connected.</li>
                               <li>Use 3D View to open the physical board/package/IC planning window. The view reads footprint, package, source-library, PDK, and vendor metadata so passives, diodes, SOT/SOIC ICs, inductors, connectors, test points, and SKY130/layout devices draw as different physical packages instead of identical blocks. The 3D menu also resolves package model manifests for known KiCad-style footprints.</li>
-                              <li>Save AM saves the AM workspace into the current project draft. Save the project or Save all sections when you want the parser and preview pipeline to consume the latest project state.</li>
+                              <li>Save AM saves the standalone AM workspace into the local builder draft. Portfolio Save draft keeps that workspace available on this machine, but the parser skips AM workspace-only data unless you intentionally place AM output inside a public portfolio project.</li>
                           </ol>
                           <p>The goal is a powerhouse mixed-signal design environment: schematic capture, symbols, footprints, PCB, IC layout, math, simulation, PDKs, libraries, Gerbers, DRC/ERC, optimization, and visual debugging. This guide names the intended workflow now so every future engine can be added behind a clean user-facing design process.</p>
                       </div>
@@ -931,7 +944,6 @@
                   <div class="project-window-actions">
                       <button class="button secondary" id="view-project-preview" type="button">View project preview</button>
                       <button class="project-control danger-control" id="project-window-delete" type="button">Delete project</button>
-                      <button class="project-control analog-mixed-launch" id="analog-mixed-open" type="button" title="Open Analog/Mixed-Signal workspace" aria-label="Open Analog/Mixed-Signal workspace">AM</button>
                       <button class="project-control close-control" id="project-window-close" type="button" aria-label="Close project window">&times;</button>
                   </div>
               </div>

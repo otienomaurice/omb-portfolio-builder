@@ -16077,14 +16077,14 @@ body[data-builder-theme] .selection-text-preview {
 .analog-mixed-canvas-shell {
   min-height: 0;
   overflow: auto;
-  background: #fbfdff;
+  background: #02070d;
 }
 
 .analog-mixed-canvas {
   display: block;
   width: max(100%, 1400px);
   min-height: 100%;
-  background: #fbfdff;
+  background: #02070d;
   cursor: crosshair;
   user-select: none;
   touch-action: none;
@@ -16100,8 +16100,8 @@ body[data-builder-theme] .selection-text-preview {
 }
 
 .am-grid line {
-  stroke: rgba(44, 95, 124, 0.09);
-  stroke-width: 1;
+  stroke: rgba(125, 211, 252, 0.08);
+  stroke-width: 0.65;
 }
 
 .am-symbol {
@@ -16260,8 +16260,9 @@ body[data-builder-theme] .selection-text-preview {
 
 .am-wire polyline {
   fill: none;
-  stroke: #0f766e;
-  stroke-width: 3;
+  stroke: #38bdf8;
+  stroke-width: 2;
+  stroke-dasharray: none;
   marker-end: none;
 }
 
@@ -16274,14 +16275,14 @@ body[data-builder-theme] .selection-text-preview {
 
 .am-wire-preview {
   fill: none;
-  stroke: #f59e0b;
-  stroke-width: 3;
-  stroke-dasharray: 10 7;
+  stroke: #38bdf8;
+  stroke-width: 2;
+  stroke-dasharray: none;
   marker-end: none;
 }
 
 .am-wire text {
-  fill: #0f766e;
+  fill: #bae6fd;
   font-size: 15px;
 }
 
@@ -17302,6 +17303,116 @@ body[data-builder-theme="dark"].template-preview-page .analog-mixed-launch {
   background: #0f3f3a !important;
 }
 
+.workspace-entry-button {
+  min-width: 42px;
+  min-height: 30px;
+  height: 30px;
+  padding: 0 10px;
+  border-color: #123b5c !important;
+  color: #e8f7ff !important;
+  background: #0d3554 !important;
+  font-size: 0.72rem;
+  font-weight: 950;
+}
+
+.workspace-entry-button:hover,
+.workspace-entry-button:focus-visible {
+  border-color: #7dd3fc !important;
+  color: #04111d !important;
+  background: #7dd3fc !important;
+}
+
+.workspace-launch-menu {
+  position: fixed;
+  z-index: 2200;
+  width: min(250px, calc(100vw - 16px));
+  padding: 6px;
+  border: 1px solid #9edcf2;
+  border-radius: 8px;
+  box-shadow: 0 18px 42px rgba(15, 40, 65, 0.22);
+  background: #ffffff;
+  color: #142434;
+}
+
+.workspace-launch-menu[hidden] {
+  display: none !important;
+}
+
+.workspace-launch-menu strong,
+.workspace-launch-menu button {
+  font-size: 0.72rem;
+  line-height: 1.1;
+}
+
+.workspace-launch-menu strong {
+  display: block;
+  padding: 6px 8px 7px;
+  color: #0b7285;
+  text-transform: uppercase;
+}
+
+.workspace-launch-menu button {
+  display: flex;
+  width: 100%;
+  min-height: 28px;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 5px;
+  color: #172638;
+  background: transparent;
+  font-weight: 850;
+  text-align: left;
+}
+
+.workspace-launch-menu button:hover,
+.workspace-launch-menu button:focus-visible {
+  color: #04111d;
+  background: #bcecff;
+}
+
+.workspace-launch-menu button:disabled {
+  cursor: not-allowed;
+  color: #7890a2;
+  background: transparent;
+}
+
+.workspace-launch-menu .danger-control {
+  color: #a20f0f;
+}
+
+.workspace-launch-menu .danger-control:hover,
+.workspace-launch-menu .danger-control:focus-visible {
+  color: #ffffff;
+  background: #c02626;
+}
+
+body[data-builder-theme="dark"] .workspace-launch-menu {
+  border-color: #31516f;
+  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.45);
+  background: #0f1724;
+  color: #e6f6ff;
+}
+
+body[data-builder-theme="dark"] .workspace-launch-menu strong {
+  color: #7dd3fc;
+}
+
+body[data-builder-theme="dark"] .workspace-launch-menu button {
+  color: #e6f6ff;
+}
+
+body[data-builder-theme="dark"] .workspace-launch-menu button:hover,
+body[data-builder-theme="dark"] .workspace-launch-menu button:focus-visible {
+  color: #06111c;
+  background: #7dd3fc;
+}
+
+body[data-builder-theme="dark"] .workspace-launch-menu button:disabled {
+  color: #718096;
+}
+
 .analog-mixed-shell {
   grid-template-rows: 30px 26px minmax(0, 1fr) minmax(130px, 0.22fr) 22px;
 }
@@ -17955,15 +18066,18 @@ body[data-builder-theme="dark"].template-preview-page .analog-mixed-launch {
 
 .am-wire-line {
   pointer-events: none;
+  stroke: #38bdf8;
+  stroke-width: 2;
+  stroke-dasharray: none;
 }
 
 .am-wire.is-selected .am-wire-line {
-  stroke: #f59e0b;
-  stroke-width: 4;
+  stroke: #7dd3fc;
+  stroke-width: 2.5;
 }
 
 .am-wire.is-selected text {
-  fill: #b45309;
+  fill: #e0f2fe;
 }
 
 .analog-mixed-context-menu {
